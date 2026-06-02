@@ -20,10 +20,11 @@ export function BarcodeDisplay({ value }) {
 export function Modal({ onClose, children, w = 460 }) {
   return (
     <div
-      style={{position:"fixed",inset:0,background:T.overlay,display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,backdropFilter:"blur(4px)"}}
+      style={{position:"fixed",inset:0,background:T.overlay,display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,backdropFilter:"blur(4px)",padding:8}}
     >
       <div
-        style={{background:"#061628",border:`1px solid ${T.border}`,borderRadius:16,padding:28,width:w,boxShadow:"0 20px 60px rgba(0,0,0,0.15)",maxHeight:"88vh",overflowY:"auto"}}
+        className="modal-card"
+        style={{background:"#ffffff",border:`1px solid ${T.border}`,borderRadius:16,padding:28,width:w,maxWidth:"96vw",boxShadow:"0 20px 60px rgba(0,0,0,0.15)",maxHeight:"92vh",overflowY:"auto"}}
       >
         {children}
       </div>
@@ -65,7 +66,7 @@ export function Input({ label, value, onChange, type="text", placeholder="", dis
 
 export function BtnPrimary({onClick,children,disabled=false,style={}}) {
   return (
-    <button onClick={onClick} disabled={disabled} style={{padding:"8px 18px",borderRadius:8,border:"none",cursor:disabled?"not-allowed":"pointer",background:"linear-gradient(135deg,#0ea5e9,#0369a1)",color:"white",fontSize:13,fontWeight:600,fontFamily:"'Sarabun',sans-serif",opacity:disabled?0.45:1,boxShadow:disabled?"none":"0 2px 12px rgba(14,165,233,0.3)",...style}}>{children}</button>
+    <button onClick={onClick} disabled={disabled} style={{padding:"8px 18px",borderRadius:8,border:"none",cursor:disabled?"not-allowed":"pointer",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,fontFamily:"'Sarabun',sans-serif",opacity:disabled?0.45:1,boxShadow:disabled?"none":"0 2px 12px rgba(59,91,139,0.3)",...style}}>{children}</button>
   );
 }
 
@@ -83,7 +84,7 @@ export function BtnDanger({onClick,children,disabled=false,style={}}) {
 
 export function BtnGhost({onClick,children,style={}}) {
   return (
-    <button onClick={onClick} style={{padding:"8px 18px",borderRadius:8,border:`1px solid ${T.border}`,cursor:"pointer",background:"rgba(14,165,233,0.05)",color:T.sub,fontSize:13,fontWeight:500,fontFamily:"'Sarabun',sans-serif",...style}}>{children}</button>
+    <button onClick={onClick} style={{padding:"8px 18px",borderRadius:8,border:`1px solid ${T.border}`,cursor:"pointer",background:"rgba(59,91,139,0.05)",color:T.sub,fontSize:13,fontWeight:500,fontFamily:"'Sarabun',sans-serif",...style}}>{children}</button>
   );
 }
 
@@ -95,6 +96,6 @@ export function Badge({children, bg, color}) {
 
 export function CardBox({children, style={}}) {
   return (
-    <div style={{background:"#061628",border:`1px solid ${T.border}`,borderRadius:14,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,0.04)",...style}}>{children}</div>
+    <div style={{background:"#ffffff",border:`1px solid ${T.border}`,borderRadius:14,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,0.04)",...style}}>{children}</div>
   );
 }

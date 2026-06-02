@@ -47,12 +47,12 @@ export default function SuppliersTab({ suppliers, role }) {
         <div style={{ textAlign: "center", padding: 40, color: T.muted, fontSize: 13 }}>ไม่พบซัพพลายเออร์ที่ค้นหา</div>
       ) : (
         <CardBox style={{ padding: 0, overflow: "hidden" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 180px 80px", alignItems: "center", padding: "10px 20px", background: "rgba(2,8,22,0.8)", borderBottom: `1px solid ${T.border}`, color: T.muted, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 180px 80px", alignItems: "center", padding: "10px 20px", background: "rgba(241,243,246,0.8)", borderBottom: `1px solid ${T.border}`, color: T.muted, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
             <div>ชื่อ / ที่อยู่</div><div>เบอร์โทร</div><div>Email</div><div style={{ textAlign: "center" }}>จัดการ</div>
           </div>
           {filtered.map((s, i) => (
             <div key={s.id} style={{ display: "grid", gridTemplateColumns: "1fr 140px 180px 80px", alignItems: "center", padding: "14px 20px", borderBottom: i < filtered.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s" }}
-              onMouseEnter={e => e.currentTarget.style.background = "rgba(14,165,233,0.04)"}
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(59,91,139,0.04)"}
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
               <div>
                 <div style={{ fontWeight: 600, color: T.text, fontSize: 13 }}>🏭 {s.name}</div>
@@ -62,7 +62,7 @@ export default function SuppliersTab({ suppliers, role }) {
               <div style={{ fontSize: 12, color: T.sub }}>{s.phone || "—"}</div>
               <div style={{ fontSize: 12, color: T.sub }}>{s.email || "—"}</div>
               <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
-                {role.canAdd && <button onClick={() => openEdit(s)} style={{ padding: "5px 8px", borderRadius: 6, border: `1px solid ${T.border}`, background: "rgba(14,165,233,0.08)", color: T.accent, cursor: "pointer", fontSize: 11 }}>✏️</button>}
+                {role.canAdd && <button onClick={() => openEdit(s)} style={{ padding: "5px 8px", borderRadius: 6, border: `1px solid ${T.border}`, background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 11 }}>✏️</button>}
                 {role.canDelete && <button onClick={async () => await deleteDoc(doc(db, "suppliers", s.id))} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid rgba(248,113,113,0.25)", background: "rgba(248,113,113,0.08)", color: "#f87171", cursor: "pointer", fontSize: 11 }}>✕</button>}
               </div>
             </div>

@@ -18,7 +18,7 @@ function MiniBar({ label, value, max, color, unit = "" }) {
         <span style={{ fontSize: 12, color: T.text, fontWeight: 500 }}>{label}</span>
         <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 700, color }}>{value.toLocaleString()}{unit}</span>
       </div>
-      <div style={{ height: 6, borderRadius: 3, background: "#0a1f35", overflow: "hidden" }}>
+      <div style={{ height: 6, borderRadius: 3, background: "#ffffff", overflow: "hidden" }}>
         <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 3, transition: "width .4s" }} />
       </div>
     </div>
@@ -152,7 +152,7 @@ export default function ReportsTab({ products, transactions, invoices, orders })
               },
             ].map((btn, i) => (
               <button key={i} onClick={btn.onClick}
-                style={{ padding: "10px 14px", borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(14,165,233,0.06)", color: T.text, cursor: "pointer", textAlign: "left", fontFamily: "'Sarabun',sans-serif" }}>
+                style={{ padding: "10px 14px", borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(59,91,139,0.06)", color: T.text, cursor: "pointer", textAlign: "left", fontFamily: "'Sarabun',sans-serif" }}>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>{btn.label}</div>
                 <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{btn.desc}</div>
               </button>

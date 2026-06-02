@@ -7,9 +7,9 @@ export const INIT_USERS = [
 ];
 
 export const ROLES = {
-  admin:   { label:"ผู้ดูแลระบบ", color:T.amber,  canDelete:true,  canAdd:true,  canClear:true,  canManageUsers:true,  canManageCats:true  },
-  manager: { label:"ผู้จัดการ",   color:T.blue,   canDelete:true,  canAdd:true,  canClear:false, canManageUsers:false, canManageCats:true  },
-  staff:   { label:"พนักงาน",     color:T.green,  canDelete:false, canAdd:false, canClear:false, canManageUsers:false, canManageCats:false },
+  admin:   { label:"ผู้ดูแลระบบ", color:T.amber,  canDelete:true,  canAdd:true,  canClear:true,  canManageUsers:true,  canManageCats:true,  canIssueInvoice:true,  canCreateOrder:true  },
+  manager: { label:"ผู้จัดการ",   color:T.blue,   canDelete:true,  canAdd:true,  canClear:false, canManageUsers:false, canManageCats:true,  canIssueInvoice:true,  canCreateOrder:true  },
+  staff:   { label:"พนักงาน",     color:T.green,  canDelete:false, canAdd:false, canClear:false, canManageUsers:false, canManageCats:false, canIssueInvoice:false, canCreateOrder:false },
 };
 
 export const INIT_CATS = ["วัตถุดิบ","สินค้าสำเร็จ","บรรจุภัณฑ์"];

@@ -14,6 +14,7 @@ export function useFirestore() {
   const [customers, setCustomers] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [companyInfo, setCompanyInfo] = useState({ name:"CPU", address:"", phone:"", email:"", taxId:"", logo:"⚙️" });
+  const [roleLabels, setRoleLabels] = useState({}); // {admin:"...", manager:"...", staff:"..."}
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -88,6 +89,13 @@ export function useFirestore() {
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db,"settings","roleLabels"), snap => {
+      if(snap.exists()) setRoleLabels(snap.data());
+    }, ()=>{});
+    return () => unsub();
+  }, []);
+
   return {
     users, setUsers,
     suppliers,
@@ -99,6 +107,7 @@ export function useFirestore() {
     customers,
     invoices,
     companyInfo, setCompanyInfo,
+    roleLabels,
     loading, setLoading,
   };
 }

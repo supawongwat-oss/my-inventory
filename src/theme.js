@@ -1,11 +1,31 @@
+// === Professional Light Gray Theme ===
+// โทนเทาอ่อน ดูเป็นทางการสำหรับองค์กร
 export const T = {
-  bg: "#020c1b", sidebar: "#030e20", card: "#061628", border: "#0d2848",
-  text: "#cce7ff", sub: "#4a7fa5", muted: "#1e4060",
-  header: "#020c1b", navActive: "rgba(14,165,233,0.12)", navActiveBorder: "rgba(56,189,248,0.3)",
-  navActiveText: "#38bdf8", input: "#0a1f35", inputBorder: "#0e3058",
-  overlay: "rgba(0,8,20,0.85)",
-  blue: "#0ea5e9", indigo: "#6366f1", green: "#10b981", red: "#ef4444", amber: "#f59e0b",
-  accent: "#38bdf8", cyan: "#22d3ee",
+  bg: "#f4f5f7",          // พื้นหลังหลัก เทาอ่อนนวล
+  sidebar: "#ffffff",     // sidebar ขาว
+  card: "#ffffff",        // card ขาว
+  header: "#ffffff",      // header ขาว
+  border: "#e2e5ea",      // เส้นเทาอ่อน
+  text: "#1f2933",        // ตัวหนังสือหลัก เทาเข้ม (สำหรับพื้นขาว)
+  sub: "#52606d",         // ตัวหนังสือรอง เทากลาง
+  muted: "#9aa5b1",       // ตัวหนังสือจาง
+
+  navActive: "#eef2f7",                       // bg ของเมนูที่เลือก
+  navActiveBorder: "rgba(71,85,105,0.18)",    // เส้นเมนูที่เลือก
+  navActiveText: "#1f2933",                   // ตัวหนังสือเมนูที่เลือก
+
+  input: "#ffffff",
+  inputBorder: "#cbd2d9",
+  overlay: "rgba(15,23,42,0.45)",
+
+  // สีฟังก์ชัน — โทนสุภาพ ไม่ฉูดฉาด
+  blue: "#3b5b8b",        // น้ำเงินกรมสุภาพ
+  indigo: "#475569",
+  green: "#3a7a52",       // เขียวเข้มสุภาพ
+  red: "#b94a48",         // แดงเข้มสุภาพ
+  amber: "#b88600",       // ทองสุภาพ
+  accent: "#3b5b8b",      // accent สีน้ำเงินกรม
+  cyan: "#5e7a9e",
 };
 
 export const SIZES = ["6","8","10","12","S","M","L","XL","2XL","3XL","4XL","5XL"];
