@@ -684,7 +684,7 @@ export default function App() {
               <CardBox style={{padding:0,overflow:"hidden"}}>
                 {/* Table header */}
                 <div style={{display:"grid",gridTemplateColumns:"44px 90px 1fr 110px 70px 70px 70px 100px 100px",alignItems:"center",padding:"10px 16px",background:"#041020",borderBottom:`1px solid ${T.border}`,color:T.muted,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>
-                  <div>รูป</div><div>รหัส</div><div>ชื่อสินค้า</div><div>หมวดหมู่</div><div style={{textAlign:"right"}}>จำนวน</div><div style={{textAlign:"right"}}>ทุน</div><div style={{textAlign:"right"}}>ขาย</div><div>สถานะ</div><div style={{textAlign:"center"}}>จัดการ</div>
+                  <div>รูป</div><div>รหัส</div><div>ชื่อสินค้า</div><div>หมวดหมู่</div><div style={{textAlign:"right"}}>จำนวน</div><div style={{textAlign:"right"}}>ขั้นต่ำ</div><div>สถานะ</div><div>ที่เก็บ</div><div style={{textAlign:"center"}}>จัดการ</div>
                 </div>
                 {filtered.length===0?(
                   <div style={{padding:40,textAlign:"center",color:T.muted,fontSize:13}}>ยังไม่มีสินค้า — กด "️ เพิ่มสินค้า" เพื่อเริ่มต้น</div>
