@@ -1,0 +1,1025 @@
+import { useState, useRef, useEffect } from "react";
+import { db } from "./firebase";
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, serverTimestamp, query, orderBy } from "firebase/firestore";
+
+// ── THEME (White) ──────────────────────────────────────────────
+const T = {
+  bg: "#f8fafc", sidebar: "#ffffff", card: "#ffffff", border: "#e2e8f0",
+  text: "#1e293b", sub: "#64748b", muted: "#94a3b8",
+  header: "#ffffff", navActive: "#eff6ff", navActiveBorder: "#bfdbfe",
+  navActiveText: "#1d4ed8", input: "#f1f5f9", inputBorder: "#cbd5e1",
+  overlay: "rgba(15,23,42,0.5)",
+  blue: "#3b82f6", indigo: "#6366f1", green: "#10b981", red: "#ef4444", amber: "#f59e0b",
+};
+
+// ── INITIAL STATE ─────────────────────────────────────────────
+const INIT_USERS = [
+  { id: 1, username: "admin",   password: "1234", name: "สมชาย ใจดี",    role: "admin",   avatar: "👑" },
+  { id: 2, username: "manager", password: "1234", name: "สมหญิง รักงาน", role: "manager", avatar: "🧑‍💼" },
+  { id: 3, username: "staff",   password: "1234", name: "วิชัย มานะ",    role: "staff",   avatar: "👷" },
+];
+const ROLES = {
+  admin:   { label:"ผู้ดูแลระบบ", color:T.amber,  canDelete:true,  canAdd:true,  canClear:true,  canManageUsers:true,  canManageCats:true  },
+  manager: { label:"ผู้จัดการ",   color:T.blue,   canDelete:true,  canAdd:true,  canClear:false, canManageUsers:false, canManageCats:true  },
+  staff:   { label:"พนักงาน",     color:T.green,  canDelete:false, canAdd:false, canClear:false, canManageUsers:false, canManageCats:false },
+};
+const INIT_CATS = ["วัตถุดิบ","สินค้าสำเร็จ","บรรจุภัณฑ์"];
+
+// ── MASTER KEY (ฉุกเฉิน กรณี Admin ลืมรหัส) ──────────────────
+const MASTER_KEY = "CPU@2024";
+function BarcodeDisplay({ value }) {
+  if (!value) return null;
+  const bars = []; let x = 8;
+  const seed = String(value).split("").reduce((a,c) => a + c.charCodeAt(0), 0);
+  for (let i = 0; i < 38; i++) {
+    const w = ((seed * (i + 7) * 13) % 17 > 7) ? 3 : 1.5;
+    bars.push(<rect key={i} x={x} y={8} width={w} height={44} fill={i % 2 === 0 ? "#1e293b" : "#fff"} />);
+    x += w + 0.5;
+  }
+  return (
+    <div style={{background:"white",borderRadius:8,padding:"6px 10px",display:"inline-block",textAlign:"center",border:`1px solid ${T.border}`}}>
+      <svg width={x + 8} height={60}><rect width="100%" height="100%" fill="white"/>{bars}</svg>
+      <div style={{fontSize:10,fontFamily:"monospace",color:"#1e293b",marginTop:2,letterSpacing:2}}>{value}</div>
+    </div>
+  );
+}
+
+// ── MODAL WRAPPER ──────────────────────────────────────────────
+function Modal({ onClose, children, w = 460 }) {
+  return (
+    <div style={{position:"fixed",inset:0,background:T.overlay,display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,backdropFilter:"blur(4px)"}} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:28,width:w,boxShadow:"0 20px 60px rgba(0,0,0,0.15)",maxHeight:"88vh",overflowY:"auto"}}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function MHead({ title, sub, onClose, color = T.blue }) {
+  return (
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
+      <div>
+        <div style={{fontSize:15,fontWeight:700,color}}>{title}</div>
+        {sub && <div style={{fontSize:12,color:T.sub,marginTop:2}}>{sub}</div>}
+      </div>
+      <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"4px 10px",cursor:"pointer",color:T.sub,fontSize:13}}>✕</button>
+    </div>
+  );
+}
+
+// ── SUCCESS TOAST ──────────────────────────────────────────────
+function Toast({ msg }) {
+  return <div style={{background:"#dcfce7",border:"1px solid #86efac",borderRadius:8,padding:"10px 14px",marginBottom:14,color:"#166534",fontSize:13,textAlign:"center",fontWeight:500}}>✅ {msg}</div>;
+}
+
+// ── INPUT ──────────────────────────────────────────────────────
+function Input({ label, value, onChange, type="text", placeholder="", disabled=false, style={} }) {
+  return (
+    <div style={{marginBottom:0}}>
+      {label && <label style={{fontSize:11,color:T.sub,display:"block",marginBottom:5,fontWeight:500}}>{label}</label>}
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        disabled={disabled}
+        style={{width:"100%",background:disabled?"#f8fafc":T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none",...style}}
+      />
+    </div>
+  );
+}
+
+// ── LOGIN ──────────────────────────────────────────────────────
+function LoginPage({ users, onLogin, onResetPassword }) {
+  const [u,setU]=useState(""); const [p,setP]=useState(""); const [err,setErr]=useState(""); const [loading,setLoading]=useState(false);
+  const [showForgot,setShowForgot]=useState(false);
+
+  // forgot password state
+  const [forgotStep,setForgotStep]=useState(1); // 1=เลือก user, 2=กรอก admin pass, 3=ตั้งรหัสใหม่
+  const [forgotTarget,setForgotTarget]=useState("");
+  const [adminPass,setAdminPass]=useState("");
+  const [newPass,setNewPass]=useState(""); const [confirmPass,setConfirmPass]=useState("");
+  const [forgotErr,setForgotErr]=useState(""); const [forgotOk,setForgotOk]=useState("");
+
+  const handle = () => {
+    if (!u || !p) { setErr("กรุณากรอกชื่อผู้ใช้และรหัสผ่าน"); return; }
+    setLoading(true); setErr("");
+    setTimeout(() => {
+      const found = users.find(x => x.username === u && x.password === p);
+      if (found) onLogin(found);
+      else { setErr("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"); setLoading(false); }
+    }, 500);
+  };
+
+  const handleForgotNext = () => {
+    setForgotErr("");
+    if (forgotStep === 1) {
+      if (!forgotTarget) { setForgotErr("กรุณาเลือกบัญชีที่ต้องการรีเซ็ต"); return; }
+      setForgotStep(2);
+    } else if (forgotStep === 2) {
+      const admin = users.find(x => x.role === "admin");
+      const isAdminPass = admin && adminPass === admin.password;
+      const isMasterKey = adminPass === MASTER_KEY;
+      if (!isAdminPass && !isMasterKey) {
+        setForgotErr("รหัสผ่าน Admin หรือ Master Key ไม่ถูกต้อง");
+        return;
+      }
+      setForgotStep(3);
+    } else if (forgotStep === 3) {
+      if (newPass.length < 4) { setForgotErr("รหัสผ่านใหม่ต้องมีอย่างน้อย 4 ตัว"); return; }
+      if (newPass !== confirmPass) { setForgotErr("รหัสผ่านไม่ตรงกัน"); return; }
+      onResetPassword(forgotTarget, newPass);
+      setForgotOk(`รีเซ็ตรหัสผ่านสำเร็จ! กรุณาเข้าสู่ระบบด้วยรหัสใหม่`);
+      setTimeout(() => { setShowForgot(false); setForgotStep(1); setForgotTarget(""); setAdminPass(""); setNewPass(""); setConfirmPass(""); setForgotOk(""); }, 2000);
+    }
+  };
+
+  const closeForgot = () => { setShowForgot(false); setForgotStep(1); setForgotTarget(""); setAdminPass(""); setNewPass(""); setConfirmPass(""); setForgotErr(""); setForgotOk(""); };
+
+  const stepLabel = ["","① เลือกบัญชี","② ยืนยัน Admin","③ ตั้งรหัสใหม่"];
+
+  return (
+    <div style={{minHeight:"100vh",background:"#f1f5f9",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Sarabun',sans-serif"}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}input:focus{outline:none;border-color:#93c5fd!important}`}</style>
+      <div style={{width:400}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{width:64,height:64,background:"linear-gradient(135deg,#3b82f6,#6366f1)",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,margin:"0 auto 14px",boxShadow:"0 8px 24px rgba(59,130,246,0.3)"}}>⚙️</div>
+          <div style={{fontSize:26,fontWeight:800,color:"#1e293b",fontFamily:"'Space Mono',monospace",letterSpacing:4}}>CPU</div>
+          <div style={{fontSize:12,color:T.sub,marginTop:4}}>ระบบบริหารคลังสินค้า</div>
+        </div>
+
+        <div style={{background:"white",border:`1px solid ${T.border}`,borderRadius:16,padding:32,boxShadow:"0 4px 20px rgba(0,0,0,0.08)"}}>
+          <div style={{fontSize:16,fontWeight:700,color:T.text,marginBottom:20}}>เข้าสู่ระบบ</div>
+          {err && <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",color:"#dc2626",fontSize:13,marginBottom:14}}>⚠️ {err}</div>}
+          <div style={{marginBottom:14}}>
+            <Input label="ชื่อผู้ใช้" value={u} onChange={e=>setU(e.target.value)} placeholder="username" />
+          </div>
+          <div style={{marginBottom:8}}>
+            <Input label="รหัสผ่าน" type="password" value={p} onChange={e=>setP(e.target.value)} placeholder="••••••" />
+          </div>
+          {/* ลืมรหัสผ่าน link */}
+          <div style={{textAlign:"right",marginBottom:18}}>
+            <span onClick={()=>setShowForgot(true)} style={{fontSize:12,color:T.blue,cursor:"pointer",fontWeight:500}}>🔑 ลืมรหัสผ่าน?</span>
+          </div>
+          <button onClick={handle} disabled={loading} style={{width:"100%",padding:"11px",background:"linear-gradient(135deg,#3b82f6,#6366f1)",color:"white",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",opacity:loading?0.7:1,boxShadow:"0 4px 14px rgba(59,130,246,0.35)"}}>
+            {loading?"กำลังเข้าสู่ระบบ...":"เข้าสู่ระบบ"}
+          </button>
+          <div style={{marginTop:18,padding:14,background:"#f8fafc",borderRadius:10,border:`1px solid ${T.border}`}}>
+            <div style={{fontSize:11,color:T.muted,marginBottom:8}}>🔑 บัญชีทดสอบ (รหัสผ่าน: 1234)</div>
+            {users.map(u=>(<div key={u.id} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:T.sub,marginBottom:4}}><span>{u.avatar} <b style={{color:T.text}}>{u.username}</b></span><span style={{color:ROLES[u.role].color,fontSize:11,fontWeight:600}}>{ROLES[u.role].label}</span></div>))}
+          </div>
+        </div>
+      </div>
+
+      {/* MODAL: ลืมรหัสผ่าน */}
+      {showForgot&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,backdropFilter:"blur(4px)"}} onClick={closeForgot}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"white",border:`1px solid ${T.border}`,borderRadius:16,padding:28,width:420,boxShadow:"0 20px 60px rgba(0,0,0,0.15)"}}>
+            {/* Header */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div>
+                <div style={{fontSize:15,fontWeight:700,color:T.blue}}>🔑 ลืมรหัสผ่าน</div>
+                <div style={{fontSize:11,color:T.muted,marginTop:2}}>{stepLabel[forgotStep]}</div>
+              </div>
+              <button onClick={closeForgot} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"4px 10px",cursor:"pointer",color:T.sub,fontSize:13}}>✕</button>
+            </div>
+
+            {/* Step indicator */}
+            <div style={{display:"flex",gap:6,marginBottom:20}}>
+              {[1,2,3].map(s=>(
+                <div key={s} style={{flex:1,height:4,borderRadius:2,background:forgotStep>=s?"#3b82f6":"#e2e8f0",transition:"background .3s"}}/>
+              ))}
+            </div>
+
+            {forgotErr&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",color:"#dc2626",fontSize:13,marginBottom:14}}>⚠️ {forgotErr}</div>}
+            {forgotOk&&<div style={{background:"#dcfce7",border:"1px solid #86efac",borderRadius:8,padding:"10px 14px",color:"#166534",fontSize:13,marginBottom:14,textAlign:"center",fontWeight:500}}>✅ {forgotOk}</div>}
+
+            {/* Step 1: เลือกบัญชี */}
+            {forgotStep===1&&!forgotOk&&(
+              <div>
+                <div style={{fontSize:13,color:T.sub,marginBottom:14}}>เลือกบัญชีที่ต้องการรีเซ็ตรหัสผ่าน</div>
+                <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
+                  {users.map(u=>(
+                    <div key={u.id} onClick={()=>setForgotTarget(u.username)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:10,border:forgotTarget===u.username?`2px solid ${T.blue}`:`1px solid ${T.border}`,cursor:"pointer",background:forgotTarget===u.username?"#eff6ff":"white",transition:"all .18s"}}>
+                      <div style={{fontSize:22}}>{u.avatar}</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:600,color:T.text}}>{u.name}</div>
+                        <div style={{fontSize:11,color:T.muted}}>@{u.username} · <span style={{color:ROLES[u.role].color,fontWeight:600}}>{ROLES[u.role].label}</span></div>
+                      </div>
+                      {forgotTarget===u.username&&<div style={{color:T.blue,fontSize:16}}>✓</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Step 2: ยืนยัน Admin */}
+            {forgotStep===2&&!forgotOk&&(
+              <div>
+                <div style={{fontSize:13,color:T.sub,marginBottom:6}}>กรุณายืนยันตัวตนด้วย <b style={{color:T.amber}}>รหัสผ่าน Admin 👑</b> หรือ <b style={{color:T.indigo}}>Master Key 🗝️</b></div>
+                <div style={{fontSize:12,color:T.muted,marginBottom:16}}>กรอกอย่างใดอย่างหนึ่งก็ได้ — ใช้ Master Key เมื่อ Admin ลืมรหัส</div>
+                <div style={{marginBottom:12,padding:"10px 14px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8}}>
+                  <div style={{fontSize:11,color:"#92400e",fontWeight:600}}>🗝️ Master Key ฉุกเฉิน</div>
+                  <div style={{fontSize:11,color:"#a16207",marginTop:2}}>ใช้เมื่อไม่มีใครจำรหัส Admin ได้ — เก็บไว้ในที่ปลอดภัย</div>
+                  <div style={{fontSize:13,fontFamily:"monospace",fontWeight:700,color:"#92400e",marginTop:6,letterSpacing:2}}>CPU@2024</div>
+                </div>
+                <div style={{marginBottom:20}}>
+                  <Input label="รหัสผ่าน Admin หรือ Master Key" type="password" placeholder="กรอกรหัสผ่าน Admin หรือ Master Key" value={adminPass} onChange={e=>setAdminPass(e.target.value)}/>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3: ตั้งรหัสใหม่ */}
+            {forgotStep===3&&!forgotOk&&(
+              <div>
+                <div style={{fontSize:13,color:T.sub,marginBottom:16}}>ตั้งรหัสผ่านใหม่สำหรับบัญชี <b style={{color:T.text}}>@{forgotTarget}</b></div>
+                <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
+                  <Input label="รหัสผ่านใหม่ (อย่างน้อย 4 ตัว)" type="password" placeholder="••••••" value={newPass} onChange={e=>setNewPass(e.target.value)}/>
+                  <Input label="ยืนยันรหัสผ่านใหม่" type="password" placeholder="••••••" value={confirmPass} onChange={e=>setConfirmPass(e.target.value)}/>
+                </div>
+              </div>
+            )}
+
+            {!forgotOk&&(
+              <div style={{display:"flex",gap:10}}>
+                {forgotStep>1&&<button onClick={()=>{setForgotStep(s=>s-1);setForgotErr("");}} style={{flex:1,padding:"9px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,fontSize:13,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:500}}>← ย้อนกลับ</button>}
+                <button onClick={handleForgotNext} style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#3b82f6,#6366f1)",color:"white",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>
+                  {forgotStep===3?"🔓 รีเซ็ตรหัสผ่าน":"ถัดไป →"}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── MAIN APP ───────────────────────────────────────────────────
+export default function App() {
+  const [users, setUsers] = useState(INIT_USERS);
+  const [user, setUser] = useState(null);
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [selectedCat, setSelectedCat] = useState("ทั้งหมด");
+  const [search, setSearch] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [products, setProducts] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [categories, setCategories] = useState(INIT_CATS);
+
+  // modals
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showTxModal, setShowTxModal] = useState(false);
+  const [showBarcodeModal, setShowBarcodeModal] = useState(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
+  const [showHistoryModal, setShowHistoryModal] = useState(null);
+  const [showCatModal, setShowCatModal] = useState(false);
+  const [showImgModal, setShowImgModal] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [txType, setTxType] = useState("รับ");
+
+  // forms
+  const [newProduct, setNewProduct] = useState({ code:"",name:"",category:"",qty:"",unit:"",minQty:"",location:"",barcode:"",image:"" });
+  const [txForm, setTxForm] = useState({ productId:"",qty:"",note:"" });
+  const [newCatName, setNewCatName] = useState("");
+  const [barcodeSearch, setBarcodeSearch] = useState("");
+  const [barcodeResult, setBarcodeResult] = useState(null);
+  const [barcodeErr, setBarcodeErr] = useState("");
+
+  // settings state
+  const [settingsTab, setSettingsTab] = useState("profile");
+  const [profileForm, setProfileForm] = useState({ name:"",username:"",oldPass:"",newPass:"",confirmPass:"" });
+  const [profileMsg, setProfileMsg] = useState({ type:"",text:"" });
+
+  // toasts
+  const [addSuccess, setAddSuccess] = useState(false);
+  const [txSuccess, setTxSuccess] = useState(false);
+
+  const imageInputRef = useRef(null);
+  const barcodeInputRef = useRef(null);
+  const [loading, setLoading] = useState(true);
+
+  const role = user ? ROLES[user.role] : null;
+
+  const now = () => {
+    const d = new Date();
+    return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  };
+
+  // ── Firebase: ดึงข้อมูล Users ──────────────────────────────────
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "users"), snap => {
+      if (snap.empty) {
+        // ครั้งแรก ยังไม่มีข้อมูล → บันทึก INIT_USERS ลง Firebase
+        const batch = writeBatch(db);
+        INIT_USERS.forEach(u => batch.set(doc(db, "users", String(u.id)), u));
+        batch.commit();
+      } else {
+        setUsers(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // ── Firebase: ดึงข้อมูล Products ──────────────────────────────
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "products"), snap => {
+      setProducts(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  // ── Firebase: ดึงข้อมูล Transactions ──────────────────────────
+  useEffect(() => {
+    const q = query(collection(db, "transactions"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, snap => {
+      setTransactions(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+    });
+    return () => unsub();
+  }, []);
+
+  // ── Firebase: ดึงข้อมูล Categories ───────────────────────────
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "settings", "categories"), snap => {
+      if (snap.exists()) setCategories(snap.data().list || INIT_CATS);
+    });
+    return () => unsub();
+  }, []);
+
+  const filtered = products.filter(p =>
+    (selectedCat === "ทั้งหมด" || p.category === selectedCat) &&
+    (p.name.includes(search) || p.code.includes(search) || (p.barcode || "").includes(search))
+  );
+  const lowStock = products.filter(p => Number(p.qty) < Number(p.minQty));
+  const totalQty = products.reduce((s,p) => s + Number(p.qty), 0);
+  const statusColor = p => Number(p.qty) < Number(p.minQty) ? T.red : Number(p.qty) < Number(p.minQty) * 1.5 ? T.amber : T.green;
+  const statusLabel = p => Number(p.qty) < Number(p.minQty) ? "ต่ำกว่าขั้นต่ำ" : Number(p.qty) < Number(p.minQty) * 1.5 ? "ใกล้หมด" : "ปกติ";
+
+  const handleImageUpload = e => {
+    const file = e.target.files[0]; if (!file) return;
+    const r = new FileReader(); r.onload = ev => setNewProduct(p => ({...p, image: ev.target.result})); r.readAsDataURL(file);
+  };
+
+  const handleAddProduct = async () => {
+    if (!newProduct.code || !newProduct.name || newProduct.qty === "" || !newProduct.unit) return;
+    const bc = newProduct.barcode || `CPU${Date.now().toString().slice(-8)}`;
+    const cat = newProduct.category || categories[0] || "ทั่วไป";
+    const data = {
+      ...newProduct,
+      qty: Number(newProduct.qty),
+      minQty: newProduct.minQty === "" ? 0 : Number(newProduct.minQty),
+      barcode: bc, category: cat, lastUpdate: now(),
+      history: [{ action:"เพิ่มสินค้าใหม่", by: user.name, date: now(), note:`จำนวนเริ่มต้น: ${newProduct.qty} ${newProduct.unit}` }]
+    };
+    await addDoc(collection(db, "products"), data);
+    setAddSuccess(true);
+    setTimeout(() => { setAddSuccess(false); setShowAddModal(false); setNewProduct({code:"",name:"",category:"",qty:"",unit:"",minQty:"",location:"",barcode:"",image:""}); }, 1000);
+  };
+
+  const handleTx = async () => {
+    if (!txForm.productId || txForm.qty === "" || Number(txForm.qty) <= 0) return;
+    const pid = txForm.productId;
+    const qty = Number(txForm.qty);
+    const prod = products.find(p => p.id === pid);
+    const histEntry = { action: txType==="รับ" ? "รับสินค้าเข้าคลัง" : "จ่ายสินค้าออกคลัง", by: user.name, date: now(), note:`${txType==="รับ"?"+":"-"}${qty} ${prod?.unit||""}${txForm.note ? ` (${txForm.note})` : ""}` };
+    const newQty = txType==="รับ" ? Number(prod.qty)+qty : Math.max(0, Number(prod.qty)-qty);
+    await updateDoc(doc(db, "products", pid), { qty: newQty, lastUpdate: now(), history: [histEntry, ...(prod.history||[])] });
+    await addDoc(collection(db, "transactions"), { type:txType, code:prod?.code, name:prod?.name, qty, by:user.name, date:now(), note:txForm.note||"", createdAt: serverTimestamp() });
+    setTxSuccess(true);
+    setTimeout(() => { setTxSuccess(false); setShowTxModal(false); setTxForm({productId:"",qty:"",note:""}); }, 1000);
+  };
+
+  const handleDelete = async id => {
+    await deleteDoc(doc(db, "products", id));
+    setShowDeleteConfirm(null);
+  };
+
+  const handleClear = async () => {
+    const batch = writeBatch(db);
+    const pSnap = await getDocs(collection(db, "products"));
+    const tSnap = await getDocs(collection(db, "transactions"));
+    pSnap.docs.forEach(d => batch.delete(d.ref));
+    tSnap.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+    setShowClearConfirm(false);
+  };
+
+  const handleBarcodeSearch = () => {
+    setBarcodeErr(""); setBarcodeResult(null);
+    const found = products.find(p => p.barcode === barcodeSearch || p.code === barcodeSearch);
+    if (found) setBarcodeResult(found); else setBarcodeErr("ไม่พบสินค้าในระบบ");
+  };
+
+  const handleAddCat = async () => {
+    if (!newCatName.trim() || categories.includes(newCatName.trim())) return;
+    const newList = [...categories, newCatName.trim()];
+    await setDoc(doc(db, "settings", "categories"), { list: newList });
+    setNewCatName("");
+  };
+
+  // ── Profile / Settings Save ──────────────────────────────────
+  const openSettings = () => {
+    setProfileForm({ name: user.name, username: user.username, oldPass:"", newPass:"", confirmPass:"" });
+    setProfileMsg({ type:"", text:"" });
+    setShowSettings(true);
+  };
+  const handleSaveProfile = async () => {
+    setProfileMsg({ type:"", text:"" });
+    if (!profileForm.name.trim() || !profileForm.username.trim()) { setProfileMsg({type:"err",text:"กรุณากรอกชื่อและชื่อผู้ใช้"}); return; }
+    const dupUser = users.find(u => u.username === profileForm.username && u.id !== user.id);
+    if (dupUser) { setProfileMsg({type:"err",text:"ชื่อผู้ใช้นี้มีในระบบแล้ว"}); return; }
+    if (profileForm.newPass) {
+      if (profileForm.oldPass !== user.password) { setProfileMsg({type:"err",text:"รหัสผ่านเดิมไม่ถูกต้อง"}); return; }
+      if (profileForm.newPass.length < 4) { setProfileMsg({type:"err",text:"รหัสผ่านใหม่ต้องมีอย่างน้อย 4 ตัว"}); return; }
+      if (profileForm.newPass !== profileForm.confirmPass) { setProfileMsg({type:"err",text:"รหัสผ่านใหม่ไม่ตรงกัน"}); return; }
+    }
+    const updated = { ...user, name: profileForm.name.trim(), username: profileForm.username.trim(), password: profileForm.newPass || user.password };
+    await setDoc(doc(db, "users", String(user.id)), updated);
+    setUser(updated);
+    setProfileMsg({type:"ok",text:"บันทึกสำเร็จ!"});
+    setProfileForm(f => ({...f, oldPass:"", newPass:"", confirmPass:""}));
+  };
+
+  const handleResetPassword = async (username, newPassword) => {
+    const u = users.find(u => u.username === username);
+    if (!u) return;
+    await setDoc(doc(db, "users", String(u.id)), { ...u, password: newPassword });
+  };
+
+  if (loading) return (
+    <div style={{minHeight:"100vh",background:"#f1f5f9",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Sarabun',sans-serif"}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@700&display=swap');@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <div style={{width:64,height:64,background:"linear-gradient(135deg,#3b82f6,#6366f1)",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,marginBottom:20,boxShadow:"0 8px 24px rgba(59,130,246,0.3)"}}>⚙️</div>
+      <div style={{fontSize:20,fontWeight:800,color:"#1e293b",fontFamily:"'Space Mono',monospace",letterSpacing:4,marginBottom:8}}>CPU</div>
+      <div style={{width:32,height:32,border:"3px solid #bfdbfe",borderTop:"3px solid #3b82f6",borderRadius:"50%",animation:"spin 0.8s linear infinite",marginTop:16}}/>
+      <div style={{fontSize:12,color:"#64748b",marginTop:12}}>กำลังเชื่อมต่อฐานข้อมูล...</div>
+    </div>
+  );
+
+  if (!user) return <LoginPage users={users} onLogin={u => { setUser(u); setProfileForm({name:u.name,username:u.username,oldPass:"",newPass:"",confirmPass:""}); }} onResetPassword={handleResetPassword}/>;
+
+  const navItems = [
+    { id:"dashboard",    icon:"📊", label:"ภาพรวม" },
+    { id:"inventory",    icon:"📦", label:"สินค้าคงคลัง" },
+    { id:"transactions", icon:"🔄", label:"รับ/จ่ายสินค้า" },
+    { id:"barcode",      icon:"▦",  label:"สแกนบาร์โค้ด" },
+    { id:"alerts",       icon:"🔔", label:"แจ้งเตือน", badge: lowStock.length },
+    ...(role.canManageUsers ? [{ id:"users", icon:"👥", label:"จัดการผู้ใช้" }] : []),
+  ];
+
+  const BtnPrimary = ({onClick,children,disabled=false,style={}}) => (
+    <button onClick={onClick} disabled={disabled} style={{padding:"8px 18px",borderRadius:8,border:"none",cursor:disabled?"not-allowed":"pointer",background:"linear-gradient(135deg,#3b82f6,#6366f1)",color:"white",fontSize:13,fontWeight:600,fontFamily:"'Sarabun',sans-serif",opacity:disabled?0.45:1,...style}}>{children}</button>
+  );
+  const BtnSuccess = ({onClick,children,disabled=false,style={}}) => (
+    <button onClick={onClick} disabled={disabled} style={{padding:"8px 18px",borderRadius:8,border:"none",cursor:disabled?"not-allowed":"pointer",background:"linear-gradient(135deg,#059669,#10b981)",color:"white",fontSize:13,fontWeight:600,fontFamily:"'Sarabun',sans-serif",opacity:disabled?0.45:1,...style}}>{children}</button>
+  );
+  const BtnDanger = ({onClick,children,disabled=false,style={}}) => (
+    <button onClick={onClick} disabled={disabled} style={{padding:"8px 18px",borderRadius:8,border:"none",cursor:disabled?"not-allowed":"pointer",background:"linear-gradient(135deg,#dc2626,#ef4444)",color:"white",fontSize:13,fontWeight:600,fontFamily:"'Sarabun',sans-serif",opacity:disabled?0.45:1,...style}}>{children}</button>
+  );
+  const BtnGhost = ({onClick,children,style={}}) => (
+    <button onClick={onClick} style={{padding:"8px 18px",borderRadius:8,border:`1px solid ${T.border}`,cursor:"pointer",background:"transparent",color:T.sub,fontSize:13,fontWeight:500,fontFamily:"'Sarabun',sans-serif",...style}}>{children}</button>
+  );
+  const Badge = ({children, bg, color}) => (
+    <span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:600,background:bg,color}}>{children}</span>
+  );
+  const CardBox = ({children, style={}}) => (
+    <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,0.04)",...style}}>{children}</div>
+  );
+
+  return (
+    <div style={{display:"flex",height:"100vh",fontFamily:"'Sarabun',sans-serif",background:T.bg,color:T.text,overflow:"hidden"}}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0}
+        ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:#f1f5f9}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+        input::placeholder{color:#94a3b8}
+        input:focus{outline:none;border-color:#93c5fd !important;box-shadow:0 0 0 3px rgba(147,197,253,0.2)}
+        select:focus{outline:none;border-color:#93c5fd !important}
+        .adot{width:8px;height:8px;border-radius:50%;background:#ef4444;display:inline-block;animation:pulse 1.5s infinite}
+        @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+      `}</style>
+
+      {/* SIDEBAR */}
+      <div style={{width:sidebarOpen?224:60,background:T.sidebar,borderRight:`1px solid ${T.border}`,transition:"width .28s",display:"flex",flexDirection:"column",flexShrink:0,boxShadow:"2px 0 8px rgba(0,0,0,0.04)"}}>
+        <div style={{padding:"18px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:34,height:34,background:"linear-gradient(135deg,#3b82f6,#6366f1)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18,boxShadow:"0 2px 8px rgba(59,130,246,0.35)"}}>⚙️</div>
+          {sidebarOpen&&<div><div style={{fontSize:15,fontWeight:800,color:T.text,fontFamily:"'Space Mono',monospace",letterSpacing:3}}>CPU</div><div style={{fontSize:9,color:T.muted}}>ระบบคลังสินค้า</div></div>}
+        </div>
+
+        <nav style={{padding:"10px 8px",flex:1}}>
+          {navItems.map(item => {
+            const active = activeTab === item.id;
+            return (
+              <div key={item.id} onClick={() => setActiveTab(item.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",borderRadius:10,cursor:"pointer",transition:"all .18s",color:active?T.navActiveText:T.sub,fontWeight:active?600:400,fontSize:14,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,justifyContent:sidebarOpen?"flex-start":"center"}}>
+                <span style={{fontSize:16,flexShrink:0}}>{item.icon}</span>
+                {sidebarOpen&&<span>{item.label}</span>}
+                {sidebarOpen&&item.badge>0&&<span style={{marginLeft:"auto",background:T.red,color:"white",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{item.badge}</span>}
+              </div>
+            );
+          })}
+        </nav>
+
+        {sidebarOpen && (
+          <div style={{padding:"12px 16px",borderTop:`1px solid ${T.border}`}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <div style={{fontSize:22}}>{user.avatar}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.name}</div>
+                <div style={{fontSize:10,color:ROLES[user.role].color,fontWeight:600}}>{ROLES[user.role].label}</div>
+              </div>
+            </div>
+            <button onClick={openSettings} style={{width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,fontSize:12,cursor:"pointer",marginBottom:6,fontFamily:"'Sarabun',sans-serif",fontWeight:500}}>⚙️ ตั้งค่า</button>
+            <button onClick={() => setUser(null)} style={{width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.red,fontSize:12,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:500}}>🚪 ออกจากระบบ</button>
+          </div>
+        )}
+        <div style={{padding:"8px",borderTop:sidebarOpen?"none":`1px solid ${T.border}`}}>
+          <div onClick={() => setSidebarOpen(!sidebarOpen)} style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"8px",borderRadius:8,cursor:"pointer",color:T.muted,fontSize:12}}>
+            {sidebarOpen ? "◀" : "▶"}
+          </div>
+        </div>
+      </div>
+
+      {/* MAIN */}
+      <div style={{flex:1,overflow:"auto",display:"flex",flexDirection:"column"}}>
+        {/* Header */}
+        <div style={{padding:"13px 24px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",background:T.header,position:"sticky",top:0,zIndex:10,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+          <div>
+            <div style={{fontSize:17,fontWeight:700,color:T.text}}>{navItems.find(n=>n.id===activeTab)?.label}</div>
+            <div style={{fontSize:10,color:T.muted}}>CPU ERP — ระบบบริหารคลังสินค้า</div>
+          </div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            {activeTab==="inventory"&&role.canManageCats&&<BtnGhost onClick={()=>setShowCatModal(true)}>📦 หมวดหมู่</BtnGhost>}
+            {activeTab==="inventory"&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddModal(true)}>＋ เพิ่มสินค้า</BtnPrimary>}
+            {(activeTab==="inventory"||activeTab==="transactions")&&<>
+              <BtnSuccess onClick={()=>{setTxType("รับ");setShowTxModal(true);}}>⬇ รับสินค้า</BtnSuccess>
+              <BtnDanger onClick={()=>{setTxType("จ่าย");setShowTxModal(true);}}>⬆ จ่ายสินค้า</BtnDanger>
+            </>}
+            {activeTab==="inventory"&&role.canClear&&<button onClick={()=>setShowClearConfirm(true)} style={{padding:"8px 16px",borderRadius:8,border:`1px solid #fca5a5`,background:"#fef2f2",color:T.red,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>🗑 ล้างคลัง</button>}
+          </div>
+        </div>
+
+        <div style={{padding:24,flex:1}}>
+
+          {/* DASHBOARD */}
+          {activeTab==="dashboard"&&(
+            <div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginBottom:24}}>
+                {[
+                  {label:"สินค้าทั้งหมด",value:products.length,unit:"รายการ",icon:"📦",color:T.blue,bg:"#eff6ff"},
+                  {label:"จำนวนรวม",value:totalQty.toLocaleString(),unit:"หน่วย",icon:"📊",color:T.green,bg:"#f0fdf4"},
+                  {label:"ต่ำกว่าขั้นต่ำ",value:lowStock.length,unit:"รายการ",icon:"⚠️",color:T.red,bg:"#fef2f2"},
+                  {label:"รายการเคลื่อนไหว",value:transactions.length,unit:"ครั้ง",icon:"🔄",color:T.amber,bg:"#fffbeb"},
+                ].map((s,i)=>(
+                  <div key={i} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
+                      <div style={{fontSize:11,color:T.sub,fontWeight:500}}>{s.label}</div>
+                      <div style={{width:34,height:34,borderRadius:8,background:s.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{s.icon}</div>
+                    </div>
+                    <div style={{fontSize:30,fontWeight:700,color:s.color,fontFamily:"'Space Mono',monospace"}}>{s.value}</div>
+                    <div style={{fontSize:11,color:T.muted,marginTop:2}}>{s.unit}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+                <CardBox>
+                  <div style={{fontSize:13,fontWeight:600,color:T.text,marginBottom:14}}>📊 สถานะสต็อก</div>
+                  {products.length===0?<div style={{color:T.muted,fontSize:13,textAlign:"center",padding:20}}>ยังไม่มีสินค้า</div>:products.slice(0,6).map(p=>(
+                    <div key={p.id} style={{marginBottom:12}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+                        <span style={{fontSize:12,color:T.text}}>{p.name}</span>
+                        <span style={{fontSize:11,color:statusColor(p),fontWeight:600}}>{p.qty}/{p.minQty}</span>
+                      </div>
+                      <div style={{height:5,borderRadius:3,background:"#f1f5f9",overflow:"hidden"}}>
+                        <div style={{height:"100%",borderRadius:3,width:`${Math.min((Number(p.qty)/Math.max(Number(p.minQty)*2,1))*100,100)}%`,background:statusColor(p),transition:"width .3s"}}/>
+                      </div>
+                    </div>
+                  ))}
+                </CardBox>
+                <CardBox>
+                  <div style={{fontSize:13,fontWeight:600,color:T.text,marginBottom:14}}>🔄 ความเคลื่อนไหวล่าสุด</div>
+                  {transactions.length===0?<div style={{color:T.muted,fontSize:13,textAlign:"center",padding:20}}>ยังไม่มีรายการ</div>:transactions.slice(0,5).map(t=>(
+                    <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${T.border}`}}>
+                      <div style={{width:30,height:30,borderRadius:8,background:t.type==="รับ"?"#dcfce7":"#fef2f2",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>{t.type==="รับ"?"⬇️":"⬆️"}</div>
+                      <div style={{flex:1}}><div style={{fontSize:12,color:T.text,fontWeight:500}}>{t.name}</div><div style={{fontSize:10,color:T.muted}}>{t.date}</div></div>
+                      <div style={{fontSize:13,fontWeight:700,color:t.type==="รับ"?T.green:T.red,fontFamily:"monospace"}}>{t.type==="รับ"?"+":"-"}{t.qty}</div>
+                    </div>
+                  ))}
+                </CardBox>
+              </div>
+            </div>
+          )}
+
+          {/* INVENTORY */}
+          {activeTab==="inventory"&&(
+            <div>
+              <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
+                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 ค้นหาชื่อ, รหัส, บาร์โค้ด..."
+                  style={{width:260,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {["ทั้งหมด",...categories].map(c=>(
+                    <button key={c} onClick={()=>setSelectedCat(c)} style={{padding:"6px 14px",borderRadius:8,border:selectedCat===c?`1px solid #bfdbfe`:`1px solid ${T.border}`,background:selectedCat===c?"#eff6ff":"transparent",color:selectedCat===c?T.blue:T.sub,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:selectedCat===c?600:400}}>{c}</button>
+                  ))}
+                </div>
+                <div style={{marginLeft:"auto",fontSize:12,color:T.muted}}>พบ {filtered.length} รายการ</div>
+              </div>
+              <CardBox style={{padding:0,overflow:"hidden"}}>
+                {/* Table header */}
+                <div style={{display:"grid",gridTemplateColumns:"44px 90px 1fr 110px 70px 70px 110px 80px 100px",alignItems:"center",padding:"10px 16px",background:"#f8fafc",borderBottom:`1px solid ${T.border}`,color:T.muted,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>
+                  <div>รูป</div><div>รหัส</div><div>ชื่อสินค้า</div><div>หมวดหมู่</div><div style={{textAlign:"right"}}>จำนวน</div><div style={{textAlign:"right"}}>ขั้นต่ำ</div><div>สถานะ</div><div>ที่เก็บ</div><div style={{textAlign:"center"}}>จัดการ</div>
+                </div>
+                {filtered.length===0?(
+                  <div style={{padding:40,textAlign:"center",color:T.muted,fontSize:13}}>ยังไม่มีสินค้า — กด "＋ เพิ่มสินค้า" เพื่อเริ่มต้น</div>
+                ):filtered.map((p,i)=>(
+                  <div key={p.id} style={{display:"grid",gridTemplateColumns:"44px 90px 1fr 110px 70px 70px 110px 80px 100px",alignItems:"center",padding:"11px 16px",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",transition:"background .15s"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <div>
+                      {p.image
+                        ?<img src={p.image} alt="" style={{width:38,height:38,borderRadius:6,objectFit:"cover",border:`1px solid ${T.border}`,cursor:"pointer"}} onClick={()=>setShowImgModal(p)}/>
+                        :<div style={{width:38,height:38,borderRadius:6,background:"#f1f5f9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,border:`1px dashed ${T.inputBorder}`,cursor:"pointer"}} onClick={()=>setShowImgModal(p)}>📷</div>
+                      }
+                    </div>
+                    <div style={{fontFamily:"monospace",fontSize:10,color:T.muted}}>{p.code}</div>
+                    <div>
+                      <div style={{fontWeight:500,color:T.text,fontSize:13}}>{p.name}</div>
+                      <div style={{fontSize:10,color:T.muted,fontFamily:"monospace"}}>{p.barcode}</div>
+                    </div>
+                    <div><Badge bg="#eff6ff" color={T.blue}>{p.category}</Badge></div>
+                    <div style={{textAlign:"right",fontFamily:"monospace",fontWeight:700,color:statusColor(p),fontSize:14}}>{Number(p.qty).toLocaleString()}</div>
+                    <div style={{textAlign:"right",fontFamily:"monospace",fontSize:12,color:T.muted}}>{p.minQty}</div>
+                    <div>
+                      <span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:600,background:`${statusColor(p)}15`,color:statusColor(p)}}>
+                        {Number(p.qty)<Number(p.minQty)&&<span className="adot"/>}
+                        {statusLabel(p)}
+                      </span>
+                    </div>
+                    <div style={{fontSize:11,color:T.sub,fontFamily:"monospace"}}>{p.location}</div>
+                    <div style={{display:"flex",gap:3,justifyContent:"center"}}>
+                      <button title="ประวัติ" onClick={()=>setShowHistoryModal(p)} style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:12}}>📅</button>
+                      <button title="บาร์โค้ด" onClick={()=>setShowBarcodeModal(p)} style={{background:"#eff6ff",border:`1px solid ${T.navActiveBorder}`,borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:12}}>▦</button>
+                      {role.canDelete&&<button title="ลบ" onClick={()=>setShowDeleteConfirm(p.id)} style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:12,color:T.red}}>✕</button>}
+                    </div>
+                  </div>
+                ))}
+              </CardBox>
+            </div>
+          )}
+
+          {/* TRANSACTIONS */}
+          {activeTab==="transactions"&&(
+            <CardBox style={{padding:0,overflow:"hidden"}}>
+              <div style={{padding:"14px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontSize:13,fontWeight:600,color:T.text}}>ประวัติการเคลื่อนไหว <span style={{color:T.muted,fontWeight:400}}>({transactions.length} รายการ)</span></div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"70px 80px 1fr 80px 160px 170px",alignItems:"center",padding:"10px 16px",background:"#f8fafc",borderBottom:`1px solid ${T.border}`,color:T.muted,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>
+                <div>#</div><div>ประเภท</div><div>สินค้า</div><div style={{textAlign:"right"}}>จำนวน</div><div>ผู้ดำเนินการ</div><div>วันที่/เวลา</div>
+              </div>
+              {transactions.length===0?<div style={{padding:40,textAlign:"center",color:T.muted,fontSize:13}}>ยังไม่มีรายการ</div>:transactions.map((t,i)=>(
+                <div key={t.id} style={{display:"grid",gridTemplateColumns:"70px 80px 1fr 80px 160px 170px",alignItems:"center",padding:"11px 16px",borderBottom:i<transactions.length-1?`1px solid ${T.border}`:"none"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <div style={{fontFamily:"monospace",fontSize:10,color:T.muted}}>#{String(i+1).padStart(4,"0")}</div>
+                  <div><Badge bg={t.type==="รับ"?"#dcfce7":"#fef2f2"} color={t.type==="รับ"?T.green:T.red}>{t.type==="รับ"?"⬇ รับ":"⬆ จ่าย"}</Badge></div>
+                  <div><div style={{fontWeight:500,color:T.text,fontSize:13}}>{t.name}</div><div style={{fontSize:10,color:T.muted}}>{t.note||"-"}</div></div>
+                  <div style={{textAlign:"right",fontFamily:"monospace",fontWeight:700,color:t.type==="รับ"?T.green:T.red}}>{t.type==="รับ"?"+":"-"}{t.qty}</div>
+                  <div style={{fontSize:12,color:T.sub}}>{t.by}</div>
+                  <div style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>{t.date}</div>
+                </div>
+              ))}
+            </CardBox>
+          )}
+
+          {/* BARCODE */}
+          {activeTab==="barcode"&&(
+            <div style={{maxWidth:580}}>
+              <CardBox style={{marginBottom:20}}>
+                <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:16}}>▦ สแกน / ค้นหาบาร์โค้ด</div>
+                <div style={{display:"flex",gap:10}}>
+                  <input ref={barcodeInputRef} value={barcodeSearch} onChange={e=>setBarcodeSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleBarcodeSearch()} placeholder="สแกนหรือพิมพ์บาร์โค้ด / รหัสสินค้า..." autoFocus
+                    style={{flex:1,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+                  <BtnPrimary onClick={handleBarcodeSearch}>ค้นหา</BtnPrimary>
+                </div>
+                <div style={{fontSize:11,color:T.muted,marginTop:8}}>💡 กด Enter หลังสแกนบาร์โค้ด หรือพิมพ์รหัสสินค้าแล้วกดค้นหา</div>
+                {barcodeErr&&<div style={{marginTop:14,padding:"10px 14px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,color:T.red,fontSize:13}}>❌ {barcodeErr}</div>}
+                {barcodeResult&&(
+                  <div style={{marginTop:14,padding:16,background:"#eff6ff",border:`1px solid ${T.navActiveBorder}`,borderRadius:10}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+                      <div><div style={{fontWeight:700,color:T.text,fontSize:15}}>{barcodeResult.name}</div><div style={{fontSize:12,color:T.sub}}>{barcodeResult.code} · {barcodeResult.category}</div></div>
+                      <Badge bg={`${statusColor(barcodeResult)}15`} color={statusColor(barcodeResult)}>{statusLabel(barcodeResult)}</Badge>
+                    </div>
+                    <div style={{display:"flex",gap:24,marginBottom:14}}>
+                      <div><div style={{fontSize:10,color:T.muted}}>คงเหลือ</div><div style={{fontSize:24,fontWeight:700,color:statusColor(barcodeResult),fontFamily:"monospace"}}>{barcodeResult.qty} {barcodeResult.unit}</div></div>
+                      <div><div style={{fontSize:10,color:T.muted}}>ขั้นต่ำ</div><div style={{fontSize:24,fontWeight:700,color:T.muted,fontFamily:"monospace"}}>{barcodeResult.minQty} {barcodeResult.unit}</div></div>
+                    </div>
+                    <BarcodeDisplay value={barcodeResult.barcode}/>
+                  </div>
+                )}
+              </CardBox>
+              <CardBox>
+                <div style={{fontSize:13,fontWeight:600,color:T.text,marginBottom:14}}>บาร์โค้ดสินค้าทั้งหมด ({products.length})</div>
+                {products.length===0?<div style={{color:T.muted,fontSize:13}}>ยังไม่มีสินค้า</div>:products.map(p=>(
+                  <div key={p.id} style={{display:"flex",alignItems:"center",gap:14,padding:"10px 0",borderBottom:`1px solid ${T.border}`}}>
+                    <div style={{flex:1}}><div style={{fontSize:13,fontWeight:500,color:T.text}}>{p.name}</div><div style={{fontSize:10,color:T.muted}}>{p.code}</div></div>
+                    <BarcodeDisplay value={p.barcode}/>
+                  </div>
+                ))}
+              </CardBox>
+            </div>
+          )}
+
+          {/* ALERTS */}
+          {activeTab==="alerts"&&(
+            <div>
+              {lowStock.length===0?(
+                <div style={{textAlign:"center",padding:60}}>
+                  <div style={{fontSize:52,marginBottom:14}}>✅</div>
+                  <div style={{fontSize:16,fontWeight:600,color:T.green}}>สินค้าทุกรายการอยู่ในเกณฑ์ปกติ</div>
+                </div>
+              ):(
+                <>
+                  <div style={{marginBottom:16,padding:"12px 16px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,display:"flex",alignItems:"center",gap:10}}>
+                    <span className="adot"/>
+                    <span style={{fontSize:13,color:T.red}}>พบสินค้า {lowStock.length} รายการที่ต่ำกว่าขั้นต่ำ</span>
+                  </div>
+                  {lowStock.map(p=>(
+                    <CardBox key={p.id} style={{display:"flex",alignItems:"center",gap:16,borderColor:"#fecaca",marginBottom:10}}>
+                      {p.image?<img src={p.image} alt="" style={{width:52,height:52,borderRadius:8,objectFit:"cover"}}/>:<div style={{fontSize:30}}>⚠️</div>}
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:600,color:T.text}}>{p.name}</div>
+                        <div style={{fontSize:12,color:T.sub}}>{p.code} · ที่เก็บ: {p.location}</div>
+                        <div style={{marginTop:8,height:5,borderRadius:3,background:"#f1f5f9",width:200,overflow:"hidden"}}>
+                          <div style={{height:"100%",borderRadius:3,width:`${Math.min((Number(p.qty)/Math.max(Number(p.minQty),1))*100,100)}%`,background:T.red}}/>
+                        </div>
+                      </div>
+                      <div style={{textAlign:"right"}}><div style={{fontSize:24,fontWeight:700,color:T.red,fontFamily:"monospace"}}>{p.qty}</div><div style={{fontSize:11,color:T.muted}}>ขั้นต่ำ: {p.minQty} {p.unit}</div></div>
+                      <BtnPrimary onClick={()=>{setTxType("รับ");setTxForm(f=>({...f,productId:String(p.id)}));setShowTxModal(true);}}>+ รับสินค้า</BtnPrimary>
+                    </CardBox>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* USERS */}
+          {activeTab==="users"&&role.canManageUsers&&(
+            <div style={{maxWidth:640}}>
+              <CardBox>
+                <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:16}}>👥 รายชื่อผู้ใช้งาน</div>
+                {users.map(u=>(
+                  <div key={u.id} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 0",borderBottom:`1px solid ${T.border}`}}>
+                    <div style={{fontSize:26}}>{u.avatar}</div>
+                    <div style={{flex:1}}><div style={{fontWeight:600,color:T.text}}>{u.name}</div><div style={{fontSize:12,color:T.sub}}>@{u.username}</div></div>
+                    <Badge bg={`${ROLES[u.role].color}15`} color={ROLES[u.role].color}>{ROLES[u.role].label}</Badge>
+                    <div style={{fontSize:11,color:T.muted}}>{ROLES[u.role].canAdd?"✅":"❌"} เพิ่ม · {ROLES[u.role].canDelete?"✅":"❌"} ลบ · {ROLES[u.role].canClear?"✅":"❌"} ล้างคลัง</div>
+                  </div>
+                ))}
+              </CardBox>
+            </div>
+          )}
+
+        </div>
+      </div>
+
+      {/* ── MODAL: เพิ่มสินค้า ── */}
+      {showAddModal&&(
+        <Modal onClose={()=>setShowAddModal(false)} w={520}>
+          <MHead title="🆕 เพิ่มสินค้าใหม่" onClose={()=>setShowAddModal(false)}/>
+          {addSuccess&&<Toast msg="เพิ่มสินค้าสำเร็จ!"/>}
+          <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:18,padding:14,background:"#f8fafc",borderRadius:10,border:`1px solid ${T.border}`}}>
+            <div style={{flexShrink:0}}>
+              {newProduct.image?<img src={newProduct.image} alt="" style={{width:80,height:80,borderRadius:10,objectFit:"cover",border:`2px solid ${T.blue}`}}/>
+                :<div style={{width:80,height:80,borderRadius:10,background:T.input,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,border:`2px dashed ${T.inputBorder}`,cursor:"pointer"}} onClick={()=>imageInputRef.current?.click()}>📷</div>}
+            </div>
+            <div>
+              <div style={{fontSize:12,color:T.sub,marginBottom:8,fontWeight:500}}>📸 รูปสินค้า</div>
+              <BtnGhost onClick={()=>imageInputRef.current?.click()} style={{fontSize:12,padding:"6px 14px"}}>📁 อัปโหลดรูป</BtnGhost>
+              {newProduct.image&&<BtnGhost onClick={()=>setNewProduct(p=>({...p,image:""}))} style={{fontSize:12,padding:"6px 14px",marginLeft:6,color:T.red}}>✕ ลบ</BtnGhost>}
+              <input ref={imageInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleImageUpload}/>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            {[{k:"code",l:"รหัสสินค้า *",ph:"เช่น RM-004"},{k:"name",l:"ชื่อสินค้า *",ph:"ชื่อสินค้า"},{k:"unit",l:"หน่วยนับ *",ph:"เช่น ชิ้น, กล่อง"},{k:"location",l:"ตำแหน่งที่เก็บ",ph:"เช่น A-05"},{k:"qty",l:"จำนวนเริ่มต้น *",ph:"0",t:"number"},{k:"minQty",l:"จำนวนขั้นต่ำ",ph:"0",t:"number"}].map(f=>(
+              <Input key={f.k} label={f.l} type={f.t||"text"} placeholder={f.ph} value={newProduct[f.k]} onChange={e=>setNewProduct(p=>({...p,[f.k]:e.target.value}))}/>
+            ))}
+            <div>
+              <label style={{fontSize:11,color:T.sub,display:"block",marginBottom:5,fontWeight:500}}>หมวดหมู่</label>
+              <select value={newProduct.category||categories[0]} onChange={e=>setNewProduct(p=>({...p,category:e.target.value}))} style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
+                {categories.map(c=><option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <Input label="บาร์โค้ด (ว่าง = อัตโนมัติ)" placeholder="หรือเว้นว่างไว้" value={newProduct.barcode} onChange={e=>setNewProduct(p=>({...p,barcode:e.target.value}))}/>
+          </div>
+          <div style={{display:"flex",gap:10,marginTop:20}}>
+            <BtnGhost onClick={()=>setShowAddModal(false)} style={{flex:1}}>ยกเลิก</BtnGhost>
+            <BtnPrimary onClick={handleAddProduct} disabled={!newProduct.code||!newProduct.name||newProduct.qty===""||!newProduct.unit} style={{flex:1}}>✅ บันทึกสินค้า</BtnPrimary>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── MODAL: รับ/จ่าย ── */}
+      {showTxModal&&(
+        <Modal onClose={()=>setShowTxModal(false)} w={420}>
+          <MHead title={txType==="รับ"?"⬇️ รับสินค้าเข้าคลัง":"⬆️ จ่ายสินค้าออกคลัง"} onClose={()=>setShowTxModal(false)} color={txType==="รับ"?T.green:T.red}/>
+          {txSuccess&&<Toast msg="บันทึกสำเร็จ!"/>}
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            <div>
+              <label style={{fontSize:11,color:T.sub,display:"block",marginBottom:5,fontWeight:500}}>สินค้า</label>
+              <select value={txForm.productId} onChange={e=>setTxForm(f=>({...f,productId:e.target.value}))} style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
+                <option value="">-- เลือกสินค้า --</option>
+                {products.map(p=><option key={p.id} value={p.id}>{p.code} — {p.name} (คงเหลือ: {p.qty} {p.unit})</option>)}
+              </select>
+            </div>
+            <Input label="จำนวน" type="number" placeholder="0" value={txForm.qty} onChange={e=>setTxForm(f=>({...f,qty:e.target.value}))}/>
+            <Input label="หมายเหตุ" placeholder="ระบุหมายเหตุ (ถ้ามี)" value={txForm.note} onChange={e=>setTxForm(f=>({...f,note:e.target.value}))}/>
+            <div style={{display:"flex",gap:10}}>
+              <BtnGhost onClick={()=>setShowTxModal(false)} style={{flex:1}}>ยกเลิก</BtnGhost>
+              {txType==="รับ"
+                ?<BtnSuccess onClick={handleTx} disabled={!txForm.productId||!txForm.qty||Number(txForm.qty)<=0} style={{flex:1}}>ยืนยันรับสินค้า</BtnSuccess>
+                :<BtnDanger onClick={handleTx} disabled={!txForm.productId||!txForm.qty||Number(txForm.qty)<=0} style={{flex:1}}>ยืนยันจ่ายสินค้า</BtnDanger>
+              }
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── MODAL: ประวัติ ── */}
+      {showHistoryModal&&(
+        <Modal onClose={()=>setShowHistoryModal(null)} w={500}>
+          <MHead title="📅 ประวัติการแก้ไข" sub={`${showHistoryModal.name} · ${showHistoryModal.code}`} onClose={()=>setShowHistoryModal(null)} color={T.amber}/>
+          {(!showHistoryModal.history||showHistoryModal.history.length===0)?(
+            <div style={{textAlign:"center",padding:30,color:T.muted,fontSize:13}}>ยังไม่มีประวัติ</div>
+          ):(
+            showHistoryModal.history.map((h,i)=>(
+              <div key={i} style={{display:"flex",gap:14,padding:"12px 0",borderBottom:i<showHistoryModal.history.length-1?`1px solid ${T.border}`:"none"}}>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:0,paddingTop:4}}>
+                  <div style={{width:10,height:10,borderRadius:"50%",background:T.blue,flexShrink:0}}/>
+                  {i<showHistoryModal.history.length-1&&<div style={{width:2,flex:1,background:T.border,minHeight:20,marginTop:3}}/>}
+                </div>
+                <div style={{flex:1,paddingBottom:4}}>
+                  <div style={{fontSize:13,fontWeight:600,color:T.text}}>{h.action}</div>
+                  <div style={{fontSize:12,color:T.sub,marginTop:2}}>{h.note}</div>
+                  <div style={{display:"flex",gap:14,marginTop:6}}>
+                    <span style={{fontSize:11,color:T.muted}}>👤 {h.by}</span>
+                    <span style={{fontSize:11,color:T.muted}}>🕐 {h.date}</span>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </Modal>
+      )}
+
+      {/* ── MODAL: หมวดหมู่ ── */}
+      {showCatModal&&(
+        <Modal onClose={()=>setShowCatModal(false)} w={420}>
+          <MHead title="📦 จัดการหมวดหมู่" onClose={()=>setShowCatModal(false)}/>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16,padding:12,background:"#f8fafc",borderRadius:10,border:`1px solid ${T.border}`,minHeight:48}}>
+            {categories.map(c=>(
+              <span key={c} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:20,fontSize:12,fontWeight:500,background:T.navActive,color:T.blue,border:`1px solid ${T.navActiveBorder}`}}>
+                {c}
+                {role.canManageCats&&<span onClick={()=>setCategories(prev=>prev.filter(x=>x!==c))} style={{cursor:"pointer",color:T.red,fontWeight:700,fontSize:14,lineHeight:1}}>×</span>}
+              </span>
+            ))}
+            {categories.length===0&&<div style={{fontSize:12,color:T.muted}}>ยังไม่มีหมวดหมู่</div>}
+          </div>
+          {role.canManageCats&&(
+            <div style={{display:"flex",gap:10,marginBottom:12}}>
+              <input value={newCatName} onChange={e=>setNewCatName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleAddCat()} placeholder="ชื่อหมวดหมู่ใหม่..."
+                style={{flex:1,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+              <BtnPrimary onClick={handleAddCat} disabled={!newCatName.trim()}>+ เพิ่ม</BtnPrimary>
+            </div>
+          )}
+          <div style={{fontSize:11,color:T.muted,marginBottom:16}}>💡 กด × เพื่อลบ · กด Enter หรือปุ่ม + เพื่อเพิ่ม</div>
+          <BtnGhost onClick={()=>setShowCatModal(false)} style={{width:"100%"}}>ปิด</BtnGhost>
+        </Modal>
+      )}
+
+      {/* ── MODAL: ดูรูป ── */}
+      {showImgModal&&(
+        <Modal onClose={()=>setShowImgModal(null)} w={400}>
+          <MHead title={showImgModal.name} sub={showImgModal.code} onClose={()=>setShowImgModal(null)}/>
+          {showImgModal.image
+            ?<img src={showImgModal.image} alt="" style={{width:"100%",maxHeight:320,objectFit:"contain",borderRadius:10,marginBottom:16}}/>
+            :<div style={{height:160,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:T.muted,marginBottom:16}}><div style={{fontSize:48,marginBottom:8}}>📷</div><div style={{fontSize:13}}>ยังไม่มีรูปสินค้า</div></div>
+          }
+          <BtnGhost onClick={()=>setShowImgModal(null)} style={{width:"100%"}}>ปิด</BtnGhost>
+        </Modal>
+      )}
+
+      {/* ── MODAL: บาร์โค้ด ── */}
+      {showBarcodeModal&&(
+        <Modal onClose={()=>setShowBarcodeModal(null)} w={360}>
+          <MHead title="▦ บาร์โค้ดสินค้า" sub={showBarcodeModal.name} onClose={()=>setShowBarcodeModal(null)}/>
+          <div style={{display:"flex",justifyContent:"center",marginBottom:16}}><BarcodeDisplay value={showBarcodeModal.barcode}/></div>
+          <div style={{fontSize:12,color:T.sub,textAlign:"center",marginBottom:16}}>รหัส: {showBarcodeModal.code} · หมวด: {showBarcodeModal.category}</div>
+          <BtnGhost onClick={()=>setShowBarcodeModal(null)} style={{width:"100%"}}>ปิด</BtnGhost>
+        </Modal>
+      )}
+
+      {/* ── MODAL: ยืนยันลบ ── */}
+      {showDeleteConfirm&&(
+        <Modal onClose={()=>setShowDeleteConfirm(null)} w={340}>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:42,marginBottom:12}}>🗑️</div>
+            <div style={{fontSize:15,fontWeight:700,color:T.text,marginBottom:8}}>ยืนยันการลบสินค้า?</div>
+            <div style={{fontSize:13,color:T.sub,marginBottom:24}}>ประวัติของสินค้านี้จะหายไปด้วย</div>
+            <div style={{display:"flex",gap:10}}><BtnGhost onClick={()=>setShowDeleteConfirm(null)} style={{flex:1}}>ยกเลิก</BtnGhost><BtnDanger onClick={()=>handleDelete(showDeleteConfirm)} style={{flex:1}}>ลบสินค้า</BtnDanger></div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── MODAL: ล้างคลัง ── */}
+      {showClearConfirm&&(
+        <Modal onClose={()=>setShowClearConfirm(false)} w={360}>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:42,marginBottom:12}}>⚠️</div>
+            <div style={{fontSize:15,fontWeight:700,color:T.red,marginBottom:8}}>ล้างคลังสินค้าทั้งหมด?</div>
+            <div style={{fontSize:13,color:T.sub,marginBottom:8}}>สินค้าและประวัติทั้งหมดจะถูกลบออก</div>
+            <div style={{fontSize:12,color:T.red,marginBottom:24,padding:"10px",background:"#fef2f2",borderRadius:8}}>⚠️ ไม่สามารถย้อนกลับได้!</div>
+            <div style={{display:"flex",gap:10}}><BtnGhost onClick={()=>setShowClearConfirm(false)} style={{flex:1}}>ยกเลิก</BtnGhost><BtnDanger onClick={handleClear} style={{flex:1}}>ล้างคลังทั้งหมด</BtnDanger></div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── MODAL: Settings ── */}
+      {showSettings&&(
+        <Modal onClose={()=>setShowSettings(false)} w={520}>
+          <MHead title="⚙️ ตั้งค่าระบบ" onClose={()=>setShowSettings(false)}/>
+          {/* Settings tabs */}
+          <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:`1px solid ${T.border}`,paddingBottom:12}}>
+            {[{id:"profile",label:"👤 โปรไฟล์"},{id:"system",label:"🏢 ระบบ"},{id:"about",label:"ℹ️ เกี่ยวกับ"}].map(t=>(
+              <button key={t.id} onClick={()=>setSettingsTab(t.id)} style={{padding:"7px 16px",borderRadius:8,border:settingsTab===t.id?`1px solid ${T.navActiveBorder}`:`1px solid transparent`,background:settingsTab===t.id?T.navActive:"transparent",color:settingsTab===t.id?T.blue:T.sub,cursor:"pointer",fontSize:13,fontFamily:"'Sarabun',sans-serif",fontWeight:settingsTab===t.id?600:400}}>{t.label}</button>
+            ))}
+          </div>
+
+          {settingsTab==="profile"&&(
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:T.text,marginBottom:14}}>ข้อมูลส่วนตัว</div>
+              {profileMsg.text&&(
+                profileMsg.type==="ok"
+                  ?<Toast msg={profileMsg.text}/>
+                  :<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",color:T.red,fontSize:13,marginBottom:14}}>⚠️ {profileMsg.text}</div>
+              )}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:20}}>
+                <Input label="ชื่อ-นามสกุล" value={profileForm.name} onChange={e=>setProfileForm(f=>({...f,name:e.target.value}))} placeholder="ชื่อ-นามสกุล"/>
+                <Input label="ชื่อผู้ใช้ (username)" value={profileForm.username} onChange={e=>setProfileForm(f=>({...f,username:e.target.value}))} placeholder="username"/>
+              </div>
+              <div style={{fontSize:13,fontWeight:600,color:T.text,marginBottom:14,paddingTop:14,borderTop:`1px solid ${T.border}`}}>เปลี่ยนรหัสผ่าน <span style={{fontSize:11,color:T.muted,fontWeight:400}}>(เว้นว่างถ้าไม่ต้องการเปลี่ยน)</span></div>
+              <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
+                <Input label="รหัสผ่านเดิม" type="password" placeholder="รหัสผ่านปัจจุบัน" value={profileForm.oldPass} onChange={e=>setProfileForm(f=>({...f,oldPass:e.target.value}))}/>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                  <Input label="รหัสผ่านใหม่" type="password" placeholder="อย่างน้อย 4 ตัว" value={profileForm.newPass} onChange={e=>setProfileForm(f=>({...f,newPass:e.target.value}))}/>
+                  <Input label="ยืนยันรหัสผ่านใหม่" type="password" placeholder="พิมพ์ซ้ำ" value={profileForm.confirmPass} onChange={e=>setProfileForm(f=>({...f,confirmPass:e.target.value}))}/>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <BtnGhost onClick={()=>setShowSettings(false)} style={{flex:1}}>ยกเลิก</BtnGhost>
+                <BtnPrimary onClick={handleSaveProfile} style={{flex:1}}>💾 บันทึกการเปลี่ยนแปลง</BtnPrimary>
+              </div>
+            </div>
+          )}
+
+          {settingsTab==="system"&&(
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:T.text,marginBottom:14}}>ข้อมูลระบบ</div>
+              {[
+                {label:"จำนวนสินค้าในคลัง",value:`${products.length} รายการ`},
+                {label:"สินค้าต่ำกว่าขั้นต่ำ",value:`${lowStock.length} รายการ`},
+                {label:"รายการเคลื่อนไหวทั้งหมด",value:`${transactions.length} รายการ`},
+                {label:"จำนวนหมวดหมู่",value:`${categories.length} หมวดหมู่`},
+                {label:"จำนวนผู้ใช้งาน",value:`${users.length} บัญชี`},
+              ].map((r,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"11px 0",borderBottom:i<4?`1px solid ${T.border}`:"none"}}>
+                  <span style={{fontSize:13,color:T.sub}}>{r.label}</span>
+                  <span style={{fontSize:13,fontWeight:600,color:T.text}}>{r.value}</span>
+                </div>
+              ))}
+              {role.canClear&&(
+                <div style={{marginTop:20,padding:16,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10}}>
+                  <div style={{fontSize:13,fontWeight:600,color:T.red,marginBottom:4}}>⚠️ โซนอันตราย</div>
+                  <div style={{fontSize:12,color:T.sub,marginBottom:12}}>การล้างข้อมูลไม่สามารถย้อนกลับได้</div>
+                  <BtnDanger onClick={()=>{setShowSettings(false);setShowClearConfirm(true);}}>🗑 ล้างคลังสินค้าทั้งหมด</BtnDanger>
+                </div>
+              )}
+            </div>
+          )}
+
+          {settingsTab==="about"&&(
+            <div style={{textAlign:"center",padding:"10px 0"}}>
+              <div style={{width:64,height:64,background:"linear-gradient(135deg,#3b82f6,#6366f1)",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,margin:"0 auto 16px",boxShadow:"0 8px 24px rgba(59,130,246,0.3)"}}>⚙️</div>
+              <div style={{fontSize:22,fontWeight:800,color:T.text,fontFamily:"'Space Mono',monospace",letterSpacing:3,marginBottom:4}}>CPU ERP</div>
+              <div style={{fontSize:12,color:T.muted,marginBottom:20}}>ระบบบริหารคลังสินค้า</div>
+              {[{label:"Version",value:"1.0.0"},{label:"โมดูล",value:"คลังสินค้า"},{label:"สถานะ",value:"🟢 Prototype"},{label:"พัฒนาโดย",value:"Claude + CPU Team"}].map((r,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:i<3?`1px solid ${T.border}`:"none",textAlign:"left"}}>
+                  <span style={{fontSize:13,color:T.sub}}>{r.label}</span>
+                  <span style={{fontSize:13,fontWeight:600,color:T.text}}>{r.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Modal>
+      )}
+    </div>
+  );
+}
+

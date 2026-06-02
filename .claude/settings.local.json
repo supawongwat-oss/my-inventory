@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(node -e \"require\\('playwright'\\)\" 2>&1; echo \"exit: $LASTEXITCODE\")",
+      "PowerShell(npm install *)",
+      "PowerShell(npx playwright install chromium 2>&1 | Select-Object -Last 5)"
+    ]
+  }
+}
