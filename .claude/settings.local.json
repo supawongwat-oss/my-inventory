@@ -3,7 +3,13 @@
     "allow": [
       "PowerShell(node -e \"require\\('playwright'\\)\" 2>&1; echo \"exit: $LASTEXITCODE\")",
       "PowerShell(npm install *)",
-      "PowerShell(npx playwright install chromium 2>&1 | Select-Object -Last 5)"
+      "PowerShell(npx playwright install chromium 2>&1 | Select-Object -Last 5)",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:3000\" -TimeoutSec 5; \"Status: $\\($r.StatusCode\\), Length: $\\($r.Content.Length\\)\" } catch { \"Error: $_\" })",
+      "PowerShell(netstat *)",
+      "Bash(curl *)",
+      "Read(//mnt/c/Users/Boong/AppData/Local/Temp/**)",
+      "Bash(node test.js)",
+      "PowerShell(Set-Location \"C:\\\\Users\\\\Boong\\\\AppData\\\\Local\\\\Temp\\\\pw-test\"; $env:PLAYWRIGHT_BROWSERS_PATH = \"$env:USERPROFILE\\\\AppData\\\\Local\\\\ms-playwright\"; node test.js 2>&1)"
     ]
   }
 }

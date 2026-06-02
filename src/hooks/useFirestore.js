@@ -1,0 +1,104 @@
+import { useState, useEffect } from "react";
+import { db } from "../firebase";
+import { collection, onSnapshot, doc, query, orderBy, writeBatch, setDoc } from "firebase/firestore";
+import { INIT_USERS, INIT_CATS } from "../constants";
+
+export function useFirestore() {
+  const [users, setUsers] = useState(INIT_USERS);
+  const [products, setProducts] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [categories, setCategories] = useState(INIT_CATS);
+  const [clothingItems, setClothingItems] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [invoices, setInvoices] = useState([]);
+  const [companyInfo, setCompanyInfo] = useState({ name:"CPU", address:"", phone:"", email:"", taxId:"", logo:"⚙️" });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "users"), snap => {
+      if (snap.empty) {
+        const batch = writeBatch(db);
+        INIT_USERS.forEach(u => batch.set(doc(db, "users", String(u.id)), u));
+        batch.commit();
+      } else {
+        setUsers(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 6000);
+    const unsub = onSnapshot(
+      collection(db, "products"),
+      snap => { setProducts(snap.docs.map(d => ({...d.data(), id:d.id}))); setLoading(false); clearTimeout(timer); },
+      err  => { console.warn("Products error:", err); setLoading(false); clearTimeout(timer); }
+    );
+    return () => { unsub(); clearTimeout(timer); };
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(db, "transactions"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, snap => setTransactions(snap.docs.map(d => ({ ...d.data(), id: d.id }))));
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "settings", "categories"), snap => {
+      if (snap.exists()) setCategories(snap.data().list || INIT_CATS);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "clothing"), snap => {
+      setClothingItems(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(db, "orders"), orderBy("createdAt","desc"));
+    const unsub = onSnapshot(q, snap => setOrders(snap.docs.map(d => ({...d.data(), id:d.id}))));
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "customers"), snap => setCustomers(snap.docs.map(d => ({...d.data(), id:d.id}))));
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "suppliers"), snap => setSuppliers(snap.docs.map(d => ({ ...d.data(), id: d.id }))));
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(db, "invoices"), orderBy("createdAt","desc"));
+    const unsub = onSnapshot(q, snap => setInvoices(snap.docs.map(d=>({...d.data(),id:d.id}))), ()=>{});
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db,"settings","company"), snap => {
+      if(snap.exists()) setCompanyInfo(snap.data());
+    }, ()=>{});
+    return () => unsub();
+  }, []);
+
+  return {
+    users, setUsers,
+    suppliers,
+    products, setProducts,
+    transactions,
+    categories, setCategories,
+    clothingItems,
+    orders,
+    customers,
+    invoices,
+    companyInfo, setCompanyInfo,
+    loading, setLoading,
+  };
+}

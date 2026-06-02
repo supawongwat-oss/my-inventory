@@ -1,375 +1,24 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 import { db } from "./firebase";
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, serverTimestamp, query, orderBy } from "firebase/firestore";
-
-// ── THEME (Ocean Blue Premium) ───────────────────────────────
-const T = {
-  bg: "#020c1b", sidebar: "#030e20", card: "#061628", border: "#0d2848",
-  text: "#cce7ff", sub: "#4a7fa5", muted: "#1e4060",
-  header: "#020c1b", navActive: "rgba(14,165,233,0.12)", navActiveBorder: "rgba(56,189,248,0.3)",
-  navActiveText: "#38bdf8", input: "#0a1f35", inputBorder: "#0e3058",
-  overlay: "rgba(0,8,20,0.85)",
-  blue: "#0ea5e9", indigo: "#6366f1", green: "#10b981", red: "#ef4444", amber: "#f59e0b",
-  accent: "#38bdf8", cyan: "#22d3ee",
-};
-
-// ── INITIAL STATE ─────────────────────────────────────────────
-const INIT_USERS = [
-  { id: 1, username: "admin",   password: "1234", name: "สมชาย ใจดี",    role: "admin",   avatar: "👑" },
-  { id: 2, username: "manager", password: "1234", name: "สมหญิง รักงาน", role: "manager", avatar: "🧑‍💼" },
-  { id: 3, username: "staff",   password: "1234", name: "วิชัย มานะ",    role: "staff",   avatar: "👷" },
-];
-const ROLES = {
-  admin:   { label:"ผู้ดูแลระบบ", color:T.amber,  canDelete:true,  canAdd:true,  canClear:true,  canManageUsers:true,  canManageCats:true  },
-  manager: { label:"ผู้จัดการ",   color:T.blue,   canDelete:true,  canAdd:true,  canClear:false, canManageUsers:false, canManageCats:true  },
-  staff:   { label:"พนักงาน",     color:T.green,  canDelete:false, canAdd:false, canClear:false, canManageUsers:false, canManageCats:false },
-};
-const INIT_CATS = ["วัตถุดิบ","สินค้าสำเร็จ","บรรจุภัณฑ์"];
-
-// ── CLOTHING MODULE CONSTANTS ─────────────────────────────────
-const SIZES = ["6","8","10","12","S","M","L","XL","2XL","3XL","4XL","5XL"];
-const PRESET_COLORS = [
-  {name:"ดำ",hex:"#1a1a1a"},{name:"แดง",hex:"#ef4444"},{name:"ขาว",hex:"#f1f5f9"},
-  {name:"ฟ้า",hex:"#38bdf8"},{name:"เขียว",hex:"#22c55e"},{name:"เหลือง",hex:"#fbbf24"},
-  {name:"น้ำเงิน",hex:"#1d4ed8"},{name:"ชมพู",hex:"#f472b6"},{name:"ม่วง",hex:"#a855f7"},
-  {name:"ส้ม",hex:"#f97316"},
-];
-
-// ── MASTER KEY (ฉุกเฉิน กรณี Admin ลืมรหัส) ──────────────────
-const MASTER_KEY = "CPU@2024";
-function BarcodeDisplay({ value }) {
-  if (!value || String(value).trim() === '') return null;
-  const bars = []; let x = 8;
-  const seed = String(value).split("").reduce((a,c) => a + c.charCodeAt(0), 0);
-  for (let i = 0; i < 38; i++) {
-    const w = ((seed * (i + 7) * 13) % 17 > 7) ? 3 : 1.5;
-    bars.push(<rect key={i} x={x} y={8} width={w} height={44} fill={i % 2 === 0 ? "#1e293b" : "#fff"} />);
-    x += w + 0.5;
-  }
-  return (
-    <div style={{background:"white",borderRadius:8,padding:"6px 10px",display:"inline-block",textAlign:"center",border:`1px solid ${T.border}`}}>
-      <svg width={x + 8} height={60}><rect width="100%" height="100%" fill="white"/>{bars}</svg>
-      <div style={{fontSize:10,fontFamily:"monospace",color:"#1e293b",marginTop:2,letterSpacing:2}}>{value}</div>
-    </div>
-  );
-}
-
-// ── MODAL WRAPPER ──────────────────────────────────────────────
-function Modal({ onClose, children, w = 460 }) {
-  return (
-    <div
-      style={{position:"fixed",inset:0,background:T.overlay,display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,backdropFilter:"blur(4px)"}}
-      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        onMouseDown={e => e.stopPropagation()}
-        style={{background:"#061628",border:`1px solid ${T.border}`,borderRadius:16,padding:28,width:w,boxShadow:"0 20px 60px rgba(0,0,0,0.15)",maxHeight:"88vh",overflowY:"auto"}}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function MHead({ title, sub, onClose, color = T.blue }) {
-  return (
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
-      <div>
-        <div style={{fontSize:15,fontWeight:700,color}}>{title}</div>
-        {sub && <div style={{fontSize:12,color:T.sub,marginTop:2}}>{sub}</div>}
-      </div>
-      <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"4px 10px",cursor:"pointer",color:T.sub,fontSize:13}}>✕</button>
-    </div>
-  );
-}
-
-// ── SUCCESS TOAST ──────────────────────────────────────────────
-function Toast({ msg }) {
-  return <div style={{background:"#dcfce7",border:"1px solid #86efac",borderRadius:8,padding:"10px 14px",marginBottom:14,color:"#166534",fontSize:13,textAlign:"center",fontWeight:500}}>✅ {msg}</div>;
-}
-
-// ── INPUT ──────────────────────────────────────────────────────
-function Input({ label, value, onChange, type="text", placeholder="", disabled=false, style={} }) {
-  return (
-    <div style={{marginBottom:0}}>
-      {label && <label style={{fontSize:11,color:T.sub,display:"block",marginBottom:5,fontWeight:500}}>{label}</label>}
-      <input
-        type={type}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        disabled={disabled}
-        style={{width:"100%",background:disabled?"#f8fafc":T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none",...style}}
-      />
-    </div>
-  );
-}
-
-// ── LOGIN ──────────────────────────────────────────────────────
-// ── COMPANY EDITOR ────────────────────────────────────────────
-function CompanyEditor({ companyInfo, onSave, T }) {
-  const [form, setForm] = useState({...companyInfo});
-  const [saved, setSaved] = useState(false);
-
-  const handle = async () => {
-    await onSave(form);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1500);
-  };
-
-  return (
-    <div>
-      {saved && <div style={{background:"#dcfce7",border:"1px solid #86efac",borderRadius:8,padding:"8px 14px",marginBottom:12,color:"#166534",fontSize:12,fontWeight:500}}>✅ บันทึกสำเร็จ!</div>}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
-        {[
-          {k:"name",l:"ชื่อบริษัท / ร้านค้า *",ph:"CPU"},
-          {k:"logo",l:"โลโก้ (Emoji)",ph:"⚙️"},
-          {k:"phone",l:"เบอร์โทรศัพท์",ph:"0812345678"},
-          {k:"email",l:"Email",ph:"info@cpu.com"},
-          {k:"taxId",l:"เลขผู้เสียภาษี",ph:"0000000000000"},
-        ].map(f=>(
-          <div key={f.k}>
-            <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:4,fontWeight:600}}>{f.l}</label>
-            <input value={form[f.k]||""} onChange={e=>setForm(p=>({...p,[f.k]:e.target.value}))} placeholder={f.ph}
-              style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
-          </div>
-        ))}
-        <div style={{gridColumn:"1/-1"}}>
-          <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:4,fontWeight:600}}>ที่อยู่บริษัท</label>
-          <input value={form.address||""} onChange={e=>setForm(p=>({...p,address:e.target.value}))} placeholder="บ้านเลขที่ ซอย ถนน ตำบล อำเภอ จังหวัด รหัสไปรษณีย์"
-            style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
-        </div>
-      </div>
-      <button onClick={handle} style={{padding:"9px 20px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#0ea5e9,#0369a1)",color:"white",fontSize:13,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(14,165,233,0.3)"}}>
-        💾 บันทึกข้อมูลบริษัท
-      </button>
-    </div>
-  );
-}
-
-function LoginPage({ users, onLogin, onResetPassword, onRegister }) {
-  const [u,setU]=useState(""); const [p,setP]=useState(""); const [err,setErr]=useState(""); const [loading,setLoading]=useState(false);
-  const [showForgot,setShowForgot]=useState(false);
-  const [showRegister,setShowRegister]=useState(false);
-  const [regForm,setRegForm]=useState({name:"",username:"",password:"",confirm:""});
-  const [regErr,setRegErr]=useState(""); const [regOk,setRegOk]=useState(false);
-
-  const handleRegister = () => {
-    setRegErr("");
-    if(!regForm.name.trim()||!regForm.username.trim()){setRegErr("กรุณากรอกชื่อและชื่อผู้ใช้");return;}
-    if(regForm.password.length<4){setRegErr("รหัสผ่านต้องมีอย่างน้อย 4 ตัว");return;}
-    if(regForm.password!==regForm.confirm){setRegErr("รหัสผ่านไม่ตรงกัน");return;}
-    if(users.find(x=>x.username===regForm.username.trim())){setRegErr("ชื่อผู้ใช้นี้มีในระบบแล้ว");return;}
-    const id = Date.now();
-    const newU = {id,username:regForm.username.trim(),password:regForm.password,name:regForm.name.trim(),role:"staff",avatar:"👷"};
-    onRegister(newU);
-    setRegOk(true);
-    setTimeout(()=>{setRegOk(false);setShowRegister(false);setRegForm({name:"",username:"",password:"",confirm:""});},1500);
-  };
-
-  // forgot password state
-  const [forgotStep,setForgotStep]=useState(1); // 1=เลือก user, 2=กรอก admin pass, 3=ตั้งรหัสใหม่
-  const [forgotTarget,setForgotTarget]=useState("");
-  const [adminPass,setAdminPass]=useState("");
-  const [newPass,setNewPass]=useState(""); const [confirmPass,setConfirmPass]=useState("");
-  const [forgotErr,setForgotErr]=useState(""); const [forgotOk,setForgotOk]=useState("");
-
-  const handle = () => {
-    if (!u || !p) { setErr("กรุณากรอกชื่อผู้ใช้และรหัสผ่าน"); return; }
-    setLoading(true); setErr("");
-    setTimeout(() => {
-      const found = users.find(x => x.username === u && x.password === p);
-      if (found) onLogin(found);
-      else { setErr("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"); setLoading(false); }
-    }, 500);
-  };
-
-  const handleForgotNext = () => {
-    setForgotErr("");
-    if (forgotStep === 1) {
-      if (!forgotTarget) { setForgotErr("กรุณาเลือกบัญชีที่ต้องการรีเซ็ต"); return; }
-      setForgotStep(2);
-    } else if (forgotStep === 2) {
-      const admin = users.find(x => x.role === "admin");
-      const isAdminPass = admin && adminPass === admin.password;
-      const isMasterKey = adminPass === MASTER_KEY;
-      if (!isAdminPass && !isMasterKey) {
-        setForgotErr("รหัสผ่าน Admin หรือ Master Key ไม่ถูกต้อง");
-        return;
-      }
-      setForgotStep(3);
-    } else if (forgotStep === 3) {
-      if (newPass.length < 4) { setForgotErr("รหัสผ่านใหม่ต้องมีอย่างน้อย 4 ตัว"); return; }
-      if (newPass !== confirmPass) { setForgotErr("รหัสผ่านไม่ตรงกัน"); return; }
-      onResetPassword(forgotTarget, newPass);
-      setForgotOk(`รีเซ็ตรหัสผ่านสำเร็จ! กรุณาเข้าสู่ระบบด้วยรหัสใหม่`);
-      setTimeout(() => { setShowForgot(false); setForgotStep(1); setForgotTarget(""); setAdminPass(""); setNewPass(""); setConfirmPass(""); setForgotOk(""); }, 2000);
-    }
-  };
-
-  const closeForgot = () => { setShowForgot(false); setForgotStep(1); setForgotTarget(""); setAdminPass(""); setNewPass(""); setConfirmPass(""); setForgotErr(""); setForgotOk(""); };
-
-  const stepLabel = ["","① เลือกบัญชี","② ยืนยัน Admin","③ ตั้งรหัสใหม่"];
-
-  return (
-    <div style={{minHeight:"100vh",background:"#020b18",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Sarabun',sans-serif"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}input:focus{outline:none;border-color:#93c5fd!important}`}</style>
-      <div style={{width:400}}>
-        <div style={{textAlign:"center",marginBottom:32}}>
-          <div style={{width:64,height:64,background:"linear-gradient(135deg,#0ea5e9,#0369a1)",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,margin:"0 auto 14px",boxShadow:"0 8px 32px rgba(14,165,233,0.4)"}}>⚙️</div>
-          <div style={{fontSize:26,fontWeight:800,color:"#e2e8f0",fontFamily:"'Space Mono',monospace",letterSpacing:4}}>CPU</div>
-          <div style={{fontSize:12,color:T.sub,marginTop:4}}>ระบบบริหารคลังสินค้า</div>
-        </div>
-
-        <div style={{background:"#061628",border:"1px solid #0d2540",borderRadius:16,padding:32,boxShadow:"0 8px 40px rgba(14,165,233,0.15)"}}>
-          <div style={{fontSize:16,fontWeight:700,color:"#e2e8f0",marginBottom:20}}>เข้าสู่ระบบ</div>
-          {err && <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",color:"#dc2626",fontSize:13,marginBottom:14}}>⚠️ {err}</div>}
-          <div style={{marginBottom:14}}>
-            <Input label="ชื่อผู้ใช้" value={u} onChange={e=>setU(e.target.value)} placeholder="username" />
-          </div>
-          <div style={{marginBottom:8}}>
-            <Input label="รหัสผ่าน" type="password" value={p} onChange={e=>setP(e.target.value)} placeholder="••••••" />
-          </div>
-          {/* ลืมรหัสผ่าน link */}
-          <div style={{textAlign:"right",marginBottom:18}}>
-            <span onClick={()=>setShowForgot(true)} style={{fontSize:12,color:T.blue,cursor:"pointer",fontWeight:500}}>🔑 ลืมรหัสผ่าน?</span>
-          </div>
-          <button onClick={handle} disabled={loading} style={{width:"100%",padding:"11px",background:"linear-gradient(135deg,#0ea5e9,#0369a1)",color:"white",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",opacity:loading?0.7:1,boxShadow:"0 4px 20px rgba(14,165,233,0.4)"}}>
-            {loading?"กำลังเข้าสู่ระบบ...":"เข้าสู่ระบบ"}
-          </button>
-          <div style={{display:"flex",alignItems:"center",gap:10,margin:"16px 0"}}>
-            <div style={{flex:1,height:1,background:T.border}}/><span style={{fontSize:11,color:T.muted}}>หรือ</span><div style={{flex:1,height:1,background:T.border}}/>
-          </div>
-          <button onClick={()=>setShowRegister(true)} style={{width:"100%",padding:"11px",background:"rgba(14,165,233,0.08)",color:"#38bdf8",border:"2px solid rgba(56,189,248,0.35)",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>
-            👤 สมัคร Staff ID ใหม่
-          </button>
-        </div>
-      </div>
-
-      {/* MODAL: สมัคร Staff ID */}
-      {showRegister&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,backdropFilter:"blur(4px)"}} onMouseDown={e=>{if(e.target===e.currentTarget)setShowRegister(false);}}>
-          <div onMouseDown={e=>e.stopPropagation()} style={{background:"#061628",border:"1px solid #0d2540",borderRadius:16,padding:28,width:440,boxShadow:"0 20px 60px rgba(0,8,30,0.8)"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-              <div style={{fontSize:15,fontWeight:700,color:"#93c5fd"}}>👤 สมัคร Staff ID ใหม่</div>
-              <button onClick={()=>{setShowRegister(false);setRegForm({name:"",username:"",password:"",confirm:""});setRegErr("");}} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"4px 10px",cursor:"pointer",color:T.sub,fontSize:13}}>✕</button>
-            </div>
-            {regOk&&<div style={{background:"#dcfce7",border:"1px solid #86efac",borderRadius:8,padding:"10px",marginBottom:14,color:"#166534",fontSize:13,textAlign:"center",fontWeight:500}}>✅ สมัครสำเร็จ! เข้าสู่ระบบได้เลย</div>}
-            {regErr&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",color:"#dc2626",fontSize:13,marginBottom:14}}>⚠️ {regErr}</div>}
-            <div style={{padding:12,background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.3)",borderRadius:8,marginBottom:18,fontSize:12,color:"#fbbf24"}}>
-              🔐 บทบาทเริ่มต้นเป็น <b>Staff</b> — Admin สามารถเปลี่ยนบทบาทให้ได้ภายหลัง
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
-              <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:5,fontWeight:500}}>ชื่อ-นามสกุล *</label><input value={regForm.name} onChange={e=>setRegForm(f=>({...f,name:e.target.value}))} placeholder="กรอกชื่อ-นามสกุล" style={{width:"100%",background:"#252d40",border:"1px solid #2d3748",color:"#e2e8f0",borderRadius:8,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/></div>
-              <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:5,fontWeight:500}}>ชื่อผู้ใช้ (username) *</label><input value={regForm.username} onChange={e=>setRegForm(f=>({...f,username:e.target.value}))} placeholder="ตั้งชื่อผู้ใช้สำหรับ Login" style={{width:"100%",background:"#252d40",border:"1px solid #2d3748",color:"#e2e8f0",borderRadius:8,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/></div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:5,fontWeight:500}}>รหัสผ่าน * (4+ ตัว)</label><input type="password" value={regForm.password} onChange={e=>setRegForm(f=>({...f,password:e.target.value}))} placeholder="••••••" style={{width:"100%",background:"#252d40",border:"1px solid #2d3748",color:"#e2e8f0",borderRadius:8,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/></div>
-                <div><label style={{fontSize:11,color:"#64748b",display:"block",marginBottom:5,fontWeight:500}}>ยืนยันรหัสผ่าน *</label><input type="password" value={regForm.confirm} onChange={e=>setRegForm(f=>({...f,confirm:e.target.value}))} placeholder="••••••" style={{width:"100%",background:"#252d40",border:"1px solid #2d3748",color:"#e2e8f0",borderRadius:8,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/></div>
-              </div>
-            </div>
-            <div style={{display:"flex",gap:10}}>
-              <button onClick={()=>{setShowRegister(false);setRegForm({name:"",username:"",password:"",confirm:""});setRegErr("");}} style={{flex:1,padding:"9px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:"#64748b",fontSize:13,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>ยกเลิก</button>
-              <button onClick={handleRegister} disabled={!regForm.name||!regForm.username||!regForm.password||!regForm.confirm} style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#3b82f6,#6366f1)",color:"white",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",opacity:(!regForm.name||!regForm.username||!regForm.password||!regForm.confirm)?0.45:1}}>✅ สร้าง Staff ID</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: ลืมรหัสผ่าน */}
-      {showForgot&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,backdropFilter:"blur(4px)"}} onClick={closeForgot}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"#061628",border:"1px solid #0d2540",borderRadius:16,padding:28,width:420,boxShadow:"0 20px 60px rgba(0,8,30,0.8)"}}>
-            {/* Header */}
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-              <div>
-                <div style={{fontSize:15,fontWeight:700,color:"#38bdf8"}}>🔑 ลืมรหัสผ่าน</div>
-                <div style={{fontSize:11,color:T.muted,marginTop:2}}>{stepLabel[forgotStep]}</div>
-              </div>
-              <button onClick={closeForgot} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"4px 10px",cursor:"pointer",color:T.sub,fontSize:13}}>✕</button>
-            </div>
-
-            {/* Step indicator */}
-            <div style={{display:"flex",gap:6,marginBottom:20}}>
-              {[1,2,3].map(s=>(
-                <div key={s} style={{flex:1,height:4,borderRadius:2,background:forgotStep>=s?"#0ea5e9":"#0d2540",transition:"background .3s"}}/>
-              ))}
-            </div>
-
-            {forgotErr&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",color:"#dc2626",fontSize:13,marginBottom:14}}>⚠️ {forgotErr}</div>}
-            {forgotOk&&<div style={{background:"#dcfce7",border:"1px solid #86efac",borderRadius:8,padding:"10px 14px",color:"#166534",fontSize:13,marginBottom:14,textAlign:"center",fontWeight:500}}>✅ {forgotOk}</div>}
-
-            {/* Step 1: เลือกบัญชี */}
-            {forgotStep===1&&!forgotOk&&(
-              <div>
-                <div style={{fontSize:13,color:T.sub,marginBottom:14}}>เลือกบัญชีที่ต้องการรีเซ็ตรหัสผ่าน</div>
-                <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
-                  {users.map(u=>(
-                    <div key={u.id} onClick={()=>setForgotTarget(u.username)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:10,border:forgotTarget===u.username?`2px solid ${T.blue}`:`1px solid ${T.border}`,cursor:"pointer",background:forgotTarget===u.username?"#eff6ff":"white",transition:"all .18s"}}>
-                      <div style={{fontSize:22}}>{u.avatar}</div>
-                      <div style={{flex:1}}>
-                        <div style={{fontSize:13,fontWeight:600,color:T.text}}>{u.name}</div>
-                        <div style={{fontSize:11,color:T.muted}}>@{u.username} · <span style={{color:ROLES[u.role].color,fontWeight:600}}>{ROLES[u.role].label}</span></div>
-                      </div>
-                      {forgotTarget===u.username&&<div style={{color:T.blue,fontSize:16}}>✓</div>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Step 2: ยืนยัน Admin */}
-            {forgotStep===2&&!forgotOk&&(
-              <div>
-                <div style={{fontSize:13,color:T.sub,marginBottom:6}}>กรุณายืนยันตัวตนด้วย <b style={{color:T.amber}}>รหัสผ่าน Admin 👑</b> หรือ <b style={{color:T.indigo}}>Master Key 🗝️</b></div>
-                <div style={{fontSize:12,color:T.muted,marginBottom:16}}>กรอกอย่างใดอย่างหนึ่งก็ได้ — ใช้ Master Key เมื่อ Admin ลืมรหัส</div>
-                <div style={{marginBottom:12,padding:"10px 14px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8}}>
-                  <div style={{fontSize:11,color:"#92400e",fontWeight:600}}>🗝️ Master Key ฉุกเฉิน</div>
-                  <div style={{fontSize:11,color:"#a16207",marginTop:2}}>ใช้เมื่อไม่มีใครจำรหัส Admin ได้ — เก็บไว้ในที่ปลอดภัย</div>
-                  <div style={{fontSize:13,fontFamily:"monospace",fontWeight:700,color:"#92400e",marginTop:6,letterSpacing:2}}>CPU@2024</div>
-                </div>
-                <div style={{marginBottom:20}}>
-                  <Input label="รหัสผ่าน Admin หรือ Master Key" type="password" placeholder="กรอกรหัสผ่าน Admin หรือ Master Key" value={adminPass} onChange={e=>setAdminPass(e.target.value)}/>
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: ตั้งรหัสใหม่ */}
-            {forgotStep===3&&!forgotOk&&(
-              <div>
-                <div style={{fontSize:13,color:T.sub,marginBottom:16}}>ตั้งรหัสผ่านใหม่สำหรับบัญชี <b style={{color:T.text}}>@{forgotTarget}</b></div>
-                <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
-                  <Input label="รหัสผ่านใหม่ (อย่างน้อย 4 ตัว)" type="password" placeholder="••••••" value={newPass} onChange={e=>setNewPass(e.target.value)}/>
-                  <Input label="ยืนยันรหัสผ่านใหม่" type="password" placeholder="••••••" value={confirmPass} onChange={e=>setConfirmPass(e.target.value)}/>
-                </div>
-              </div>
-            )}
-
-            {!forgotOk&&(
-              <div style={{display:"flex",gap:10}}>
-                {forgotStep>1&&<button onClick={()=>{setForgotStep(s=>s-1);setForgotErr("");}} style={{flex:1,padding:"9px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,fontSize:13,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:500}}>← ย้อนกลับ</button>}
-                <button onClick={handleForgotNext} style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#3b82f6,#6366f1)",color:"white",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>
-                  {forgotStep===3?"🔓 รีเซ็ตรหัสผ่าน":"ถัดไป →"}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
+import { T, SIZES, PRESET_COLORS, MASTER_KEY, SIZE_GROUPS, getPriceForSize } from "./theme";
+import { INIT_USERS, ROLES, INIT_CATS } from "./constants";
+import { BarcodeDisplay, Modal, MHead, Toast, Input, BtnPrimary, BtnSuccess, BtnDanger, BtnGhost, Badge, CardBox } from "./components/ui";
+import LoginPage, { CompanyEditor } from "./components/LoginPage";
+import { useFirestore } from "./hooks/useFirestore";
+import ReportsTab from "./tabs/ReportsTab";
+import SuppliersTab from "./tabs/SuppliersTab";
 // ── MAIN APP ───────────────────────────────────────────────────
 export default function App() {
-  const [users, setUsers] = useState(INIT_USERS);
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, loading, setLoading, suppliers } = useFirestore();
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedCat, setSelectedCat] = useState("ทั้งหมด");
   const [search, setSearch] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [products, setProducts] = useState([]);
-  const [transactions, setTransactions] = useState([]);
-  const [categories, setCategories] = useState(INIT_CATS);
+
+
+
 
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [showDeleteUserConfirm, setShowDeleteUserConfirm] = useState(null);
@@ -379,10 +28,10 @@ export default function App() {
 
   // modals
   // ── Clothing state ───────────────────────────────────────────
-  const [clothingItems, setClothingItems] = useState([]);
-  // ── Orders & Customers state ─────────────────────────────────
-  const [orders, setOrders] = useState([]);
-  const [customers, setCustomers] = useState([]);
+
+  // ── Orders & Customers state ──────────────────────────────────
+
+
   const [showNewOrder, setShowNewOrder] = useState(false);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [showPrintOrder, setShowPrintOrder] = useState(null);
@@ -397,6 +46,8 @@ export default function App() {
 
   const [showAddClothing, setShowAddClothing] = useState(false);
   const [showAddColor, setShowAddColor] = useState(null);
+  const [priceModal, setPriceModal] = useState(null); // {itemId, ci}
+  const [priceForm, setPriceForm] = useState({ costPrice:"", kids:"", reg:"", "2XL":"", "3XL":"", "4XL":"", "5XL":"" });
   const [newModel, setNewModel] = useState("");
   const [customColorName, setCustomColorName] = useState("");
   const [newColorCost, setNewColorCost] = useState("");
@@ -419,19 +70,16 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
 
   // ── Invoice & Company state ───────────────────────────────────
-  const [invoices, setInvoices] = useState([]);
   const [showNewInvoice, setShowNewInvoice] = useState(false);
   const [showPrintInvoice, setShowPrintInvoice] = useState(null);
   const [invoiceDocType, setInvoiceDocType] = useState("receipt"); // receipt | tax | quotation
   const [invoiceVat, setInvoiceVat] = useState(false);
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState("ทั้งหมด");
   const [invoiceForm, setInvoiceForm] = useState({
     customerId:"", customerName:"", customerPhone:"", customerAddress:"", customerTaxId:"",
     items:[], note:"", dueDate:"", vatRate:7
   });
   const [invoiceItemForm, setInvoiceItemForm] = useState({ description:"", qty:"", unitPrice:"", unit:"ชิ้น" });
-  const [companyInfo, setCompanyInfo] = useState({
-    name:"CPU", address:"", phone:"", email:"", taxId:"", logo:"⚙️"
-  });
   const [txType, setTxType] = useState("รับ");
 
   // forms
@@ -473,7 +121,6 @@ export default function App() {
     e.target.value = "";
   };
   const barcodeInputRef = useRef(null);
-  const [loading, setLoading] = useState(true);
 
   const role = user ? ROLES[user.role] : null;
 
@@ -482,49 +129,6 @@ export default function App() {
     return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
   };
 
-  // ── Firebase: ดึงข้อมูล Users ──────────────────────────────────
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "users"), snap => {
-      if (snap.empty) {
-        // ครั้งแรก ยังไม่มีข้อมูล → บันทึก INIT_USERS ลง Firebase
-        const batch = writeBatch(db);
-        INIT_USERS.forEach(u => batch.set(doc(db, "users", String(u.id)), u));
-        batch.commit();
-      } else {
-        setUsers(snap.docs.map(d => ({ ...d.data(), id: d.id })));
-      }
-    });
-    return () => unsub();
-  }, []);
-
-  // ── Firebase: ดึงข้อมูล Products ──────────────────────────────
-  useEffect(() => {
-    // หยุด loading อัตโนมัติหลัง 6 วิ กรณี Firebase ช้าหรือ error
-    const timer = setTimeout(() => setLoading(false), 6000);
-    const unsub = onSnapshot(
-      collection(db, "products"),
-      snap => { setProducts(snap.docs.map(d => ({...d.data(), id:d.id}))); setLoading(false); clearTimeout(timer); },
-      err  => { console.warn("Products error:", err); setLoading(false); clearTimeout(timer); }
-    );
-    return () => { unsub(); clearTimeout(timer); };
-  }, []);
-
-  // ── Firebase: ดึงข้อมูล Transactions ──────────────────────────
-  useEffect(() => {
-    const q = query(collection(db, "transactions"), orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(q, snap => {
-      setTransactions(snap.docs.map(d => ({ ...d.data(), id: d.id })));
-    });
-    return () => unsub();
-  }, []);
-
-  // ── Firebase: ดึงข้อมูล Categories ───────────────────────────
-  useEffect(() => {
-    const unsub = onSnapshot(doc(db, "settings", "categories"), snap => {
-      if (snap.exists()) setCategories(snap.data().list || INIT_CATS);
-    });
-    return () => unsub();
-  }, []);
 
   const filtered = products.filter(p =>
     (selectedCat === "ทั้งหมด" || p.category === selectedCat) &&
@@ -639,13 +243,6 @@ export default function App() {
     setProfileForm(f => ({...f, oldPass:"", newPass:"", confirmPass:""}));
   };
 
-  // ── Firebase: Clothing ───────────────────────────────────────
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "clothing"), snap => {
-      setClothingItems(snap.docs.map(d => ({ ...d.data(), id: d.id })));
-    });
-    return () => unsub();
-  }, []);
 
   // ── Clothing handlers ─────────────────────────────────────────
   const handleAddClothingItem = async () => {
@@ -683,17 +280,6 @@ export default function App() {
     await updateDoc(doc(db, "clothing", itemId), { colors: newColors });
   };
 
-  // ── Firebase: Orders & Customers ────────────────────────────
-  useEffect(() => {
-    const q = query(collection(db, "orders"), orderBy("createdAt","desc"));
-    const unsub = onSnapshot(q, snap => setOrders(snap.docs.map(d => ({...d.data(), id:d.id}))));
-    return () => unsub();
-  }, []);
-
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "customers"), snap => setCustomers(snap.docs.map(d => ({...d.data(), id:d.id}))));
-    return () => unsub();
-  }, []);
 
   // ── Order handlers ────────────────────────────────────────────
   const handleAddCustomer = async () => {
@@ -774,19 +360,6 @@ export default function App() {
     r.readAsDataURL(file); e.target.value = "";
   };
 
-  // ── Firebase: Invoices ───────────────────────────────────────
-  useEffect(() => {
-    const q = query(collection(db, "invoices"), orderBy("createdAt","desc"));
-    const unsub = onSnapshot(q, snap => setInvoices(snap.docs.map(d=>({...d.data(),id:d.id}))), ()=>{});
-    return () => unsub();
-  }, []);
-
-  useEffect(() => {
-    const unsub = onSnapshot(doc(db,"settings","company"), snap => {
-      if(snap.exists()) setCompanyInfo(snap.data());
-    }, ()=>{});
-    return () => unsub();
-  }, []);
 
   // ── Invoice handlers ──────────────────────────────────────────
   const handleSaveCompany = async (data) => {
@@ -804,7 +377,7 @@ export default function App() {
       // Try to get sale price from clothing item
       const clothingItem = clothingItems.find(c=>c.id===i.clothingId);
       const colorData = clothingItem?.colors?.[i.colorIdx];
-      const salePrice = colorData?.salePrice || 0;
+      const salePrice = getPriceForSize(colorData, i.size);
       return {
         description:`${i.clothingName} (${i.colorName}) ไซส์ ${i.size}`,
         qty:i.qty, unitPrice:salePrice, unit:"ชิ้น"
@@ -844,6 +417,56 @@ export default function App() {
     setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7});
   };
 
+  const PAYMENT_STATUSES = ["ออกแล้ว","รอชำระ","ชำระแล้ว","ยกเลิก"];
+  const paymentStatusStyle = (s) => ({
+    "ออกแล้ว":  {bg:"rgba(14,165,233,0.1)",  color:T.accent,  border:"1px solid rgba(56,189,248,0.2)"},
+    "รอชำระ":   {bg:"rgba(245,158,11,0.1)", color:T.amber,   border:"1px solid rgba(245,158,11,0.25)"},
+    "ชำระแล้ว": {bg:"rgba(16,185,129,0.1)", color:T.green,   border:"1px solid rgba(16,185,129,0.25)"},
+    "ยกเลิก":   {bg:"rgba(239,68,68,0.1)",  color:T.red,     border:"1px solid rgba(239,68,68,0.25)"},
+  }[s] || {bg:"rgba(14,165,233,0.1)",color:T.accent,border:"1px solid rgba(56,189,248,0.2)"});
+
+  const handleUpdateInvoiceStatus = async (invId, newStatus) => {
+    await updateDoc(doc(db,"invoices",invId), { status: newStatus });
+  };
+
+  // ปริ้นผ่าน iframe — เนื้อหาใหญ่เต็ม A4 และไหลข้ามหน้าได้
+  const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10mm") => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(`<!doctype html><html><head><meta charset="utf-8"/>
+      <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+      <style>
+        @page { size: ${pageSize}; margin: ${pageMargin}; }
+        html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun', sans-serif; }
+        body { padding: 0; }
+        table { border-collapse: collapse; width: 100%; }
+        tr, td, th { page-break-inside: avoid; }
+        thead { display: table-header-group; }
+        tfoot { display: table-footer-group; }
+        img { max-width: 100%; }
+      </style></head><body>${el.outerHTML}</body></html>`);
+    doc.close();
+    const trigger = () => {
+      try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e){}
+      setTimeout(() => iframe.remove(), 1000);
+    };
+    if (doc.fonts && doc.fonts.ready) {
+      doc.fonts.ready.then(() => setTimeout(trigger, 200));
+    } else {
+      setTimeout(trigger, 500);
+    }
+  };
+
   const handleResetPassword = async (username, newPassword) => {
     const u = users.find(u => u.username === username);
     if (!u) return;
@@ -880,26 +503,10 @@ export default function App() {
     { id:"customers",     icon:"👤", label:"ลูกค้า" },
     { id:"alerts",        icon:"🔔", label:"แจ้งเตือน", badge: lowStock.length },
     ...(role.canManageUsers ? [{ id:"users", icon:"👥", label:"จัดการผู้ใช้" }] : []),
+    { id:"reports",   icon:"📊", label:"รายงาน" },
+    { id:"suppliers", icon:"🏭", label:"ซัพพลายเออร์" },
   ];
 
-  const BtnPrimary = ({onClick,children,disabled=false,style={}}) => (
-    <button onClick={onClick} disabled={disabled} style={{padding:"8px 18px",borderRadius:8,border:"none",cursor:disabled?"not-allowed":"pointer",background:"linear-gradient(135deg,#0ea5e9,#0369a1)",color:"white",fontSize:13,fontWeight:600,fontFamily:"'Sarabun',sans-serif",opacity:disabled?0.45:1,boxShadow:disabled?"none":"0 2px 12px rgba(14,165,233,0.3)",...style}}>{children}</button>
-  );
-  const BtnSuccess = ({onClick,children,disabled=false,style={}}) => (
-    <button onClick={onClick} disabled={disabled} style={{padding:"8px 18px",borderRadius:8,border:"none",cursor:disabled?"not-allowed":"pointer",background:"linear-gradient(135deg,#059669,#10b981)",color:"white",fontSize:13,fontWeight:600,fontFamily:"'Sarabun',sans-serif",opacity:disabled?0.45:1,boxShadow:disabled?"none":"0 2px 10px rgba(16,185,129,0.3)",...style}}>{children}</button>
-  );
-  const BtnDanger = ({onClick,children,disabled=false,style={}}) => (
-    <button onClick={onClick} disabled={disabled} style={{padding:"8px 18px",borderRadius:8,border:"none",cursor:disabled?"not-allowed":"pointer",background:"linear-gradient(135deg,#dc2626,#ef4444)",color:"white",fontSize:13,fontWeight:600,fontFamily:"'Sarabun',sans-serif",opacity:disabled?0.45:1,boxShadow:disabled?"none":"0 2px 10px rgba(239,68,68,0.3)",...style}}>{children}</button>
-  );
-  const BtnGhost = ({onClick,children,style={}}) => (
-    <button onClick={onClick} style={{padding:"8px 18px",borderRadius:8,border:`1px solid ${T.border}`,cursor:"pointer",background:"rgba(14,165,233,0.05)",color:T.sub,fontSize:13,fontWeight:500,fontFamily:"'Sarabun',sans-serif",border:`1px solid ${T.border}`,...style}}>{children}</button>
-  );
-  const Badge = ({children, bg, color}) => (
-    <span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:600,background:bg,color}}>{children}</span>
-  );
-  const CardBox = ({children, style={}}) => (
-    <div style={{background:"#061628",border:`1px solid ${T.border}`,borderRadius:14,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,0.04)",...style}}>{children}</div>
-  );
 
   return (
     <div style={{display:"flex",height:"100vh",fontFamily:"'Sarabun',sans-serif",background:T.bg,color:T.text,overflow:"hidden"}}>
@@ -920,9 +527,7 @@ export default function App() {
           .hide-mobile{display:none!important}
         }
         @media print{
-          body>*:not(#print-root){display:none!important}
-          #invoice-print-area{padding:16px!important}
-          @page{size:A4 portrait;margin:10mm}
+          /* ปริ้นใช้ iframe — ไม่ต้องทำอะไรกับหน้าหลัก */
         }
       `}</style>
 
@@ -981,8 +586,8 @@ export default function App() {
           </div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             {activeTab==="inventory"&&inventoryTab==="general"&&role.canManageCats&&<BtnGhost onClick={()=>setShowCatModal(true)}>📦 หมวดหมู่</BtnGhost>}
-            {activeTab==="inventory"&&inventoryTab==="general"&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddModal(true)}>＋ เพิ่มสินค้า</BtnPrimary>}
-            {activeTab==="inventory"&&inventoryTab==="clothing"&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddClothing(true)}>＋ เพิ่มรุ่นใหม่</BtnPrimary>}
+            {activeTab==="inventory"&&inventoryTab==="general"&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddModal(true)}>️ เพิ่มสินค้า</BtnPrimary>}
+            {activeTab==="inventory"&&inventoryTab==="clothing"&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddClothing(true)}>️ เพิ่มรุ่นใหม่</BtnPrimary>}
             {activeTab==="inventory"&&inventoryTab==="general"&&<>
               <BtnSuccess onClick={()=>{setTxType("รับ");setShowTxModal(true);}}>⬇ รับสินค้า</BtnSuccess>
               <BtnDanger onClick={()=>{setTxType("จ่าย");setShowTxModal(true);}}>⬆ จ่ายสินค้า</BtnDanger>
@@ -1082,7 +687,7 @@ export default function App() {
                   <div>รูป</div><div>รหัส</div><div>ชื่อสินค้า</div><div>หมวดหมู่</div><div style={{textAlign:"right"}}>จำนวน</div><div style={{textAlign:"right"}}>ทุน</div><div style={{textAlign:"right"}}>ขาย</div><div>สถานะ</div><div style={{textAlign:"center"}}>จัดการ</div>
                 </div>
                 {filtered.length===0?(
-                  <div style={{padding:40,textAlign:"center",color:T.muted,fontSize:13}}>ยังไม่มีสินค้า — กด "＋ เพิ่มสินค้า" เพื่อเริ่มต้น</div>
+                  <div style={{padding:40,textAlign:"center",color:T.muted,fontSize:13}}>ยังไม่มีสินค้า — กด "️ เพิ่มสินค้า" เพื่อเริ่มต้น</div>
                 ):filtered.map((p,i)=>(
                   <div key={p.id} style={{display:"grid",gridTemplateColumns:"44px 90px 1fr 110px 70px 70px 70px 100px 100px",alignItems:"center",padding:"11px 16px",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",transition:"background .15s"}}
                     onMouseEnter={e=>e.currentTarget.style.background="rgba(14,165,233,0.05)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -1127,7 +732,7 @@ export default function App() {
                   <div style={{textAlign:"center",padding:60,background:T.card,borderRadius:16,border:`1px solid ${T.border}`}}>
                     <div style={{fontSize:48,marginBottom:12,opacity:0.3}}>👕</div>
                     <div style={{fontSize:14,fontWeight:600,color:T.accent,marginBottom:6}}>ยังไม่มีรุ่นสินค้า</div>
-                    <div style={{fontSize:11,color:T.muted}}>กด "＋ เพิ่มรุ่นใหม่" เพื่อเริ่มต้น</div>
+                    <div style={{fontSize:11,color:T.muted}}>กด "️ เพิ่มรุ่นใหม่" เพื่อเริ่มต้น</div>
                   </div>
                 )}
                 {clothingItems.map((item,idx)=>(
@@ -1157,14 +762,14 @@ export default function App() {
                         </div>
                       </div>
                       <div style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
-                        <button onClick={()=>setShowAddColor(item.id)} style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(56,189,248,0.25)",background:"rgba(14,165,233,0.08)",color:T.accent,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:500}}>＋ สี</button>
+                        <button onClick={()=>setShowAddColor(item.id)} style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(56,189,248,0.25)",background:"rgba(14,165,233,0.08)",color:T.accent,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:500}}>️ สี</button>
                         {role.canDelete&&<button onClick={()=>handleDeleteClothingItem(item.id)} style={{padding:"7px 12px",borderRadius:8,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:12}}>✕</button>}
                       </div>
                     </div>
 
                     {/* Collapsed state */}
                     {collapsedItems[item.id]?null:(item.colors||[]).length===0?(
-                      <div style={{padding:"20px",textAlign:"center",color:T.muted,fontSize:12}}>ยังไม่มีสี — กด "＋ สี"</div>
+                      <div style={{padding:"20px",textAlign:"center",color:T.muted,fontSize:12}}>ยังไม่มีสี — กด "️ สี"</div>
                     ):(
                       <div style={{overflowX:"auto"}}>
                         <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
@@ -1213,21 +818,30 @@ export default function App() {
                                       </td>
                                     );
                                   })}
-                                  <td style={{padding:"4px 8px",textAlign:"right"}}>
-                                    <input type="number" defaultValue={col.costPrice||""} placeholder="0"
-                                      onBlur={async e=>{
-                                        const newColors=item.colors.map((c,i)=>i===ci?{...c,costPrice:Number(e.target.value)||0}:c);
-                                        await updateDoc(doc(db,"clothing",item.id),{colors:newColors});
-                                      }}
-                                      style={{width:58,textAlign:"right",background:"rgba(14,165,233,0.08)",border:`1px solid ${T.border}`,borderRadius:5,color:T.text,fontFamily:"monospace",fontSize:11,padding:"3px 5px",outline:"none"}}/>
-                                  </td>
-                                  <td style={{padding:"4px 8px",textAlign:"right"}}>
-                                    <input type="number" defaultValue={col.salePrice||""} placeholder="0"
-                                      onBlur={async e=>{
-                                        const newColors=item.colors.map((c,i)=>i===ci?{...c,salePrice:Number(e.target.value)||0}:c);
-                                        await updateDoc(doc(db,"clothing",item.id),{colors:newColors});
-                                      }}
-                                      style={{width:58,textAlign:"right",background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:5,color:"#34d399",fontFamily:"monospace",fontSize:11,fontWeight:600,padding:"3px 5px",outline:"none"}}/>
+                                  <td colSpan={2} style={{padding:"4px 6px",textAlign:"center"}}>
+                                    {(() => {
+                                      const sp = col.salePrices || {};
+                                      const hasAny = SIZE_GROUPS.some(g => sp[g.key] != null && sp[g.key] !== "" && Number(sp[g.key]) > 0) || Number(col.salePrice) > 0;
+                                      const cost = Number(col.costPrice) || 0;
+                                      return (
+                                        <button onClick={() => {
+                                          setPriceForm({
+                                            costPrice: col.costPrice || "",
+                                            kids: sp.kids ?? col.salePrice ?? "",
+                                            reg:  sp.reg  ?? col.salePrice ?? "",
+                                            "2XL": sp["2XL"] ?? col.salePrice ?? "",
+                                            "3XL": sp["3XL"] ?? col.salePrice ?? "",
+                                            "4XL": sp["4XL"] ?? col.salePrice ?? "",
+                                            "5XL": sp["5XL"] ?? col.salePrice ?? "",
+                                          });
+                                          setPriceModal({ itemId: item.id, ci });
+                                        }}
+                                        style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${hasAny?"rgba(52,211,153,0.3)":T.border}`,background:hasAny?"rgba(52,211,153,0.08)":"rgba(14,165,233,0.05)",color:hasAny?"#34d399":T.sub,cursor:"pointer",fontSize:10,fontWeight:600,fontFamily:"'Sarabun',sans-serif",whiteSpace:"nowrap"}}>
+                                          💰 {hasAny ? "แก้ไขราคา" : "ตั้งราคา"}
+                                          {cost > 0 && <span style={{marginLeft:4,fontSize:9,opacity:0.7,fontFamily:"monospace"}}>ทุน {cost}</span>}
+                                        </button>
+                                      );
+                                    })()}
                                   </td>
                                   <td style={{textAlign:"center",padding:"4px 6px"}}>
                                     <span style={{fontFamily:"monospace",fontWeight:700,fontSize:12,color:T.accent}}>{total}</span>
@@ -1323,7 +937,7 @@ export default function App() {
                 <div style={{display:"flex",gap:8,alignItems:"center"}}>
                   <button onClick={()=>setCollapsedItems(clothingItems.reduce((a,i)=>({...a,[i.id]:true}),{}))} style={{padding:"7px 14px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,fontSize:12,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>⊟ พับทั้งหมด</button>
                   <button onClick={()=>setCollapsedItems({})} style={{padding:"7px 14px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,fontSize:12,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>⊞ ขยายทั้งหมด</button>
-                  <button onClick={()=>setShowAddClothing(true)} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#0ea5e9,#0369a1)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'DM Sans','Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(14,165,233,0.3)"}}>＋ เพิ่มรุ่นใหม่</button>
+                  <button onClick={()=>setShowAddClothing(true)} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#0ea5e9,#0369a1)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'DM Sans','Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(14,165,233,0.3)"}}>️ เพิ่มรุ่นใหม่</button>
                 </div>
               </div>
 
@@ -1333,7 +947,7 @@ export default function App() {
                 <div style={{textAlign:"center",padding:60,background:T.card,borderRadius:16,border:`1px solid ${T.border}`}}>
                   <div style={{fontSize:48,marginBottom:12,opacity:0.3}}>👕</div>
                   <div style={{fontSize:14,fontWeight:600,color:T.accent,marginBottom:6}}>ยังไม่มีรุ่นสินค้า</div>
-                  <div style={{fontSize:11,color:T.muted}}>กด "＋ เพิ่มรุ่นใหม่" เพื่อเริ่มต้น</div>
+                  <div style={{fontSize:11,color:T.muted}}>กด "️ เพิ่มรุ่นใหม่" เพื่อเริ่มต้น</div>
                 </div>
               )}
 
@@ -1349,13 +963,13 @@ export default function App() {
                       <div style={{fontSize:14,fontWeight:700,color:T.text,fontFamily:"'DM Sans','Sarabun',sans-serif"}}>{item.model}</div>
                       <div style={{fontSize:11,color:T.muted,marginTop:2}}>{(item.colors||[]).length} สี · สต็อกรวม {(item.colors||[]).reduce((s,c)=>s+Object.values(c.stock||{}).reduce((a,b)=>a+b,0),0)} ชิ้น</div>
                     </div>
-                    <button onClick={()=>setShowAddColor(item.id)} style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(56,189,248,0.25)",background:"rgba(14,165,233,0.08)",color:T.accent,cursor:"pointer",fontSize:12,fontFamily:"'DM Sans','Sarabun',sans-serif",fontWeight:500}}>＋ เพิ่มสี</button>
+                    <button onClick={()=>setShowAddColor(item.id)} style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(56,189,248,0.25)",background:"rgba(14,165,233,0.08)",color:T.accent,cursor:"pointer",fontSize:12,fontFamily:"'DM Sans','Sarabun',sans-serif",fontWeight:500}}>️ เพิ่มสี</button>
                     {role.canDelete&&<button onClick={()=>handleDeleteClothingItem(item.id)} style={{padding:"7px 12px",borderRadius:8,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:12}}>✕</button>}
                   </div>
 
                   {/* Table */}
                   {(item.colors||[]).length===0?(
-                    <div style={{padding:"24px",textAlign:"center",color:T.muted,fontSize:12}}>ยังไม่มีสี — กด "＋ เพิ่มสี"</div>
+                    <div style={{padding:"24px",textAlign:"center",color:T.muted,fontSize:12}}>ยังไม่มีสี — กด "️ เพิ่มสี"</div>
                   ):(
                     <div style={{overflowX:"auto"}}>
                       <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
@@ -1421,9 +1035,9 @@ export default function App() {
 
               {/* ── MODAL: เพิ่มรุ่นใหม่ ── */}
               {showAddClothing&&(
-                <div style={{position:"fixed",inset:0,background:T.overlay,display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,backdropFilter:"blur(6px)"}} onMouseDown={e=>{if(e.target===e.currentTarget)setShowAddClothing(false);}}>
+                <div style={{position:"fixed",inset:0,background:T.overlay,display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,backdropFilter:"blur(6px)"}}>
                   <div onMouseDown={e=>e.stopPropagation()} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:28,width:420,boxShadow:"0 24px 60px rgba(0,0,0,0.6)"}}>
-                    <div style={{fontSize:15,fontWeight:700,color:T.accent,marginBottom:20,fontFamily:"'DM Sans','Sarabun',sans-serif"}}>＋ เพิ่มรุ่นสินค้าใหม่</div>
+                    <div style={{fontSize:15,fontWeight:700,color:T.accent,marginBottom:20,fontFamily:"'DM Sans','Sarabun',sans-serif"}}>️ เพิ่มรุ่นสินค้าใหม่</div>
                     <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>ชื่อรุ่น *</label>
                     <input value={newModel} onChange={e=>setNewModel(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleAddClothingItem()} placeholder="เช่น รุ่น A Premium, Classic V2..."
                       style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'DM Sans','Sarabun',sans-serif",fontSize:13,outline:"none",marginBottom:20}}/>
@@ -1437,7 +1051,7 @@ export default function App() {
 
               {/* ── MODAL: เพิ่มสี ── */}
               {showAddColor&&(
-                <div style={{position:"fixed",inset:0,background:T.overlay,display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,backdropFilter:"blur(6px)"}} onMouseDown={e=>{if(e.target===e.currentTarget){setShowAddColor(null);setCustomColorName("");setNewColorHex("#ffffff");}}}>
+                <div style={{position:"fixed",inset:0,background:T.overlay,display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,backdropFilter:"blur(6px)"}}>
                   <div onMouseDown={e=>e.stopPropagation()} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:28,width:480,boxShadow:"0 24px 60px rgba(0,0,0,0.6)"}}>
                     <div style={{fontSize:15,fontWeight:700,color:T.accent,marginBottom:20,fontFamily:"'DM Sans','Sarabun',sans-serif"}}>🎨 เพิ่มสีใหม่</div>
 
@@ -1482,44 +1096,61 @@ export default function App() {
           {/* ── INVOICE ── */}
           {activeTab==="invoice"&&(
             <div style={{animation:"fadeUp 0.4s ease"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
-                <div style={{fontSize:12,color:T.sub}}>เอกสารทั้งหมด <b style={{color:T.accent}}>{invoices.length} ฉบับ</b></div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:10}}>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {["ทั้งหมด","ออกแล้ว","รอชำระ","ชำระแล้ว","ยกเลิก"].map(s=>{
+                    const st=paymentStatusStyle(s); const isAll=s==="ทั้งหมด";
+                    return (
+                      <button key={s} onClick={()=>setInvoiceStatusFilter(s)}
+                        style={{padding:"5px 14px",borderRadius:20,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",
+                          border:invoiceStatusFilter===s?(isAll?`1px solid ${T.accent}`:st.border):`1px solid ${T.border}`,
+                          background:invoiceStatusFilter===s?(isAll?"rgba(14,165,233,0.15)":st.bg):"transparent",
+                          color:invoiceStatusFilter===s?(isAll?T.accent:st.color):T.muted}}>
+                        {s}{!isAll&&<span style={{marginLeft:4,fontSize:10,opacity:0.7}}>({invoices.filter(x=>(x.status||"ออกแล้ว")===s).length})</span>}
+                      </button>);
+                  })}
+                </div>
                 <button onClick={()=>{setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7});setInvoiceDocType("receipt");setInvoiceVat(false);setShowNewInvoice(true);}}
                   style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#0ea5e9,#0369a1)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(14,165,233,0.3)"}}>＋ ออกบิลใหม่</button>
               </div>
-
               {invoices.length===0?(
                 <div style={{textAlign:"center",padding:60,background:T.card,borderRadius:16,border:`1px solid ${T.border}`}}>
                   <div style={{fontSize:48,marginBottom:12,opacity:0.3}}>🧾</div>
-                  <div style={{fontSize:14,fontWeight:600,color:T.accent,marginBottom:6}}>ยังไม่มีเอกสาร</div>
+                  <div style={{fontSize:14,fontWeight:600,color:T.accent,marginBottom:6}}>ยังไม่มีบิล</div>
                   <div style={{fontSize:11,color:T.muted}}>กด "＋ ออกบิลใหม่" เพื่อเริ่มต้น</div>
                 </div>
-              ):(
+              ):(()=>{
+                const fInv=invoiceStatusFilter==="ทั้งหมด"?invoices:invoices.filter(x=>(x.status||"ออกแล้ว")===invoiceStatusFilter);
+                return fInv.length===0?<div style={{textAlign:"center",padding:40,color:T.muted,fontSize:13}}>ไม่พบบิลตามสถานะนี้</div>:(
                 <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden"}}>
-                  <div style={{display:"grid",gridTemplateColumns:"90px 80px 1fr 120px 120px 80px 100px",alignItems:"center",padding:"10px 20px",background:"rgba(2,8,22,0.8)",borderBottom:`1px solid ${T.border}`,color:T.muted,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>
-                    <div>เลขที่</div><div>ประเภท</div><div>ลูกค้า</div><div style={{textAlign:"right"}}>ยอดรวม</div><div>วันที่</div><div>สถานะ</div><div style={{textAlign:"center"}}>จัดการ</div>
+                  <div style={{display:"grid",gridTemplateColumns:"90px 80px 1fr 120px 100px 140px 100px",alignItems:"center",padding:"10px 20px",background:"rgba(2,8,22,0.8)",borderBottom:`1px solid ${T.border}`,color:T.muted,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>
+                    <div>เลขที่</div><div>ประเภท</div><div>ลูกค้า</div><div style={{textAlign:"right"}}>ยอดรวม</div><div>วันที่</div><div>สถานะชำระ</div><div style={{textAlign:"center"}}>จัดการ</div>
                   </div>
-                  {invoices.map((inv,i)=>(
-                    <div key={inv.id} style={{display:"grid",gridTemplateColumns:"90px 80px 1fr 120px 120px 80px 100px",alignItems:"center",padding:"13px 20px",borderBottom:i<invoices.length-1?`1px solid ${T.border}`:"none",transition:"background 0.15s"}}
+                  {fInv.map((inv,i)=>{
+                    const st=paymentStatusStyle(inv.status||"ออกแล้ว");
+                    return (
+                    <div key={inv.id} style={{display:"grid",gridTemplateColumns:"90px 80px 1fr 120px 100px 140px 100px",alignItems:"center",padding:"13px 20px",borderBottom:i<fInv.length-1?`1px solid ${T.border}`:"none",transition:"background 0.15s"}}
                       onMouseEnter={e=>e.currentTarget.style.background="rgba(14,165,233,0.04)"}
                       onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                       <div style={{fontFamily:"monospace",fontSize:11,color:T.accent,fontWeight:700}}>{inv.invoiceNo}</div>
                       <div><span style={{padding:"2px 8px",borderRadius:12,fontSize:10,fontWeight:600,background:"rgba(14,165,233,0.1)",color:T.accent,border:"1px solid rgba(56,189,248,0.2)"}}>{docTypeLabel(inv.docType)?.slice(0,4)}</span></div>
-                      <div>
-                        <div style={{fontWeight:600,color:T.text,fontSize:13}}>{inv.customerName}</div>
-                        <div style={{fontSize:10,color:T.muted}}>{inv.customerPhone}</div>
-                      </div>
+                      <div><div style={{fontWeight:600,color:T.text,fontSize:13}}>{inv.customerName}</div><div style={{fontSize:10,color:T.muted}}>{inv.customerPhone}</div></div>
                       <div style={{textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#34d399",fontSize:13}}>฿{(inv.total||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</div>
                       <div style={{fontSize:11,color:T.muted}}>{inv.date}</div>
-                      <div><span style={{padding:"2px 8px",borderRadius:12,fontSize:10,fontWeight:600,background:"rgba(52,211,153,0.1)",color:"#34d399",border:"1px solid rgba(52,211,153,0.2)"}}>{inv.status}</span></div>
-                      <div style={{display:"flex",gap:6,justifyContent:"center"}}>
+                      <div>
+                        <select value={inv.status||"ออกแล้ว"} onChange={e=>handleUpdateInvoiceStatus(inv.id,e.target.value)}
+                          style={{background:st.bg,border:st.border,borderRadius:10,padding:"4px 8px",fontSize:10,fontWeight:600,color:st.color,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",outline:"none"}}>
+                          {PAYMENT_STATUSES.map(s=><option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+                      <div style={{display:"flex",gap:5,justifyContent:"center"}}>
                         <button onClick={()=>setShowPrintInvoice(inv)} style={{padding:"5px 10px",borderRadius:7,border:"1px solid rgba(56,189,248,0.25)",background:"rgba(14,165,233,0.08)",color:T.accent,cursor:"pointer",fontSize:11,fontFamily:"'Sarabun',sans-serif"}}>🖨️</button>
                         {role.canDelete&&<button onClick={async()=>await deleteDoc(doc(db,"invoices",inv.id))} style={{padding:"5px 8px",borderRadius:7,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:11}}>✕</button>}
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    </div>);
+                  })}
+                </div>);
+              })()}
             </div>
           )}
 
@@ -1528,14 +1159,14 @@ export default function App() {
             <div style={{animation:"fadeUp 0.4s ease"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
                 <div style={{fontSize:12,color:T.sub}}>ใบสั่งของทั้งหมด <b style={{color:T.accent}}>{orders.length} ใบ</b></div>
-                <button onClick={()=>{setOrderForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",note:"",items:[]});setShowNewOrder(true);}} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#0ea5e9,#0369a1)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(14,165,233,0.3)"}}>＋ สร้างใบสั่งของ</button>
+                <button onClick={()=>{setOrderForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",note:"",items:[]});setShowNewOrder(true);}} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#0ea5e9,#0369a1)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(14,165,233,0.3)"}}>️ สร้างใบสั่งของ</button>
               </div>
 
               {orders.length===0?(
                 <div style={{textAlign:"center",padding:60,background:T.card,borderRadius:16,border:`1px solid ${T.border}`}}>
                   <div style={{fontSize:48,marginBottom:12,opacity:0.3}}>📋</div>
                   <div style={{fontSize:14,fontWeight:600,color:T.accent,marginBottom:6}}>ยังไม่มีใบสั่งของ</div>
-                  <div style={{fontSize:11,color:T.muted}}>กด "＋ สร้างใบสั่งของ" เพื่อเริ่มต้น</div>
+                  <div style={{fontSize:11,color:T.muted}}>กด "️ สร้างใบสั่งของ" เพื่อเริ่มต้น</div>
                 </div>
               ):(
                 <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden"}}>
@@ -1570,7 +1201,7 @@ export default function App() {
             <div style={{animation:"fadeUp 0.4s ease",maxWidth:700}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
                 <div style={{fontSize:12,color:T.sub}}>ลูกค้าทั้งหมด <b style={{color:T.accent}}>{customers.length} ราย</b></div>
-                <button onClick={()=>setShowNewCustomer(true)} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#0ea5e9,#0369a1)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(14,165,233,0.3)"}}>＋ เพิ่มลูกค้าใหม่</button>
+                <button onClick={()=>setShowNewCustomer(true)} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#0ea5e9,#0369a1)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(14,165,233,0.3)"}}>️ เพิ่มลูกค้าใหม่</button>
               </div>
               <div style={{marginBottom:14}}>
                 <input value={customerSearch} onChange={e=>setCustomerSearch(e.target.value)} placeholder="🔍 ค้นหาชื่อ เบอร์ หรือที่อยู่..."
@@ -1580,7 +1211,7 @@ export default function App() {
                 <div style={{textAlign:"center",padding:60,background:T.card,borderRadius:16,border:`1px solid ${T.border}`}}>
                   <div style={{fontSize:48,marginBottom:12,opacity:0.3}}>👤</div>
                   <div style={{fontSize:14,fontWeight:600,color:T.accent,marginBottom:6}}>ยังไม่มีข้อมูลลูกค้า</div>
-                  <div style={{fontSize:11,color:T.muted}}>กด "＋ เพิ่มลูกค้าใหม่" เพื่อเริ่มต้น</div>
+                  <div style={{fontSize:11,color:T.muted}}>กด "️ เพิ่มลูกค้าใหม่" เพื่อเริ่มต้น</div>
                 </div>
               ):(
                 <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden"}}>
@@ -1683,6 +1314,17 @@ export default function App() {
               </div>
             </div>
           )}
+
+          {/* ── REPORTS ── */}
+          {activeTab==="reports"&&(
+            <ReportsTab products={products} transactions={transactions} invoices={invoices} orders={orders}/>
+          )}
+
+          {/* ── SUPPLIERS ── */}
+          {activeTab==="suppliers"&&(
+            <SuppliersTab suppliers={suppliers} role={role}/>
+          )}
+
 
         </div>
       </div>
@@ -1934,7 +1576,7 @@ export default function App() {
             <div>
               {/* Company Info */}
               <div style={{fontSize:13,fontWeight:600,color:T.text,marginBottom:14}}>🏢 ข้อมูลบริษัท / ร้านค้า</div>
-              <CompanyEditor companyInfo={companyInfo} onSave={async(data)=>{setCompanyInfo(data);await handleSaveCompany(data);}} T={T}/>
+              <CompanyEditor companyInfo={companyInfo} onSave={async(data)=>{setCompanyInfo(data);await handleSaveCompany(data);}}/>
               <div style={{height:1,background:T.border,margin:"20px 0"}}/>
               <div style={{fontSize:13,fontWeight:600,color:T.text,marginBottom:14}}>📊 สถิติระบบ</div>
               {[
@@ -2058,55 +1700,44 @@ export default function App() {
                   <span style={{fontSize:12,color:T.accent,fontWeight:600}}>{item.model} · {col.colorName}</span>
                   <span style={{fontSize:10,color:T.muted,marginLeft:"auto"}}>กรอกจำนวนที่ต้องการสั่ง</span>
                 </div>
-                <div style={{overflowX:"auto"}}>
-                  <table style={{width:"100%",borderCollapse:"collapse"}}>
-                    <thead>
-                      <tr style={{background:"rgba(2,8,22,0.8)"}}>
-                        {SIZES.map(sz=>{
-                          const stock=(col.stock||{})[sz]||0;
-                          return (
-                            <th key={sz} style={{padding:"6px 4px",textAlign:"center",minWidth:52,borderRight:"1px solid rgba(13,40,72,0.5)"}}>
-                              <div style={{fontFamily:"monospace",fontWeight:700,fontSize:11,color:T.accent}}>{sz}</div>
-                              <div style={{fontSize:9,color:stock===0?"#1e4060":stock<5?"#fbbf24":"#22d3ee",fontFamily:"monospace"}}>มี {stock}</div>
-                            </th>
-                          );
-                        })}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        {SIZES.map(sz=>{
-                          const stock=(col.stock||{})[sz]||0;
-                          const curVal=orderForm.items.find(i=>i.clothingId===orderItemForm.clothingId&&i.colorIdx===Number(orderItemForm.colorIdx)&&i.size===sz)?.qty||0;
-                          return (
-                            <td key={sz} style={{padding:"6px 4px",textAlign:"center",borderRight:"1px solid rgba(13,40,72,0.4)"}}>
-                              <input type="number" min="0" max={stock}
-                                defaultValue={curVal||""}
-                                placeholder="0"
-                                disabled={stock===0}
-                                key={`${orderItemForm.clothingId}-${orderItemForm.colorIdx}-${sz}`}
-                                onBlur={e=>{
-                                  const val=Math.min(Math.max(0,Number(e.target.value)||0),stock);
-                                  if(val>0){
-                                    setOrderForm(f=>{
-                                      const idx=f.items.findIndex(i=>i.clothingId===orderItemForm.clothingId&&i.colorIdx===Number(orderItemForm.colorIdx)&&i.size===sz);
-                                      const newItem={clothingId:orderItemForm.clothingId,clothingName:item.model,colorIdx:Number(orderItemForm.colorIdx),colorName:col.colorName,colorHex:col.hex,size:sz,qty:val,stock};
-                                      const items=[...f.items];
-                                      if(idx>=0) items[idx]=newItem; else items.push(newItem);
-                                      return {...f,items};
-                                    });
-                                  } else {
-                                    setOrderForm(f=>({...f,items:f.items.filter(i=>!(i.clothingId===orderItemForm.clothingId&&i.colorIdx===Number(orderItemForm.colorIdx)&&i.size===sz))}));
-                                  }
-                                }}
-                                style={{width:44,textAlign:"center",background:stock===0?"rgba(13,40,72,0.3)":"rgba(14,165,233,0.1)",border:`1px solid ${stock===0?"rgba(13,40,72,0.5)":"rgba(56,189,248,0.25)"}`,borderRadius:6,color:stock===0?"#1e4060":"#38bdf8",fontFamily:"monospace",fontSize:12,fontWeight:600,padding:"5px 2px",outline:"none",cursor:stock===0?"not-allowed":"text"}}
-                              />
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    </tbody>
-                  </table>
+                <div style={{padding:10,display:"flex",flexDirection:"column",gap:8}}>
+                  {[["6","8","10","12"],["S","M","L","XL"],["2XL"],["3XL"],["4XL"],["5XL"]].map((row,ri)=>(
+                    <div key={ri} style={{display:"grid",gridTemplateColumns:`repeat(${row.length},1fr)`,gap:6}}>
+                      {row.map(sz=>{
+                        const stock=(col.stock||{})[sz]||0;
+                        const curVal=orderForm.items.find(i=>i.clothingId===orderItemForm.clothingId&&i.colorIdx===Number(orderItemForm.colorIdx)&&i.size===sz)?.qty||0;
+                        return (
+                          <div key={sz} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:stock===0?"rgba(13,40,72,0.25)":"rgba(2,8,22,0.5)",borderRadius:7,border:`1px solid ${stock===0?"rgba(13,40,72,0.5)":"rgba(56,189,248,0.18)"}`}}>
+                            <div style={{minWidth:38,display:"flex",flexDirection:"column"}}>
+                              <span style={{fontFamily:"monospace",fontWeight:700,fontSize:13,color:stock===0?"#1e4060":T.accent}}>{sz}</span>
+                              <span style={{fontSize:9,color:stock===0?"#1e4060":stock<5?"#fbbf24":"#22d3ee",fontFamily:"monospace"}}>มี {stock}</span>
+                            </div>
+                            <input type="number" min="0" max={stock}
+                              defaultValue={curVal||""}
+                              placeholder="0"
+                              disabled={stock===0}
+                              key={`${orderItemForm.clothingId}-${orderItemForm.colorIdx}-${sz}`}
+                              onBlur={e=>{
+                                const val=Math.min(Math.max(0,Number(e.target.value)||0),stock);
+                                if(val>0){
+                                  setOrderForm(f=>{
+                                    const idx=f.items.findIndex(i=>i.clothingId===orderItemForm.clothingId&&i.colorIdx===Number(orderItemForm.colorIdx)&&i.size===sz);
+                                    const newItem={clothingId:orderItemForm.clothingId,clothingName:item.model,colorIdx:Number(orderItemForm.colorIdx),colorName:col.colorName,colorHex:col.hex,size:sz,qty:val,stock};
+                                    const items=[...f.items];
+                                    if(idx>=0) items[idx]=newItem; else items.push(newItem);
+                                    return {...f,items};
+                                  });
+                                } else {
+                                  setOrderForm(f=>({...f,items:f.items.filter(i=>!(i.clothingId===orderItemForm.clothingId&&i.colorIdx===Number(orderItemForm.colorIdx)&&i.size===sz))}));
+                                }
+                              }}
+                              style={{flex:1,minWidth:0,textAlign:"center",background:stock===0?"rgba(13,40,72,0.3)":"rgba(14,165,233,0.1)",border:`1px solid ${stock===0?"rgba(13,40,72,0.5)":"rgba(56,189,248,0.25)"}`,borderRadius:6,color:stock===0?"#1e4060":"#38bdf8",fontFamily:"monospace",fontSize:13,fontWeight:600,padding:"6px 4px",outline:"none",cursor:stock===0?"not-allowed":"text"}}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
                 </div>
                 <div style={{padding:"8px 14px",borderTop:"1px solid rgba(13,40,72,0.5)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <span style={{fontSize:11,color:T.muted}}>💡 กรอกจำนวน แล้วคลิกออกจากช่องเพื่อบันทึก</span>
@@ -2187,9 +1818,9 @@ export default function App() {
 
       {/* ── MODAL: ปริ้นใบสั่งของ ── */}
       {showPrintOrder&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}}
+        <div className="print-modal-overlay" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}}
           onMouseDown={e=>{if(e.target===e.currentTarget)setShowPrintOrder(null);}}>
-          <div onMouseDown={e=>e.stopPropagation()} style={{background:"white",borderRadius:16,padding:0,width:680,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 24px 60px rgba(0,0,0,0.6)"}}>
+          <div className="print-modal-card" onMouseDown={e=>e.stopPropagation()} style={{background:"white",borderRadius:16,padding:0,width:680,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 24px 60px rgba(0,0,0,0.6)"}}>
             {/* Print content */}
             <div id="print-area" style={{padding:"32px 40px",fontFamily:"'Sarabun',sans-serif",color:"#1e293b"}}>
               {/* Header */}
@@ -2260,9 +1891,9 @@ export default function App() {
             </div>
 
             {/* Print buttons */}
-            <div style={{padding:"16px 24px",borderTop:"1px solid #e2e8f0",display:"flex",gap:10,justifyContent:"flex-end",background:"#f8fafc",borderRadius:"0 0 16px 16px"}}>
+            <div className="print-hide" style={{padding:"16px 24px",borderTop:"1px solid #e2e8f0",display:"flex",gap:10,justifyContent:"flex-end",background:"#f8fafc",borderRadius:"0 0 16px 16px"}}>
               <button onClick={()=>setShowPrintOrder(null)} style={{padding:"9px 20px",borderRadius:9,border:"1px solid #e2e8f0",background:"white",color:"#64748b",fontSize:13,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>ปิด</button>
-              <button onClick={()=>window.print()} style={{padding:"9px 20px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#0ea5e9,#0369a1)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(14,165,233,0.3)"}}>🖨️ สั่งปริ้น</button>
+              <button onClick={()=>printElementById("print-area")} style={{padding:"9px 20px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#0ea5e9,#0369a1)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(14,165,233,0.3)"}}>🖨️ สั่งปริ้น</button>
             </div>
           </div>
         </div>
@@ -2367,7 +1998,7 @@ export default function App() {
 
           {/* Add item form */}
           <div style={{padding:14,background:"rgba(14,165,233,0.06)",border:"1px solid rgba(56,189,248,0.2)",borderRadius:10,marginBottom:16}}>
-            <div style={{fontSize:11,color:T.accent,fontWeight:600,marginBottom:10}}>＋ เพิ่มรายการสินค้า / บริการ</div>
+            <div style={{fontSize:11,color:T.accent,fontWeight:600,marginBottom:10}}>️ เพิ่มรายการสินค้า / บริการ</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
               <div style={{gridColumn:"1/-1"}}>
                 <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:4,fontWeight:600}}>ชื่อรายการ *</label>
@@ -2432,9 +2063,9 @@ export default function App() {
 
       {/* ── MODAL: พิมพ์บิล ── */}
       {showPrintInvoice&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,backdropFilter:"blur(6px)"}}
+        <div className="print-modal-overlay" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,backdropFilter:"blur(6px)"}}
           onMouseDown={e=>{if(e.target===e.currentTarget)setShowPrintInvoice(null);}}>
-          <div onMouseDown={e=>e.stopPropagation()} style={{background:"white",borderRadius:16,width:760,maxHeight:"94vh",overflowY:"auto",boxShadow:"0 24px 60px rgba(0,0,0,0.7)"}}>
+          <div className="print-modal-card" onMouseDown={e=>e.stopPropagation()} style={{background:"white",borderRadius:16,width:760,maxHeight:"94vh",overflowY:"auto",boxShadow:"0 24px 60px rgba(0,0,0,0.7)"}}>
 
             {/* ── เนื้อหาบิล (พิมพ์ได้) ── */}
             <div id="invoice-print-area" style={{padding:"36px 44px",fontFamily:"'Sarabun',sans-serif",color:"#1e293b"}}>
@@ -2587,19 +2218,17 @@ export default function App() {
             </div>
 
             {/* ── ปุ่มด้านล่าง (ไม่พิมพ์) ── */}
-            <div style={{padding:"14px 24px",borderTop:"1px solid #e2e8f0",display:"flex",gap:10,justifyContent:"space-between",alignItems:"center",background:"#f8fafc",borderRadius:"0 0 16px 16px"}}>
+            <div className="print-hide" style={{padding:"14px 24px",borderTop:"1px solid #e2e8f0",display:"flex",gap:10,justifyContent:"space-between",alignItems:"center",background:"#f8fafc",borderRadius:"0 0 16px 16px"}}>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <span style={{fontSize:12,color:"#64748b",fontWeight:500}}>ขนาดกระดาษ:</span>
                 <div style={{display:"flex",gap:6}}>
-                  {[{id:"A4",label:"A4"},{id:"80mm",label:"80mm (สลิป)"},{id:"57mm",label:"57mm (ม้วน)"}].map(p=>(
+                  {[
+                    {id:"A4",label:"A4",size:"A4 portrait",margin:"10mm"},
+                    {id:"80mm",label:"80mm (สลิป)",size:"80mm auto",margin:"2mm 4mm"},
+                    {id:"57mm",label:"57mm (ม้วน)",size:"57mm auto",margin:"1mm 3mm"},
+                  ].map(p=>(
                     <button key={p.id}
-                      onClick={()=>{
-                        const s=document.getElementById("dynamic-print-css")||(()=>{const el=document.createElement("style");el.id="dynamic-print-css";document.head.appendChild(el);return el;})();
-                        if(p.id==="A4") s.innerHTML="@media print{@page{size:A4 portrait;margin:10mm}}";
-                        else if(p.id==="80mm") s.innerHTML="@media print{@page{size:80mm auto;margin:2mm 4mm}#invoice-print-area{font-size:11px!important}}";
-                        else s.innerHTML="@media print{@page{size:57mm auto;margin:1mm 3mm}#invoice-print-area{font-size:10px!important}}";
-                        setTimeout(()=>window.print(),50);
-                      }}
+                      onClick={()=>printElementById("invoice-print-area",p.size,p.margin)}
                       style={{padding:"6px 12px",borderRadius:7,border:"1px solid #e2e8f0",background:"white",color:"#475569",fontSize:11,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:500}}>
                       {p.label}
                     </button>
@@ -2608,7 +2237,7 @@ export default function App() {
               </div>
               <div style={{display:"flex",gap:10}}>
                 <button onClick={()=>setShowPrintInvoice(null)} style={{padding:"9px 20px",borderRadius:9,border:"1px solid #e2e8f0",background:"white",color:"#64748b",fontSize:13,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>ปิด</button>
-                <button onClick={()=>window.print()} style={{padding:"9px 20px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#0ea5e9,#0369a1)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(14,165,233,0.3)"}}>🖨️ พิมพ์เอกสาร</button>
+                <button onClick={()=>printElementById("invoice-print-area")} style={{padding:"9px 20px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#0ea5e9,#0369a1)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(14,165,233,0.3)"}}>🖨️ พิมพ์เอกสาร</button>
               </div>
             </div>
           </div>
@@ -2618,7 +2247,7 @@ export default function App() {
       {/* ── MODAL: เพิ่มรุ่นเสื้อผ้า ── */}
       {showAddClothing&&(
         <Modal onClose={()=>{setShowAddClothing(false);setNewModel("");}} w={420}>
-          <MHead title="＋ เพิ่มรุ่นสินค้าใหม่" onClose={()=>{setShowAddClothing(false);setNewModel("");}}/>
+          <MHead title="️ เพิ่มรุ่นสินค้าใหม่" onClose={()=>{setShowAddClothing(false);setNewModel("");}}/>
           <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>ชื่อรุ่น *</label>
           <input value={newModel} onChange={e=>setNewModel(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleAddClothingItem()} placeholder="เช่น รุ่น A Premium, Classic V2..."
             style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none",marginBottom:20}}/>
@@ -2628,6 +2257,54 @@ export default function App() {
           </div>
         </Modal>
       )}
+
+      {/* ── MODAL: ตั้งราคาตามไซส์ ── */}
+      {priceModal&&(()=>{
+        const item = clothingItems.find(i=>i.id===priceModal.itemId);
+        const col = item?.colors?.[priceModal.ci];
+        if(!item||!col) return null;
+        const handleSavePrices = async () => {
+          const salePrices = {};
+          SIZE_GROUPS.forEach(g => { salePrices[g.key] = Number(priceForm[g.key]) || 0; });
+          const defaultPrice = salePrices.reg || salePrices.kids || Object.values(salePrices).find(v=>v>0) || 0;
+          const newColors = item.colors.map((c,i)=>i===priceModal.ci?{
+            ...c,
+            costPrice: Number(priceForm.costPrice) || 0,
+            salePrice: defaultPrice,
+            salePrices,
+          }:c);
+          await updateDoc(doc(db,"clothing",priceModal.itemId),{colors:newColors});
+          setPriceModal(null);
+        };
+        return (
+          <Modal onClose={()=>setPriceModal(null)} w={460}>
+            <MHead title="💰 ตั้งราคาตามไซส์" onClose={()=>setPriceModal(null)}/>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,padding:"8px 12px",background:"rgba(14,165,233,0.06)",borderRadius:8,border:`1px solid ${T.border}`}}>
+              <div style={{width:14,height:14,borderRadius:3,background:col.hex,border:"1px solid rgba(255,255,255,0.15)"}}/>
+              <span style={{fontSize:13,color:T.text,fontWeight:600}}>{item.model} · {col.colorName}</span>
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:5,fontWeight:600}}>ราคาทุน (฿/ชิ้น)</label>
+              <input type="number" value={priceForm.costPrice} onChange={e=>setPriceForm(f=>({...f,costPrice:e.target.value}))} placeholder="0"
+                style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 12px",fontFamily:"monospace",fontSize:13,outline:"none"}}/>
+            </div>
+            <div style={{fontSize:11,color:T.muted,marginBottom:8,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>ราคาขาย (฿/ชิ้น) ตามกลุ่มไซส์</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:18}}>
+              {SIZE_GROUPS.map(g=>(
+                <div key={g.key} style={{display:"grid",gridTemplateColumns:"120px 1fr",alignItems:"center",gap:10,padding:"6px 10px",background:"rgba(2,8,22,0.5)",borderRadius:7,border:`1px solid ${T.border}`}}>
+                  <span style={{fontSize:12,color:T.accent,fontWeight:600}}>{g.label}</span>
+                  <input type="number" value={priceForm[g.key]} onChange={e=>setPriceForm(f=>({...f,[g.key]:e.target.value}))} placeholder="0"
+                    style={{width:"100%",background:"rgba(52,211,153,0.06)",border:"1px solid rgba(52,211,153,0.2)",color:"#34d399",borderRadius:6,padding:"6px 10px",fontFamily:"monospace",fontSize:13,fontWeight:600,outline:"none",textAlign:"right"}}/>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <BtnGhost onClick={()=>setPriceModal(null)} style={{flex:1}}>ยกเลิก</BtnGhost>
+              <BtnPrimary onClick={handleSavePrices} style={{flex:1}}>💾 บันทึก</BtnPrimary>
+            </div>
+          </Modal>
+        );
+      })()}
 
       {/* ── MODAL: เพิ่มสีเสื้อผ้า ── */}
       {showAddColor&&(
@@ -2739,3 +2416,5 @@ export default function App() {
     </div>
   );
 }
+
+
