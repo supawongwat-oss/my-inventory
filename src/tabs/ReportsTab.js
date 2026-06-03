@@ -201,14 +201,41 @@ function OverviewTab({ products, transactions, invoices, orders, totalStockValue
 
 // ────────── 2. AGING (บิลค้างชำระ) ──────────
 function AgingTab({ invoices }) {
+  const [customerFilter, setCustomerFilter] = useState("ทั้งหมด");
+  const [customerSearch, setCustomerSearch] = useState("");
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // กรองเฉพาะที่ยังไม่ชำระ
+  // กรองเฉพาะที่ยังไม่ชำระ + ตามลูกค้าที่เลือก
   const unpaid = useMemo(() => invoices.filter(inv => {
     const st = inv.status || "ออกแล้ว";
-    return st !== "ชำระแล้ว" && st !== "ยกเลิก";
-  }), [invoices]);
+    if (st === "ชำระแล้ว" || st === "ยกเลิก") return false;
+    if (customerFilter !== "ทั้งหมด" && (inv.customerName || "—") !== customerFilter) return false;
+    return true;
+  }), [invoices, customerFilter]);
+
+  // รายชื่อลูกค้าที่มีบิลค้าง (สำหรับ dropdown)
+  const customerOptions = useMemo(() => {
+    const set = new Map(); // name -> {name, count, total}
+    invoices.forEach(inv => {
+      const st = inv.status || "ออกแล้ว";
+      if (st === "ชำระแล้ว" || st === "ยกเลิก") return;
+      const name = inv.customerName || "—";
+      if (!set.has(name)) set.set(name, { name, count: 0, total: 0 });
+      const c = set.get(name);
+      c.count++;
+      c.total += Number(inv.total) || 0;
+    });
+    return Array.from(set.values()).sort((a,b) => b.total - a.total);
+  }, [invoices]);
+
+  // filter dropdown ตามคำค้น
+  const filteredCustomerOptions = useMemo(() => {
+    const q = customerSearch.toLowerCase().trim();
+    if (!q) return customerOptions;
+    return customerOptions.filter(c => c.name.toLowerCase().includes(q));
+  }, [customerOptions, customerSearch]);
 
   // แบ่งกลุ่มตาม days outstanding
   const buckets = useMemo(() => {
@@ -267,16 +294,50 @@ function AgingTab({ invoices }) {
     })));
   };
 
+  // รายการบิลของลูกค้าที่เลือก (ถ้าเลือกคนใดคนหนึ่ง)
+  const customerInvoices = useMemo(() => {
+    if (customerFilter === "ทั้งหมด") return [];
+    return unpaid.map(inv => {
+      const d = parseDate(inv.date);
+      const days = d ? Math.floor((today - d) / (1000*60*60*24)) : 0;
+      return { ...inv, days };
+    }).sort((a,b) => b.days - a.days);
+  }, [unpaid, customerFilter, today]);
+
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: T.text }}>⏰ Aging Report — บิลค้างชำระ</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: T.text }}>
+            ⏰ Aging Report — บิลค้างชำระ
+            {customerFilter !== "ทั้งหมด" && <span style={{ marginLeft: 8, padding: "2px 10px", borderRadius: 12, background: "rgba(59,91,139,0.12)", color: T.accent, fontSize: 12, border: `1px solid rgba(59,91,139,0.3)` }}>👤 {customerFilter}</span>}
+          </div>
           <div style={{ fontSize: 11, color: T.muted }}>ทั้งหมด {unpaid.length} ใบ · รวม {fmtBaht(grandTotal)}</div>
         </div>
         <button onClick={exportAging} style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(58,122,82,0.1)", color: T.green, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: 600 }}>
           📊 Export CSV
         </button>
+      </div>
+
+      {/* Customer Filter */}
+      <div style={{ marginBottom: 16, padding: 12, background: T.card, border: `1px solid ${T.border}`, borderRadius: 10 }}>
+        <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>🔍 กรองตามลูกค้า</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <button onClick={() => { setCustomerFilter("ทั้งหมด"); setCustomerSearch(""); }}
+            style={{ padding: "6px 14px", borderRadius: 8, border: customerFilter === "ทั้งหมด" ? `1.5px solid ${T.accent}` : `1px solid ${T.border}`, background: customerFilter === "ทั้งหมด" ? "rgba(59,91,139,0.12)" : "transparent", color: customerFilter === "ทั้งหมด" ? T.accent : T.sub, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: customerFilter === "ทั้งหมด" ? 700 : 500 }}>
+            👥 ทั้งหมด <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.7 }}>({customerOptions.length})</span>
+          </button>
+          <input value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
+            placeholder="🔍 พิมพ์ชื่อลูกค้า..."
+            style={{ flex: 1, minWidth: 200, maxWidth: 280, background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 7, padding: "6px 12px", fontFamily: "'Sarabun',sans-serif", fontSize: 12, outline: "none" }}/>
+          <select value={customerFilter} onChange={e => setCustomerFilter(e.target.value)}
+            style={{ background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 7, padding: "7px 10px", fontSize: 12, outline: "none", cursor: "pointer", minWidth: 220 }}>
+            <option value="ทั้งหมด">— เลือกลูกค้า —</option>
+            {filteredCustomerOptions.map((c, i) => (
+              <option key={i} value={c.name}>{c.name} ({c.count} ใบ · ฿{Math.round(c.total).toLocaleString()})</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Bucket cards */}
@@ -293,45 +354,96 @@ function AgingTab({ invoices }) {
         })}
       </div>
 
-      {/* ลูกค้าที่ค้างชำระ */}
-      <CardBox style={{ padding: 0, overflow: "hidden", marginBottom: 16 }}>
-        <div style={{ padding: "10px 16px", background: "rgba(241,243,246,0.6)", borderBottom: `1px solid ${T.border}`, fontSize: 12, fontWeight: 700, color: T.text }}>👥 สรุปตามลูกค้า ({byCustomer.length} ราย)</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 60px 100px 100px 100px 100px 100px 90px", padding: "8px 16px", background: "#f8f9fb", fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: `1px solid ${T.border}` }}>
-          <div>ลูกค้า</div><div style={{textAlign:"right"}}>ใบ</div><div style={{textAlign:"right"}}>0-30</div><div style={{textAlign:"right"}}>31-60</div><div style={{textAlign:"right"}}>61-90</div><div style={{textAlign:"right"}}>90+</div><div style={{textAlign:"right"}}>รวม</div><div style={{textAlign:"center"}}>ค้างนานสุด</div>
-        </div>
-        {byCustomer.length === 0 ? (
-          <div style={{ padding: 30, textAlign: "center", color: T.muted, fontSize: 13 }}>ไม่มีบิลค้างชำระ 🎉</div>
-        ) : byCustomer.slice(0, 30).map((c, i) => (
-          <div key={i} style={{ display: "grid", gridTemplateColumns: "1.5fr 60px 100px 100px 100px 100px 100px 90px", alignItems: "center", padding: "9px 16px", borderBottom: i < byCustomer.length-1 ? `1px solid ${T.border}` : "none", fontSize: 12 }}>
-            <div>
-              <div style={{ fontWeight: 600, color: T.text }}>{c.name}</div>
-              {c.phone && <div style={{ fontSize: 10, color: T.muted }}>{c.phone}</div>}
+      {customerFilter === "ทั้งหมด" ? (
+        <>
+          {/* ลูกค้าที่ค้างชำระ */}
+          <CardBox style={{ padding: 0, overflow: "hidden", marginBottom: 16 }}>
+            <div style={{ padding: "10px 16px", background: "rgba(241,243,246,0.6)", borderBottom: `1px solid ${T.border}`, fontSize: 12, fontWeight: 700, color: T.text }}>👥 สรุปตามลูกค้า ({byCustomer.length} ราย) <span style={{ fontSize: 10, color: T.muted, fontWeight: 400, marginLeft: 6 }}>คลิกชื่อเพื่อดูรายละเอียด</span></div>
+            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 60px 100px 100px 100px 100px 100px 90px", padding: "8px 16px", background: "#f8f9fb", fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: `1px solid ${T.border}` }}>
+              <div>ลูกค้า</div><div style={{textAlign:"right"}}>ใบ</div><div style={{textAlign:"right"}}>0-30</div><div style={{textAlign:"right"}}>31-60</div><div style={{textAlign:"right"}}>61-90</div><div style={{textAlign:"right"}}>90+</div><div style={{textAlign:"right"}}>รวม</div><div style={{textAlign:"center"}}>ค้างนานสุด</div>
             </div>
-            <div style={{ textAlign: "right", fontFamily: "monospace", color: T.accent, fontWeight: 600 }}>{c.count}</div>
-            <div style={{ textAlign: "right", fontFamily: "monospace", color: c.b030>0?T.green:T.muted }}>{c.b030>0?fmtBaht(c.b030):"—"}</div>
-            <div style={{ textAlign: "right", fontFamily: "monospace", color: c.b3160>0?T.amber:T.muted }}>{c.b3160>0?fmtBaht(c.b3160):"—"}</div>
-            <div style={{ textAlign: "right", fontFamily: "monospace", color: c.b6190>0?"#d97706":T.muted }}>{c.b6190>0?fmtBaht(c.b6190):"—"}</div>
-            <div style={{ textAlign: "right", fontFamily: "monospace", color: c.b90>0?T.red:T.muted, fontWeight: c.b90>0?700:400 }}>{c.b90>0?fmtBaht(c.b90):"—"}</div>
-            <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.text }}>{fmtBaht(c.total)}</div>
-            <div style={{ textAlign: "center", fontSize: 11, fontFamily: "monospace", color: c.oldest>90?T.red:c.oldest>60?"#d97706":c.oldest>30?T.amber:T.green, fontWeight: 600 }}>{c.oldest} วัน</div>
-          </div>
-        ))}
-        {byCustomer.length > 30 && <div style={{ padding: 12, textAlign: "center", color: T.muted, fontSize: 11 }}>แสดง 30/{byCustomer.length} — ดูเต็มได้จาก CSV export</div>}
-      </CardBox>
+            {byCustomer.length === 0 ? (
+              <div style={{ padding: 30, textAlign: "center", color: T.muted, fontSize: 13 }}>ไม่มีบิลค้างชำระ 🎉</div>
+            ) : byCustomer.slice(0, 30).map((c, i) => (
+              <div key={i} onClick={() => setCustomerFilter(c.name)}
+                style={{ display: "grid", gridTemplateColumns: "1.5fr 60px 100px 100px 100px 100px 100px 90px", alignItems: "center", padding: "9px 16px", borderBottom: i < byCustomer.length-1 ? `1px solid ${T.border}` : "none", fontSize: 12, cursor: "pointer", transition: "background 0.15s" }}
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(59,91,139,0.06)"}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                <div>
+                  <div style={{ fontWeight: 600, color: T.text }}>{c.name}</div>
+                  {c.phone && <div style={{ fontSize: 10, color: T.muted }}>{c.phone}</div>}
+                </div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", color: T.accent, fontWeight: 600 }}>{c.count}</div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", color: c.b030>0?T.green:T.muted }}>{c.b030>0?fmtBaht(c.b030):"—"}</div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", color: c.b3160>0?T.amber:T.muted }}>{c.b3160>0?fmtBaht(c.b3160):"—"}</div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", color: c.b6190>0?"#d97706":T.muted }}>{c.b6190>0?fmtBaht(c.b6190):"—"}</div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", color: c.b90>0?T.red:T.muted, fontWeight: c.b90>0?700:400 }}>{c.b90>0?fmtBaht(c.b90):"—"}</div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.text }}>{fmtBaht(c.total)}</div>
+                <div style={{ textAlign: "center", fontSize: 11, fontFamily: "monospace", color: c.oldest>90?T.red:c.oldest>60?"#d97706":c.oldest>30?T.amber:T.green, fontWeight: 600 }}>{c.oldest} วัน</div>
+              </div>
+            ))}
+            {byCustomer.length > 30 && <div style={{ padding: 12, textAlign: "center", color: T.muted, fontSize: 11 }}>แสดง 30/{byCustomer.length} — ดูเต็มได้จาก CSV export</div>}
+          </CardBox>
 
-      {/* รายละเอียดบิล 90+ วัน */}
-      {buckets["90+"].items.length > 0 && (
-        <CardBox style={{ padding: 0, overflow: "hidden", borderColor: T.red }}>
-          <div style={{ padding: "10px 16px", background: "rgba(185,74,72,0.08)", borderBottom: `1px solid ${T.border}`, fontSize: 12, fontWeight: 700, color: T.red }}>🚨 บิลค้างเกิน 90 วัน ({buckets["90+"].items.length} ใบ)</div>
-          {buckets["90+"].items.slice(0, 15).map((inv, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "110px 1fr 100px 120px 80px", alignItems: "center", padding: "9px 16px", borderBottom: i < buckets["90+"].items.length-1 ? `1px solid ${T.border}` : "none", fontSize: 12 }}>
-              <div style={{ fontFamily: "monospace", color: T.accent, fontWeight: 700 }}>{inv.invoiceNo}</div>
-              <div>{inv.customerName}</div>
-              <div style={{ color: T.sub, fontSize: 11 }}>{(inv.date||"").split(" ")[0]}</div>
-              <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.red }}>{fmtBaht(inv.total)}</div>
-              <div style={{ textAlign: "right", fontFamily: "monospace", color: T.red, fontWeight: 700 }}>{inv.days} วัน</div>
+          {/* รายละเอียดบิล 90+ วัน */}
+          {buckets["90+"].items.length > 0 && (
+            <CardBox style={{ padding: 0, overflow: "hidden", borderColor: T.red }}>
+              <div style={{ padding: "10px 16px", background: "rgba(185,74,72,0.08)", borderBottom: `1px solid ${T.border}`, fontSize: 12, fontWeight: 700, color: T.red }}>🚨 บิลค้างเกิน 90 วัน ({buckets["90+"].items.length} ใบ)</div>
+              {buckets["90+"].items.slice(0, 15).map((inv, i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "110px 1fr 100px 120px 80px", alignItems: "center", padding: "9px 16px", borderBottom: i < buckets["90+"].items.length-1 ? `1px solid ${T.border}` : "none", fontSize: 12 }}>
+                  <div style={{ fontFamily: "monospace", color: T.accent, fontWeight: 700 }}>{inv.invoiceNo}</div>
+                  <div>{inv.customerName}</div>
+                  <div style={{ color: T.sub, fontSize: 11 }}>{(inv.date||"").split(" ")[0]}</div>
+                  <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.red }}>{fmtBaht(inv.total)}</div>
+                  <div style={{ textAlign: "right", fontFamily: "monospace", color: T.red, fontWeight: 700 }}>{inv.days} วัน</div>
+                </div>
+              ))}
+            </CardBox>
+          )}
+        </>
+      ) : (
+        // === Single Customer View ===
+        <CardBox style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "12px 16px", background: "rgba(59,91,139,0.08)", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>📋 บิลค้างชำระของ {customerFilter}</div>
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{customerInvoices.length} ใบ · รวม {fmtBaht(grandTotal)}</div>
             </div>
-          ))}
+            <button onClick={() => setCustomerFilter("ทั้งหมด")}
+              style={{ padding: "6px 12px", borderRadius: 7, border: `1px solid ${T.border}`, background: T.card, color: T.sub, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>
+              ← กลับไปดูทั้งหมด
+            </button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "120px 100px 1fr 100px 130px 100px", padding: "10px 16px", background: "#f8f9fb", fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: `1px solid ${T.border}` }}>
+            <div>เลขที่บิล</div><div>วันที่</div><div>ประเภท / สถานะ</div><div style={{textAlign:"center"}}>กลุ่ม</div><div style={{textAlign:"right"}}>ยอดบิล</div><div style={{textAlign:"right"}}>ค้าง (วัน)</div>
+          </div>
+          {customerInvoices.length === 0 ? (
+            <div style={{ padding: 30, textAlign: "center", color: T.muted, fontSize: 13 }}>ลูกค้านี้ไม่มีบิลค้างชำระ 🎉</div>
+          ) : customerInvoices.map((inv, i) => {
+            const bucket = inv.days <= 30 ? "0-30" : inv.days <= 60 ? "31-60" : inv.days <= 90 ? "61-90" : "90+";
+            const bucketColor = inv.days <= 30 ? T.green : inv.days <= 60 ? T.amber : inv.days <= 90 ? "#d97706" : T.red;
+            return (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "120px 100px 1fr 100px 130px 100px", alignItems: "center", padding: "10px 16px", borderBottom: i < customerInvoices.length-1 ? `1px solid ${T.border}` : "none", fontSize: 12 }}>
+                <div style={{ fontFamily: "monospace", color: T.accent, fontWeight: 700 }}>{inv.invoiceNo}</div>
+                <div style={{ fontSize: 11, color: T.sub }}>{(inv.date||"").split(" ")[0]}</div>
+                <div>
+                  <div style={{ color: T.text }}>{inv.docType === "tax" ? "ใบกำกับภาษี" : inv.docType === "quotation" ? "ใบวางบิล" : "ใบเสร็จ"}</div>
+                  <div style={{ fontSize: 10, color: T.muted }}>{inv.status || "ออกแล้ว"}</div>
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <span style={{ padding: "2px 10px", borderRadius: 12, fontSize: 10, fontWeight: 700, background: `${bucketColor}15`, color: bucketColor, border: `1px solid ${bucketColor}30` }}>{bucket}</span>
+                </div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.text }}>{fmtBaht(inv.total)}</div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: bucketColor }}>{inv.days} วัน</div>
+              </div>
+            );
+          })}
+          {/* Total row */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 100px", padding: "12px 16px", background: "rgba(185,74,72,0.06)", borderTop: `2px solid ${T.border}`, fontWeight: 800 }}>
+            <div style={{ textAlign: "right", fontSize: 13, color: T.text }}>รวมยอดค้างชำระทั้งหมด</div>
+            <div style={{ textAlign: "right", fontFamily: "monospace", fontSize: 15, color: T.red }}>{fmtBaht(grandTotal)}</div>
+            <div></div>
+          </div>
         </CardBox>
       )}
     </div>
