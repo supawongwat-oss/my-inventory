@@ -10,6 +10,7 @@ import ReportsTab from "./tabs/ReportsTab";
 import SuppliersTab from "./tabs/SuppliersTab";
 import StatementTab from "./tabs/StatementTab";
 import ImportCustomersModal from "./components/ImportCustomersModal";
+import BackupRestore, { shouldRemindBackup, getLastBackupDate } from "./components/BackupRestore";
 // ── MAIN APP ───────────────────────────────────────────────────
 export default function App() {
   // ── รอ Firebase Anonymous Auth พร้อมก่อน — เพื่อให้ Security Rules ผ่าน ──
@@ -239,6 +240,29 @@ export default function App() {
 
   // settings state
   const [settingsTab, setSettingsTab] = useState("profile");
+
+  // Backup reminder — แสดง banner ถ้าไม่ backup เกิน 7 วัน
+  const [backupReminder, setBackupReminder] = useState(false);
+  useEffect(() => {
+    if (!user) return;
+    // เช็คเฉพาะ admin (canClear ⇒ admin) — คนอื่นไม่ต้องสนใจ
+    if (!role?.canClear) return;
+    // ถ้า snooze ภายใน 24 ชม. ก็ไม่เตือน
+    const snoozeUntil = Number(localStorage.getItem("cpu_erp_backup_snooze")) || 0;
+    if (Date.now() < snoozeUntil) return;
+    setBackupReminder(shouldRemindBackup());
+  }, [user]);
+
+  const handleSnoozeBackupReminder = () => {
+    localStorage.setItem("cpu_erp_backup_snooze", String(Date.now() + 24 * 60 * 60 * 1000));
+    setBackupReminder(false);
+  };
+
+  const handleOpenBackup = () => {
+    setBackupReminder(false);
+    setSettingsTab("backup");
+    setShowSettings(true);
+  };
   const [profileForm, setProfileForm] = useState({ name:"",username:"",oldPass:"",newPass:"",confirmPass:"" });
   const [profileMsg, setProfileMsg] = useState({ type:"",text:"" });
 
@@ -792,6 +816,22 @@ export default function App() {
         </div>
 
         <div className="pad-main" style={{padding:24,flex:1}}>
+
+          {/* === Backup Reminder Banner === */}
+          {backupReminder && (
+            <div style={{marginBottom:16,padding:"12px 16px",background:"rgba(184,134,0,0.1)",border:"1px solid rgba(184,134,0,0.35)",borderRadius:10,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+              <div style={{fontSize:22}}>⚠️</div>
+              <div style={{flex:1,minWidth:200}}>
+                <div style={{fontSize:13,fontWeight:600,color:"#b88600",marginBottom:2}}>ยังไม่ได้ Backup เกิน 7 วัน</div>
+                <div style={{fontSize:11,color:T.sub}}>
+                  แนะนำให้ดาวน์โหลด backup เพื่อป้องกันข้อมูลหาย
+                  {getLastBackupDate() === 0 ? " — เครื่องนี้ยังไม่เคย backup" : ""}
+                </div>
+              </div>
+              <button onClick={handleOpenBackup} style={{padding:"7px 14px",borderRadius:8,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#b88600,#8c6600)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>💾 Backup ตอนนี้</button>
+              <button onClick={handleSnoozeBackupReminder} title="ปิดเตือน 24 ชม." style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${T.border}`,cursor:"pointer",background:"transparent",color:T.sub,fontSize:12,fontFamily:"'Sarabun',sans-serif"}}>เตือนอีกพรุ่งนี้</button>
+            </div>
+          )}
 
           {/* DASHBOARD */}
           {activeTab==="dashboard"&&(
@@ -1974,7 +2014,7 @@ export default function App() {
           <MHead title="⚙️ ตั้งค่าระบบ" onClose={()=>setShowSettings(false)}/>
           {/* Settings tabs */}
           <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:`1px solid ${T.border}`,paddingBottom:12}}>
-            {[{id:"profile",label:"👤 โปรไฟล์"},{id:"system",label:"🏢 ระบบ"},{id:"about",label:"ℹ️ เกี่ยวกับ"}].map(t=>(
+            {[{id:"profile",label:"👤 โปรไฟล์"},{id:"system",label:"🏢 ระบบ"},{id:"backup",label:"💾 Backup"},{id:"about",label:"ℹ️ เกี่ยวกับ"}].map(t=>(
               <button key={t.id} onClick={()=>setSettingsTab(t.id)} style={{padding:"7px 16px",borderRadius:8,border:settingsTab===t.id?`1px solid ${T.navActiveBorder}`:`1px solid transparent`,background:settingsTab===t.id?"rgba(59,91,139,0.15)":"transparent",color:settingsTab===t.id?"#3b5b8b":T.sub,cursor:"pointer",fontSize:13,fontFamily:"'Sarabun',sans-serif",fontWeight:settingsTab===t.id?600:400}}>{t.label}</button>
             ))}
           </div>
@@ -2036,6 +2076,14 @@ export default function App() {
                 </div>
               )}
             </div>
+          )}
+
+          {settingsTab==="backup"&&(
+            <BackupRestore
+              projectId={(typeof process !== "undefined" && process.env && process.env.REACT_APP_FB_PROJECT_ID) || "cpu-erp"}
+              user={user}
+              role={role}
+            />
           )}
 
           {settingsTab==="about"&&(

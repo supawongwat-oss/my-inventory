@@ -1,0 +1,111 @@
+# Auto Backup Firestore — รันทุกวัน 02:00 UTC (09:00 ไทย)
+# ─────────────────────────────────────────────────────────
+# ก่อนใช้งาน ต้องตั้งค่าใน GitHub repo:
+# 1. Settings → Secrets and variables → Actions → New repository secret
+# 2. เพิ่ม 2 secrets:
+#    - FIREBASE_SA_CPU_ERP     = service account JSON ของ cpu-erp
+#    - FIREBASE_SA_BOONG       = service account JSON ของ boong-private
+#
+# วิธีหา service account JSON:
+# Firebase Console → ⚙️ Project settings → Service accounts
+# → Generate new private key → ดาวน์โหลด .json
+# → เปิดไฟล์ copy ทั้งหมด paste เป็น secret value
+
+name: Firestore Daily Backup
+
+on:
+  schedule:
+    - cron: '0 2 * * *'   # ทุกวัน 02:00 UTC (09:00 Bangkok)
+  workflow_dispatch:       # อนุญาตให้ trigger manual ได้
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - name: cpu-erp
+            secret: FIREBASE_SA_CPU_ERP
+          - name: boong-private
+            secret: FIREBASE_SA_BOONG
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install firebase-admin
+        run: npm install --no-save firebase-admin
+
+      - name: Write service account
+        run: echo '${{ secrets[matrix.project.secret] }}' > sa.json
+
+      - name: Dump Firestore
+        run: |
+          cat > backup.mjs << 'EOF'
+          import { initializeApp, cert } from "firebase-admin/app";
+          import { getFirestore } from "firebase-admin/firestore";
+          import { writeFileSync, mkdirSync } from "node:fs";
+
+          const COLLECTIONS = [
+            "users","products","clothing","transactions",
+            "customers","suppliers","orders","invoices",
+            "statements","settings"
+          ];
+
+          initializeApp({ credential: cert(JSON.parse(process.env.SA_JSON)) });
+          const db = getFirestore();
+
+          const out = {
+            metadata: {
+              version: 1,
+              projectId: process.env.PROJECT,
+              exportedAt: new Date().toISOString(),
+              exportedBy: "github-actions",
+            },
+            collections: {},
+          };
+
+          let total = 0;
+          for (const col of COLLECTIONS) {
+            const snap = await db.collection(col).get();
+            const docs = [];
+            snap.forEach(d => docs.push({ _id: d.id, ...d.data() }));
+            out.collections[col] = docs;
+            total += docs.length;
+            console.log(`  ${col}: ${docs.length}`);
+          }
+
+          mkdirSync(`backups/${process.env.PROJECT}`, { recursive: true });
+          const today = new Date().toISOString().slice(0, 10);
+          const path = `backups/${process.env.PROJECT}/${today}.json`;
+          writeFileSync(path, JSON.stringify(out, null, 2));
+          console.log(`Done: ${total} records → ${path}`);
+          EOF
+          SA_JSON="$(cat sa.json)" PROJECT="${{ matrix.project.name }}" node backup.mjs
+
+      - name: Remove old backups (keep last 30 days)
+        run: |
+          cd backups/${{ matrix.project.name }} 2>/dev/null || exit 0
+          ls -t *.json 2>/dev/null | tail -n +31 | xargs -r rm -f
+          cd ../..
+
+      - name: Clean up sensitive files
+        if: always()
+        run: rm -f sa.json backup.mjs
+
+      - name: Commit backup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backups/
+          git diff --staged --quiet || git commit -m "backup: ${{ matrix.project.name }} $(date -u +%Y-%m-%d)"
+          git pull --rebase origin master
+          git push origin master
