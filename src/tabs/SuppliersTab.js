@@ -25,9 +25,11 @@ export default function SuppliersTab({ suppliers, role }) {
     setShowAdd(false);
   };
 
-  const filtered = suppliers.filter(s =>
-    !search || (s.name || "").includes(search) || (s.phone || "").includes(search) || (s.email || "").includes(search)
-  );
+  const filtered = suppliers.filter(s => {
+    if (!search) return true;
+    const q = search.toLowerCase().trim();
+    return (s.name || "").toLowerCase().includes(q) || (s.phone || "").toLowerCase().includes(q) || (s.email || "").toLowerCase().includes(q);
+  });
 
   return (
     <div style={{ animation: "fadeUp 0.4s ease", maxWidth: 800 }}>

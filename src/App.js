@@ -11,7 +11,33 @@ import SuppliersTab from "./tabs/SuppliersTab";
 // ── MAIN APP ───────────────────────────────────────────────────
 export default function App() {
   const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, loading, setLoading, suppliers } = useFirestore();
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem("cpu_erp_user");
+      const expiresAt = localStorage.getItem("cpu_erp_user_expires");
+      if (saved && expiresAt && Date.now() < Number(expiresAt)) {
+        return JSON.parse(saved);
+      }
+      // หมดอายุแล้ว — ลบทิ้ง
+      localStorage.removeItem("cpu_erp_user");
+      localStorage.removeItem("cpu_erp_user_expires");
+    } catch(e) {}
+    return null;
+  });
+
+  // sync user → localStorage (ค้าง login 30 วัน)
+  useEffect(() => {
+    if (user) {
+      try {
+        localStorage.setItem("cpu_erp_user", JSON.stringify(user));
+        // ต่ออายุทุกครั้งที่มี activity (renew sliding window)
+        localStorage.setItem("cpu_erp_user_expires", String(Date.now() + 30 * 24 * 60 * 60 * 1000));
+      } catch(e) {}
+    } else {
+      localStorage.removeItem("cpu_erp_user");
+      localStorage.removeItem("cpu_erp_user_expires");
+    }
+  }, [user]);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedCat, setSelectedCat] = useState("ทั้งหมด");
   const [search, setSearch] = useState("");
@@ -130,10 +156,12 @@ export default function App() {
   };
 
 
-  const filtered = products.filter(p =>
-    (selectedCat === "ทั้งหมด" || p.category === selectedCat) &&
-    (p.name.includes(search) || p.code.includes(search) || (p.barcode || "").includes(search))
-  );
+  const filtered = products.filter(p => {
+    if (selectedCat !== "ทั้งหมด" && p.category !== selectedCat) return false;
+    if (!search) return true;
+    const q = search.toLowerCase().trim();
+    return (p.name || "").toLowerCase().includes(q) || (p.code || "").toLowerCase().includes(q) || (p.barcode || "").toLowerCase().includes(q);
+  });
   const lowStock = products.filter(p => Number(p.qty) < Number(p.minQty));
   const totalQty = products.reduce((s,p) => s + Number(p.qty), 0);
   const statusColor = p => Number(p.qty) < Number(p.minQty) ? T.red : Number(p.qty) < Number(p.minQty) * 1.5 ? T.amber : T.green;
@@ -1215,7 +1243,11 @@ export default function App() {
                 </div>
               ):(
                 <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden"}}>
-                  {customers.filter(c=>!customerSearch||(c.name||"").includes(customerSearch)||(c.phone||"").includes(customerSearch)||(c.address||"").includes(customerSearch)).map((c,i,arr)=>(
+                  {customers.filter(c=>{
+                    if(!customerSearch) return true;
+                    const q=customerSearch.toLowerCase().trim();
+                    return (c.name||"").toLowerCase().includes(q)||(c.phone||"").toLowerCase().includes(q)||(c.address||"").toLowerCase().includes(q)||(c.email||"").toLowerCase().includes(q);
+                  }).map((c,i,arr)=>(
                     <div key={c.id} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 20px",borderBottom:i<arr.length-1?`1px solid ${T.border}`:"none"}}
                       onMouseEnter={e=>e.currentTarget.style.background="rgba(14,165,233,0.04)"}
                       onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -1637,7 +1669,7 @@ export default function App() {
                   style={{width:"100%",background:T.input,border:`1px solid ${orderForm.customerId?"#34d399":T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
                 {customerSearch&&!orderForm.customerId&&(
                   <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#061628",border:`1px solid ${T.border}`,borderRadius:10,zIndex:50,maxHeight:180,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.4)"}}>
-                    {customers.filter(c=>(c.name||"").includes(customerSearch)||(c.phone||"").includes(customerSearch)).slice(0,5).map(c=>(
+                    {customers.filter(c=>{const q=customerSearch.toLowerCase().trim();return (c.name||"").toLowerCase().includes(q)||(c.phone||"").toLowerCase().includes(q);}).slice(0,5).map(c=>(
                       <div key={c.id} onClick={()=>handleSelectCustomer(c)} style={{padding:"10px 14px",cursor:"pointer",borderBottom:`1px solid ${T.border}`,transition:"background 0.15s"}}
                         onMouseEnter={e=>e.currentTarget.style.background="rgba(14,165,233,0.1)"}
                         onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -1645,7 +1677,7 @@ export default function App() {
                         <div style={{fontSize:11,color:T.muted}}>📞 {c.phone} · 📍 {c.address}</div>
                       </div>
                     ))}
-                    {customers.filter(c=>(c.name||"").includes(customerSearch)||(c.phone||"").includes(customerSearch)).length===0&&(
+                    {customers.filter(c=>{const q=customerSearch.toLowerCase().trim();return (c.name||"").toLowerCase().includes(q)||(c.phone||"").toLowerCase().includes(q);}).length===0&&(
                       <div style={{padding:"10px 14px",fontSize:12,color:T.muted}}>ไม่พบลูกค้า — จะสร้างใหม่อัตโนมัติ</div>
                     )}
                   </div>
