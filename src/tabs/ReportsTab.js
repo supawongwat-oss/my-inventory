@@ -468,12 +468,15 @@ function AgingTab({ invoices }) {
 // ────────── 3. SALES BY CUSTOMER ──────────
 function SalesByCustomerTab({ invoices, customers }) {
   const data = useMemo(() => {
-    const m = new Map();
+    const m = new Map(); // normKey -> {name, phone, count, total, paid, pending, lastDate, variants}
     invoices.forEach(inv => {
       if ((inv.status||"") === "ยกเลิก") return;
-      const key = inv.customerName || "—";
-      if (!m.has(key)) m.set(key, { name: key, phone: inv.customerPhone, count: 0, total: 0, paid: 0, pending: 0, lastDate: null });
+      const rawName = inv.customerName || "—";
+      const key = normalizeName(rawName);
+      if (!m.has(key)) m.set(key, { name: rawName, phone: inv.customerPhone, count: 0, total: 0, paid: 0, pending: 0, lastDate: null, variants: new Set([rawName]) });
       const c = m.get(key);
+      c.variants.add(rawName);
+      if (!c.phone && inv.customerPhone) c.phone = inv.customerPhone;
       c.count++;
       c.total += Number(inv.total) || 0;
       if (inv.status === "ชำระแล้ว") c.paid += Number(inv.total) || 0;
@@ -513,7 +516,7 @@ function SalesByCustomerTab({ invoices, customers }) {
               <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${pct}%`, background: "rgba(59,91,139,0.06)", pointerEvents: "none" }}/>
               <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, position:"relative" }}>{i+1}</div>
               <div style={{position:"relative"}}>
-                <div style={{ fontWeight: 600, color: T.text }}>{c.name}</div>
+                <div style={{ fontWeight: 600, color: T.text }}>{c.name}{c.variants.size > 1 ? <span style={{ marginLeft: 6, fontSize: 9, color: T.accent, fontWeight: 500 }}>+{c.variants.size - 1} variant</span> : null}</div>
                 {c.phone && <div style={{ fontSize: 10, color: T.muted }}>{c.phone}</div>}
               </div>
               <div style={{ textAlign: "right", fontFamily: "monospace", color: T.accent, fontWeight: 600, position:"relative" }}>{c.count}</div>
@@ -798,10 +801,46 @@ function ProfitTab({ products, clothingItems }) {
 
 // ────────── 7. VAT REPORT ──────────
 function VATTab({ invoices }) {
-  // เฉพาะบิลที่มี VAT
-  const vatInvoices = useMemo(() => invoices.filter(inv => Number(inv.vat||0) > 0 && (inv.status||"") !== "ยกเลิก"), [invoices]);
+  const [customerFilter, setCustomerFilter] = useState("ทั้งหมด"); // normalized key
+  const [customerSearch, setCustomerSearch] = useState("");
 
-  // รายเดือน
+  // เฉพาะบิลที่มี VAT
+  const allVatInvoices = useMemo(() => invoices.filter(inv => Number(inv.vat||0) > 0 && (inv.status||"") !== "ยกเลิก"), [invoices]);
+
+  // กรองตามลูกค้าที่เลือก
+  const vatInvoices = useMemo(() => {
+    if (customerFilter === "ทั้งหมด") return allVatInvoices;
+    return allVatInvoices.filter(inv => normalizeName(inv.customerName) === customerFilter);
+  }, [allVatInvoices, customerFilter]);
+
+  // ลูกค้าทั้งหมดที่มีบิล VAT — รวมชื่อซ้ำ
+  const customerOptions = useMemo(() => {
+    const map = new Map();
+    allVatInvoices.forEach(inv => {
+      const rawName = inv.customerName || "—";
+      const key = normalizeName(rawName);
+      if (!map.has(key)) map.set(key, { key, displayName: rawName, variants: new Set([rawName]), count: 0, vat: 0, total: 0 });
+      const c = map.get(key);
+      c.variants.add(rawName);
+      c.count++;
+      c.vat += Number(inv.vat) || 0;
+      c.total += Number(inv.total) || 0;
+    });
+    return Array.from(map.values()).sort((a,b) => b.vat - a.vat);
+  }, [allVatInvoices]);
+
+  const filteredCustomerOptions = useMemo(() => {
+    const q = customerSearch.toLowerCase().trim();
+    if (!q) return customerOptions;
+    return customerOptions.filter(c => c.displayName.toLowerCase().includes(q));
+  }, [customerOptions, customerSearch]);
+
+  const selectedCustomerDisplay = useMemo(() => {
+    if (customerFilter === "ทั้งหมด") return null;
+    return customerOptions.find(c => c.key === customerFilter) || null;
+  }, [customerFilter, customerOptions]);
+
+  // รายเดือน (ของบิลที่ผ่าน filter)
   const byMonth = useMemo(() => {
     const m = new Map();
     vatInvoices.forEach(inv => {
@@ -821,19 +860,55 @@ function VATTab({ invoices }) {
   const totalVat = byMonth.reduce((s,r) => s + r.vat, 0);
   const totalSubtotal = byMonth.reduce((s,r) => s + r.subtotal, 0);
 
+  const exportVat = () => {
+    if (customerFilter === "ทั้งหมด") {
+      exportCSV(`vat-report-${new Date().toISOString().slice(0,10)}.csv`, byMonth.map(r => ({
+        "เดือน": r.label, "จำนวนใบ": r.count, "ยอดก่อนภาษี": r.subtotal.toFixed(2), "VAT": r.vat.toFixed(2), "ยอดรวม": r.total.toFixed(2),
+      })));
+    } else {
+      exportCSV(`vat-${customerFilter}-${new Date().toISOString().slice(0,10)}.csv`, vatInvoices.map(inv => ({
+        "เลขที่บิล": inv.invoiceNo, "วันที่": (inv.date||"").split(" ")[0], "ลูกค้า": inv.customerName, "ยอดก่อนภาษี": Number(inv.subtotal||0).toFixed(2), "VAT": Number(inv.vat||0).toFixed(2), "ยอดรวม": Number(inv.total||0).toFixed(2), "สถานะ": inv.status || "ออกแล้ว",
+      })));
+    }
+  };
+
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: T.text }}>🧾 รายงานภาษีมูลค่าเพิ่ม (VAT)</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: T.text }}>
+            🧾 รายงานภาษีมูลค่าเพิ่ม (VAT)
+            {selectedCustomerDisplay && <span style={{ marginLeft: 8, padding: "2px 10px", borderRadius: 12, background: "rgba(184,134,0,0.12)", color: T.amber, fontSize: 12, border: `1px solid rgba(184,134,0,0.3)` }}>👤 {selectedCustomerDisplay.displayName}{selectedCustomerDisplay.variants.size > 1 ? ` (${selectedCustomerDisplay.variants.size} variants)` : ""}</span>}
+          </div>
           <div style={{ fontSize: 11, color: T.muted }}>{vatInvoices.length} ใบ · ยอดก่อนภาษีรวม {fmtBaht(totalSubtotal)} · VAT รวม {fmtBaht(totalVat)}</div>
         </div>
-        <button onClick={() => exportCSV(`vat-report-${new Date().toISOString().slice(0,10)}.csv`, byMonth.map(r => ({
-          "เดือน": r.label, "จำนวนใบ": r.count, "ยอดก่อนภาษี": r.subtotal.toFixed(2), "VAT": r.vat.toFixed(2), "ยอดรวม": r.total.toFixed(2),
-        })))} style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(58,122,82,0.1)", color: T.green, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>📊 Export CSV</button>
+        <button onClick={exportVat} style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(58,122,82,0.1)", color: T.green, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>📊 Export CSV</button>
       </div>
 
-      {vatInvoices.length === 0 ? (
+      {/* Customer Filter (เหมือน Aging) */}
+      {allVatInvoices.length > 0 && (
+        <div style={{ marginBottom: 16, padding: 12, background: T.card, border: `1px solid ${T.border}`, borderRadius: 10 }}>
+          <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>🔍 กรองตามลูกค้า · ชื่อเหมือนกันถูกรวมแล้ว</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <button onClick={() => { setCustomerFilter("ทั้งหมด"); setCustomerSearch(""); }}
+              style={{ padding: "6px 14px", borderRadius: 8, border: customerFilter === "ทั้งหมด" ? `1.5px solid ${T.accent}` : `1px solid ${T.border}`, background: customerFilter === "ทั้งหมด" ? "rgba(59,91,139,0.12)" : "transparent", color: customerFilter === "ทั้งหมด" ? T.accent : T.sub, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: customerFilter === "ทั้งหมด" ? 700 : 500 }}>
+              👥 ทั้งหมด <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.7 }}>({customerOptions.length})</span>
+            </button>
+            <input value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
+              placeholder="🔍 พิมพ์ชื่อลูกค้า..."
+              style={{ flex: 1, minWidth: 200, maxWidth: 280, background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 7, padding: "6px 12px", fontFamily: "'Sarabun',sans-serif", fontSize: 12, outline: "none" }}/>
+            <select value={customerFilter} onChange={e => setCustomerFilter(e.target.value)}
+              style={{ background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 7, padding: "7px 10px", fontSize: 12, outline: "none", cursor: "pointer", minWidth: 220 }}>
+              <option value="ทั้งหมด">— เลือกลูกค้า —</option>
+              {filteredCustomerOptions.map((c, i) => (
+                <option key={i} value={c.key}>{c.displayName} ({c.count} ใบ · VAT ฿{Math.round(c.vat).toLocaleString()}){c.variants.size > 1 ? ` · ${c.variants.size} variants` : ""}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {allVatInvoices.length === 0 ? (
         <CardBox>
           <div style={{ padding: 30, textAlign: "center", color: T.muted, fontSize: 13 }}>
             ยังไม่มีบิลที่มี VAT
@@ -858,21 +933,84 @@ function VATTab({ invoices }) {
             </div>
           </div>
 
-          {/* รายเดือน */}
-          <CardBox style={{ padding: 0, overflow: "hidden" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 70px 140px 130px 140px", padding: "10px 16px", background: "#f8f9fb", fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: `1px solid ${T.border}` }}>
-              <div>เดือน</div><div style={{textAlign:"right"}}>ใบ</div><div style={{textAlign:"right"}}>ยอดก่อนภาษี</div><div style={{textAlign:"right"}}>VAT</div><div style={{textAlign:"right"}}>รวม</div>
-            </div>
-            {byMonth.map((r, i) => (
-              <div key={i} style={{ display: "grid", gridTemplateColumns: "1.5fr 70px 140px 130px 140px", alignItems: "center", padding: "10px 16px", borderBottom: i < byMonth.length-1 ? `1px solid ${T.border}` : "none", fontSize: 12 }}>
-                <div style={{ fontWeight: 600, color: T.text }}>{r.label}</div>
-                <div style={{ textAlign: "right", fontFamily: "monospace", color: T.sub }}>{r.count}</div>
-                <div style={{ textAlign: "right", fontFamily: "monospace", color: T.text }}>{fmtBaht(r.subtotal)}</div>
-                <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.amber }}>{fmtBaht(r.vat)}</div>
-                <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.green }}>{fmtBaht(r.total)}</div>
+          {customerFilter === "ทั้งหมด" ? (
+            <>
+              {/* ตารางลูกค้า */}
+              <CardBox style={{ padding: 0, overflow: "hidden", marginBottom: 16 }}>
+                <div style={{ padding: "10px 16px", background: "rgba(241,243,246,0.6)", borderBottom: `1px solid ${T.border}`, fontSize: 12, fontWeight: 700, color: T.text }}>👥 VAT ตามลูกค้า ({customerOptions.length} ราย) <span style={{ fontSize: 10, color: T.muted, fontWeight: 400, marginLeft: 6 }}>คลิกชื่อเพื่อดูรายละเอียด</span></div>
+                <div style={{ display: "grid", gridTemplateColumns: "1.5fr 60px 130px 130px 130px", padding: "8px 16px", background: "#f8f9fb", fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: `1px solid ${T.border}` }}>
+                  <div>ลูกค้า</div><div style={{textAlign:"right"}}>ใบ</div><div style={{textAlign:"right"}}>ยอดก่อนภาษี</div><div style={{textAlign:"right"}}>VAT</div><div style={{textAlign:"right"}}>รวม</div>
+                </div>
+                {customerOptions.slice(0, 30).map((c, i) => {
+                  const subtotal = c.total - c.vat;
+                  return (
+                    <div key={i} onClick={() => setCustomerFilter(c.key)}
+                      style={{ display: "grid", gridTemplateColumns: "1.5fr 60px 130px 130px 130px", alignItems: "center", padding: "9px 16px", borderBottom: i < customerOptions.length-1 ? `1px solid ${T.border}` : "none", fontSize: 12, cursor: "pointer", transition: "background 0.15s" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "rgba(59,91,139,0.06)"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <div style={{ fontWeight: 600, color: T.text }}>{c.displayName}{c.variants.size > 1 ? <span style={{ marginLeft: 6, fontSize: 9, color: T.accent, fontWeight: 500 }}>+{c.variants.size - 1} variant</span> : null}</div>
+                      <div style={{ textAlign: "right", fontFamily: "monospace", color: T.accent, fontWeight: 600 }}>{c.count}</div>
+                      <div style={{ textAlign: "right", fontFamily: "monospace", color: T.text }}>{fmtBaht(subtotal)}</div>
+                      <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.amber }}>{fmtBaht(c.vat)}</div>
+                      <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.green }}>{fmtBaht(c.total)}</div>
+                    </div>
+                  );
+                })}
+                {customerOptions.length > 30 && <div style={{ padding: 12, textAlign: "center", color: T.muted, fontSize: 11 }}>แสดง 30/{customerOptions.length} — ดูเต็มได้จาก CSV</div>}
+              </CardBox>
+
+              {/* รายเดือน */}
+              <CardBox style={{ padding: 0, overflow: "hidden" }}>
+                <div style={{ padding: "10px 16px", background: "rgba(241,243,246,0.6)", borderBottom: `1px solid ${T.border}`, fontSize: 12, fontWeight: 700, color: T.text }}>📅 VAT รายเดือน</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1.5fr 70px 140px 130px 140px", padding: "8px 16px", background: "#f8f9fb", fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: `1px solid ${T.border}` }}>
+                  <div>เดือน</div><div style={{textAlign:"right"}}>ใบ</div><div style={{textAlign:"right"}}>ยอดก่อนภาษี</div><div style={{textAlign:"right"}}>VAT</div><div style={{textAlign:"right"}}>รวม</div>
+                </div>
+                {byMonth.map((r, i) => (
+                  <div key={i} style={{ display: "grid", gridTemplateColumns: "1.5fr 70px 140px 130px 140px", alignItems: "center", padding: "10px 16px", borderBottom: i < byMonth.length-1 ? `1px solid ${T.border}` : "none", fontSize: 12 }}>
+                    <div style={{ fontWeight: 600, color: T.text }}>{r.label}</div>
+                    <div style={{ textAlign: "right", fontFamily: "monospace", color: T.sub }}>{r.count}</div>
+                    <div style={{ textAlign: "right", fontFamily: "monospace", color: T.text }}>{fmtBaht(r.subtotal)}</div>
+                    <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.amber }}>{fmtBaht(r.vat)}</div>
+                    <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.green }}>{fmtBaht(r.total)}</div>
+                  </div>
+                ))}
+              </CardBox>
+            </>
+          ) : (
+            // === Single Customer VAT view ===
+            <CardBox style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ padding: "12px 16px", background: "rgba(184,134,0,0.08)", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>🧾 รายการบิล VAT ของ {selectedCustomerDisplay?.displayName || customerFilter}</div>
+                  <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{vatInvoices.length} ใบ · VAT รวม {fmtBaht(totalVat)}{selectedCustomerDisplay && selectedCustomerDisplay.variants.size > 1 ? ` · รวมชื่อ ${selectedCustomerDisplay.variants.size} variants: ${Array.from(selectedCustomerDisplay.variants).join(", ")}` : ""}</div>
+                </div>
+                <button onClick={() => setCustomerFilter("ทั้งหมด")}
+                  style={{ padding: "6px 12px", borderRadius: 7, border: `1px solid ${T.border}`, background: T.card, color: T.sub, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>
+                  ← กลับไปดูทั้งหมด
+                </button>
               </div>
-            ))}
-          </CardBox>
+              <div style={{ display: "grid", gridTemplateColumns: "120px 100px 1fr 130px 110px 130px", padding: "10px 16px", background: "#f8f9fb", fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: `1px solid ${T.border}` }}>
+                <div>เลขที่บิล</div><div>วันที่</div><div>ประเภท</div><div style={{textAlign:"right"}}>ยอดก่อนภาษี</div><div style={{textAlign:"right"}}>VAT</div><div style={{textAlign:"right"}}>รวม</div>
+              </div>
+              {vatInvoices.map((inv, i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "120px 100px 1fr 130px 110px 130px", alignItems: "center", padding: "10px 16px", borderBottom: i < vatInvoices.length-1 ? `1px solid ${T.border}` : "none", fontSize: 12 }}>
+                  <div style={{ fontFamily: "monospace", color: T.accent, fontWeight: 700 }}>{inv.invoiceNo}</div>
+                  <div style={{ fontSize: 11, color: T.sub }}>{(inv.date||"").split(" ")[0]}</div>
+                  <div style={{ color: T.text }}>{inv.docType === "tax" ? "ใบกำกับภาษี" : inv.docType === "quotation" ? "ใบวางบิล" : "ใบเสร็จ"}<span style={{ marginLeft: 8, fontSize: 10, color: T.muted }}>{inv.status || "ออกแล้ว"}</span></div>
+                  <div style={{ textAlign: "right", fontFamily: "monospace", color: T.text }}>{fmtBaht(inv.subtotal)}</div>
+                  <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.amber }}>{fmtBaht(inv.vat)}</div>
+                  <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.green }}>{fmtBaht(inv.total)}</div>
+                </div>
+              ))}
+              {/* Total */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 110px 130px", padding: "12px 16px", background: "rgba(58,122,82,0.06)", borderTop: `2px solid ${T.border}`, fontWeight: 800 }}>
+                <div style={{ textAlign: "right", fontSize: 13, color: T.text }}>รวมทั้งสิ้น</div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", fontSize: 14, color: T.text }}>{fmtBaht(totalSubtotal)}</div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", fontSize: 14, color: T.amber }}>{fmtBaht(totalVat)}</div>
+                <div style={{ textAlign: "right", fontFamily: "monospace", fontSize: 15, color: T.green }}>{fmtBaht(totalSubtotal + totalVat)}</div>
+              </div>
+            </CardBox>
+          )}
         </>
       )}
     </div>
