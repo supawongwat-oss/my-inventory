@@ -17,7 +17,6 @@ export function useFirestore() {
   const [companyInfo, setCompanyInfo] = useState({ name:"CPU", address:"", phone:"", email:"", taxId:"", logo:"⚙️" });
   const [roleLabels, setRoleLabels] = useState({}); // {admin:"...", manager:"...", staff:"..."}
   const [auditLogs, setAuditLogs] = useState([]);
-  const [telegramConfig, setTelegramConfig] = useState({ enabled: false, botToken: "", chatId: "", events: {} });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -105,14 +104,6 @@ export function useFirestore() {
     return () => unsub();
   }, []);
 
-  // Telegram notification config
-  useEffect(() => {
-    const unsub = onSnapshot(doc(db, "settings", "telegram"), snap => {
-      if (snap.exists()) setTelegramConfig(snap.data());
-    }, ()=>{});
-    return () => unsub();
-  }, []);
-
   // Audit logs — เอามาแค่ 500 รายการล่าสุด (กัน load หนัก)
   useEffect(() => {
     const q = query(collection(db, "auditLog"), orderBy("timestamp", "desc"), limit(500));
@@ -134,7 +125,6 @@ export function useFirestore() {
     companyInfo, setCompanyInfo,
     roleLabels,
     auditLogs,
-    telegramConfig,
     loading, setLoading,
   };
 }
