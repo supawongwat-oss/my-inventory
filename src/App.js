@@ -387,10 +387,37 @@ export default function App() {
     setShowClearConfirm(false);
   };
 
-  const handleBarcodeSearch = () => {
+  const handleBarcodeSearch = (codeArg) => {
     setBarcodeErr(""); setBarcodeResult(null);
-    const found = products.find(p => p.barcode === barcodeSearch || p.code === barcodeSearch);
-    if (found) setBarcodeResult(found); else setBarcodeErr("ไม่พบสินค้าในระบบ");
+    const code = String(codeArg ?? barcodeSearch ?? "").trim();
+    if (!code) return;
+    // 1) ค้นใน products — match barcode หรือ code (case-insensitive)
+    const found = products.find(p =>
+      (p.barcode || "").trim().toLowerCase() === code.toLowerCase() ||
+      (p.code || "").trim().toLowerCase() === code.toLowerCase()
+    );
+    if (found) { setBarcodeResult(found); return; }
+    // 2) ค้นใน clothing (เผื่อ barcode อยู่ที่ระดับสี)
+    for (const item of clothingItems) {
+      for (let ci = 0; ci < (item.colors||[]).length; ci++) {
+        const col = item.colors[ci];
+        if ((col.barcode || "").trim().toLowerCase() === code.toLowerCase()) {
+          setBarcodeResult({
+            _isClothing: true,
+            id: item.id, colorIdx: ci,
+            name: `${item.model} / ${col.colorName}`,
+            code: item.id?.slice(0,6),
+            category: "เสื้อผ้า",
+            barcode: col.barcode,
+            qty: Object.values(col.stock||{}).reduce((s,v)=>s+(Number(v)||0),0),
+            minQty: 0, unit: "ชิ้น",
+            image: item.image || "",
+          });
+          return;
+        }
+      }
+    }
+    setBarcodeErr(`ไม่พบสินค้าในระบบ (รหัส: ${code})`);
   };
 
   const handleAddCat = async () => {
@@ -1263,7 +1290,24 @@ export default function App() {
                   <BtnPrimary onClick={handleBarcodeSearch}>ค้นหา</BtnPrimary>
                 </div>
                 <div style={{fontSize:11,color:T.muted,marginTop:8}}>💡 กด Enter หลังสแกนบาร์โค้ดจากเครื่องสแกน · หรือกด <b>📸 สแกนกล้อง</b> เพื่อใช้กล้องมือถือ/Webcam</div>
-                {barcodeErr&&<div style={{marginTop:14,padding:"10px 14px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,color:T.red,fontSize:13}}>❌ {barcodeErr}</div>}
+                {barcodeErr&&(
+                  <div style={{marginTop:14,padding:"12px 14px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,fontSize:13}}>
+                    <div style={{color:T.red,marginBottom:role.canAdd?10:0}}>❌ {barcodeErr}</div>
+                    {role.canAdd&&(
+                      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                        <button onClick={()=>{
+                          setNewProduct({code:"",name:"",category:"",qty:"",unit:"",minQty:"",location:"",barcode:barcodeSearch.trim(),image:"",costPrice:"",salePrice:""});
+                          setShowAddModal(true);
+                        }} style={{padding:"6px 14px",borderRadius:7,border:"1px solid rgba(58,122,82,0.3)",background:"rgba(58,122,82,0.1)",color:T.green,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:600}}>
+                          ➕ เพิ่มสินค้าใหม่ด้วยบาร์โค้ดนี้
+                        </button>
+                        <button onClick={()=>{setBarcodeSearch("");setBarcodeErr("");}} style={{padding:"6px 12px",borderRadius:7,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif"}}>
+                          ล้างค่า
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {barcodeResult&&(
                   <div style={{marginTop:14,padding:16,background:"#eff6ff",border:`1px solid ${T.navActiveBorder}`,borderRadius:10}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
@@ -3351,14 +3395,11 @@ export default function App() {
       {showScanner && (
         <BarcodeScanner
           onScan={(code) => {
-            setBarcodeSearch(code);
+            const c = String(code).trim();
+            setBarcodeSearch(c);
             setShowScanner(false);
-            // auto-search หลังสแกน
-            setTimeout(() => {
-              const found = products.find(p => p.barcode === code || p.code === code);
-              if (found) { setBarcodeResult(found); setBarcodeErr(""); }
-              else { setBarcodeErr("ไม่พบสินค้าในระบบ (รหัส: " + code + ")"); setBarcodeResult(null); }
-            }, 100);
+            // auto-search ใช้ helper เดียวกัน
+            setTimeout(() => handleBarcodeSearch(c), 100);
           }}
           onClose={() => setShowScanner(false)}
         />
