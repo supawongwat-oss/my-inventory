@@ -9,8 +9,10 @@ import { useFirestore } from "./hooks/useFirestore";
 import ReportsTab from "./tabs/ReportsTab";
 import SuppliersTab from "./tabs/SuppliersTab";
 import StatementTab from "./tabs/StatementTab";
+import AuditLogTab from "./tabs/AuditLogTab";
 import ImportCustomersModal from "./components/ImportCustomersModal";
 import BackupRestore, { shouldRemindBackup, getLastBackupDate } from "./components/BackupRestore";
+import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
 // ── MAIN APP ───────────────────────────────────────────────────
 export default function App() {
   // ── รอ Firebase Anonymous Auth พร้อมก่อน — เพื่อให้ Security Rules ผ่าน ──
@@ -19,7 +21,7 @@ export default function App() {
     authReady.then(() => setAuthChecked(true));
   }, []);
 
-  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, loading, setLoading, suppliers, statements } = useFirestore();
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements } = useFirestore();
   // ใช้แทน ROLES[role].label เพื่อให้ admin เปลี่ยนชื่อบทบาทได้
   const rLabel = (key) => roleLabels[key] || ROLES[key]?.label || key;
 
@@ -72,10 +74,15 @@ export default function App() {
     } catch (e) {}
     setUser(foundUser);
     setProfileForm({ name: foundUser.name, username: foundUser.username, oldPass: "", newPass: "", confirmPass: "" });
+    logAudit(foundUser, {
+      action: AUDIT_ACTIONS.LOGIN,
+      note: rememberMe ? "ติ๊กจำฉันไว้" : "session ปกติ",
+    });
   };
 
   // logout — เคลียร์ session
   const handleLogout = () => {
+    if (user) logAudit(user, { action: AUDIT_ACTIONS.LOGOUT });
     clearSession();
     setUser(null);
   };
@@ -334,15 +341,31 @@ export default function App() {
     const qty = Number(txForm.qty);
     const prod = products.find(p => p.id === pid);
     const histEntry = { action: txType==="รับ" ? "รับสินค้าเข้าคลัง" : "จ่ายสินค้าออกคลัง", by: user.name, date: now(), note:`${txType==="รับ"?"+":"-"}${qty} ${prod?.unit||""}${txForm.note ? ` (${txForm.note})` : ""}` };
-    const newQty = txType==="รับ" ? Number(prod.qty)+qty : Math.max(0, Number(prod.qty)-qty);
+    const oldQty = Number(prod.qty);
+    const newQty = txType==="รับ" ? oldQty+qty : Math.max(0, oldQty-qty);
     await updateDoc(doc(db, "products", pid), { qty: newQty, lastUpdate: now(), history: [histEntry, ...(prod.history||[])] });
     await addDoc(collection(db, "transactions"), { type:txType, code:prod?.code, name:prod?.name, qty, by:user.name, date:now(), note:txForm.note||"", createdAt: serverTimestamp() });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.STOCK,
+      collection: "products",
+      targetId: pid,
+      targetLabel: `${prod?.code} ${prod?.name}`,
+      note: `${txType} ${qty} ${prod?.unit||""} (${oldQty}→${newQty})${txForm.note?` · ${txForm.note}`:""}`,
+    });
     setTxSuccess(true);
     setTimeout(() => { setTxSuccess(false); setShowTxModal(false); setTxForm({productId:"",qty:"",note:""}); }, 1000);
   };
 
   const handleDelete = async id => {
+    const prod = products.find(p => p.id === id);
     await deleteDoc(doc(db, "products", id));
+    logAudit(user, {
+      action: AUDIT_ACTIONS.DELETE,
+      collection: "products",
+      targetId: id,
+      targetLabel: prod ? `${prod.code} ${prod.name}` : id,
+      before: prod,
+    });
     setShowDeleteConfirm(null);
   };
 
@@ -353,6 +376,12 @@ export default function App() {
     pSnap.docs.forEach(d => batch.delete(d.ref));
     tSnap.docs.forEach(d => batch.delete(d.ref));
     await batch.commit();
+    logAudit(user, {
+      action: AUDIT_ACTIONS.CLEAR,
+      collection: "products",
+      targetLabel: "ล้างคลังทั้งหมด",
+      note: `ลบสินค้า ${pSnap.size} รายการ + transactions ${tSnap.size} รายการ`,
+    });
     setShowClearConfirm(false);
   };
 
@@ -379,12 +408,26 @@ export default function App() {
     const id = Date.now();
     const userData = { id, username: newUser.username.trim(), password: newUser.password, name: newUser.name.trim(), role: "staff", avatar: "👷" };
     await setDoc(doc(db, "users", String(id)), userData);
+    logAudit(user, {
+      action: AUDIT_ACTIONS.CREATE,
+      collection: "users",
+      targetId: id,
+      targetLabel: `${userData.name} (@${userData.username})`,
+      after: { name: userData.name, username: userData.username, role: userData.role },
+    });
     setAddUserSuccess(true);
     setTimeout(() => { setAddUserSuccess(false); setShowAddUserModal(false); setNewUser({name:"",username:"",password:"",confirmPassword:""}); }, 1200);
   };
 
   const handleDeleteUser = async u => {
     await deleteDoc(doc(db, "users", String(u.id)));
+    logAudit(user, {
+      action: AUDIT_ACTIONS.DELETE,
+      collection: "users",
+      targetId: u.id,
+      targetLabel: `${u.name} (@${u.username})`,
+      before: { name: u.name, username: u.username, role: u.role },
+    });
     setShowDeleteUserConfirm(null);
   };
 
@@ -446,21 +489,44 @@ export default function App() {
   };
 
   const handleDeleteClothingItem = async (itemId) => {
+    const item = clothingItems.find(i => i.id === itemId);
     await deleteDoc(doc(db, "clothing", itemId));
+    logAudit(user, {
+      action: AUDIT_ACTIONS.DELETE,
+      collection: "clothing",
+      targetId: itemId,
+      targetLabel: item?.model || itemId,
+      note: `ลบรุ่นเสื้อผ้า · ${(item?.colors||[]).length} สี`,
+    });
   };
 
   const handleDeleteClothingColor = async (itemId, colorIdx) => {
     const item = clothingItems.find(i => i.id === itemId);
     if (!item) return;
+    const removedColor = item.colors[colorIdx];
     const newColors = item.colors.filter((_,i) => i !== colorIdx);
     await updateDoc(doc(db, "clothing", itemId), { colors: newColors });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.DELETE,
+      collection: "clothing",
+      targetId: itemId,
+      targetLabel: `${item.model} / ${removedColor?.colorName||""}`,
+      note: `ลบสี ${removedColor?.colorName||""} ออกจากรุ่น`,
+    });
   };
 
 
   // ── Order handlers ────────────────────────────────────────────
   const handleAddCustomer = async () => {
     if (!newCustomerForm.name.trim()) return;
-    await addDoc(collection(db, "customers"), { ...newCustomerForm, createdAt: serverTimestamp() });
+    const ref = await addDoc(collection(db, "customers"), { ...newCustomerForm, createdAt: serverTimestamp() });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.CREATE,
+      collection: "customers",
+      targetId: ref.id,
+      targetLabel: newCustomerForm.name,
+      after: { ...newCustomerForm },
+    });
     setNewCustomerForm({ name:"", phone:"", address:"" });
     setShowNewCustomer(false);
   };
@@ -491,9 +557,17 @@ export default function App() {
       });
     }
     const orderNo = `ORD${Date.now().toString().slice(-6)}`;
-    await addDoc(collection(db, "orders"), {
+    const ref = await addDoc(collection(db, "orders"), {
       orderNo, ...orderForm, status: "สำเร็จ",
       by: user.name, date: now(), createdAt: serverTimestamp()
+    });
+    const totalQty = orderForm.items.reduce((s,i)=>s+i.qty,0);
+    logAudit(user, {
+      action: AUDIT_ACTIONS.CREATE,
+      collection: "orders",
+      targetId: ref.id,
+      targetLabel: `${orderNo} · ${orderForm.customerName}`,
+      note: `${orderForm.items.length} รายการ · ${totalQty} ชิ้น`,
     });
     setOrderForm({ customerId:"", customerName:"", customerPhone:"", customerAddress:"", note:"", items:[] });
     setShowNewOrder(false);
@@ -518,6 +592,13 @@ export default function App() {
       qty: Number(clothingTxQty), by: user.name,
       date: now(), note: clothingTxNote || "", createdAt: serverTimestamp(),
       category: "เสื้อผ้า"
+    });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.STOCK,
+      collection: "clothing",
+      targetId: item.id,
+      targetLabel: `${item.model} / ${col.colorName} / ${size}`,
+      note: `${clothingTxType} ${clothingTxQty} ชิ้น (${curQty}→${newQty})${clothingTxNote?` · ${clothingTxNote}`:""}`,
     });
     setClothingTxSuccess(true);
     setTimeout(() => {
@@ -603,6 +684,13 @@ export default function App() {
       by:user.name, date:now(), createdAt:serverTimestamp(), status:"ออกแล้ว"
     };
     const ref = await addDoc(collection(db,"invoices"), data);
+    logAudit(user, {
+      action: AUDIT_ACTIONS.CREATE,
+      collection: "invoices",
+      targetId: ref.id,
+      targetLabel: `${invNo} · ${invoiceForm.customerName}`,
+      note: `${docTypeLabel(invoiceDocType)} · ฿${(data.total||0).toLocaleString("th-TH",{minimumFractionDigits:2})}${invoiceVat?" · VAT":""}`,
+    });
     setShowPrintInvoice({...data, id:ref.id});
     setShowNewInvoice(false);
     setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7});
@@ -617,7 +705,16 @@ export default function App() {
   }[s] || {bg:"rgba(59,91,139,0.1)",color:T.accent,border:"1px solid rgba(59,91,139,0.2)"});
 
   const handleUpdateInvoiceStatus = async (invId, newStatus) => {
+    const inv = invoices.find(i => i.id === invId);
+    const oldStatus = inv?.status || "ออกแล้ว";
     await updateDoc(doc(db,"invoices",invId), { status: newStatus });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.STATUS,
+      collection: "invoices",
+      targetId: invId,
+      targetLabel: `${inv?.invoiceNo||invId} · ${inv?.customerName||""}`,
+      note: `เปลี่ยนสถานะ: ${oldStatus} → ${newStatus}`,
+    });
   };
 
   // ปริ้นผ่าน iframe — เนื้อหาใหญ่เต็ม A4 และไหลข้ามหน้าได้
@@ -697,9 +794,9 @@ export default function App() {
     { id:"reports",      icon:"📊", label:"รายงาน" },
     { id:"suppliers",    icon:"🏭", label:"ซัพพลายเออร์" },
   ];
-  // admin เห็นทุก tab + จัดการผู้ใช้ — คนอื่น filter ตาม allowedTabs ที่ admin กำหนดไว้
+  // admin เห็นทุก tab + จัดการผู้ใช้ + audit log — คนอื่น filter ตาม allowedTabs ที่ admin กำหนดไว้
   const navItems = user.role==="admin"
-    ? [...allNavItems, { id:"users", icon:"👥", label:"จัดการผู้ใช้" }]
+    ? [...allNavItems, { id:"users", icon:"👥", label:"จัดการผู้ใช้" }, { id:"auditlog", icon:"📝", label:"ประวัติการใช้" }]
     : allNavItems.filter(it => !user.allowedTabs || user.allowedTabs.includes(it.id));
 
 
@@ -1435,7 +1532,10 @@ export default function App() {
                               </div>
                               <div style={{display:"flex",gap:5,justifyContent:"center"}} onClick={e=>e.stopPropagation()}>
                                 <button onClick={()=>setShowPrintInvoice(inv)} style={{padding:"5px 10px",borderRadius:7,border:"1px solid rgba(59,91,139,0.25)",background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:11,fontFamily:"'Sarabun',sans-serif"}}>🖨️</button>
-                                {role.canDelete&&<button onClick={async()=>await deleteDoc(doc(db,"invoices",inv.id))} style={{padding:"5px 8px",borderRadius:7,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:11}}>✕</button>}
+                                {role.canDelete&&<button onClick={async()=>{
+                                  await deleteDoc(doc(db,"invoices",inv.id));
+                                  logAudit(user,{action:AUDIT_ACTIONS.DELETE,collection:"invoices",targetId:inv.id,targetLabel:`${inv.invoiceNo} · ${inv.customerName}`,before:{total:inv.total,status:inv.status,docType:inv.docType}});
+                                }} style={{padding:"5px 8px",borderRadius:7,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:11}}>✕</button>}
                               </div>
                             </div>);
                           })}
@@ -1511,7 +1611,10 @@ export default function App() {
                               <div><span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:600,background:"rgba(52,211,153,0.1)",color:"#34d399",border:"1px solid rgba(52,211,153,0.2)"}}>{o.status}</span></div>
                               <div style={{display:"flex",gap:6,justifyContent:"center"}} onClick={e=>e.stopPropagation()}>
                                 <button onClick={()=>setShowPrintOrder(o)} style={{padding:"5px 10px",borderRadius:7,border:`1px solid rgba(59,91,139,0.25)`,background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:11,fontFamily:"'Sarabun',sans-serif"}}>🖨️ ปริ้น</button>
-                                {role.canDelete&&<button onClick={async()=>await deleteDoc(doc(db,"orders",o.id))} style={{padding:"5px 8px",borderRadius:7,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:11}}>✕</button>}
+                                {role.canDelete&&<button onClick={async()=>{
+                                  await deleteDoc(doc(db,"orders",o.id));
+                                  logAudit(user,{action:AUDIT_ACTIONS.DELETE,collection:"orders",targetId:o.id,targetLabel:`${o.orderNo} · ${o.customerName}`,note:`${(o.items||[]).length} รายการ`});
+                                }} style={{padding:"5px 8px",borderRadius:7,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:11}}>✕</button>}
                               </div>
                             </div>
                           ))}
@@ -1562,7 +1665,10 @@ export default function App() {
                         <div style={{fontSize:11,color:T.muted}}>📍 {c.address||"-"}</div>
                       </div>
                       <div style={{fontSize:11,color:T.sub}}>สั่งซื้อ {orders.filter(o=>o.customerId===c.id).length} ครั้ง</div>
-                      {role.canDelete&&<button onClick={async()=>await deleteDoc(doc(db,"customers",c.id))} style={{padding:"5px 8px",borderRadius:7,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:11}}>✕</button>}
+                      {role.canDelete&&<button onClick={async()=>{
+                        await deleteDoc(doc(db,"customers",c.id));
+                        logAudit(user,{action:AUDIT_ACTIONS.DELETE,collection:"customers",targetId:c.id,targetLabel:c.name,before:{name:c.name,phone:c.phone}});
+                      }} style={{padding:"5px 8px",borderRadius:7,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:11}}>✕</button>}
                     </div>
                   ))}
                 </div>
@@ -1717,14 +1823,17 @@ export default function App() {
                         const np=window.prompt(`ตั้งรหัสผ่านใหม่ให้ ${u.name} (@${u.username}):`);
                         if(!np||np.length<4){if(np)alert("รหัสผ่านต้องมีอย่างน้อย 4 ตัว");return;}
                         await setDoc(doc(db,"users",String(u.id)),{...u,password:np});
+                        logAudit(user,{action:AUDIT_ACTIONS.PERMISSION,collection:"users",targetId:u.id,targetLabel:`${u.name} (@${u.username})`,note:"รีเซ็ตรหัสผ่าน"});
                       }} style={{background:"rgba(59,91,139,0.1)",border:"1px solid rgba(59,91,139,0.25)",borderRadius:5,color:T.accent,cursor:"pointer",fontSize:10,padding:"2px 6px",fontFamily:"'Sarabun',sans-serif"}} title="รีเซ็ตรหัสผ่าน">🔑</button>
                     </div>
                     <div>
                       {user.role==="admin" ? (
                         <select value={u.role} onChange={async e=>{
                           const newRole = e.target.value;
+                          const oldRole = u.role;
                           const updated = {...u, role: newRole, avatar: newRole==="admin"?"👑":newRole==="manager"?"🧑‍💼":"👷"};
                           await setDoc(doc(db,"users",String(u.id)),updated);
+                          logAudit(user,{action:AUDIT_ACTIONS.PERMISSION,collection:"users",targetId:u.id,targetLabel:`${u.name} (@${u.username})`,note:`เปลี่ยนบทบาท: ${rLabel(oldRole)} → ${rLabel(newRole)}`});
                         }} style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:ROLES[u.role].color,borderRadius:8,padding:"5px 8px",fontFamily:"'Sarabun',sans-serif",fontSize:12,fontWeight:600,outline:"none",cursor:"pointer"}}>
                           <option value="admin">👑 {rLabel("admin")}</option>
                           <option value="manager">🧑‍💼 {rLabel("manager")}</option>
@@ -1738,8 +1847,10 @@ export default function App() {
                       {(()=>{
                         const eff=(k)=>u.permissions&&k in u.permissions?u.permissions[k]:ROLES[u.role][k];
                         const togglePerm=async(k)=>{
-                          const newPerms={...(u.permissions||{}),[k]:!eff(k)};
+                          const prev=eff(k);
+                          const newPerms={...(u.permissions||{}),[k]:!prev};
                           await setDoc(doc(db,"users",String(u.id)),{...u,permissions:newPerms});
+                          logAudit(user,{action:AUDIT_ACTIONS.PERMISSION,collection:"users",targetId:u.id,targetLabel:`${u.name} (@${u.username})`,note:`สิทธิ์ ${k}: ${prev?"✓":"✗"} → ${!prev?"✓":"✗"}`});
                         };
                         const overridden=(k)=>u.permissions&&k in u.permissions&&u.permissions[k]!==ROLES[u.role][k];
                         return [
@@ -1792,6 +1903,11 @@ export default function App() {
           {/* ── SUPPLIERS ── */}
           {activeTab==="suppliers"&&(
             <SuppliersTab suppliers={suppliers} role={role}/>
+          )}
+
+          {/* ── AUDIT LOG (admin only) ── */}
+          {activeTab==="auditlog"&&user.role==="admin"&&(
+            <AuditLogTab auditLogs={auditLogs} users={users}/>
           )}
 
           {/* ── STATEMENTS (ใบวางบิลรวมเดือน) ── */}
@@ -3021,6 +3137,18 @@ export default function App() {
             return c;
           });
           await updateDoc(doc(db,"clothing",priceModal.itemId),{colors:newColors});
+          const oldColor = item.colors[priceModal.ci];
+          logAudit(user, {
+            action: AUDIT_ACTIONS.PRICE,
+            collection: "clothing",
+            targetId: priceModal.itemId,
+            targetLabel: priceModal.applyAll
+              ? `${item.model} · ทุกสี (${item.colors.length})`
+              : `${item.model} / ${col.colorName}`,
+            before: { costPrice: oldColor?.costPrice, salePrices: oldColor?.salePrices },
+            after:  { costPrice: Number(priceForm.costPrice)||0, salePrices },
+            note: priceModal.applyAll ? "ใช้กับทุกสี" : null,
+          });
           setPriceModal(null);
         };
         return (

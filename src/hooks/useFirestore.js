@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { db } from "../firebase";
-import { collection, onSnapshot, doc, query, orderBy, writeBatch, setDoc } from "firebase/firestore";
+import { collection, onSnapshot, doc, query, orderBy, limit, writeBatch, setDoc } from "firebase/firestore";
 import { INIT_USERS, INIT_CATS } from "../constants";
 
 export function useFirestore() {
@@ -16,6 +16,7 @@ export function useFirestore() {
   const [statements, setStatements] = useState([]);
   const [companyInfo, setCompanyInfo] = useState({ name:"CPU", address:"", phone:"", email:"", taxId:"", logo:"⚙️" });
   const [roleLabels, setRoleLabels] = useState({}); // {admin:"...", manager:"...", staff:"..."}
+  const [auditLogs, setAuditLogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -103,6 +104,13 @@ export function useFirestore() {
     return () => unsub();
   }, []);
 
+  // Audit logs — เอามาแค่ 500 รายการล่าสุด (กัน load หนัก)
+  useEffect(() => {
+    const q = query(collection(db, "auditLog"), orderBy("timestamp", "desc"), limit(500));
+    const unsub = onSnapshot(q, snap => setAuditLogs(snap.docs.map(d => ({ ...d.data(), id: d.id }))), ()=>{});
+    return () => unsub();
+  }, []);
+
   return {
     users, setUsers,
     suppliers,
@@ -116,6 +124,7 @@ export function useFirestore() {
     statements,
     companyInfo, setCompanyInfo,
     roleLabels,
+    auditLogs,
     loading, setLoading,
   };
 }
