@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import * as XLSX from "xlsx";
 import { db } from "../firebase";
 import { collection, getDocs, writeBatch, doc, deleteDoc, setDoc } from "firebase/firestore";
 import { T } from "../theme";
@@ -55,29 +56,35 @@ export default function BackupRestore({ projectId, user, role }) {
     setLastBackup(getLastBackupDate());
   }, []);
 
-  // === EXPORT — ดาวน์โหลด JSON ทั้งหมด ===
-  const handleExport = async () => {
+  // === ดึงข้อมูลทั้งหมดจาก Firestore (ใช้ร่วมระหว่าง JSON และ Excel) ===
+  const fetchAllData = async () => {
+    const data = {
+      metadata: {
+        version: 1,
+        projectId,
+        exportedAt: new Date().toISOString(),
+        exportedBy: user?.username || "",
+      },
+      collections: {},
+    };
+    let totalDocs = 0;
+    for (const col of COLLECTIONS) {
+      setProgress(`กำลัง backup ${col}...`);
+      const snap = await getDocs(collection(db, col));
+      const docs = snap.docs.map(d => ({ _id: d.id, ...d.data() }));
+      data.collections[col] = docs;
+      totalDocs += docs.length;
+    }
+    return { data, totalDocs };
+  };
+
+  // === EXPORT JSON ===
+  const handleExportJSON = async () => {
     setBusy(true);
     setResult(null);
     setProgress("กำลังเตรียมข้อมูล...");
     try {
-      const data = {
-        metadata: {
-          version: 1,
-          projectId,
-          exportedAt: new Date().toISOString(),
-          exportedBy: user?.username || "",
-        },
-        collections: {},
-      };
-      let totalDocs = 0;
-      for (const col of COLLECTIONS) {
-        setProgress(`กำลัง backup ${col}...`);
-        const snap = await getDocs(collection(db, col));
-        const docs = snap.docs.map(d => ({ _id: d.id, ...d.data() }));
-        data.collections[col] = docs;
-        totalDocs += docs.length;
-      }
+      const { data, totalDocs } = await fetchAllData();
       setProgress(`พบ ${totalDocs} records — กำลังสร้างไฟล์...`);
 
       const json = JSON.stringify(data, null, 2);
@@ -89,15 +96,92 @@ export default function BackupRestore({ projectId, user, role }) {
       a.click();
       URL.revokeObjectURL(url);
 
-      // จำวันที่ backup ล่าสุด
       const ts = Date.now();
       localStorage.setItem("cpu_erp_last_backup", String(ts));
       setLastBackup(ts);
 
-      setResult({ type: "ok", msg: `✅ Backup สำเร็จ ${totalDocs} records ใน ${COLLECTIONS.length} collections` });
+      setResult({ type: "ok", msg: `✅ Backup JSON สำเร็จ ${totalDocs} records ใน ${COLLECTIONS.length} collections` });
     } catch (err) {
       console.error(err);
       setResult({ type: "err", msg: `❌ Backup ล้มเหลว: ${err.message}` });
+    } finally {
+      setBusy(false);
+      setProgress("");
+    }
+  };
+
+  // === EXPORT EXCEL ===
+  // 1 sheet ต่อ 1 collection — field ที่เป็น array/object จะ JSON.stringify ลงเซลล์
+  const flattenValue = (v) => {
+    if (v == null) return "";
+    if (v instanceof Date) return v.toISOString();
+    if (typeof v === "object") {
+      // Firestore Timestamp มี toDate()
+      if (typeof v.toDate === "function") return v.toDate().toISOString();
+      return JSON.stringify(v);
+    }
+    return v;
+  };
+  const flattenDoc = (d) => {
+    const out = {};
+    Object.entries(d).forEach(([k, v]) => { out[k] = flattenValue(v); });
+    return out;
+  };
+
+  const handleExportExcel = async () => {
+    setBusy(true);
+    setResult(null);
+    setProgress("กำลังเตรียมข้อมูล...");
+    try {
+      const { data, totalDocs } = await fetchAllData();
+      setProgress(`พบ ${totalDocs} records — กำลังสร้าง Excel...`);
+
+      const wb = XLSX.utils.book_new();
+
+      // sheet สรุป (metadata)
+      const summaryRows = [
+        ["CPU ERP — Backup Report"],
+        [""],
+        ["Project", data.metadata.projectId],
+        ["Exported At", data.metadata.exportedAt],
+        ["Exported By", data.metadata.exportedBy],
+        ["Total Records", totalDocs],
+        [""],
+        ["Collection", "Record Count"],
+        ...COLLECTIONS.map(c => [c, (data.collections[c] || []).length]),
+      ];
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+      summarySheet["!cols"] = [{ wch: 20 }, { wch: 40 }];
+      XLSX.utils.book_append_sheet(wb, summarySheet, "📊 สรุป");
+
+      // 1 sheet ต่อ collection
+      for (const col of COLLECTIONS) {
+        const docs = data.collections[col] || [];
+        if (docs.length === 0) {
+          // sheet ว่าง — ใส่ header เปล่าๆ
+          const emptySheet = XLSX.utils.aoa_to_sheet([["(ไม่มีข้อมูล)"]]);
+          XLSX.utils.book_append_sheet(wb, emptySheet, col.slice(0, 31)); // sheet name max 31 chars
+          continue;
+        }
+        const flattened = docs.map(flattenDoc);
+        const sheet = XLSX.utils.json_to_sheet(flattened);
+        // auto column width (rough)
+        const headers = Object.keys(flattened[0]);
+        sheet["!cols"] = headers.map(h => ({ wch: Math.min(Math.max(h.length + 2, 12), 40) }));
+        XLSX.utils.book_append_sheet(wb, sheet, col.slice(0, 31));
+      }
+
+      // เขียน + ดาวน์โหลด
+      XLSX.writeFile(wb, `cpu-erp-backup-${projectId}-${nowStr()}.xlsx`);
+
+      const ts = Date.now();
+      localStorage.setItem("cpu_erp_last_backup", String(ts));
+      setLastBackup(ts);
+
+      setResult({ type: "ok", msg: `✅ Backup Excel สำเร็จ ${totalDocs} records ใน ${COLLECTIONS.length} sheets` });
+    } catch (err) {
+      console.error(err);
+      setResult({ type: "err", msg: `❌ Export Excel ล้มเหลว: ${err.message}` });
     } finally {
       setBusy(false);
       setProgress("");
@@ -204,11 +288,27 @@ export default function BackupRestore({ projectId, user, role }) {
       <div style={{ marginBottom: 20, padding: 16, background: T.input, borderRadius: 10, border: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: T.text, marginBottom: 6 }}>💾 ดาวน์โหลด Backup</div>
         <div style={{ fontSize: 12, color: T.sub, marginBottom: 12 }}>
-          ดาวน์โหลดข้อมูลทั้งหมด ({COLLECTIONS.length} collections) เป็นไฟล์ JSON เก็บไว้ในเครื่อง
+          ดาวน์โหลดข้อมูลทั้งหมด ({COLLECTIONS.length} collections) เก็บไว้ในเครื่อง (project: <b>{projectId}</b>)
         </div>
-        <BtnPrimary onClick={handleExport} disabled={busy} style={{ width: "100%" }}>
-          {busy ? `⏳ ${progress || "กำลังทำงาน..."}` : `💾 Backup ตอนนี้ (project: ${projectId})`}
-        </BtnPrimary>
+        {busy ? (
+          <div style={{ padding: "10px 16px", borderRadius: 8, background: "rgba(59,91,139,0.08)", color: T.accent, fontSize: 13, fontWeight: 600, textAlign: "center" }}>
+            ⏳ {progress || "กำลังทำงาน..."}
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <BtnPrimary onClick={handleExportJSON} disabled={busy}>
+              📄 JSON (สำหรับ Restore)
+            </BtnPrimary>
+            <button onClick={handleExportExcel} disabled={busy}
+              style={{ padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer", background: "linear-gradient(135deg,#1f7244,#3a7a52)", color: "white", fontSize: 13, fontWeight: 600, fontFamily: "'Sarabun',sans-serif", boxShadow: "0 2px 10px rgba(58,122,82,0.3)" }}>
+              📊 Excel (ดู/แก้ในมือ)
+            </button>
+          </div>
+        )}
+        <div style={{ marginTop: 8, fontSize: 10, color: T.muted, lineHeight: 1.5 }}>
+          • <b>JSON</b> — ใช้กู้ข้อมูลกลับ (Restore) เก็บได้ครบ 100%<br />
+          • <b>Excel</b> — เปิดด้วย Excel/Google Sheets, 1 sheet/collection ดูง่าย แต่ Restore ไม่ได้
+        </div>
       </div>
 
       {/* Restore section */}

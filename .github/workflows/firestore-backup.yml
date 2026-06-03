@@ -109,10 +109,10 @@ jobs:
           EOF
           node backup.mjs
 
-      - name: Remove old backups (keep last 30 days)
+      - name: Remove old backups (keep last 60 days)
         run: |
           cd backups/${{ matrix.project.name }} 2>/dev/null || exit 0
-          ls -t *.json 2>/dev/null | tail -n +31 | xargs -r rm -f
+          ls -t *.json 2>/dev/null | tail -n +61 | xargs -r rm -f
           cd ../..
 
       - name: Clean up sensitive files
