@@ -8,9 +8,10 @@ import LoginPage, { CompanyEditor } from "./components/LoginPage";
 import { useFirestore } from "./hooks/useFirestore";
 import ReportsTab from "./tabs/ReportsTab";
 import SuppliersTab from "./tabs/SuppliersTab";
+import StatementTab from "./tabs/StatementTab";
 // ── MAIN APP ───────────────────────────────────────────────────
 export default function App() {
-  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, loading, setLoading, suppliers } = useFirestore();
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, loading, setLoading, suppliers, statements } = useFirestore();
   // ใช้แทน ROLES[role].label เพื่อให้ admin เปลี่ยนชื่อบทบาทได้
   const rLabel = (key) => roleLabels[key] || ROLES[key]?.label || key;
 
@@ -574,6 +575,7 @@ export default function App() {
     { id:"barcode",      icon:"▦",  label:"สแกนบาร์โค้ด" },
     { id:"orders",       icon:"📋", label:"ใบสั่งของ" },
     { id:"invoice",      icon:"🧾", label:"ออกบิล" },
+    { id:"statements",   icon:"📃", label:"วางบิลเก็บเงิน" },
     { id:"customers",    icon:"👤", label:"ลูกค้า" },
     { id:"alerts",       icon:"🔔", label:"แจ้งเตือน", badge: lowStock.length },
     { id:"reports",      icon:"📊", label:"รายงาน" },
@@ -1655,6 +1657,19 @@ export default function App() {
           {/* ── SUPPLIERS ── */}
           {activeTab==="suppliers"&&(
             <SuppliersTab suppliers={suppliers} role={role}/>
+          )}
+
+          {/* ── STATEMENTS (ใบวางบิลรวมเดือน) ── */}
+          {activeTab==="statements"&&(
+            <StatementTab
+              statements={statements}
+              invoices={invoices}
+              customers={customers}
+              companyInfo={companyInfo}
+              user={user}
+              role={role}
+              printElementById={printElementById}
+            />
           )}
 
 

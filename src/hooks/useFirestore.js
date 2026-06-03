@@ -13,6 +13,7 @@ export function useFirestore() {
   const [orders, setOrders] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  const [statements, setStatements] = useState([]);
   const [companyInfo, setCompanyInfo] = useState({ name:"CPU", address:"", phone:"", email:"", taxId:"", logo:"⚙️" });
   const [roleLabels, setRoleLabels] = useState({}); // {admin:"...", manager:"...", staff:"..."}
   const [loading, setLoading] = useState(true);
@@ -83,6 +84,12 @@ export function useFirestore() {
   }, []);
 
   useEffect(() => {
+    const q = query(collection(db, "statements"), orderBy("createdAt","desc"));
+    const unsub = onSnapshot(q, snap => setStatements(snap.docs.map(d=>({...d.data(),id:d.id}))), ()=>{});
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
     const unsub = onSnapshot(doc(db,"settings","company"), snap => {
       if(snap.exists()) setCompanyInfo(snap.data());
     }, ()=>{});
@@ -106,6 +113,7 @@ export function useFirestore() {
     orders,
     customers,
     invoices,
+    statements,
     companyInfo, setCompanyInfo,
     roleLabels,
     loading, setLoading,
