@@ -1,0 +1,38 @@
+// ─── CPU ERP — Firestore Security Rules ───────────────────────────
+// อนุญาตเฉพาะคนที่ login ผ่าน app เท่านั้น (ไม่ว่า anonymous หรือ user จริง)
+// คนนอก/bot ที่ยิง API ตรงโดยไม่มี auth token → block หมด
+//
+// วิธีใช้:
+// 1. Firebase Console → Firestore Database → Rules
+// 2. ลบของเก่าทั้งหมด → paste กฎข้างล่างนี้ → กด "Publish"
+// 3. ต้องทำทั้ง 2 projects: cpu-erp + boong-private
+// ────────────────────────────────────────────────────────────────────
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: ต้องมี auth (ไม่ว่า anonymous หรือ user จริง)
+    function isAuthed() {
+      return request.auth != null;
+    }
+
+    // ── Application data — ต้อง auth ──
+    match /products/{doc}      { allow read, write: if isAuthed(); }
+    match /clothing/{doc}      { allow read, write: if isAuthed(); }
+    match /transactions/{doc}  { allow read, write: if isAuthed(); }
+    match /customers/{doc}     { allow read, write: if isAuthed(); }
+    match /suppliers/{doc}     { allow read, write: if isAuthed(); }
+    match /orders/{doc}        { allow read, write: if isAuthed(); }
+    match /invoices/{doc}      { allow read, write: if isAuthed(); }
+    match /statements/{doc}    { allow read, write: if isAuthed(); }
+    match /users/{doc}         { allow read, write: if isAuthed(); }
+    match /settings/{doc}      { allow read, write: if isAuthed(); }
+
+    // ── Default DENY — ทุก collection อื่นที่ไม่ได้ระบุ → block ──
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
