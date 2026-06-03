@@ -3,7 +3,7 @@
 > สรุปการใช้งาน, deploy, และ workflow ของระบบ
 > สำหรับเปิดอ่านจากเครื่องที่ทำงานหรือเครื่องอื่นๆ ได้
 
-_Last updated: 2026-06-03_
+_Last updated: 2026-06-04_
 
 ---
 
@@ -145,6 +145,34 @@ git push
 - ตั้งค่าเมนูที่แต่ละ user เห็นได้
 - Admin ดูรหัสผ่านได้ (ต้อง re-auth, session 5 นาที)
 
+### 📝 Audit Log (ใหม่ — 2026-06-04)
+เก็บประวัติ "ใครทำอะไรเมื่อไหร่" — เฉพาะ admin เห็น tab **📝 ประวัติการใช้**
+- Track: LOGIN/LOGOUT, CREATE/DELETE (สินค้า/บิล/order/customer/user/clothing), STOCK (รับ/จ่าย), PRICE (เปลี่ยนราคา), PERMISSION (เปลี่ยนสิทธิ์/role/password reset), STATUS (invoice payment), CLEAR (ล้างคลัง)
+- Filter: action / user / date / search
+- Pagination 50/load · Export CSV
+- Expand row → ดู before/after JSON
+- เก็บล่าสุด 500 รายการใน Firestore collection `auditLog`
+
+### 📊 Reports — รายงานเชิงลึก (ใหม่ — 2026-06-04)
+Sub-tabs: Overview / Aging / Sales by Customer / Sales by Product / Trend / Profit / VAT
+- ⏰ **Aging** — บิลค้างชำระแบ่ง bucket 0-30/31-60/61-90/90+ วัน + drill-down ลูกค้าเดี่ยว
+- 👥 **Sales by Customer** — top customers (ยอด/บิล/ชำระ/ค้าง)
+- 📦 **Sales by Product** — top products (ชิ้น/รายได้/กำไรประมาณ)
+- 📈 **Monthly Trend** — กราฟ 12 เดือนล่าสุด (รวม vs ชำระแล้ว)
+- 💵 **Profit Margin** — รวม products + clothing พร้อม margin% color-coded
+- 🧾 **VAT Report** — รายเดือน + per-customer + Single customer drill-down
+- ✨ **Customer name merging** — รวมชื่อซ้ำที่ตัด space + lowercase (Aging / Sales / VAT)
+- Export CSV ทุก tab
+
+### 📸 Camera Barcode Scanner (ใหม่ — 2026-06-04)
+ใช้ `html5-qrcode` — รองรับ EAN-13/8, Code 128/39, QR, UPC-A/E, ITF
+- ปุ่ม **📸 สแกนกล้อง** ใน tab "▦ สแกนบาร์โค้ด"
+- เลือกกล้องได้ (auto-เลือกกล้องหลังบนมือถือ)
+- เสียง beep ตอนสแกนสำเร็จ · debounce 1.5 วิ
+- ค้นหาทั้ง products + clothing (case-insensitive)
+- ถ้าไม่เจอ → ปุ่ม "➕ เพิ่มสินค้าใหม่ด้วยบาร์โค้ดนี้" — auto-fill barcode
+- ต้องใช้ HTTPS (Vercel มีอยู่แล้ว ✅)
+
 ### UX
 - 🔍 ค้นหา **case-insensitive** ทุกที่ (ลูกค้า/สินค้า/ซัพ)
 - 🔒 **Persistent login** — ไม่หลุดตอน refresh
@@ -212,18 +240,18 @@ service cloud.firestore {
 
 ---
 
-## 🗺️ Roadmap (จากไฟล์ plan)
+## 🗺️ Roadmap
 
 ### 🔴 สำคัญ (ก่อนเปิดให้พนักงาน)
 1. ✅ ~~Auto Backup~~ — เสร็จ 2026-06-03
-2. ⏳ Audit Log
+2. ✅ ~~Audit Log~~ — เสร็จ 2026-06-04
 3. ⏳ Firebase Auth (เพื่อ lock rules อย่างถูกต้อง)
 
 ### 🟡 ประโยชน์มาก
-4. ⏳ Import Excel: Products, Clothing, Suppliers
-5. ⏳ Camera Barcode Scanner (zxing/quagga2)
-6. ⏳ รายงานเชิงลึก: Aging, Top products, Trend, Profit margin
-7. ⏳ LINE Notify
+4. ⏳ Import Excel: Products, Clothing, Suppliers (ลูกค้า ✅ แล้ว)
+5. ✅ ~~Camera Barcode Scanner~~ — เสร็จ 2026-06-04 (html5-qrcode)
+6. ✅ ~~รายงานเชิงลึก~~ — เสร็จ 2026-06-04 (Aging/Sales/Trend/Profit/VAT)
+7. ❌ ~~LINE Notify~~ — ปิดบริการแล้ว มี.ค. 2025 · ลอง Telegram แต่ไม่นิยม → ปิดไปก่อน
 8. ⏳ PromptPay QR ในบิล
 
 ### 🟢 เสริม UX
@@ -285,7 +313,15 @@ service cloud.firestore {
 
 ## 📝 Major Changes Log
 
-### 2026-06-03 (วันนี้)
+### 2026-06-04 (วันนี้)
+- ✅ **Audit Log system** — ติดตาม "ใครทำอะไร" + UI + filter + export
+- ✅ **Reports — รายงานเชิงลึก** (Aging, Sales by Customer/Product, Monthly Trend, Profit Margin, VAT) — 7 sub-tabs
+- ✅ **Customer name merging** — รวมชื่อซ้ำตัด space + case (ใช้ใน Aging/Sales/VAT)
+- ✅ **Statement preview modal** — คลิกแถวใบวางบิลเพื่อดูรายละเอียด
+- ✅ **Camera Barcode Scanner** — html5-qrcode, scan EAN/QR/Code128, ค้นทั้ง products+clothing, ปุ่ม "เพิ่มสินค้าใหม่จากบาร์โค้ด"
+- ❌ Telegram notification — ลอง implement แล้ว user บอกว่าคนไทยไม่นิยม → revert
+
+### 2026-06-03
 - ✅ ใบวางบิลรวมเดือน (Statement) — ใหม่
 - ✅ Excel import ลูกค้า
 - ✅ Session timeout + "จำฉันไว้"
