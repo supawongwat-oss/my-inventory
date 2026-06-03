@@ -9,36 +9,113 @@ import { useFirestore } from "./hooks/useFirestore";
 import ReportsTab from "./tabs/ReportsTab";
 import SuppliersTab from "./tabs/SuppliersTab";
 import StatementTab from "./tabs/StatementTab";
+import ImportCustomersModal from "./components/ImportCustomersModal";
 // ── MAIN APP ───────────────────────────────────────────────────
 export default function App() {
   const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, loading, setLoading, suppliers, statements } = useFirestore();
   // ใช้แทน ROLES[role].label เพื่อให้ admin เปลี่ยนชื่อบทบาทได้
   const rLabel = (key) => roleLabels[key] || ROLES[key]?.label || key;
 
+  // ── Session timeouts (ms) ─────────────────────────────────
+  // Default (ไม่ติ๊ก "จำฉันไว้"): inactivity 8 ชม. + hard expiry 16 ชม.
+  // "จำฉันไว้":                  inactivity OFF + hard expiry 30 วัน
+  const SESSION_DEFAULT_INACTIVITY = 8 * 60 * 60 * 1000;       // 8 ชม.
+  const SESSION_DEFAULT_HARD       = 16 * 60 * 60 * 1000;      // 16 ชม.
+  const SESSION_REMEMBER_HARD      = 30 * 24 * 60 * 60 * 1000; // 30 วัน
+
+  const checkSessionValid = () => {
+    try {
+      const expHard = Number(localStorage.getItem("cpu_erp_session_hard")) || 0;
+      if (expHard && Date.now() >= expHard) return false;
+      const remember = localStorage.getItem("cpu_erp_remember") === "1";
+      if (!remember) {
+        const lastAct = Number(localStorage.getItem("cpu_erp_last_activity")) || 0;
+        if (lastAct && Date.now() - lastAct > SESSION_DEFAULT_INACTIVITY) return false;
+      }
+      return true;
+    } catch (e) { return false; }
+  };
+
+  const clearSession = () => {
+    try {
+      localStorage.removeItem("cpu_erp_user");
+      localStorage.removeItem("cpu_erp_session_hard");
+      localStorage.removeItem("cpu_erp_last_activity");
+      localStorage.removeItem("cpu_erp_remember");
+    } catch (e) {}
+  };
+
   const [user, setUser] = useState(() => {
     try {
       const saved = localStorage.getItem("cpu_erp_user");
-      const expiresAt = localStorage.getItem("cpu_erp_user_expires");
-      if (saved && expiresAt && Date.now() < Number(expiresAt)) {
-        return JSON.parse(saved);
-      }
-      localStorage.removeItem("cpu_erp_user");
-      localStorage.removeItem("cpu_erp_user_expires");
-    } catch(e) {}
+      if (saved && checkSessionValid()) return JSON.parse(saved);
+      clearSession();
+    } catch (e) {}
     return null;
   });
 
-  // sync user → localStorage (ค้าง login 30 วัน, sliding window)
+  // เมื่อ login สำเร็จ — รับ rememberMe จาก LoginPage
+  const handleLogin = (foundUser, rememberMe = false) => {
+    try {
+      localStorage.setItem("cpu_erp_user", JSON.stringify(foundUser));
+      localStorage.setItem("cpu_erp_remember", rememberMe ? "1" : "0");
+      const hardMs = rememberMe ? SESSION_REMEMBER_HARD : SESSION_DEFAULT_HARD;
+      localStorage.setItem("cpu_erp_session_hard", String(Date.now() + hardMs));
+      localStorage.setItem("cpu_erp_last_activity", String(Date.now()));
+    } catch (e) {}
+    setUser(foundUser);
+    setProfileForm({ name: foundUser.name, username: foundUser.username, oldPass: "", newPass: "", confirmPass: "" });
+  };
+
+  // logout — เคลียร์ session
+  const handleLogout = () => {
+    clearSession();
+    setUser(null);
+  };
+
+  // sync user → localStorage (ไม่ override hard expiry)
   useEffect(() => {
     if (user) {
-      try {
-        localStorage.setItem("cpu_erp_user", JSON.stringify(user));
-        localStorage.setItem("cpu_erp_user_expires", String(Date.now() + 30 * 24 * 60 * 60 * 1000));
-      } catch(e) {}
-    } else {
-      localStorage.removeItem("cpu_erp_user");
-      localStorage.removeItem("cpu_erp_user_expires");
+      try { localStorage.setItem("cpu_erp_user", JSON.stringify(user)); } catch (e) {}
     }
+  }, [user]);
+
+  // Activity tracking — อัพเดท last_activity ทุกครั้งที่มี user interaction
+  useEffect(() => {
+    if (!user) return;
+    const updateActivity = () => {
+      try { localStorage.setItem("cpu_erp_last_activity", String(Date.now())); } catch (e) {}
+    };
+    // throttle 5 วิ — ไม่อัพเดททุก event เพราะกินทรัพยากร
+    let last = 0;
+    const throttled = () => {
+      const now = Date.now();
+      if (now - last > 5000) { last = now; updateActivity(); }
+    };
+    window.addEventListener("mousedown", throttled);
+    window.addEventListener("keydown", throttled);
+    window.addEventListener("touchstart", throttled);
+    window.addEventListener("scroll", throttled, { passive: true });
+    return () => {
+      window.removeEventListener("mousedown", throttled);
+      window.removeEventListener("keydown", throttled);
+      window.removeEventListener("touchstart", throttled);
+      window.removeEventListener("scroll", throttled);
+    };
+  }, [user]);
+
+  // เช็ค session ทุก 30 วิ — ถ้าหมดอายุ → auto logout
+  useEffect(() => {
+    if (!user) return;
+    const t = setInterval(() => {
+      if (!checkSessionValid()) {
+        clearSession();
+        setUser(null);
+        alert("⏰ Session หมดอายุ — กรุณาเข้าสู่ระบบใหม่");
+      }
+    }, 30000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedCat, setSelectedCat] = useState("ทั้งหมด");
@@ -91,6 +168,7 @@ export default function App() {
   const [collapsedOrderDates, setCollapsedOrderDates] = useState({});
   const [collapsedInvoiceDates, setCollapsedInvoiceDates] = useState({});
   const [showNewCustomer, setShowNewCustomer] = useState(false);
+  const [showImportCustomers, setShowImportCustomers] = useState(false);
   const [showPrintOrder, setShowPrintOrder] = useState(null);
   const [orderForm, setOrderForm] = useState({
     customerId: "", customerName: "", customerPhone: "", customerAddress: "",
@@ -566,7 +644,7 @@ export default function App() {
     await setDoc(doc(db, "users", String(newU.id)), newU);
   };
 
-  if (!user) return <LoginPage users={users} onLogin={u => { setUser(u); setProfileForm({name:u.name,username:u.username,oldPass:"",newPass:"",confirmPass:""}); }} onResetPassword={handleResetPassword} onRegister={handleRegisterUser}/>;
+  if (!user) return <LoginPage users={users} onLogin={(u, rememberMe) => handleLogin(u, rememberMe)} onResetPassword={handleResetPassword} onRegister={handleRegisterUser}/>;
 
   const allNavItems = [
     { id:"dashboard",    icon:"📊", label:"ภาพรวม" },
@@ -673,7 +751,7 @@ export default function App() {
               </div>
             </div>
             <button onClick={openSettings} style={{width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,fontSize:12,cursor:"pointer",marginBottom:6,fontFamily:"'Sarabun',sans-serif",fontWeight:500}}>⚙️ ตั้งค่า</button>
-            <button onClick={() => setUser(null)} style={{width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${T.border}`,background:"rgba(239,68,68,0.08)",color:T.red,fontSize:12,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:500}}>🚪 ออกจากระบบ</button>
+            <button onClick={handleLogout} style={{width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${T.border}`,background:"rgba(239,68,68,0.08)",color:T.red,fontSize:12,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:500}}>🚪 ออกจากระบบ</button>
           </div>
         )}
         <div style={{padding:"8px",borderTop:sidebarOpen?"none":`1px solid ${T.border}`}}>
@@ -1398,7 +1476,10 @@ export default function App() {
             <div style={{animation:"fadeUp 0.4s ease",maxWidth:700}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
                 <div style={{fontSize:12,color:T.sub}}>ลูกค้าทั้งหมด <b style={{color:T.accent}}>{customers.length} ราย</b></div>
-                <button onClick={()=>setShowNewCustomer(true)} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>️ เพิ่มลูกค้าใหม่</button>
+                <div style={{display:"flex",gap:8}}>
+                  {role.canAdd&&<button onClick={()=>setShowImportCustomers(true)} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${T.border}`,cursor:"pointer",background:"rgba(59,91,139,0.06)",color:T.accent,fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>📥 นำเข้า Excel</button>}
+                  <button onClick={()=>setShowNewCustomer(true)} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>＋ เพิ่มลูกค้าใหม่</button>
+                </div>
               </div>
               <div style={{marginBottom:14}}>
                 <input value={customerSearch} onChange={e=>setCustomerSearch(e.target.value)} placeholder="🔍 ค้นหาชื่อ เบอร์ หรือที่อยู่..."
@@ -2141,6 +2222,15 @@ export default function App() {
             </BtnPrimary>
           </div>
         </Modal>
+      )}
+
+      {/* ── MODAL: นำเข้าลูกค้าจาก Excel ── */}
+      {showImportCustomers && (
+        <ImportCustomersModal
+          existingCustomers={customers}
+          user={user}
+          onClose={() => setShowImportCustomers(false)}
+        />
       )}
 
       {/* ── MODAL: เพิ่มลูกค้าใหม่ ── */}

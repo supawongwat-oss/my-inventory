@@ -3,6 +3,12 @@
 > สรุปการใช้งาน, deploy, และ workflow ของระบบ
 > สำหรับเปิดอ่านจากเครื่องที่ทำงานหรือเครื่องอื่นๆ ได้
 
+## 🌿 Branch Strategy
+
+- **`master`** — production (cpuerp.vercel.app + boong-private.vercel.app)
+- **`dev`** — development/staging (Preview URL บน Vercel)
+- Workflow: แก้บน `dev` → push → test ที่ Preview URL → merge เข้า `master` → deploy production
+
 ---
 
 ## 🏗️ Architecture

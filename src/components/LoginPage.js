@@ -75,6 +75,7 @@ export { CompanyEditor };
 
 export default function LoginPage({ users, onLogin, onResetPassword, onRegister }) {
   const [u,setU]=useState(""); const [p,setP]=useState(""); const [err,setErr]=useState(""); const [loading,setLoading]=useState(false);
+  const [rememberMe,setRememberMe]=useState(false);
   const [showForgot,setShowForgot]=useState(false);
   const [showRegister,setShowRegister]=useState(false);
   const [regForm,setRegForm]=useState({name:"",username:"",password:"",confirm:""});
@@ -104,7 +105,7 @@ export default function LoginPage({ users, onLogin, onResetPassword, onRegister 
     setLoading(true); setErr("");
     setTimeout(() => {
       const found = users.find(x => x.username === u && x.password === p);
-      if (found) onLogin(found);
+      if (found) onLogin(found, rememberMe);
       else { setErr("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"); setLoading(false); }
     }, 500);
   };
@@ -150,7 +151,11 @@ export default function LoginPage({ users, onLogin, onResetPassword, onRegister 
           <div style={{marginBottom:8}}>
             <Input label="รหัสผ่าน" type="password" value={p} onChange={e=>setP(e.target.value)} placeholder="••••••" />
           </div>
-          <div style={{textAlign:"right",marginBottom:18}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+            <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.sub,cursor:"pointer",userSelect:"none"}}>
+              <input type="checkbox" checked={rememberMe} onChange={e=>setRememberMe(e.target.checked)} style={{cursor:"pointer",accentColor:"#3b5b8b"}}/>
+              <span>จำฉันไว้ <span style={{fontSize:10,color:T.muted}}>(30 วัน)</span></span>
+            </label>
             <span onClick={()=>setShowForgot(true)} style={{fontSize:12,color:T.blue,cursor:"pointer",fontWeight:500}}>🔑 ลืมรหัสผ่าน?</span>
           </div>
           <button onClick={handle} disabled={loading} style={{width:"100%",padding:"11px",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",opacity:loading?0.7:1,boxShadow:"0 4px 20px rgba(59,91,139,0.4)"}}>
