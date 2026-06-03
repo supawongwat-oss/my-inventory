@@ -12,6 +12,7 @@ import StatementTab from "./tabs/StatementTab";
 import AuditLogTab from "./tabs/AuditLogTab";
 import ImportCustomersModal from "./components/ImportCustomersModal";
 import BackupRestore, { shouldRemindBackup, getLastBackupDate } from "./components/BackupRestore";
+import BarcodeScanner from "./components/BarcodeScanner";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
 // ── MAIN APP ───────────────────────────────────────────────────
 export default function App() {
@@ -236,6 +237,7 @@ export default function App() {
   const [txForm, setTxForm] = useState({ productId:"",qty:"",note:"" });
   const [newCatName, setNewCatName] = useState("");
   const [barcodeSearch, setBarcodeSearch] = useState("");
+  const [showScanner, setShowScanner] = useState(false); // โหมดสแกนกล้อง
   const [inventoryTab, setInventoryTab] = useState("general"); // "general" | "clothing"
   const [clothingTxModal, setClothingTxModal] = useState(null); // {item, colorIdx, size}
   const [clothingTxType, setClothingTxType] = useState("รับ");
@@ -1254,12 +1256,13 @@ export default function App() {
             <div style={{maxWidth:580}}>
               <CardBox style={{marginBottom:20}}>
                 <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:16}}>▦ สแกน / ค้นหาบาร์โค้ด</div>
-                <div style={{display:"flex",gap:10}}>
+                <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
                   <input ref={barcodeInputRef} value={barcodeSearch} onChange={e=>setBarcodeSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleBarcodeSearch()} placeholder="สแกนหรือพิมพ์บาร์โค้ด / รหัสสินค้า..." autoFocus
-                    style={{flex:1,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+                    style={{flex:1,minWidth:200,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+                  <button onClick={()=>setShowScanner(true)} style={{padding:"9px 14px",borderRadius:8,border:"1px solid rgba(124,58,237,0.3)",background:"rgba(124,58,237,0.1)",color:"#7c3aed",cursor:"pointer",fontSize:13,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>📸 สแกนกล้อง</button>
                   <BtnPrimary onClick={handleBarcodeSearch}>ค้นหา</BtnPrimary>
                 </div>
-                <div style={{fontSize:11,color:T.muted,marginTop:8}}>💡 กด Enter หลังสแกนบาร์โค้ด หรือพิมพ์รหัสสินค้าแล้วกดค้นหา</div>
+                <div style={{fontSize:11,color:T.muted,marginTop:8}}>💡 กด Enter หลังสแกนบาร์โค้ดจากเครื่องสแกน · หรือกด <b>📸 สแกนกล้อง</b> เพื่อใช้กล้องมือถือ/Webcam</div>
                 {barcodeErr&&<div style={{marginTop:14,padding:"10px 14px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,color:T.red,fontSize:13}}>❌ {barcodeErr}</div>}
                 {barcodeResult&&(
                   <div style={{marginTop:14,padding:16,background:"#eff6ff",border:`1px solid ${T.navActiveBorder}`,borderRadius:10}}>
@@ -3344,6 +3347,23 @@ export default function App() {
       })()}
 
       {/* ── MODAL: ยืนยันตัวตน (re-auth) ── */}
+      {/* ── Camera Barcode Scanner Modal ── */}
+      {showScanner && (
+        <BarcodeScanner
+          onScan={(code) => {
+            setBarcodeSearch(code);
+            setShowScanner(false);
+            // auto-search หลังสแกน
+            setTimeout(() => {
+              const found = products.find(p => p.barcode === code || p.code === code);
+              if (found) { setBarcodeResult(found); setBarcodeErr(""); }
+              else { setBarcodeErr("ไม่พบสินค้าในระบบ (รหัส: " + code + ")"); setBarcodeResult(null); }
+            }, 100);
+          }}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
+
       {authPrompt&&(
         <Modal onClose={()=>{setAuthPrompt(null);setAuthInput("");setAuthErr("");}} w={420}>
           <div style={{textAlign:"center",marginBottom:18}}>
