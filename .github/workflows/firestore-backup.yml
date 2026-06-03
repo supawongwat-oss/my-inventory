@@ -45,9 +45,21 @@ jobs:
         run: npm install --no-save firebase-admin
 
       - name: Write service account
-        run: echo '${{ secrets[matrix.project.secret] }}' > sa.json
+        env:
+          SA_JSON: ${{ secrets[matrix.project.secret] }}
+        run: printf '%s' "$SA_JSON" > sa.json
+
+      - name: Verify service account JSON
+        run: |
+          if [ ! -s sa.json ]; then
+            echo "❌ sa.json is empty — secret '${{ matrix.project.secret }}' may be missing"
+            exit 1
+          fi
+          node -e "const sa = require('./sa.json'); console.log('✅ Service account for:', sa.project_id);"
 
       - name: Dump Firestore
+        env:
+          PROJECT: ${{ matrix.project.name }}
         run: |
           cat > backup.mjs << 'EOF'
           import { initializeApp, cert } from "firebase-admin/app";
@@ -60,7 +72,9 @@ jobs:
             "statements","settings"
           ];
 
-          initializeApp({ credential: cert(JSON.parse(process.env.SA_JSON)) });
+          import { readFileSync } from "node:fs";
+          const sa = JSON.parse(readFileSync("sa.json", "utf8"));
+          initializeApp({ credential: cert(sa) });
           const db = getFirestore();
 
           const out = {
@@ -89,7 +103,7 @@ jobs:
           writeFileSync(path, JSON.stringify(out, null, 2));
           console.log(`Done: ${total} records → ${path}`);
           EOF
-          SA_JSON="$(cat sa.json)" PROJECT="${{ matrix.project.name }}" node backup.mjs
+          node backup.mjs
 
       - name: Remove old backups (keep last 30 days)
         run: |
