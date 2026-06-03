@@ -81,6 +81,7 @@ export default function StatementTab({ statements, invoices, customers, companyI
   const [statusFilter, setStatusFilter] = useState("ทั้งหมด");
   const [search, setSearch] = useState("");
   const [printPreview, setPrintPreview] = useState(null); // statement object ที่กำลังพิมพ์
+  const [viewStatement, setViewStatement] = useState(null); // statement ที่เปิดดู preview
 
   // === Form state ของหน้าสร้างใหม่ ===
   const today = new Date();
@@ -302,8 +303,11 @@ export default function StatementTab({ statements, invoices, customers, companyI
           {filteredStatements.map((st, i) => {
             const sStyle = statusStyle(st.status || "ออกแล้ว");
             return (
-              <div key={st.id} style={{ display: "grid", gridTemplateColumns: "120px 1fr 160px 120px 80px 130px 90px", alignItems: "center", padding: "12px 16px", borderBottom: i < filteredStatements.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s" }}
-                onMouseEnter={e => e.currentTarget.style.background = "rgba(59,91,139,0.04)"}
+              <div key={st.id}
+                onClick={() => setViewStatement(st)}
+                title="คลิกเพื่อดูรายละเอียด"
+                style={{ display: "grid", gridTemplateColumns: "120px 1fr 160px 120px 80px 130px 90px", alignItems: "center", padding: "12px 16px", borderBottom: i < filteredStatements.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s", cursor: "pointer" }}
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(59,91,139,0.08)"}
                 onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                 <div style={{ fontFamily: "monospace", fontSize: 11, color: T.accent, fontWeight: 700 }}>{st.statementNo}</div>
                 <div>
@@ -313,13 +317,13 @@ export default function StatementTab({ statements, invoices, customers, companyI
                 <div style={{ fontSize: 11, color: T.sub }}>{st.periodStart} → {st.periodEnd}</div>
                 <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.green, fontSize: 13 }}>฿{Number(st.totalAmount || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
                 <div style={{ textAlign: "center", fontSize: 12, fontFamily: "monospace", color: T.accent, fontWeight: 700 }}>{st.invoiceCount} ใบ</div>
-                <div>
+                <div onClick={e => e.stopPropagation()}>
                   <select value={st.status || "ออกแล้ว"} onChange={e => handleUpdateStatus(st, e.target.value)}
                     style={{ background: sStyle.bg, border: sStyle.border, borderRadius: 10, padding: "4px 8px", fontSize: 10, fontWeight: 600, color: sStyle.color, cursor: "pointer", fontFamily: "'Sarabun',sans-serif", outline: "none" }}>
                     {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
-                <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+                <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 5, justifyContent: "center" }}>
                   <button onClick={() => handlePrint(st)} title="พิมพ์" style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid rgba(59,91,139,0.25)", background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>🖨️</button>
                   {role.canDelete && <button onClick={() => handleDelete(st)} title="ลบ" style={{ padding: "5px 8px", borderRadius: 7, border: "1px solid rgba(185,74,72,0.25)", background: "rgba(185,74,72,0.08)", color: T.red, cursor: "pointer", fontSize: 11 }}>✕</button>}
                 </div>
@@ -434,6 +438,104 @@ export default function StatementTab({ statements, invoices, customers, companyI
           <StatementPrintLayout statement={printPreview} companyInfo={companyInfo} />
         </div>
       )}
+
+      {/* === Preview Modal — คลิกแถวเพื่อดูรายละเอียด === */}
+      {viewStatement && (() => {
+        const sStyle = statusStyle(viewStatement.status || "ออกแล้ว");
+        return (
+          <div onClick={() => setViewStatement(null)}
+            style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, backdropFilter: "blur(4px)" }}>
+            <div onClick={e => e.stopPropagation()}
+              style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, width: "100%", maxWidth: 880, maxHeight: "92vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+              {/* Header */}
+              <div style={{ padding: "16px 20px", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: T.text }}>📃 {viewStatement.statementNo}</div>
+                  <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>ใบวางบิลรวมเดือน · ออกเมื่อ {viewStatement.date}</div>
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span style={{ padding: "4px 12px", borderRadius: 14, fontSize: 11, fontWeight: 700, background: sStyle.bg, border: sStyle.border, color: sStyle.color }}>{viewStatement.status || "ออกแล้ว"}</span>
+                  <button onClick={() => { handlePrint(viewStatement); }}
+                    style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid rgba(59,91,139,0.3)", background: "rgba(59,91,139,0.1)", color: T.accent, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: 600 }}>🖨️ พิมพ์</button>
+                  <button onClick={() => setViewStatement(null)}
+                    style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.sub, cursor: "pointer", fontSize: 13 }}>✕</button>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div style={{ padding: 20, overflow: "auto", flex: 1 }}>
+                {/* Customer + Period */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
+                  <div style={{ padding: 14, background: "rgba(241,243,246,0.6)", border: `1px solid ${T.border}`, borderRadius: 10 }}>
+                    <div style={{ fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>👤 ลูกค้า</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 4 }}>{viewStatement.customerName}</div>
+                    {viewStatement.customerPhone && <div style={{ fontSize: 12, color: T.sub, marginBottom: 2 }}>📞 {viewStatement.customerPhone}</div>}
+                    {viewStatement.customerAddress && <div style={{ fontSize: 12, color: T.sub, marginBottom: 2 }}>📍 {viewStatement.customerAddress}</div>}
+                    {viewStatement.customerTaxId && <div style={{ fontSize: 11, color: T.muted, fontFamily: "monospace" }}>เลขผู้เสียภาษี: {viewStatement.customerTaxId}</div>}
+                  </div>
+                  <div style={{ padding: 14, background: "rgba(241,243,246,0.6)", border: `1px solid ${T.border}`, borderRadius: 10 }}>
+                    <div style={{ fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>📅 ประจำงวด</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: T.accent }}>{viewStatement.periodStart} → {viewStatement.periodEnd}</div>
+                    <div style={{ fontSize: 11, color: T.sub, marginTop: 4 }}>{viewStatement.invoiceCount} ใบ · {viewStatement.filterMode === "unpaid" ? "เฉพาะที่ยังไม่ชำระ" : "ทุกบิล"}</div>
+                    {viewStatement.dueDate && <div style={{ fontSize: 11, color: T.red, fontWeight: 600, marginTop: 6 }}>⚠️ ครบกำหนด: {viewStatement.dueDate}</div>}
+                  </div>
+                </div>
+
+                {/* Items table */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: T.text, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>📋 รายการบิลที่รวม</div>
+                  <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, overflow: "hidden" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "130px 110px 1fr 130px 130px", padding: "10px 14px", background: "rgba(241,243,246,0.8)", fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      <div>เลขที่บิล</div><div>วันที่</div><div>ประเภท</div><div>สถานะ</div><div style={{ textAlign: "right" }}>ยอดบิล (฿)</div>
+                    </div>
+                    {(viewStatement.invoicesSnapshot || []).map((inv, i) => {
+                      const isLast = i === (viewStatement.invoicesSnapshot || []).length - 1;
+                      const isPaid = inv.status === "ชำระแล้ว";
+                      const isCancel = inv.status === "ยกเลิก";
+                      return (
+                        <div key={i} style={{ display: "grid", gridTemplateColumns: "130px 110px 1fr 130px 130px", alignItems: "center", padding: "10px 14px", borderBottom: isLast ? "none" : `1px solid ${T.border}`, background: i % 2 === 0 ? T.card : "rgba(241,243,246,0.3)" }}>
+                          <div style={{ fontFamily: "monospace", fontWeight: 700, color: T.accent, fontSize: 12 }}>{inv.invoiceNo}</div>
+                          <div style={{ fontSize: 11, color: T.sub }}>{(inv.date || "").split(" ")[0]}</div>
+                          <div style={{ fontSize: 11, color: T.sub }}>{inv.docType === "tax" ? "ใบกำกับภาษี" : inv.docType === "quotation" ? "ใบวางบิล" : "ใบเสร็จ"}</div>
+                          <div>
+                            <span style={{ padding: "2px 10px", borderRadius: 10, fontSize: 10, fontWeight: 600, background: isPaid ? "rgba(58,122,82,0.12)" : isCancel ? "rgba(185,74,72,0.12)" : "rgba(184,134,0,0.12)", color: isPaid ? T.green : isCancel ? T.red : T.amber, border: `1px solid ${isPaid ? "rgba(58,122,82,0.3)" : isCancel ? "rgba(185,74,72,0.3)" : "rgba(184,134,0,0.3)"}` }}>{inv.status}</span>
+                          </div>
+                          <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.text, fontSize: 13 }}>{Number(inv.total).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
+                        </div>
+                      );
+                    })}
+                    {/* Total row */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 130px", padding: "12px 14px", background: "rgba(58,122,82,0.08)", borderTop: `2px solid ${T.border}`, fontWeight: 800 }}>
+                      <div style={{ textAlign: "right", fontSize: 13, color: T.text }}>รวมทั้งสิ้น</div>
+                      <div style={{ textAlign: "right", fontFamily: "monospace", fontSize: 16, color: T.green }}>฿{Number(viewStatement.totalAmount || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Note */}
+                {viewStatement.note && (
+                  <div style={{ padding: 12, background: "rgba(184,134,0,0.08)", border: "1px solid rgba(184,134,0,0.25)", borderRadius: 8, fontSize: 12, color: T.amber, marginBottom: 12 }}>
+                    📝 <b>หมายเหตุ:</b> {viewStatement.note}
+                  </div>
+                )}
+
+                {/* Bank account */}
+                {viewStatement.bankAccount && viewStatement.bankAccount.accountNo && (
+                  <div style={{ padding: 12, background: "rgba(59,91,139,0.08)", border: "1px solid rgba(59,91,139,0.25)", borderRadius: 8, fontSize: 12, color: T.accent, marginBottom: 12 }}>
+                    🏦 <b>ชำระผ่านบัญชี:</b> {viewStatement.bankAccount.bank || viewStatement.bankAccount.bankName} · {viewStatement.bankAccount.accountNo} · {viewStatement.bankAccount.accountName}
+                  </div>
+                )}
+
+                {/* Meta */}
+                <div style={{ fontSize: 10, color: T.muted, paddingTop: 12, borderTop: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <div>ผู้ออก: {viewStatement.by || "—"}</div>
+                  <div>ออกเมื่อ: {viewStatement.date}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
