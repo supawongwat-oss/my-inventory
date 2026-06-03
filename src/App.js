@@ -9,6 +9,7 @@ import { useFirestore } from "./hooks/useFirestore";
 import ReportsTab from "./tabs/ReportsTab";
 import SuppliersTab from "./tabs/SuppliersTab";
 import StatementTab from "./tabs/StatementTab";
+import ImportCustomersModal from "./components/ImportCustomersModal";
 // ── MAIN APP ───────────────────────────────────────────────────
 export default function App() {
   const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, loading, setLoading, suppliers, statements } = useFirestore();
@@ -91,6 +92,7 @@ export default function App() {
   const [collapsedOrderDates, setCollapsedOrderDates] = useState({});
   const [collapsedInvoiceDates, setCollapsedInvoiceDates] = useState({});
   const [showNewCustomer, setShowNewCustomer] = useState(false);
+  const [showImportCustomers, setShowImportCustomers] = useState(false);
   const [showPrintOrder, setShowPrintOrder] = useState(null);
   const [orderForm, setOrderForm] = useState({
     customerId: "", customerName: "", customerPhone: "", customerAddress: "",
@@ -1398,7 +1400,10 @@ export default function App() {
             <div style={{animation:"fadeUp 0.4s ease",maxWidth:700}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
                 <div style={{fontSize:12,color:T.sub}}>ลูกค้าทั้งหมด <b style={{color:T.accent}}>{customers.length} ราย</b></div>
-                <button onClick={()=>setShowNewCustomer(true)} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>️ เพิ่มลูกค้าใหม่</button>
+                <div style={{display:"flex",gap:8}}>
+                  {role.canAdd&&<button onClick={()=>setShowImportCustomers(true)} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${T.border}`,cursor:"pointer",background:"rgba(59,91,139,0.06)",color:T.accent,fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>📥 นำเข้า Excel</button>}
+                  <button onClick={()=>setShowNewCustomer(true)} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>＋ เพิ่มลูกค้าใหม่</button>
+                </div>
               </div>
               <div style={{marginBottom:14}}>
                 <input value={customerSearch} onChange={e=>setCustomerSearch(e.target.value)} placeholder="🔍 ค้นหาชื่อ เบอร์ หรือที่อยู่..."
@@ -2141,6 +2146,15 @@ export default function App() {
             </BtnPrimary>
           </div>
         </Modal>
+      )}
+
+      {/* ── MODAL: นำเข้าลูกค้าจาก Excel ── */}
+      {showImportCustomers && (
+        <ImportCustomersModal
+          existingCustomers={customers}
+          user={user}
+          onClose={() => setShowImportCustomers(false)}
+        />
       )}
 
       {/* ── MODAL: เพิ่มลูกค้าใหม่ ── */}
