@@ -397,18 +397,26 @@ export default function App() {
   const handleSaveProfile = async () => {
     setProfileMsg({ type:"", text:"" });
     if (!profileForm.name.trim() || !profileForm.username.trim()) { setProfileMsg({type:"err",text:"กรุณากรอกชื่อและชื่อผู้ใช้"}); return; }
-    const dupUser = users.find(u => u.username === profileForm.username && u.id !== user.id);
+    const dupUser = users.find(u => u.username === profileForm.username && String(u.id) !== String(user.id));
     if (dupUser) { setProfileMsg({type:"err",text:"ชื่อผู้ใช้นี้มีในระบบแล้ว"}); return; }
     if (profileForm.newPass) {
-      if (profileForm.oldPass !== user.password) { setProfileMsg({type:"err",text:"รหัสผ่านเดิมไม่ถูกต้อง"}); return; }
+      // หา user ตัวจริงใน Firestore — กัน user state ตัวแคชเก่าจาก localStorage
+      const liveUser = users.find(u => String(u.id) === String(user.id)) || user;
+      if (profileForm.oldPass !== liveUser.password) { setProfileMsg({type:"err",text:"รหัสผ่านเดิมไม่ถูกต้อง"}); return; }
       if (profileForm.newPass.length < 4) { setProfileMsg({type:"err",text:"รหัสผ่านใหม่ต้องมีอย่างน้อย 4 ตัว"}); return; }
       if (profileForm.newPass !== profileForm.confirmPass) { setProfileMsg({type:"err",text:"รหัสผ่านใหม่ไม่ตรงกัน"}); return; }
     }
-    const updated = { ...user, name: profileForm.name.trim(), username: profileForm.username.trim(), password: profileForm.newPass || user.password };
-    await setDoc(doc(db, "users", String(user.id)), updated);
-    setUser(updated);
-    setProfileMsg({type:"ok",text:"บันทึกสำเร็จ!"});
-    setProfileForm(f => ({...f, oldPass:"", newPass:"", confirmPass:""}));
+    try {
+      const liveUser = users.find(u => String(u.id) === String(user.id)) || user;
+      const updated = { ...liveUser, name: profileForm.name.trim(), username: profileForm.username.trim(), password: profileForm.newPass || liveUser.password };
+      await setDoc(doc(db, "users", String(user.id)), updated);
+      setUser(updated);
+      setProfileMsg({type:"ok",text:"บันทึกสำเร็จ!"});
+      setProfileForm(f => ({...f, oldPass:"", newPass:"", confirmPass:""}));
+    } catch (err) {
+      console.error("Save profile failed:", err);
+      setProfileMsg({type:"err",text:`บันทึกไม่ได้: ${err.code || err.message}`});
+    }
   };
 
 
