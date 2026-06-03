@@ -3,24 +3,28 @@
 > สรุปการใช้งาน, deploy, และ workflow ของระบบ
 > สำหรับเปิดอ่านจากเครื่องที่ทำงานหรือเครื่องอื่นๆ ได้
 
-## 🌿 Branch Strategy
+_Last updated: 2026-06-03_
 
-- **`master`** — production (cpuerp.vercel.app + boong-private.vercel.app)
-- **`dev`** — development/staging (Preview URL บน Vercel)
-- Workflow: แก้บน `dev` → push → test ที่ Preview URL → merge เข้า `master` → deploy production
+---
+
+## 🌿 Branch Strategy (ปัจจุบัน)
+
+- **`master`** — production (cpuerp.vercel.app + boongerp.vercel.app)
+- **dev branch ถูกลบไปแล้ว** — push ตรงเข้า master เลย เพราะยังเป็น test phase ไม่มีพนักงานใช้
+- เมื่อเปิดให้พนักงานใช้จริง → ค่อยสร้าง dev branch กลับมา
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-GitHub repo: supawongwat-oss/my-inventory (master branch)
+GitHub repo: supawongwat-oss/my-inventory (master)
     │
-    ├──→ Vercel Project A → cpuerp.vercel.app          → Firebase: cpu-erp        (บริษัท)
-    │                       (no env vars, ใช้ fallback config)
+    ├──→ Vercel Project A: cpuerp     → cpuerp.vercel.app     → Firebase: cpu-erp
+    │                                   (fallback config ใน code)
     │
-    └──→ Vercel Project B → <pending>.vercel.app       → Firebase: boong-private  (ส่วนตัว)
-                            (ใส่ env vars ที่ Vercel)
+    └──→ Vercel Project B: boongerp   → boongerp.vercel.app   → Firebase: boong-private
+                                        (env vars ที่ Vercel)
 ```
 
 **1 codebase → 2 deployments → 2 databases** (data แยกกัน 100%, code เดียวกัน)
@@ -29,13 +33,12 @@ GitHub repo: supawongwat-oss/my-inventory (master branch)
 
 ## 🌐 URLs
 
-### Production
-- **บริษัท**: https://cpuerp.vercel.app (✅ deploy แล้ว)
-- **ส่วนตัว**: ยังไม่ deploy (พรุ่งนี้)
+### Production (ใช้งานจริง)
+- **บริษัท**: https://cpuerp.vercel.app ✅
+- **ส่วนตัว**: https://boongerp.vercel.app ✅
 
 ### Local Dev
-- http://localhost:3000 (เครื่องนี้)
-- http://192.168.10.197:3000 (LAN — สำหรับมือถือใน wifi เดียวกัน)
+- http://localhost:3000
 
 ### Firebase Consoles
 - บริษัท: https://console.firebase.google.com/project/cpu-erp
@@ -45,7 +48,7 @@ GitHub repo: supawongwat-oss/my-inventory (master branch)
 - https://github.com/supawongwat-oss/my-inventory
 
 ### Vercel
-- https://vercel.com (login ด้วย GitHub)
+- https://vercel.com → boong-s-projects1 team
 
 ---
 
@@ -59,6 +62,11 @@ GitHub repo: supawongwat-oss/my-inventory (master branch)
 
 > ⚠️ เปลี่ยนรหัสผ่านก่อนใช้งานจริง
 
+### Session Behavior (ตั้งแต่ 2026-06-03)
+- **ไม่ติ๊ก "จำฉันไว้":** inactivity 8 ชม. + hard expiry 16 ชม.
+- **ติ๊ก "จำฉันไว้":** inactivity off + hard expiry 30 วัน
+- เช็คทุก 30 วิ — auto logout เมื่อหมดอายุ
+
 ---
 
 ## ⚙️ Local Dev Setup
@@ -66,36 +74,19 @@ GitHub repo: supawongwat-oss/my-inventory (master branch)
 ### ครั้งแรกบนเครื่องใหม่
 
 ```powershell
-# 1. Clone repo
 git clone https://github.com/supawongwat-oss/my-inventory.git
 cd my-inventory
-
-# 2. ติดตั้ง dependencies
 npm install
-
-# 3. รัน dev server
 npm start
 ```
 
 ### สลับระหว่าง บริษัท / ส่วนตัว
 
 **ใช้ บริษัท (cpu-erp):**
-- ไม่ต้องมี `.env.local` (ใช้ fallback config)
-- หรือเปลี่ยนชื่อ: `ren .env.local .env.personal`
+- ไม่ต้องมี `.env.local` (ใช้ fallback config ใน `src/firebase.js`)
 
 **ใช้ ส่วนตัว (boong-private):**
-- ต้องมีไฟล์ `.env.local` (gitignored — สร้างใหม่ในเครื่อง)
-- หรือเปลี่ยนชื่อกลับ: `ren .env.personal .env.local`
-
-**ตรวจสอบ:** เปิด browser → F12 → Console จะเห็น:
-```
-🔥 Firebase: cpu-erp        (ถ้าใช้บริษัท)
-🔥 Firebase: boong-private  (ถ้าใช้ส่วนตัว)
-```
-
-### Firebase config ส่วนตัว (boong-private)
-
-สร้าง `.env.local` (ไม่ commit เพราะ gitignore):
+- สร้าง `.env.local` ที่ root (gitignored)
 
 ```env
 REACT_APP_FB_API_KEY=AIzaSyDBUv8Gglpslce4g789vZXYzd8Etpbsvtk
@@ -107,156 +98,178 @@ REACT_APP_FB_APP_ID=1:185142803696:web:6fa4b124e1a82a83e89635
 REACT_APP_FB_MEASUREMENT_ID=G-NZCBV11EEN
 ```
 
+**ตรวจสอบ:** F12 → Console จะเห็น
+```
+🔥 Firebase: cpu-erp        (ถ้าใช้บริษัท)
+🔥 Firebase: boong-private  (ถ้าใช้ส่วนตัว)
+```
+
+⚠️ **ระวัง typo ใน env var names** — เคยพลาดที่ Vercel (`REACT_APP_FB_API_KE` ขาดตัว `Y`) แล้วใช้ไม่ได้ทั้ง project!
+
 ---
 
-## 🚀 Deploy Workflow
-
-### แก้ code → up auto
+## 🚀 Deploy Workflow (ปัจจุบัน — ตรงสู่ master)
 
 ```powershell
 git add .
-git commit -m "feat: ..."
+git commit -m "..."
 git push
 ```
 
-→ Vercel auto-detect → build (~1-2 นาที) → deploy ทั้ง 2 projects พร้อมกัน
+→ Vercel auto build ทั้ง 2 projects → deploy production ภายใน 1-2 นาที
 
 ### ดู deploy status
-- Dashboard: https://vercel.com → เลือก project → Deployments
+- https://vercel.com → เลือก project → Deployments
 
 ### Build fail?
-ปกติเพราะ ESLint warnings → ต้องมี env var:
-- Key: `CI` Value: `false`
-- ใส่ที่ Vercel project → Settings → Environment Variables
-
----
-
-## 📋 Deploy ครั้งต่อไป (ส่วนตัว — boong-private)
-
-```
-1. ไป vercel.com → Add New Project → Import (repo เดิม my-inventory)
-2. ตั้งชื่อใหม่ เช่น "boong-private" (อย่าซ้ำกับ cpuerp)
-3. Framework: Create React App
-4. Environment Variables → ใส่ทั้ง 7 ตัว:
-   - CI = false
-   - REACT_APP_FB_API_KEY = AIzaSyDBUv8Gglpslce4g789vZXYzd8Etpbsvtk
-   - REACT_APP_FB_AUTH_DOMAIN = boong-private.firebaseapp.com
-   - REACT_APP_FB_PROJECT_ID = boong-private
-   - REACT_APP_FB_STORAGE_BUCKET = boong-private.firebasestorage.app
-   - REACT_APP_FB_MESSAGING_SENDER_ID = 185142803696
-   - REACT_APP_FB_APP_ID = 1:185142803696:web:6fa4b124e1a82a83e89635
-   - REACT_APP_FB_MEASUREMENT_ID = G-NZCBV11EEN
-5. Deploy
-6. ได้ URL เช่น boong-private.vercel.app
-```
+- ESLint warnings → ตั้ง `CI=false` ใน Vercel env vars
 
 ---
 
 ## 🎨 Features Highlight
 
 ### ระบบหลัก
-- **Dashboard** — ภาพรวมสต็อก, ความเคลื่อนไหว
-- **คลังสินค้าทั่วไป** — เพิ่ม/แก้/ลบ, barcode, รับ/จ่าย
-- **คลังเสื้อผ้า** — รุ่น × สี × ไซส์ พร้อมราคาตามไซส์
-- **ใบสั่งของ** — สร้าง, ปริ้น, ตัดสต็อกอัตโนมัติ
-- **ออกบิล** — ใบเสร็จ/ใบกำกับภาษี/ใบวางบิล + VAT + บัญชีรับเงิน
-- **ลูกค้า** — ฐานข้อมูลลูกค้า
-- **รายงาน** — ยอดขาย, สต็อกต่ำ
-- **ซัพพลายเออร์** — รายชื่อผู้ขาย
+- 📊 **Dashboard** — ภาพรวมสต็อก, ความเคลื่อนไหว
+- 📦 **คลังสินค้าทั่วไป** — เพิ่ม/แก้/ลบ, barcode, รับ/จ่าย
+- 👕 **คลังเสื้อผ้า** — รุ่น × สี × ไซส์, ราคาตามกลุ่มไซส์ (6-12 / S-XL / 2XL / 3XL / 4XL / 5XL)
+- 📋 **ใบสั่งของ** — สร้าง, ปริ้น, ตัดสต็อกอัตโนมัติ
+- 🧾 **ออกบิล** — ใบเสร็จ/ใบกำกับภาษี/ใบวางบิล + VAT + บัญชีรับเงิน + payment status
+- 📃 **วางบิลเก็บเงิน (Statement)** — รวมยอดลูกค้าเป็นเดือน/ช่วงเวลา → ออกใบวางบิลรวม
+- 👤 **ลูกค้า** — ฐานข้อมูล + Excel import
+- 📊 **รายงาน** — ยอดขาย, สต็อกต่ำ, top products, CSV export
+- 🏭 **ซัพพลายเออร์** — รายชื่อผู้ขาย
 
 ### ระบบสิทธิ์
-- 3 บทบาท: **Admin / Manager / Staff** (เปลี่ยนชื่อบทบาทได้)
-- สิทธิ์ override รายคน: เพิ่ม / ลบ / ล้าง / ออกใบสั่ง / ออกบิล
+- 3 บทบาท: Admin / Manager / Staff (เปลี่ยนชื่อบทบาทได้)
+- สิทธิ์ override รายคน
 - ตั้งค่าเมนูที่แต่ละ user เห็นได้
-- Bulk action: ตั้งสิทธิ์ทุกคนพร้อมกัน
-- ตำแหน่งหน้าที่ (กรอกเอง, ใช้กรอง sub-tab ได้)
 - Admin ดูรหัสผ่านได้ (ต้อง re-auth, session 5 นาที)
 
-### UI/UX
-- Theme เทาอ่อนแบบมืออาชีพ
-- Mobile responsive (sidebar auto-collapse, ตาราง scroll-x)
-- Login background: CPU Branding Partner
-- พรีวิวใบสั่ง/ใบบิลได้โดยคลิกที่แถว
-- 2XL+ แยกบรรทัด (ราคาต่างกัน)
-- จัดกลุ่มใบสั่ง/ใบบิลตามวัน (พับ/กางได้)
-- บัญชีรับเงิน (เลือกบัญชีบริษัท/ส่วนตัวตอนออกบิล)
+### UX
+- 🔍 ค้นหา **case-insensitive** ทุกที่ (ลูกค้า/สินค้า/ซัพ)
+- 🔒 **Persistent login** — ไม่หลุดตอน refresh
+- 🖨️ Print ผ่าน iframe → A4 หลายหน้าได้, font Sarabun โหลดถูก
+- 📱 Mobile responsive (sidebar auto-collapse)
+- 💾 Modal ไม่ปิดเวลาคลิกข้างนอก → ข้อมูลไม่หาย
+
+### 💾 Backup System (ใหม่ — 2026-06-03)
+
+**In-App (ปุ่ม ⚙️ → 💾 Backup):**
+- 📄 Download JSON — สำหรับ restore
+- 📊 Download Excel — 1 sheet/collection, summary sheet
+- 📂 Restore from JSON — Append หรือ Replace mode
+- ⚠️ Banner เตือนเมื่อไม่ backup เกิน 7 วัน (admin only)
+
+**Auto Daily Backup (GitHub Actions):**
+- รัน 09:00 ไทย ทุกวัน
+- Backup ทั้ง 2 projects sequential (ไม่ race condition)
+- Commit เข้า `backups/<project>/YYYY-MM-DD.json`
+- เก็บย้อนหลัง **60 วัน** (ลบเก่าอัตโนมัติ)
+- Workflow file: `.github/workflows/firestore-backup.yml`
+- ต้องมี GitHub Secrets:
+  - `FIREBASE_SA_CPU_ERP` = service account JSON ของ cpu-erp
+  - `FIREBASE_SA_BOONG` = service account JSON ของ boong-private
+- Manual trigger: Actions tab → Firestore Daily Backup → Run workflow
+
+📖 รายละเอียดเต็มอยู่ที่ `BACKUP-SETUP.md`
 
 ---
 
 ## 🔧 Quick Commands
 
 ```powershell
-# ตรวจสอบสถานะ git
-git status
-
-# ดู log commit ล่าสุด
-git log --oneline -10
-
-# Pull โค้ดใหม่ (ก่อนแก้)
-git pull
-
-# Push หลังแก้
-git add .
-git commit -m "..."
-git push
-
-# สลับไป branch ที่กำลังพัฒนา
-git checkout master
-git checkout fix/inventory-table-headers
-
-# ลบ branch เก่า
-git branch -d fix/inventory-table-headers
+git status                    # ดูสถานะ
+git log --oneline -10         # log 10 ตัวล่าสุด
+git pull                      # ดึงล่าสุดก่อนแก้
+git add . && git commit -m "..." && git push    # commit + push
 ```
 
 ---
 
-## 🎯 พรีเซนต์กรรมการ — Talking Points
+## 🔥 Firestore Rules
 
-### จุดขายหลัก
-1. **ฟรี 100%** — Vercel + Firebase free tier
-2. **ใช้ได้ทุกที่** — มือถือ / คอม / 4G / ต่างประเทศ
-3. **ไม่ต้องลงอะไร** — แค่ browser เปิด URL
-4. **Real-time sync** — แก้ที่ไหนคนอื่นเห็นทันที
-5. **ปิดคอมได้** — Server อยู่บน cloud
-6. **อัปเดต 1 ครั้ง** — ทุกเครื่องได้พร้อมกัน
+### ปัจจุบัน — ทั้ง 2 projects เปิด (development mode)
 
-### Demo Flow
-1. เปิด `cpuerp.vercel.app` บน desktop + มือถือคู่กัน
-2. โชว์ออกบิล → ปรากฏบนมือถือทันที
-3. โชว์ระบบสิทธิ์ → manager เห็นน้อยกว่า admin
-4. โชว์ใบบิลปริ้น → format สวย พร้อมข้อมูลธนาคาร
-5. ถ้ามีคำถาม security → ตอบ "ปรับ Firestore Rules + Firebase Auth ได้"
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} { allow read, write: if true; }
+  }
+}
+```
 
-### ค่าใช้จ่ายในอนาคต
-- ใช้ฟรีได้นาน — ถ้า traffic เยอะค่อยอัปเกรด
-- Custom domain (ถ้าอยากได้ ชื่อตัวเอง) ~390-850 บาท/ปี
+⚠️ Warning ใน Console: "Your security rules are defined as public"
 
----
+### บทเรียนจาก 2026-06-03 — เคยลอง lock แล้วเจอปัญหา
 
-## 📝 To-Do (พรุ่งนี้+)
+ใช้ Anonymous Auth + Security Rules — เจอปัญหา:
+1. Race condition — Firestore subscribe ก่อน auth ready → permission-denied
+2. Anonymous token refresh ไม่ stable พอ
+3. **ต้องเป็น Firebase Auth เต็มรูปแบบเท่านั้น** ถึงจะ lock ได้สบายใจ (item 3 ใน roadmap)
 
-- [ ] Deploy boong-private (ส่วนตัว) บน Vercel
-- [ ] (Optional) Custom domain
-- [ ] (Optional) ปิด Firestore Rules ให้แคบลง (ต้องเปลี่ยนเป็น Firebase Auth)
-- [ ] (Optional) สอนใช้งาน user ในโรงงาน
-- [ ] (Optional) ระบบกล้องวงจรปิด — รวมในแอป (ต้องเช็คฮาร์ดแวร์ก่อน)
+→ ปัจจุบันปล่อยเปิดไว้, ใช้ backup ป้องกันความเสี่ยงข้อมูลแทน
 
 ---
 
-## 🆘 ปัญหาเจอบ่อย
+## 🗺️ Roadmap (จากไฟล์ plan)
+
+### 🔴 สำคัญ (ก่อนเปิดให้พนักงาน)
+1. ✅ ~~Auto Backup~~ — เสร็จ 2026-06-03
+2. ⏳ Audit Log
+3. ⏳ Firebase Auth (เพื่อ lock rules อย่างถูกต้อง)
+
+### 🟡 ประโยชน์มาก
+4. ⏳ Import Excel: Products, Clothing, Suppliers
+5. ⏳ Camera Barcode Scanner (zxing/quagga2)
+6. ⏳ รายงานเชิงลึก: Aging, Top products, Trend, Profit margin
+7. ⏳ LINE Notify
+8. ⏳ PromptPay QR ในบิล
+
+### 🟢 เสริม UX
+9. ⏳ PWA install
+10. ⏳ หัก ณ ที่จ่าย 3%
+11. ⏳ แนบไฟล์/รูป (Firebase Storage)
+12. ⏳ Dark mode
+13. ⏳ Stocktake
+14. ⏳ หน้า Profile ลูกค้า
+15. ⏳ Coupon/Discount
+
+---
+
+## 🆘 ปัญหาเจอบ่อย + วิธีแก้
+
+### "permission-denied" ตอน save
+- เช็ค F12 Console — ถ้าเห็น project ID ผิด → Vercel env vars พลาด (เคยเจอ typo `REACT_APP_FB_API_KE` ขาด Y)
+- เช็ค Firestore Rules — ถ้าตั้ง lock แล้ว ต้องมี Anonymous Auth + handle race condition
 
 ### "เห็น Firebase: cpu-erp ทั้งที่อยากให้เป็น boong-private"
-- ลืม restart `npm start` หลังสร้าง `.env.local`
-- หรือ `.env.local` ไม่ได้อยู่ใน root project
+- ลืม restart `npm start` หลังสร้าง/แก้ `.env.local`
+- หรือ env var name มี typo
 
 ### "Build fail บน Vercel"
-- ESLint warnings → ใส่ env var `CI=false` ใน Vercel Project Settings
+- ESLint warnings → ใส่ env var `CI=false`
 
 ### "git push rejected"
-- มี code ใหม่บน remote → `git pull --no-rebase` ก่อน → แล้ว push
+- มี code ใหม่บน remote (เช่น backup commit จาก GitHub Actions) → `git pull --no-rebase` ก่อน → push
 
-### "git checkout master fail"
-- อาจเป็น branch ชื่อ `main` → `git checkout main`
+### "ปริ้นไม่ครบ หลายหน้า"
+- แก้แล้ว — ใช้ iframe-based printing (`printElementById` ใน App.js)
+
+### "Thai text มั่ว"
+- เคยเจอเพราะ PowerShell อ่าน UTF-8 เป็น CP874
+- แก้แล้วและไม่ควรเกิดอีก ถ้าใช้ Edit tool / VS Code
+
+---
+
+## 📥 Excel Import — Customers (มีแล้ว)
+
+- ⚙️ ตั้งค่าไม่ใช่ — อยู่ที่ **ลูกค้า** tab → ปุ่ม "📥 นำเข้า Excel"
+- Drag & drop หรือ click → เลือก `.xlsx` / `.csv`
+- Auto-detect column จากหัวคอลัมน์ (ไทย+อังกฤษ)
+- Duplicate detection: ชื่อ+เบอร์ตรง → ข้าม
+- Bulk write 100 records/batch
+- Template ดาวน์โหลดได้ในระบบ
 
 ---
 
@@ -265,8 +278,39 @@ git branch -d fix/inventory-table-headers
 - Claude Code: https://claude.com/claude-code
 - Firebase Docs: https://firebase.google.com/docs/firestore
 - Vercel Docs: https://vercel.com/docs
-- Create React App: https://create-react-app.dev
+- xlsx (SheetJS): https://docs.sheetjs.com
+- GitHub Actions: https://docs.github.com/en/actions
 
 ---
 
-_Last updated: 2026-06-02 (วันแรกที่ deploy)_
+## 📝 Major Changes Log
+
+### 2026-06-03 (วันนี้)
+- ✅ ใบวางบิลรวมเดือน (Statement) — ใหม่
+- ✅ Excel import ลูกค้า
+- ✅ Session timeout + "จำฉันไว้"
+- ✅ Persistent login
+- ✅ Case-insensitive search
+- ✅ Backup system (in-app JSON + Excel + GitHub Actions auto)
+- ✅ Print fix: iframe approach → multi-page A4 properly
+- ✅ Per-size pricing for clothing
+- ✅ Modal ไม่ปิดเวลาคลิกข้างนอก
+- ❌ Anonymous Auth + Security Rules → roll back (เจอ race condition issues)
+
+### 2026-06-02 (วันแรกที่ deploy)
+- Initial deployment ทั้ง 2 projects บน Vercel
+- Refactor App.js แยก modules
+- เพิ่ม Reports tab, Suppliers tab
+- Payment tracking on invoices
+- พอเปิด Production ทั้ง 2 ระบบ
+
+---
+
+## 🎯 จุดสำคัญที่ต้องจำ
+
+1. **ไม่ใช้ dev branch แล้ว** — push ตรง master
+2. **Backup ทำงานทุกวัน** อัตโนมัติ — มี history 60 วัน
+3. **Rules เปิดทั้ง 2 projects** — เลือกความสะดวกกว่า security ในช่วง test
+4. **2 projects แยก database** แต่ code เดียวกัน
+5. **Vercel env vars สำคัญมาก** — ระวัง typo ในชื่อ
+6. **Firebase Auth** = next big task ก่อนเปิดใช้งานจริง
