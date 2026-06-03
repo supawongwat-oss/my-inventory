@@ -13,7 +13,9 @@ import AuditLogTab from "./tabs/AuditLogTab";
 import ImportCustomersModal from "./components/ImportCustomersModal";
 import BackupRestore, { shouldRemindBackup, getLastBackupDate } from "./components/BackupRestore";
 import BarcodeScanner from "./components/BarcodeScanner";
+import TelegramSettings from "./components/TelegramSettings";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
+import { sendTelegram, msgNewOrder, msgNewInvoice, msgPayment, msgLowStock, msgDailyReport } from "./utils/telegram";
 // ── MAIN APP ───────────────────────────────────────────────────
 export default function App() {
   // ── รอ Firebase Anonymous Auth พร้อมก่อน — เพื่อให้ Security Rules ผ่าน ──
@@ -22,7 +24,7 @@ export default function App() {
     authReady.then(() => setAuthChecked(true));
   }, []);
 
-  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements } = useFirestore();
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, telegramConfig, loading, setLoading, suppliers, statements } = useFirestore();
   // ใช้แทน ROLES[role].label เพื่อให้ admin เปลี่ยนชื่อบทบาทได้
   const rLabel = (key) => roleLabels[key] || ROLES[key]?.label || key;
 
@@ -598,6 +600,8 @@ export default function App() {
       targetLabel: `${orderNo} · ${orderForm.customerName}`,
       note: `${orderForm.items.length} รายการ · ${totalQty} ชิ้น`,
     });
+    // 🤖 Telegram notify
+    sendTelegram(telegramConfig, "newOrder", msgNewOrder({ orderNo, ...orderForm, by: user.name, date: now() }));
     setOrderForm({ customerId:"", customerName:"", customerPhone:"", customerAddress:"", note:"", items:[] });
     setShowNewOrder(false);
   };
@@ -720,6 +724,8 @@ export default function App() {
       targetLabel: `${invNo} · ${invoiceForm.customerName}`,
       note: `${docTypeLabel(invoiceDocType)} · ฿${(data.total||0).toLocaleString("th-TH",{minimumFractionDigits:2})}${invoiceVat?" · VAT":""}`,
     });
+    // 🤖 Telegram notify
+    sendTelegram(telegramConfig, "newInvoice", msgNewInvoice({ ...data, id: ref.id }, docTypeLabel));
     setShowPrintInvoice({...data, id:ref.id});
     setShowNewInvoice(false);
     setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7});
@@ -744,6 +750,10 @@ export default function App() {
       targetLabel: `${inv?.invoiceNo||invId} · ${inv?.customerName||""}`,
       note: `เปลี่ยนสถานะ: ${oldStatus} → ${newStatus}`,
     });
+    // 🤖 Telegram notify ตอนชำระแล้ว
+    if (newStatus === "ชำระแล้ว" && oldStatus !== "ชำระแล้ว" && inv) {
+      sendTelegram(telegramConfig, "payment", msgPayment(inv));
+    }
   };
 
   // ปริ้นผ่าน iframe — เนื้อหาใหญ่เต็ม A4 และไหลข้ามหน้าได้
@@ -2185,7 +2195,7 @@ export default function App() {
           <MHead title="⚙️ ตั้งค่าระบบ" onClose={()=>setShowSettings(false)}/>
           {/* Settings tabs */}
           <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:`1px solid ${T.border}`,paddingBottom:12}}>
-            {[{id:"profile",label:"👤 โปรไฟล์"},{id:"system",label:"🏢 ระบบ"},{id:"backup",label:"💾 Backup"},{id:"about",label:"ℹ️ เกี่ยวกับ"}].map(t=>(
+            {[{id:"profile",label:"👤 โปรไฟล์"},{id:"system",label:"🏢 ระบบ"},{id:"telegram",label:"🤖 แจ้งเตือน"},{id:"backup",label:"💾 Backup"},{id:"about",label:"ℹ️ เกี่ยวกับ"}].map(t=>(
               <button key={t.id} onClick={()=>setSettingsTab(t.id)} style={{padding:"7px 16px",borderRadius:8,border:settingsTab===t.id?`1px solid ${T.navActiveBorder}`:`1px solid transparent`,background:settingsTab===t.id?"rgba(59,91,139,0.15)":"transparent",color:settingsTab===t.id?"#3b5b8b":T.sub,cursor:"pointer",fontSize:13,fontFamily:"'Sarabun',sans-serif",fontWeight:settingsTab===t.id?600:400}}>{t.label}</button>
             ))}
           </div>
@@ -2247,6 +2257,13 @@ export default function App() {
                 </div>
               )}
             </div>
+          )}
+
+          {settingsTab==="telegram"&&user.role==="admin"&&(
+            <TelegramSettings config={telegramConfig}/>
+          )}
+          {settingsTab==="telegram"&&user.role!=="admin"&&(
+            <div style={{padding:30,textAlign:"center",color:T.muted,fontSize:13}}>🔒 เฉพาะ Admin เท่านั้นที่ตั้งค่าได้</div>
           )}
 
           {settingsTab==="backup"&&(
