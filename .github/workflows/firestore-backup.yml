@@ -18,6 +18,9 @@ on:
     - cron: '0 2 * * *'   # ทุกวัน 02:00 UTC (09:00 Bangkok)
   workflow_dispatch:       # อนุญาตให้ trigger manual ได้
 
+permissions:
+  contents: write   # อนุญาตให้ commit + push กลับเข้า repo
+
 jobs:
   backup:
     runs-on: ubuntu-latest
