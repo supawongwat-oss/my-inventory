@@ -5,7 +5,7 @@ import { MASTER_KEY } from "../theme";
 import { Input } from "./ui";
 
 function CompanyEditor({ companyInfo, onSave }) {
-  const [form, setForm] = useState({...companyInfo});
+  const [form, setForm] = useState({...companyInfo, bankAccounts: companyInfo.bankAccounts || []});
   const [saved, setSaved] = useState(false);
 
   const handle = async () => {
@@ -13,6 +13,10 @@ function CompanyEditor({ companyInfo, onSave }) {
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
   };
+
+  const addBank = () => setForm(f=>({...f, bankAccounts:[...(f.bankAccounts||[]), {label:"", bankName:"", accountName:"", accountNo:""}]}));
+  const updateBank = (i,k,v) => setForm(f=>({...f, bankAccounts:f.bankAccounts.map((b,j)=>j===i?{...b,[k]:v}:b)}));
+  const removeBank = (i) => setForm(f=>({...f, bankAccounts:f.bankAccounts.filter((_,j)=>j!==i)}));
 
   return (
     <div>
@@ -37,7 +41,30 @@ function CompanyEditor({ companyInfo, onSave }) {
             style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
         </div>
       </div>
-      <button onClick={handle} style={{padding:"9px 20px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#0ea5e9,#0369a1)",color:"white",fontSize:13,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(14,165,233,0.3)"}}>
+
+      {/* บัญชีธนาคาร */}
+      <div style={{marginBottom:14,padding:14,background:"rgba(59,91,139,0.06)",border:"1px solid rgba(59,91,139,0.2)",borderRadius:10}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <div style={{fontSize:12,fontWeight:700,color:T.accent}}>🏦 บัญชีรับชำระเงิน</div>
+          <button onClick={addBank} style={{padding:"5px 12px",borderRadius:7,border:"1px solid rgba(59,91,139,0.3)",background:"rgba(59,91,139,0.1)",color:T.accent,fontSize:11,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:600}}>+ เพิ่มบัญชี</button>
+        </div>
+        {(form.bankAccounts||[]).length===0&&<div style={{fontSize:11,color:T.muted,textAlign:"center",padding:10}}>ยังไม่มีบัญชี — กด "+ เพิ่มบัญชี" เพื่อเริ่ม (ใส่ได้ทั้งบัญชีบริษัทและบัญชีส่วนตัว)</div>}
+        {(form.bankAccounts||[]).map((b,i)=>(
+          <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 32px",gap:6,marginBottom:6}}>
+            <input value={b.label} onChange={e=>updateBank(i,"label",e.target.value)} placeholder="ชื่อเรียก (เช่น บัญชีบริษัท / บัญชีส่วนตัว)"
+              style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}/>
+            <input value={b.bankName} onChange={e=>updateBank(i,"bankName",e.target.value)} placeholder="ธนาคาร (เช่น กสิกร, SCB)"
+              style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}/>
+            <input value={b.accountName} onChange={e=>updateBank(i,"accountName",e.target.value)} placeholder="ชื่อบัญชี"
+              style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}/>
+            <input value={b.accountNo} onChange={e=>updateBank(i,"accountNo",e.target.value)} placeholder="เลขที่บัญชี"
+              style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"monospace",fontSize:12,outline:"none"}}/>
+            <button onClick={()=>removeBank(i)} style={{background:"rgba(248,113,113,0.1)",border:"1px solid rgba(248,113,113,0.3)",borderRadius:7,color:"#f87171",cursor:"pointer",fontSize:13}}>✕</button>
+          </div>
+        ))}
+      </div>
+
+      <button onClick={handle} style={{padding:"9px 20px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>
         💾 บันทึกข้อมูลบริษัท
       </button>
     </div>
@@ -106,17 +133,16 @@ export default function LoginPage({ users, onLogin, onResetPassword, onRegister 
   const stepLabel = ["","① เลือกบัญชี","② ยืนยัน Admin","③ ตั้งรหัสใหม่"];
 
   return (
-    <div style={{minHeight:"100vh",background:"#020b18",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Sarabun',sans-serif"}}>
+    <div style={{minHeight:"100vh",backgroundColor:"#d1d5db",backgroundImage:"url('/login-bg.jpg')",backgroundSize:"auto 92vh",backgroundPosition:"center",backgroundRepeat:"no-repeat",display:"flex",alignItems:"center",justifyContent:"center",padding:"24px",fontFamily:"'Sarabun',sans-serif",position:"relative"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}input:focus{outline:none;border-color:#93c5fd!important}`}</style>
-      <div style={{width:400}}>
-        <div style={{textAlign:"center",marginBottom:32}}>
-          <div style={{width:64,height:64,background:"linear-gradient(135deg,#0ea5e9,#0369a1)",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,margin:"0 auto 14px",boxShadow:"0 8px 32px rgba(14,165,233,0.4)"}}>⚙️</div>
-          <div style={{fontSize:26,fontWeight:800,color:"#e2e8f0",fontFamily:"'Space Mono',monospace",letterSpacing:4}}>CPU</div>
-          <div style={{fontSize:12,color:T.sub,marginTop:4}}>ระบบบริหารคลังสินค้า</div>
+      <div className="login-form-wrap" style={{width:400,position:"relative",zIndex:1}}>
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <div style={{fontSize:30,fontWeight:800,color:"#1f2933",fontFamily:"'Space Mono',monospace",letterSpacing:5,textShadow:"0 1px 2px rgba(255,255,255,0.8)"}}>CPU</div>
+          <div style={{fontSize:12,color:"#52606d",marginTop:4,fontWeight:600,letterSpacing:1}}>ระบบบริหารคลังสินค้า</div>
         </div>
 
-        <div style={{background:"#061628",border:"1px solid #0d2540",borderRadius:16,padding:32,boxShadow:"0 8px 40px rgba(14,165,233,0.15)"}}>
-          <div style={{fontSize:16,fontWeight:700,color:"#e2e8f0",marginBottom:20}}>เข้าสู่ระบบ</div>
+        <div style={{background:"rgba(255,255,255,0.95)",backdropFilter:"blur(10px)",border:"1px solid rgba(203,210,217,0.6)",borderRadius:16,padding:32,boxShadow:"0 20px 60px rgba(31,41,51,0.18)"}}>
+          <div style={{fontSize:16,fontWeight:700,color:"#1f2933",marginBottom:20}}>เข้าสู่ระบบ</div>
           {err && <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",color:"#dc2626",fontSize:13,marginBottom:14}}>⚠️ {err}</div>}
           <div style={{marginBottom:14}}>
             <Input label="ชื่อผู้ใช้" value={u} onChange={e=>setU(e.target.value)} placeholder="username" />
@@ -127,13 +153,13 @@ export default function LoginPage({ users, onLogin, onResetPassword, onRegister 
           <div style={{textAlign:"right",marginBottom:18}}>
             <span onClick={()=>setShowForgot(true)} style={{fontSize:12,color:T.blue,cursor:"pointer",fontWeight:500}}>🔑 ลืมรหัสผ่าน?</span>
           </div>
-          <button onClick={handle} disabled={loading} style={{width:"100%",padding:"11px",background:"linear-gradient(135deg,#0ea5e9,#0369a1)",color:"white",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",opacity:loading?0.7:1,boxShadow:"0 4px 20px rgba(14,165,233,0.4)"}}>
+          <button onClick={handle} disabled={loading} style={{width:"100%",padding:"11px",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",opacity:loading?0.7:1,boxShadow:"0 4px 20px rgba(59,91,139,0.4)"}}>
             {loading?"กำลังเข้าสู่ระบบ...":"เข้าสู่ระบบ"}
           </button>
           <div style={{display:"flex",alignItems:"center",gap:10,margin:"16px 0"}}>
             <div style={{flex:1,height:1,background:T.border}}/><span style={{fontSize:11,color:T.muted}}>หรือ</span><div style={{flex:1,height:1,background:T.border}}/>
           </div>
-          <button onClick={()=>setShowRegister(true)} style={{width:"100%",padding:"11px",background:"rgba(14,165,233,0.08)",color:"#38bdf8",border:"2px solid rgba(56,189,248,0.35)",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>
+          <button onClick={()=>setShowRegister(true)} style={{width:"100%",padding:"11px",background:"rgba(59,91,139,0.08)",color:"#3b5b8b",border:"2px solid rgba(59,91,139,0.35)",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>
             👤 สมัคร Staff ID ใหม่
           </button>
         </div>
@@ -142,7 +168,7 @@ export default function LoginPage({ users, onLogin, onResetPassword, onRegister 
       {/* MODAL: สมัคร Staff ID */}
       {showRegister&&(
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,backdropFilter:"blur(4px)"}} onMouseDown={e=>{if(e.target===e.currentTarget)setShowRegister(false);}}>
-          <div onMouseDown={e=>e.stopPropagation()} style={{background:"#061628",border:"1px solid #0d2540",borderRadius:16,padding:28,width:440,boxShadow:"0 20px 60px rgba(0,8,30,0.8)"}}>
+          <div onMouseDown={e=>e.stopPropagation()} style={{background:"#ffffff",border:"1px solid #0d2540",borderRadius:16,padding:28,width:440,boxShadow:"0 20px 60px rgba(0,8,30,0.8)"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
               <div style={{fontSize:15,fontWeight:700,color:"#93c5fd"}}>👤 สมัคร Staff ID ใหม่</div>
               <button onClick={()=>{setShowRegister(false);setRegForm({name:"",username:"",password:"",confirm:""});setRegErr("");}} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"4px 10px",cursor:"pointer",color:T.sub,fontSize:13}}>✕</button>
@@ -171,17 +197,17 @@ export default function LoginPage({ users, onLogin, onResetPassword, onRegister 
       {/* MODAL: ลืมรหัสผ่าน */}
       {showForgot&&(
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,backdropFilter:"blur(4px)"}} onClick={closeForgot}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"#061628",border:"1px solid #0d2540",borderRadius:16,padding:28,width:420,boxShadow:"0 20px 60px rgba(0,8,30,0.8)"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#ffffff",border:"1px solid #0d2540",borderRadius:16,padding:28,width:420,boxShadow:"0 20px 60px rgba(0,8,30,0.8)"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
               <div>
-                <div style={{fontSize:15,fontWeight:700,color:"#38bdf8"}}>🔑 ลืมรหัสผ่าน</div>
+                <div style={{fontSize:15,fontWeight:700,color:"#3b5b8b"}}>🔑 ลืมรหัสผ่าน</div>
                 <div style={{fontSize:11,color:T.muted,marginTop:2}}>{stepLabel[forgotStep]}</div>
               </div>
               <button onClick={closeForgot} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,padding:"4px 10px",cursor:"pointer",color:T.sub,fontSize:13}}>✕</button>
             </div>
             <div style={{display:"flex",gap:6,marginBottom:20}}>
               {[1,2,3].map(s=>(
-                <div key={s} style={{flex:1,height:4,borderRadius:2,background:forgotStep>=s?"#0ea5e9":"#0d2540",transition:"background .3s"}}/>
+                <div key={s} style={{flex:1,height:4,borderRadius:2,background:forgotStep>=s?"#3b5b8b":"#0d2540",transition:"background .3s"}}/>
               ))}
             </div>
             {forgotErr&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",color:"#dc2626",fontSize:13,marginBottom:14}}>⚠️ {forgotErr}</div>}

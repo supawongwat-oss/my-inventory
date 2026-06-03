@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8"/>
+<title>Preview — ระบบ Multi-Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f5f7;--card:#fff;--border:#e2e5ea;--text:#1f2933;--sub:#52606d;--muted:#9aa5b1;
+  --accent:#3b5b8b;--gold:#b88600;--blue:#3b5b8b;--green:#3a7a52;--red:#b94a48;--purple:#7c3aed;
+}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Sarabun',sans-serif}
+body{background:var(--bg);color:var(--text);padding:32px;max-width:1100px;margin:0 auto}
+h1{font-size:24px;margin-bottom:8px}
+.subtitle{color:var(--sub);margin-bottom:32px;font-size:14px}
+.section{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:24px;box-shadow:0 1px 4px rgba(0,0,0,0.04)}
+.section-title{font-size:16px;font-weight:700;margin-bottom:14px;color:var(--text);display:flex;align-items:center;gap:8px}
+.label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;font-weight:700;margin-bottom:8px}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid}
+.bg-public{background:#f1f5f9;color:#475569;border-color:#cbd5e1}
+.bg-super{background:rgba(184,134,0,0.12);color:var(--gold);border-color:rgba(184,134,0,0.3)}
+.bg-admin{background:rgba(59,91,139,0.1);color:var(--accent);border-color:rgba(59,91,139,0.3)}
+.bg-staff{background:rgba(58,122,82,0.1);color:var(--green);border-color:rgba(58,122,82,0.3)}
+.bg-purple{background:rgba(124,58,237,0.1);color:var(--purple);border-color:rgba(124,58,237,0.3)}
+
+.row{display:grid;grid-template-columns:90px 1fr 130px 110px 100px 110px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);font-size:12px}
+.row:last-child{border-bottom:none}
+.row-head{background:#f8f9fb;color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em}
+.cell-mono{font-family:monospace;color:var(--accent);font-weight:700}
+.cell-amt{font-family:monospace;color:var(--green);font-weight:700;text-align:right}
+
+.btn{padding:7px 14px;border-radius:8px;border:none;cursor:pointer;font-size:12px;font-weight:600;font-family:'Sarabun',sans-serif}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-ghost{background:transparent;color:var(--sub);border:1px solid var(--border)}
+.btn-promote{background:rgba(184,134,0,0.1);color:var(--gold);border:1px solid rgba(184,134,0,0.3)}
+
+select,input{background:#fff;border:1px solid #cbd2d9;color:var(--text);border-radius:8px;padding:8px 12px;font-family:'Sarabun',sans-serif;font-size:13px;outline:none}
+
+.view-bar{display:flex;align-items:center;gap:12px;padding:12px 16px;background:linear-gradient(90deg,rgba(184,134,0,0.08),transparent);border:1px solid rgba(184,134,0,0.25);border-radius:10px;margin-bottom:16px}
+.view-bar-label{font-size:12px;color:var(--gold);font-weight:700}
+
+.user-row{display:grid;grid-template-columns:40px 1fr 110px 130px 130px;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border)}
+.user-row:last-child{border-bottom:none}
+.note{font-size:11px;color:var(--sub);padding:10px 14px;background:#eef2f7;border-radius:8px;border-left:3px solid var(--accent);margin-top:8px}
+.warn{font-size:11px;color:#92400e;padding:10px 14px;background:#fef3c7;border-radius:8px;border-left:3px solid var(--gold);margin-top:8px}
+.tag{display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;background:#fef3c7;color:#92400e;margin-left:6px}
+</style>
+</head>
+<body>
+
+<h1>👁️ Preview — ระบบ Multi-Admin</h1>
+<p class="subtitle">นี่คือภาพจำลองว่า UI จะหน้าตาเป็นยังไงหลังเพิ่มฟีเจอร์ — ยังไม่ได้แก้ code จริง</p>
+
+<!-- ส่วนที่ 1: หน้าจัดการผู้ใช้ -->
+<div class="section">
+  <div class="section-title">1️⃣ หน้าจัดการผู้ใช้ — เพิ่ม role "Super Admin"</div>
+  <div class="user-row" style="background:#f8f9fb;font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase">
+    <div></div><div>ชื่อ / ผู้ใช้</div><div>บทบาท</div><div>การมองเห็นข้อมูล</div><div>จัดการ</div>
+  </div>
+  <div class="user-row">
+    <div style="font-size:22px">👑</div>
+    <div><div style="font-weight:600">Boong</div><div style="font-size:10px;color:var(--muted)">@Bboong</div></div>
+    <div><span class="badge bg-super">👑 Super Admin</span></div>
+    <div style="font-size:11px;color:var(--gold);font-weight:600">🌐 เห็นทุกอย่าง</div>
+    <div style="font-size:11px;color:var(--muted)">(เจ้าของระบบ)</div>
+  </div>
+  <div class="user-row">
+    <div style="font-size:22px">🛡️</div>
+    <div><div style="font-weight:600">Chai</div><div style="font-size:10px;color:var(--muted)">@Chai</div></div>
+    <div><span class="badge bg-admin">🛡️ Admin</span></div>
+    <div style="font-size:11px;color:var(--accent)">เฉพาะของตัวเอง + ส่วนกลาง</div>
+    <div><button class="btn btn-promote">⬆️ เลื่อนเป็น Super</button></div>
+  </div>
+  <div class="user-row">
+    <div style="font-size:22px">🧑‍💼</div>
+    <div><div style="font-weight:600">NONGDREAM</div><div style="font-size:10px;color:var(--muted)">@DREAM</div></div>
+    <div><span class="badge bg-staff">🧑‍💼 Manager</span></div>
+    <div style="font-size:11px;color:var(--green)">เฉพาะของตัวเอง + ส่วนกลาง</div>
+    <div><button class="btn btn-promote">⬆️ เลื่อนเป็น Super</button></div>
+  </div>
+  <div class="note">💡 Super Admin คนแรกถูกกำหนดอัตโนมัติ (admin คนแรก) · Super Admin คนใหม่เลื่อนได้จากปุ่มนี้</div>
+</div>
+
+<!-- ส่วนที่ 2: View Mode Selector (Super Admin) -->
+<div class="section">
+  <div class="section-title">2️⃣ Super Admin — สลับมุมมองได้</div>
+  <div class="view-bar">
+    <span class="view-bar-label">👑 ดูในนาม:</span>
+    <select style="min-width:200px">
+      <option>🌐 ทุกคน (default)</option>
+      <option>📋 ส่วนกลาง</option>
+      <option>👑 Boong (Super Admin)</option>
+      <option>🛡️ Chai (Admin)</option>
+      <option>🧑‍💼 NONGDREAM (Manager)</option>
+      <option>👷 วิชัย (Staff)</option>
+    </select>
+    <span style="margin-left:auto;font-size:11px;color:var(--muted)">เห็นได้เฉพาะ Super Admin</span>
+  </div>
+  <div class="note">📌 Admin/Manager/Staff ทั่วไป — จะไม่เห็นปุ่มนี้ และจะเห็นเฉพาะข้อมูลของตัวเอง + ส่วนกลางอัตโนมัติ</div>
+</div>
+
+<!-- ส่วนที่ 3: รายการใบสั่งของ พร้อม owner badge -->
+<div class="section">
+  <div class="section-title">3️⃣ รายการใบสั่งของ / ใบบิล — มี badge เจ้าของ</div>
+  <div class="row row-head">
+    <div>เลขที่</div><div>ลูกค้า</div><div>เจ้าของ</div><div>รายการ</div><div>สถานะ</div><div style="text-align:right">ยอดรวม</div>
+  </div>
+  <div class="row">
+    <div class="cell-mono">INV230601</div>
+    <div><b>บริษัท ABC จำกัด</b><div style="font-size:10px;color:var(--muted)">081-234-5678</div></div>
+    <div><span class="badge bg-public">🌐 ส่วนกลาง</span></div>
+    <div style="color:var(--sub)">3 รายการ</div>
+    <div><span class="badge" style="background:#dcfce7;color:#166534;border-color:#86efac">ชำระแล้ว</span></div>
+    <div class="cell-amt">฿12,500</div>
+  </div>
+  <div class="row">
+    <div class="cell-mono">INV230602</div>
+    <div><b>ร้าน XYZ Sport</b><div style="font-size:10px;color:var(--muted)">081-555-9999</div></div>
+    <div><span class="badge bg-super">👑 Boong</span></div>
+    <div style="color:var(--sub)">5 รายการ</div>
+    <div><span class="badge" style="background:rgba(59,91,139,0.1);color:var(--accent);border-color:rgba(59,91,139,0.3)">ออกแล้ว</span></div>
+    <div class="cell-amt">฿8,200</div>
+  </div>
+  <div class="row">
+    <div class="cell-mono">INV230603</div>
+    <div><b>โรงเรียนกีฬา KL</b><div style="font-size:10px;color:var(--muted)">082-111-2222</div></div>
+    <div><span class="badge bg-admin">🛡️ Chai</span></div>
+    <div style="color:var(--sub)">12 รายการ</div>
+    <div><span class="badge" style="background:#fef3c7;color:#92400e;border-color:#fde68a">รอชำระ</span></div>
+    <div class="cell-amt">฿45,000</div>
+  </div>
+  <div class="row">
+    <div class="cell-mono">INV230604</div>
+    <div><b>นาย สมศักดิ์</b><div style="font-size:10px;color:var(--muted)">089-777-8888</div></div>
+    <div><span class="badge bg-staff">🧑‍💼 NONGDREAM</span></div>
+    <div style="color:var(--sub)">2 รายการ</div>
+    <div><span class="badge" style="background:#dcfce7;color:#166534;border-color:#86efac">ชำระแล้ว</span></div>
+    <div class="cell-amt">฿3,200</div>
+  </div>
+  <div class="warn">💡 Admin Chai login → เห็นเฉพาะแถวที่มี badge "🛡️ Chai" + "🌐 ส่วนกลาง"<br>👑 Super Admin → เห็นทั้งหมด (4 แถว) + สลับ filter ได้</div>
+</div>
+
+<!-- ส่วนที่ 4: ฟอร์มออกใบสั่ง/บิล — เลือก owner -->
+<div class="section">
+  <div class="section-title">4️⃣ ตอนออกบิล / ใบสั่ง — เลือก "ออกในนาม"</div>
+  <div style="background:#f8f9fb;border:1px solid var(--border);border-radius:10px;padding:18px;max-width:600px">
+    <div style="font-size:13px;font-weight:700;margin-bottom:14px;color:var(--accent)">🧾 ออกบิลใหม่</div>
+
+    <div class="label">📋 ออกในนามของ <span class="tag">ใหม่!</span></div>
+    <select style="width:100%;margin-bottom:14px">
+      <option>👤 ตัวเอง (Chai)</option>
+      <option>🌐 ส่วนกลาง — ทุกคนเห็น</option>
+    </select>
+
+    <div class="label">ลูกค้า *</div>
+    <input value="บริษัท ABC จำกัด" style="width:100%;margin-bottom:14px"/>
+
+    <div class="label">บัญชีรับเงิน</div>
+    <select style="width:100%;margin-bottom:14px">
+      <option>— ไม่แสดง —</option>
+      <option>บัญชีบริษัท · KBank · 123-4-56789-0</option>
+      <option>บัญชีส่วนตัว · SCB · 987-6-54321-0</option>
+    </select>
+
+    <button class="btn btn-primary" style="width:100%;padding:12px">✅ ยืนยันออกบิล</button>
+  </div>
+  <div class="note">
+    📝 <b>Manager/Staff:</b> ตัวเลือกเป็น "ตัวเอง" หรือ "ส่วนกลาง" เท่านั้น<br>
+    👑 <b>Super Admin:</b> เลือกได้ทุก admin (ออกแทนคนอื่นได้)
+  </div>
+</div>
+
+<!-- ส่วนที่ 5: ฐานลูกค้าส่วนตัว -->
+<div class="section">
+  <div class="section-title">5️⃣ ฐานลูกค้า — แยกตามเจ้าของ</div>
+  <div class="row row-head">
+    <div>เลขที่</div><div>ชื่อลูกค้า</div><div>เจ้าของ</div><div>เบอร์โทร</div><div>ยอดรวม</div><div>ครั้ง</div>
+  </div>
+  <div class="row">
+    <div style="font-size:18px">👤</div>
+    <div><b>บริษัท ABC จำกัด</b><div style="font-size:10px;color:var(--muted)">📍 กรุงเทพฯ</div></div>
+    <div><span class="badge bg-admin">🛡️ Chai</span></div>
+    <div style="color:var(--sub)">081-234-5678</div>
+    <div class="cell-amt">฿125,000</div>
+    <div style="color:var(--sub)">15 ครั้ง</div>
+  </div>
+  <div class="row">
+    <div style="font-size:18px">👤</div>
+    <div><b>นาย สมชาย</b><div style="font-size:10px;color:var(--muted)">📍 ชลบุรี</div></div>
+    <div><span class="badge bg-super">👑 Boong</span></div>
+    <div style="color:var(--sub)">089-111-2222</div>
+    <div class="cell-amt">฿32,000</div>
+    <div style="color:var(--sub)">8 ครั้ง</div>
+  </div>
+  <div class="row">
+    <div style="font-size:18px">👤</div>
+    <div><b>ร้าน XYZ</b><div style="font-size:10px;color:var(--muted)">📍 ขอนแก่น</div></div>
+    <div><span class="badge bg-public">🌐 ส่วนกลาง</span></div>
+    <div style="color:var(--sub)">082-555-9999</div>
+    <div class="cell-amt">฿78,000</div>
+    <div style="color:var(--sub)">12 ครั้ง</div>
+  </div>
+  <div class="warn">🔒 ลูกค้าของ Chai (badge 🛡️ Chai) — Admin คนอื่นจะไม่เห็น<br>👑 Super Admin เห็นทุกคน รวมถึงสามารถ "ย้ายลูกค้า" จาก admin หนึ่งไปอีกคนได้</div>
+</div>
+
+<!-- ส่วนสรุป -->
+<div class="section" style="background:linear-gradient(135deg,rgba(59,91,139,0.05),rgba(184,134,0,0.05));border:1px dashed var(--accent)">
+  <div class="section-title">✅ พร้อมจะทำ?</div>
+  <div style="font-size:13px;line-height:1.8">
+    ถ้า preview นี้ตรงตามที่ต้องการ → กลับไปที่ chat แล้วพิมพ์ <b>"ทำเลย"</b><br>
+    ถ้าอยากแก้ตรงไหน → บอกได้เลย เช่น:<br>
+    <ul style="margin-left:20px;margin-top:8px;color:var(--sub)">
+      <li>"เปลี่ยนสี badge ของ Super Admin"</li>
+      <li>"เอา ส่วนกลาง ออก ทุกคนต้องมีเจ้าของ"</li>
+      <li>"เพิ่มฟิลด์ ... "</li>
+    </ul>
+  </div>
+</div>
+
+</body>
+</html>
