@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      max-parallel: 1   # ⚠️ รันทีละ project — กัน race condition ตอน push ขึ้น repo
       matrix:
         project:
           - name: cpu-erp
@@ -123,6 +124,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add backups/
-          git diff --staged --quiet || git commit -m "backup: ${{ matrix.project.name }} $(date -u +%Y-%m-%d)"
-          git pull --rebase origin master
-          git push origin master
+          if git diff --staged --quiet; then
+            echo "No backup changes to commit"
+            exit 0
+          fi
+          git commit -m "backup: ${{ matrix.project.name }} $(date -u +%Y-%m-%d)"
+          # Retry push พร้อม pull --rebase หาก remote เปลี่ยน
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin master && git push origin master && { echo "✅ Push success on attempt $i"; exit 0; }
+            echo "⏳ Push failed, retrying in 5s... (attempt $i/5)"
+            sleep 5
+          done
+          echo "❌ Push failed after 5 retries"
+          exit 1
