@@ -200,8 +200,11 @@ function OverviewTab({ products, transactions, invoices, orders, totalStockValue
 }
 
 // ────────── 2. AGING (บิลค้างชำระ) ──────────
+// helper: รวมลูกค้าชื่อเดียวกัน (ตัด space + lowercase) เป็น key เดียว
+const normalizeName = (s) => (s || "—").trim().toLowerCase().replace(/\s+/g, " ");
+
 function AgingTab({ invoices }) {
-  const [customerFilter, setCustomerFilter] = useState("ทั้งหมด");
+  const [customerFilter, setCustomerFilter] = useState("ทั้งหมด"); // เก็บเป็น normalized key
   const [customerSearch, setCustomerSearch] = useState("");
 
   const today = new Date();
@@ -211,31 +214,40 @@ function AgingTab({ invoices }) {
   const unpaid = useMemo(() => invoices.filter(inv => {
     const st = inv.status || "ออกแล้ว";
     if (st === "ชำระแล้ว" || st === "ยกเลิก") return false;
-    if (customerFilter !== "ทั้งหมด" && (inv.customerName || "—") !== customerFilter) return false;
+    if (customerFilter !== "ทั้งหมด" && normalizeName(inv.customerName) !== customerFilter) return false;
     return true;
   }), [invoices, customerFilter]);
 
-  // รายชื่อลูกค้าที่มีบิลค้าง (สำหรับ dropdown)
+  // รายชื่อลูกค้าที่มีบิลค้าง (สำหรับ dropdown) — รวมชื่อซ้ำ (ตัด space + case)
   const customerOptions = useMemo(() => {
-    const set = new Map(); // name -> {name, count, total}
+    const map = new Map(); // normKey -> { key, displayName, variants, count, total }
     invoices.forEach(inv => {
       const st = inv.status || "ออกแล้ว";
       if (st === "ชำระแล้ว" || st === "ยกเลิก") return;
-      const name = inv.customerName || "—";
-      if (!set.has(name)) set.set(name, { name, count: 0, total: 0 });
-      const c = set.get(name);
+      const rawName = inv.customerName || "—";
+      const key = normalizeName(rawName);
+      if (!map.has(key)) map.set(key, { key, displayName: rawName, variants: new Set([rawName]), count: 0, total: 0 });
+      const c = map.get(key);
+      c.variants.add(rawName);
       c.count++;
       c.total += Number(inv.total) || 0;
     });
-    return Array.from(set.values()).sort((a,b) => b.total - a.total);
+    return Array.from(map.values()).sort((a,b) => b.total - a.total);
   }, [invoices]);
 
   // filter dropdown ตามคำค้น
   const filteredCustomerOptions = useMemo(() => {
     const q = customerSearch.toLowerCase().trim();
     if (!q) return customerOptions;
-    return customerOptions.filter(c => c.name.toLowerCase().includes(q));
+    return customerOptions.filter(c => c.displayName.toLowerCase().includes(q));
   }, [customerOptions, customerSearch]);
+
+  // ชื่อ display ของ customer ที่กำลังเลือก
+  const selectedCustomerDisplay = useMemo(() => {
+    if (customerFilter === "ทั้งหมด") return null;
+    const opt = customerOptions.find(c => c.key === customerFilter);
+    return opt || null;
+  }, [customerFilter, customerOptions]);
 
   // แบ่งกลุ่มตาม days outstanding
   const buckets = useMemo(() => {
@@ -257,16 +269,19 @@ function AgingTab({ invoices }) {
     return groups;
   }, [unpaid, today]);
 
-  // รวมตามลูกค้า
+  // รวมตามลูกค้า — รวมชื่อซ้ำเป็นแถวเดียว
   const byCustomer = useMemo(() => {
-    const m = new Map();
+    const m = new Map(); // normKey -> {key, name, phone, count, total, oldest, buckets, variants}
     unpaid.forEach(inv => {
       const d = parseDate(inv.date);
       if (!d) return;
       const days = Math.floor((today - d) / (1000*60*60*24));
-      const key = inv.customerName || "—";
-      if (!m.has(key)) m.set(key, { name: key, phone: inv.customerPhone, count: 0, total: 0, oldest: 0, b030: 0, b3160: 0, b6190: 0, b90: 0 });
+      const rawName = inv.customerName || "—";
+      const key = normalizeName(rawName);
+      if (!m.has(key)) m.set(key, { key, name: rawName, phone: inv.customerPhone, count: 0, total: 0, oldest: 0, b030: 0, b3160: 0, b6190: 0, b90: 0, variants: new Set([rawName]) });
       const c = m.get(key);
+      c.variants.add(rawName);
+      if (!c.phone && inv.customerPhone) c.phone = inv.customerPhone; // เติมเบอร์ถ้ายังว่าง
       c.count++;
       c.total += Number(inv.total) || 0;
       c.oldest = Math.max(c.oldest, days);
@@ -310,7 +325,7 @@ function AgingTab({ invoices }) {
         <div>
           <div style={{ fontSize: 14, fontWeight: 600, color: T.text }}>
             ⏰ Aging Report — บิลค้างชำระ
-            {customerFilter !== "ทั้งหมด" && <span style={{ marginLeft: 8, padding: "2px 10px", borderRadius: 12, background: "rgba(59,91,139,0.12)", color: T.accent, fontSize: 12, border: `1px solid rgba(59,91,139,0.3)` }}>👤 {customerFilter}</span>}
+            {selectedCustomerDisplay && <span style={{ marginLeft: 8, padding: "2px 10px", borderRadius: 12, background: "rgba(59,91,139,0.12)", color: T.accent, fontSize: 12, border: `1px solid rgba(59,91,139,0.3)` }}>👤 {selectedCustomerDisplay.displayName}{selectedCustomerDisplay.variants.size > 1 ? ` (${selectedCustomerDisplay.variants.size} variants)` : ""}</span>}
           </div>
           <div style={{ fontSize: 11, color: T.muted }}>ทั้งหมด {unpaid.length} ใบ · รวม {fmtBaht(grandTotal)}</div>
         </div>
@@ -321,7 +336,7 @@ function AgingTab({ invoices }) {
 
       {/* Customer Filter */}
       <div style={{ marginBottom: 16, padding: 12, background: T.card, border: `1px solid ${T.border}`, borderRadius: 10 }}>
-        <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>🔍 กรองตามลูกค้า</div>
+        <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>🔍 กรองตามลูกค้า · ชื่อเหมือนกันถูกรวมแล้ว</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <button onClick={() => { setCustomerFilter("ทั้งหมด"); setCustomerSearch(""); }}
             style={{ padding: "6px 14px", borderRadius: 8, border: customerFilter === "ทั้งหมด" ? `1.5px solid ${T.accent}` : `1px solid ${T.border}`, background: customerFilter === "ทั้งหมด" ? "rgba(59,91,139,0.12)" : "transparent", color: customerFilter === "ทั้งหมด" ? T.accent : T.sub, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: customerFilter === "ทั้งหมด" ? 700 : 500 }}>
@@ -334,7 +349,7 @@ function AgingTab({ invoices }) {
             style={{ background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 7, padding: "7px 10px", fontSize: 12, outline: "none", cursor: "pointer", minWidth: 220 }}>
             <option value="ทั้งหมด">— เลือกลูกค้า —</option>
             {filteredCustomerOptions.map((c, i) => (
-              <option key={i} value={c.name}>{c.name} ({c.count} ใบ · ฿{Math.round(c.total).toLocaleString()})</option>
+              <option key={i} value={c.key}>{c.displayName} ({c.count} ใบ · ฿{Math.round(c.total).toLocaleString()}){c.variants.size > 1 ? ` · ${c.variants.size} variants` : ""}</option>
             ))}
           </select>
         </div>
@@ -365,12 +380,12 @@ function AgingTab({ invoices }) {
             {byCustomer.length === 0 ? (
               <div style={{ padding: 30, textAlign: "center", color: T.muted, fontSize: 13 }}>ไม่มีบิลค้างชำระ 🎉</div>
             ) : byCustomer.slice(0, 30).map((c, i) => (
-              <div key={i} onClick={() => setCustomerFilter(c.name)}
+              <div key={i} onClick={() => setCustomerFilter(c.key)}
                 style={{ display: "grid", gridTemplateColumns: "1.5fr 60px 100px 100px 100px 100px 100px 90px", alignItems: "center", padding: "9px 16px", borderBottom: i < byCustomer.length-1 ? `1px solid ${T.border}` : "none", fontSize: 12, cursor: "pointer", transition: "background 0.15s" }}
                 onMouseEnter={e => e.currentTarget.style.background = "rgba(59,91,139,0.06)"}
                 onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                 <div>
-                  <div style={{ fontWeight: 600, color: T.text }}>{c.name}</div>
+                  <div style={{ fontWeight: 600, color: T.text }}>{c.name}{c.variants.size > 1 ? <span style={{ marginLeft: 6, fontSize: 9, color: T.accent, fontWeight: 500 }}>+{c.variants.size - 1} variant</span> : null}</div>
                   {c.phone && <div style={{ fontSize: 10, color: T.muted }}>{c.phone}</div>}
                 </div>
                 <div style={{ textAlign: "right", fontFamily: "monospace", color: T.accent, fontWeight: 600 }}>{c.count}</div>
@@ -406,8 +421,8 @@ function AgingTab({ invoices }) {
         <CardBox style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ padding: "12px 16px", background: "rgba(59,91,139,0.08)", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>📋 บิลค้างชำระของ {customerFilter}</div>
-              <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{customerInvoices.length} ใบ · รวม {fmtBaht(grandTotal)}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>📋 บิลค้างชำระของ {selectedCustomerDisplay?.displayName || customerFilter}</div>
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{customerInvoices.length} ใบ · รวม {fmtBaht(grandTotal)}{selectedCustomerDisplay && selectedCustomerDisplay.variants.size > 1 ? ` · รวมชื่อ ${selectedCustomerDisplay.variants.size} variants: ${Array.from(selectedCustomerDisplay.variants).join(", ")}` : ""}</div>
             </div>
             <button onClick={() => setCustomerFilter("ทั้งหมด")}
               style={{ padding: "6px 12px", borderRadius: 7, border: `1px solid ${T.border}`, background: T.card, color: T.sub, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>
