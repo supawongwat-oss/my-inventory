@@ -1,5 +1,5 @@
 ﻿import { useState, useRef, useEffect } from "react";
-import { db } from "./firebase";
+import { db, authReady } from "./firebase";
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, serverTimestamp, query, orderBy } from "firebase/firestore";
 import { T, SIZES, PRESET_COLORS, MASTER_KEY, SIZE_GROUPS, getPriceForSize } from "./theme";
 import { INIT_USERS, ROLES, INIT_CATS } from "./constants";
@@ -12,6 +12,12 @@ import StatementTab from "./tabs/StatementTab";
 import ImportCustomersModal from "./components/ImportCustomersModal";
 // ── MAIN APP ───────────────────────────────────────────────────
 export default function App() {
+  // ── รอ Firebase Anonymous Auth พร้อมก่อน — เพื่อให้ Security Rules ผ่าน ──
+  const [authChecked, setAuthChecked] = useState(false);
+  useEffect(() => {
+    authReady.then(() => setAuthChecked(true));
+  }, []);
+
   const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, loading, setLoading, suppliers, statements } = useFirestore();
   // ใช้แทน ROLES[role].label เพื่อให้ admin เปลี่ยนชื่อบทบาทได้
   const rLabel = (key) => roleLabels[key] || ROLES[key]?.label || key;
@@ -626,7 +632,7 @@ export default function App() {
     await setDoc(doc(db, "users", String(u.id)), { ...u, password: newPassword });
   };
 
-  if (loading) return (
+  if (loading || !authChecked) return (
     <div style={{minHeight:"100vh",background:"#f4f5f7",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Sarabun',sans-serif"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@700&display=swap');@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <div style={{width:64,height:64,background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,marginBottom:20,boxShadow:"0 8px 32px rgba(59,91,139,0.4)"}}>⚙️</div>

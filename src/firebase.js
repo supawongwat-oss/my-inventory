@@ -4,6 +4,7 @@
 // ถ้าไม่มี env → fallback config (บริษัท)
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey:            process.env.REACT_APP_FB_API_KEY            || "AIzaSyA6W7VGiYAjstNkmyKfvPccatH6LWRxtfQ",
@@ -23,3 +24,29 @@ if (process.env.NODE_ENV === "development") {
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
+export const auth = getAuth(app);
+
+// ── Anonymous Auth ───────────────────────────────────────────
+// แอปจะ sign in แบบ anonymous เงียบๆ ทันทีที่โหลดเสร็จ
+// → Firestore Security Rules ตรวจ request.auth != null ได้
+// → คนที่ไม่ได้เปิดผ่านแอปจริง (เช่นยิง API ตรง) จะถูก block
+// ระบบ login UI ของเรา (admin/manager/staff) ยังทำงานเหมือนเดิม
+signInAnonymously(auth).catch(err => {
+  console.error("⚠️ Anonymous auth failed:", err.code, err.message);
+});
+
+// Promise ที่ resolve เมื่อ auth พร้อม — ให้ App.js รอก่อน render
+export const authReady = new Promise((resolve) => {
+  const unsub = onAuthStateChanged(auth, (u) => {
+    if (u) {
+      if (process.env.NODE_ENV === "development") {
+        // eslint-disable-next-line no-console
+        console.log(`%c🔐 Firebase Auth ready (anonymous uid: ${u.uid.slice(0,8)}...)`, "color:#3a7a52;font-weight:bold");
+      }
+      unsub();
+      resolve(u);
+    }
+  });
+  // fallback: ถ้า auth ไม่สำเร็จใน 10 วิ — resolve กับ null ให้ app ทำงานต่อได้
+  setTimeout(() => { unsub(); resolve(null); }, 10000);
+});
