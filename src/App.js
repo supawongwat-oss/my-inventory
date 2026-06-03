@@ -1897,7 +1897,7 @@ export default function App() {
 
           {/* ── REPORTS ── */}
           {activeTab==="reports"&&(
-            <ReportsTab products={products} transactions={transactions} invoices={invoices} orders={orders}/>
+            <ReportsTab products={products} transactions={transactions} invoices={invoices} orders={orders} customers={customers} clothingItems={clothingItems}/>
           )}
 
           {/* ── SUPPLIERS ── */}
