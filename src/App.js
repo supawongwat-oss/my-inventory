@@ -17,10 +17,10 @@ export default function App() {
   const rLabel = (key) => roleLabels[key] || ROLES[key]?.label || key;
 
   // ── Session timeouts (ms) ─────────────────────────────────
-  // Default (ไม่ติ๊ก "จำฉันไว้"): inactivity 2 ชม. + hard expiry 8 ชม.
+  // Default (ไม่ติ๊ก "จำฉันไว้"): inactivity 8 ชม. + hard expiry 16 ชม.
   // "จำฉันไว้":                  inactivity OFF + hard expiry 30 วัน
-  const SESSION_DEFAULT_INACTIVITY = 2 * 60 * 60 * 1000;       // 2 ชม.
-  const SESSION_DEFAULT_HARD       = 8 * 60 * 60 * 1000;       // 8 ชม.
+  const SESSION_DEFAULT_INACTIVITY = 8 * 60 * 60 * 1000;       // 8 ชม.
+  const SESSION_DEFAULT_HARD       = 16 * 60 * 60 * 1000;      // 16 ชม.
   const SESSION_REMEMBER_HARD      = 30 * 24 * 60 * 60 * 1000; // 30 วัน
 
   const checkSessionValid = () => {
