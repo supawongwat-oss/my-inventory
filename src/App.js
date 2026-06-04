@@ -226,6 +226,7 @@ export default function App() {
 
   // ── Invoice & Company state ───────────────────────────────────
   const [showNewInvoice, setShowNewInvoice] = useState(false);
+  const [editingInvoiceId, setEditingInvoiceId] = useState(null); // ถ้ามี = โหมดแก้ไข
   const [profileCustomer, setProfileCustomer] = useState(null);
   const [orderSearch, setOrderSearch] = useState("");
   const [orderDateFrom, setOrderDateFrom] = useState("");
@@ -236,7 +237,8 @@ export default function App() {
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState("ทั้งหมด");
   const [invoiceForm, setInvoiceForm] = useState({
     customerId:"", customerName:"", customerPhone:"", customerAddress:"", customerTaxId:"",
-    items:[], note:"", dueDate:"", vatRate:7
+    items:[], note:"", dueDate:"", vatRate:7,
+    discount:0, discountType:"amount" // ส่วนลดท้ายบิล (amount หรือ percent)
   });
   const [invoiceItemForm, setInvoiceItemForm] = useState({ description:"", qty:"", unitPrice:"", unit:"ชิ้น" });
   const [addItemCollapsed, setAddItemCollapsed] = useState(false); // พับฟอร์มเพิ่มรายการ
@@ -735,10 +737,29 @@ export default function App() {
     }));
   };
 
-  const calcInvoice = (items, vatRate, useVat) => {
-    const subtotal = items.reduce((s,i)=>s+(i.qty*i.unitPrice),0);
+  // คำนวณราคารายรายการ + ส่วนลดต่อรายการ
+  const itemLineTotal = (item) => {
+    const gross = (Number(item.qty)||0) * (Number(item.unitPrice)||0);
+    if (!item.discount) return gross;
+    if (item.discountType === "percent") {
+      return gross * (1 - Math.min(Math.max(Number(item.discount)||0, 0), 100) / 100);
+    }
+    return Math.max(0, gross - (Number(item.discount)||0));
+  };
+
+  const calcInvoice = (items, vatRate, useVat, discount = 0, discountType = "amount") => {
+    // 1) รวมราคาทุกบรรทัด (หลังหักส่วนลดต่อบรรทัด)
+    const grossSubtotal = items.reduce((s,i)=>s + (Number(i.qty)||0) * (Number(i.unitPrice)||0), 0);
+    const itemsAfterDiscount = items.reduce((s,i)=>s + itemLineTotal(i), 0);
+    const itemDiscountTotal = grossSubtotal - itemsAfterDiscount;
+    // 2) ส่วนลดท้ายบิล
+    const billDiscount = discountType === "percent"
+      ? itemsAfterDiscount * (Math.min(Math.max(Number(discount)||0,0),100)/100)
+      : Math.max(0, Number(discount)||0);
+    const subtotal = Math.max(0, itemsAfterDiscount - billDiscount);
+    // 3) VAT คำนวณจาก subtotal หลังส่วนลด
     const vat = useVat ? subtotal*(vatRate/100) : 0;
-    return { subtotal, vat, total: subtotal+vat };
+    return { grossSubtotal, itemDiscountTotal, itemsAfterDiscount, billDiscount, subtotal, vat, total: subtotal+vat };
   };
 
   const docTypeLabel = (type) => ({
@@ -759,10 +780,47 @@ export default function App() {
         return;
       }
     }
-    const calc = calcInvoice(invoiceForm.items, invoiceForm.vatRate, invoiceVat);
-    const invNo = generateDocNo("INV", invoices, "invoiceNo");
+    const calc = calcInvoice(invoiceForm.items, invoiceForm.vatRate, invoiceVat, invoiceForm.discount, invoiceForm.discountType);
     const bank = (invoiceForm.bankAccountIdx!=null&&invoiceForm.bankAccountIdx>=0)
       ? (companyInfo.bankAccounts||[])[invoiceForm.bankAccountIdx] : null;
+
+    if (editingInvoiceId) {
+      // ── โหมดแก้ไข ──
+      const existing = invoices.find(i=>i.id===editingInvoiceId);
+      const revisions = (existing?.revisions||0) + 1;
+      const updated = {
+        ...invoiceForm, ...calc,
+        docType:invoiceDocType, useVat:invoiceVat,
+        bankAccount: bank,
+        // คงค่าเดิม: invoiceNo, by, date, createdAt, status
+        invoiceNo: existing?.invoiceNo,
+        by: existing?.by,
+        date: existing?.date,
+        createdAt: existing?.createdAt,
+        status: existing?.status || "ออกแล้ว",
+        revisions,
+        lastEditedBy: user.name,
+        lastEditedAt: now(),
+      };
+      await updateDoc(doc(db,"invoices",editingInvoiceId), updated);
+      logAudit(user, {
+        action: AUDIT_ACTIONS.UPDATE,
+        collection: "invoices",
+        targetId: editingInvoiceId,
+        targetLabel: `${existing?.invoiceNo} · ${invoiceForm.customerName}`,
+        before: { total: existing?.total, items: (existing?.items||[]).length, discount: existing?.discount },
+        after: { total: calc.total, items: invoiceForm.items.length, discount: invoiceForm.discount },
+        note: `แก้ไขครั้งที่ ${revisions}`,
+      });
+      setShowPrintInvoice({...updated, id:editingInvoiceId});
+      setShowNewInvoice(false);
+      setEditingInvoiceId(null);
+      setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount"});
+      return;
+    }
+
+    // ── โหมดสร้างใหม่ ──
+    const invNo = generateDocNo("INV", invoices, "invoiceNo");
     const data = {
       ...invoiceForm, ...calc,
       invoiceNo:invNo, docType:invoiceDocType, useVat:invoiceVat,
@@ -779,7 +837,76 @@ export default function App() {
     });
     setShowPrintInvoice({...data, id:ref.id});
     setShowNewInvoice(false);
-    setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7});
+    setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount"});
+  };
+
+  // แปลงใบวางบิล (quotation) → ใบเสร็จ/ใบกำกับ
+  const handleConvertQuotation = async (sourceInv, targetDocType) => {
+    if (!sourceInv) return;
+    if (!window.confirm(`สร้าง${targetDocType==="tax"?"ใบกำกับภาษี":"ใบเสร็จ"}จาก ${sourceInv.invoiceNo} (${sourceInv.customerName})?`)) return;
+    const calc = calcInvoice(sourceInv.items||[], sourceInv.vatRate||7, targetDocType==="tax"||sourceInv.useVat, sourceInv.discount||0, sourceInv.discountType||"amount");
+    const invNo = generateDocNo("INV", invoices, "invoiceNo");
+    const newData = {
+      customerId: sourceInv.customerId || "",
+      customerName: sourceInv.customerName || "",
+      customerPhone: sourceInv.customerPhone || "",
+      customerAddress: sourceInv.customerAddress || "",
+      customerTaxId: sourceInv.customerTaxId || "",
+      items: sourceInv.items || [],
+      note: sourceInv.note || "",
+      dueDate: sourceInv.dueDate || "",
+      vatRate: sourceInv.vatRate || 7,
+      discount: sourceInv.discount || 0,
+      discountType: sourceInv.discountType || "amount",
+      bankAccount: sourceInv.bankAccount || null,
+      ...calc,
+      invoiceNo: invNo,
+      docType: targetDocType,
+      useVat: targetDocType==="tax" ? true : !!sourceInv.useVat,
+      by: user.name,
+      date: now(),
+      createdAt: serverTimestamp(),
+      status: "ออกแล้ว",
+      convertedFrom: { id: sourceInv.id, invoiceNo: sourceInv.invoiceNo, docType: sourceInv.docType },
+    };
+    // validation for tax invoice
+    if (targetDocType === "tax") {
+      if (!companyInfo.taxId || !companyInfo.taxId.trim()) { alert("⚠️ บริษัทยังไม่ได้กรอกเลขผู้เสียภาษี"); return; }
+      if (!newData.customerTaxId) { alert("⚠️ ใบกำกับภาษีต้องมีเลขผู้เสียภาษีลูกค้า — กรุณาเปิดบิลต้นทางเพื่อกรอกก่อน"); return; }
+    }
+    const ref = await addDoc(collection(db,"invoices"), newData);
+    // อัพเดต source ให้ track ว่าแปลงไปแล้ว
+    await updateDoc(doc(db,"invoices",sourceInv.id), { convertedTo: { id: ref.id, invoiceNo: invNo, docType: targetDocType } });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.CREATE,
+      collection: "invoices",
+      targetId: ref.id,
+      targetLabel: `${invNo} (จาก ${sourceInv.invoiceNo})`,
+      note: `แปลงจาก ${docTypeLabel(sourceInv.docType)} → ${docTypeLabel(targetDocType)}`,
+    });
+    setShowPrintInvoice({...newData, id:ref.id});
+  };
+
+  // เปิดบิลขึ้นมาแก้
+  const handleEditInvoice = (inv) => {
+    setEditingInvoiceId(inv.id);
+    setInvoiceDocType(inv.docType || "receipt");
+    setInvoiceVat(!!inv.useVat);
+    setInvoiceForm({
+      customerId: inv.customerId || "",
+      customerName: inv.customerName || "",
+      customerPhone: inv.customerPhone || "",
+      customerAddress: inv.customerAddress || "",
+      customerTaxId: inv.customerTaxId || "",
+      items: inv.items || [],
+      note: inv.note || "",
+      dueDate: inv.dueDate || "",
+      vatRate: inv.vatRate || 7,
+      discount: inv.discount || 0,
+      discountType: inv.discountType || "amount",
+      bankAccountIdx: -1, // ผู้ใช้เลือกใหม่ถ้าต้องการ
+    });
+    setShowNewInvoice(true);
   };
 
   const PAYMENT_STATUSES = ["ออกแล้ว","รอชำระ","ชำระแล้ว","ยกเลิก"];
@@ -1679,7 +1806,7 @@ export default function App() {
                   })}
                 </div>
                 {role.canIssueInvoice
-                  ? <button onClick={()=>{setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7});setInvoiceDocType("receipt");setInvoiceVat(false);setShowNewInvoice(true);}}
+                  ? <button onClick={()=>{setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount"});setInvoiceDocType("receipt");setInvoiceVat(false);setShowNewInvoice(true);}}
                       style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>＋ ออกบิลใหม่</button>
                   : <span style={{fontSize:11,color:T.muted,padding:"6px 12px",background:"rgba(241,243,246,0.4)",border:`1px solid ${T.border}`,borderRadius:8}}>👁️ โหมดดูเท่านั้น</span>}
               </div>
@@ -1740,12 +1867,20 @@ export default function App() {
                                   {PAYMENT_STATUSES.map(s=><option key={s} value={s}>{s}</option>)}
                                 </select>
                               </div>
-                              <div style={{display:"flex",gap:5,justifyContent:"center"}} onClick={e=>e.stopPropagation()}>
-                                <button onClick={()=>setShowPrintInvoice(inv)} style={{padding:"5px 10px",borderRadius:7,border:"1px solid rgba(59,91,139,0.25)",background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:11,fontFamily:"'Sarabun',sans-serif"}}>🖨️</button>
+                              <div style={{display:"flex",gap:5,justifyContent:"center",flexWrap:"wrap"}} onClick={e=>e.stopPropagation()}>
+                                <button onClick={()=>setShowPrintInvoice(inv)} title="พิมพ์" style={{padding:"5px 10px",borderRadius:7,border:"1px solid rgba(59,91,139,0.25)",background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:11,fontFamily:"'Sarabun',sans-serif"}}>🖨️</button>
+                                {role.canIssueInvoice!==false&&inv.docType==="quotation"&&!inv.convertedTo&&(
+                                  <button onClick={()=>handleConvertQuotation(inv, "receipt")} title="แปลงเป็นใบเสร็จ" style={{padding:"5px 10px",borderRadius:7,border:"1px solid rgba(58,122,82,0.3)",background:"rgba(58,122,82,0.08)",color:T.green,cursor:"pointer",fontSize:11,fontFamily:"'Sarabun',sans-serif"}}>🔄</button>
+                                )}
+                                {inv.convertedTo&&(
+                                  <span title={`แปลงเป็น ${inv.convertedTo.invoiceNo} แล้ว`} style={{padding:"5px 8px",borderRadius:7,background:"rgba(58,122,82,0.06)",color:T.green,fontSize:10,fontFamily:"'Sarabun',sans-serif"}}>✓ แปลงแล้ว</span>
+                                )}
+                                {role.canIssueInvoice!==false&&<button onClick={()=>handleEditInvoice(inv)} title="แก้ไข" style={{padding:"5px 10px",borderRadius:7,border:"1px solid rgba(184,134,0,0.3)",background:"rgba(184,134,0,0.08)",color:T.amber,cursor:"pointer",fontSize:11,fontFamily:"'Sarabun',sans-serif"}}>✏️</button>}
                                 {role.canDelete&&<button onClick={async()=>{
+                                  if(!window.confirm(`ลบบิล ${inv.invoiceNo}? — การลบไม่สามารถกู้คืนได้ (ใช้ "แก้ไข" แทนถ้าแค่กรอกผิด)`)) return;
                                   await deleteDoc(doc(db,"invoices",inv.id));
                                   logAudit(user,{action:AUDIT_ACTIONS.DELETE,collection:"invoices",targetId:inv.id,targetLabel:`${inv.invoiceNo} · ${inv.customerName}`,before:{total:inv.total,status:inv.status,docType:inv.docType}});
-                                }} style={{padding:"5px 8px",borderRadius:7,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:11}}>✕</button>}
+                                }} title="ลบ" style={{padding:"5px 8px",borderRadius:7,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:11}}>✕</button>}
                               </div>
                             </div>);
                           })}
@@ -2897,8 +3032,8 @@ export default function App() {
 
       {/* ── MODAL: ออกบิลใหม่ ── */}
       {showNewInvoice&&(
-        <Modal onClose={()=>setShowNewInvoice(false)} w={1100}>
-          <MHead title="🧾 ออกบิลใหม่" onClose={()=>setShowNewInvoice(false)} color={T.accent}/>
+        <Modal onClose={()=>{setShowNewInvoice(false);setEditingInvoiceId(null);}} w={1100}>
+          <MHead title={editingInvoiceId?"✏️ แก้ไขบิล":"🧾 ออกบิลใหม่"} sub={editingInvoiceId?`${invoices.find(i=>i.id===editingInvoiceId)?.invoiceNo || ""} · เลขที่บิลคงเดิม`:""} onClose={()=>{setShowNewInvoice(false);setEditingInvoiceId(null);}} color={editingInvoiceId?T.amber:T.accent}/>
 
           {/* Doc type + VAT selector */}
           <div style={{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap"}}>
@@ -3108,11 +3243,30 @@ export default function App() {
                     ))}
                   </tbody>
                 </table>
-                {(()=>{const c=calcInvoice(invoiceForm.items,invoiceForm.vatRate,invoiceVat);return(
-                  <div style={{padding:"10px 12px",borderTop:`1px solid ${T.border}`,textAlign:"right",fontSize:12}}>
-                    <div style={{color:T.sub,marginBottom:2}}>ยอดก่อนภาษี: <b style={{fontFamily:"monospace",color:T.text}}>฿{c.subtotal.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>
-                    {invoiceVat&&<div style={{color:T.sub,marginBottom:2}}>VAT {invoiceForm.vatRate}%: <b style={{fontFamily:"monospace",color:T.text}}>฿{c.vat.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>}
-                    <div style={{color:"#34d399",fontSize:14,fontWeight:700}}>ยอดรวม: <span style={{fontFamily:"monospace"}}>฿{c.total.toLocaleString("th-TH",{minimumFractionDigits:2})}</span></div>
+                {(()=>{const c=calcInvoice(invoiceForm.items,invoiceForm.vatRate,invoiceVat,invoiceForm.discount,invoiceForm.discountType);return(
+                  <div style={{padding:"10px 12px",borderTop:`1px solid ${T.border}`,fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"flex-end",gap:14,flexWrap:"wrap"}}>
+                    {/* ส่วนลดท้ายบิล input */}
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{fontSize:11,color:T.muted,fontWeight:600}}>💸 ส่วนลดท้ายบิล:</span>
+                      <input type="number" min="0" step="0.01" value={invoiceForm.discount||0}
+                        onFocus={e=>e.target.select()}
+                        onChange={e=>setInvoiceForm(f=>({...f,discount:Number(e.target.value)||0}))}
+                        style={{width:80,textAlign:"right",background:"rgba(184,134,0,0.08)",border:"1px solid rgba(184,134,0,0.3)",color:T.amber,borderRadius:6,padding:"5px 8px",fontFamily:"monospace",fontSize:12,fontWeight:600,outline:"none"}}/>
+                      <select value={invoiceForm.discountType||"amount"} onChange={e=>setInvoiceForm(f=>({...f,discountType:e.target.value}))}
+                        style={{background:T.input,border:`1px solid ${T.border}`,color:T.text,borderRadius:6,padding:"5px 8px",fontSize:11,outline:"none",cursor:"pointer"}}>
+                        <option value="amount">฿ บาท</option>
+                        <option value="percent">% เปอร์เซ็นต์</option>
+                      </select>
+                    </div>
+                    {/* Totals */}
+                    <div style={{textAlign:"right"}}>
+                      <div style={{color:T.sub,marginBottom:2,fontSize:11}}>ราคารวม: <b style={{fontFamily:"monospace",color:T.text}}>฿{c.grossSubtotal.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>
+                      {c.itemDiscountTotal>0&&<div style={{color:T.amber,marginBottom:2,fontSize:11}}>ส่วนลดรายการ: <b style={{fontFamily:"monospace"}}>-฿{c.itemDiscountTotal.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>}
+                      {c.billDiscount>0&&<div style={{color:T.amber,marginBottom:2,fontSize:11}}>ส่วนลดท้ายบิล: <b style={{fontFamily:"monospace"}}>-฿{c.billDiscount.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>}
+                      <div style={{color:T.sub,marginBottom:2}}>ยอดก่อนภาษี: <b style={{fontFamily:"monospace",color:T.text}}>฿{c.subtotal.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>
+                      {invoiceVat&&<div style={{color:T.sub,marginBottom:2}}>VAT {invoiceForm.vatRate}%: <b style={{fontFamily:"monospace",color:T.text}}>฿{c.vat.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>}
+                      <div style={{color:"#34d399",fontSize:14,fontWeight:700}}>ยอดรวม: <span style={{fontFamily:"monospace"}}>฿{c.total.toLocaleString("th-TH",{minimumFractionDigits:2})}</span></div>
+                    </div>
                   </div>
                 )})()}
               </div>
@@ -3211,9 +3365,9 @@ export default function App() {
           </div>
 
           <div style={{display:"flex",gap:10}}>
-            <BtnGhost onClick={()=>setShowNewInvoice(false)} style={{flex:1}}>ยกเลิก</BtnGhost>
+            <BtnGhost onClick={()=>{setShowNewInvoice(false);setEditingInvoiceId(null);}} style={{flex:1}}>ยกเลิก</BtnGhost>
             <BtnPrimary onClick={handleConfirmInvoice} disabled={!invoiceForm.customerName||invoiceForm.items.length===0} style={{flex:2,opacity:(!invoiceForm.customerName||invoiceForm.items.length===0)?0.45:1}}>
-              ✅ ออก{docTypeLabel(invoiceDocType)} + บันทึก
+              {editingInvoiceId ? `💾 บันทึกการแก้ไข ${docTypeLabel(invoiceDocType)}` : `✅ ออก${docTypeLabel(invoiceDocType)} + บันทึก`}
             </BtnPrimary>
           </div>
         </Modal>
@@ -3254,6 +3408,16 @@ export default function App() {
                   <div data-doc-label style={{display:"inline-block",background:"#3b5b8b",color:"white",padding:"6px 22px",borderRadius:6,fontSize:16,fontWeight:800,marginBottom:10,letterSpacing:1}}>
                     {docTypeLabel(showPrintInvoice.docType)}
                   </div>
+                  {showPrintInvoice.revisions>0 && (
+                    <div style={{fontSize:10,color:"#b45309",marginBottom:6,fontWeight:600}}>
+                      ✏️ แก้ไขครั้งที่ {showPrintInvoice.revisions}{showPrintInvoice.lastEditedBy?` · ${showPrintInvoice.lastEditedBy}`:""}{showPrintInvoice.lastEditedAt?` · ${showPrintInvoice.lastEditedAt}`:""}
+                    </div>
+                  )}
+                  {showPrintInvoice.convertedFrom && (
+                    <div style={{fontSize:10,color:"#166534",marginBottom:6,fontWeight:600}}>
+                      🔄 แปลงมาจาก {docTypeLabel(showPrintInvoice.convertedFrom.docType)} {showPrintInvoice.convertedFrom.invoiceNo}
+                    </div>
+                  )}
                   <div style={{display:"flex",flexDirection:"column",gap:5}}>
                     <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
                       <span style={{fontSize:13,color:"#64748b",fontWeight:500,minWidth:72,textAlign:"right"}}>เลขที่:</span>
@@ -3386,6 +3550,24 @@ export default function App() {
                       ))}
                     </tbody>
                     <tfoot>
+                      {(showPrintInvoice.itemDiscountTotal>0||showPrintInvoice.billDiscount>0)&&(
+                        <tr style={{background:"#fffbeb"}}>
+                          <td colSpan={11} style={{padding:"9px 14px",textAlign:"right",fontSize:13,color:"#92400e",border:"1px solid #e2e8f0"}}>ราคารวมก่อนส่วนลด</td>
+                          <td style={{padding:"9px 14px",textAlign:"right",fontFamily:"monospace",color:"#475569",border:"1px solid #e2e8f0",fontSize:13}}>{(showPrintInvoice.grossSubtotal||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                        </tr>
+                      )}
+                      {showPrintInvoice.itemDiscountTotal>0&&(
+                        <tr style={{background:"#fffbeb"}}>
+                          <td colSpan={11} style={{padding:"9px 14px",textAlign:"right",fontSize:13,color:"#92400e",border:"1px solid #e2e8f0"}}>ส่วนลดรายการ</td>
+                          <td style={{padding:"9px 14px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#b45309",border:"1px solid #e2e8f0",fontSize:13}}>-{(showPrintInvoice.itemDiscountTotal||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                        </tr>
+                      )}
+                      {showPrintInvoice.billDiscount>0&&(
+                        <tr style={{background:"#fffbeb"}}>
+                          <td colSpan={11} style={{padding:"9px 14px",textAlign:"right",fontSize:13,color:"#92400e",border:"1px solid #e2e8f0"}}>ส่วนลดท้ายบิล{showPrintInvoice.discountType==="percent"?` (${showPrintInvoice.discount}%)`:""}</td>
+                          <td style={{padding:"9px 14px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#b45309",border:"1px solid #e2e8f0",fontSize:13}}>-{(showPrintInvoice.billDiscount||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                        </tr>
+                      )}
                       <tr style={{background:"#f8fafc",borderTop:"2px solid #e2e8f0"}}>
                         <td colSpan={11} style={{padding:"11px 14px",textAlign:"right",fontWeight:600,fontSize:14,color:"#64748b",border:"1px solid #e2e8f0"}}>ยอดรวมก่อนภาษี</td>
                         <td style={{padding:"11px 14px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#1e293b",fontSize:15,border:"1px solid #e2e8f0"}}>{(showPrintInvoice.subtotal||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
