@@ -15,6 +15,7 @@ import BackupRestore, { shouldRemindBackup, getLastBackupDate } from "./componen
 import BarcodeScanner from "./components/BarcodeScanner";
 import InstallPWA from "./components/InstallPWA";
 import CustomerProfile from "./components/CustomerProfile";
+import ProductionTab from "./tabs/ProductionTab";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
 import { generateDocNo } from "./utils/docNumber";
 import html2pdf from "html2pdf.js";
@@ -26,7 +27,7 @@ export default function App() {
     authReady.then(() => setAuthChecked(true));
   }, []);
 
-  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements } = useFirestore();
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms } = useFirestore();
   // ใช้แทน ROLES[role].label เพื่อให้ admin เปลี่ยนชื่อบทบาทได้
   const rLabel = (key) => roleLabels[key] || ROLES[key]?.label || key;
 
@@ -961,6 +962,7 @@ export default function App() {
     { id:"inventory",    icon:"📦", label:"สินค้าคงคลัง" },
     { id:"transactions", icon:"🔄", label:"รับ/จ่ายสินค้า" },
     { id:"barcode",      icon:"▦",  label:"สแกนบาร์โค้ด" },
+    { id:"production",   icon:"🏭", label:"การผลิต" },
     { id:"orders",       icon:"📋", label:"ใบสั่งของ" },
     { id:"invoice",      icon:"🧾", label:"ออกบิล" },
     { id:"statements",   icon:"📃", label:"วางบิลเก็บเงิน" },
@@ -1746,6 +1748,19 @@ export default function App() {
           )}
 
           {/* ── ORDERS ── */}
+          {activeTab==="production"&&(
+            <ProductionTab
+              productionOrders={productionOrders||[]}
+              boms={boms||[]}
+              products={products}
+              clothingItems={clothingItems}
+              companyInfo={companyInfo}
+              user={user}
+              role={role}
+              printElementById={printElementById}
+            />
+          )}
+
           {activeTab==="orders"&&(
             <div style={{animation:"fadeUp 0.4s ease"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>

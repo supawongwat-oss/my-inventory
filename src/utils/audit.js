@@ -15,6 +15,10 @@ export const AUDIT_ACTIONS = {
   STOCK:      "stock",      // รับ/จ่ายสต็อก
   STATUS:     "status",     // เปลี่ยนสถานะ (เช่น invoice payment)
   CLEAR:      "clear",      // ล้างข้อมูล bulk
+  PRODUCTION_CREATE: "production_create", // สร้างใบสั่งผลิต
+  PRODUCTION_STATUS: "production_status", // เลื่อนสถานะการผลิต
+  PRODUCTION_CANCEL: "production_cancel", // ยกเลิกใบสั่งผลิต
+  BOM_UPDATE:        "bom_update",        // สร้าง/แก้ BOM
 };
 
 // สี/ไอคอนสำหรับแต่ละ action
@@ -30,6 +34,10 @@ export const AUDIT_META = {
   stock:      { icon: "📦", color: "#3b5b8b", label: "สต็อก" },
   status:     { icon: "🔔", color: "#3b5b8b", label: "สถานะ" },
   clear:      { icon: "💥", color: "#b94a48", label: "ล้าง" },
+  production_create: { icon: "🏭", color: "#3a7a52", label: "สั่งผลิต" },
+  production_status: { icon: "⚙️", color: "#3b5b8b", label: "สถานะผลิต" },
+  production_cancel: { icon: "🛑", color: "#b94a48", label: "ยกเลิกผลิต" },
+  bom_update:        { icon: "🧪", color: "#7c3aed", label: "แก้ BOM" },
 };
 
 /**
