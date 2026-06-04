@@ -746,6 +746,18 @@ export default function App() {
 
   const handleConfirmInvoice = async () => {
     if(!invoiceForm.customerName||invoiceForm.items.length===0) return;
+    // 🔒 บังคับเงื่อนไขใบกำกับภาษี
+    if (invoiceDocType === "tax") {
+      if (!invoiceVat) { alert("ใบกำกับภาษีต้องมี VAT 7%"); return; }
+      if (!companyInfo.taxId || !companyInfo.taxId.trim()) {
+        alert("⚠️ บริษัทยังไม่ได้กรอกเลขผู้เสียภาษี\nไปที่ ⚙️ ตั้งค่า → ข้อมูลบริษัท เพื่อกรอกก่อน");
+        return;
+      }
+      if (!invoiceForm.customerTaxId || !invoiceForm.customerTaxId.trim()) {
+        alert("⚠️ ใบกำกับภาษีต้องระบุเลขผู้เสียภาษีของลูกค้า\nกรอกในช่อง 'เลขผู้เสียภาษี' ของลูกค้า");
+        return;
+      }
+    }
     const calc = calcInvoice(invoiceForm.items, invoiceForm.vatRate, invoiceVat);
     const invNo = generateDocNo("INV", invoices, "invoiceNo");
     const bank = (invoiceForm.bankAccountIdx!=null&&invoiceForm.bankAccountIdx>=0)
@@ -2893,7 +2905,11 @@ export default function App() {
               <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>ประเภทเอกสาร</label>
               <div style={{display:"flex",gap:6}}>
                 {[{id:"receipt",label:"🧾 ใบเสร็จ"},{id:"tax",label:"📄 ใบกำกับภาษี"},{id:"quotation",label:"📋 ใบวางบิล"}].map(t=>(
-                  <button key={t.id} onClick={()=>setInvoiceDocType(t.id)}
+                  <button key={t.id} onClick={()=>{
+                    setInvoiceDocType(t.id);
+                    // ใบกำกับภาษี → บังคับ VAT 7%
+                    if (t.id === "tax") setInvoiceVat(true);
+                  }}
                     style={{padding:"7px 14px",borderRadius:8,border:`1px solid ${invoiceDocType===t.id?"#3b5b8b":T.border}`,background:invoiceDocType===t.id?"rgba(59,91,139,0.15)":"transparent",color:invoiceDocType===t.id?T.accent:T.sub,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:invoiceDocType===t.id?700:400,transition:"all 0.2s"}}>
                     {t.label}
                   </button>
@@ -2901,12 +2917,25 @@ export default function App() {
               </div>
             </div>
             <div style={{display:"flex",alignItems:"flex-end",gap:10}}>
-              <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",padding:"7px 14px",borderRadius:8,border:`1px solid ${invoiceVat?"#3b5b8b":T.border}`,background:invoiceVat?"rgba(59,91,139,0.15)":"transparent"}}>
-                <input type="checkbox" checked={invoiceVat} onChange={e=>setInvoiceVat(e.target.checked)} style={{cursor:"pointer"}}/>
-                <span style={{fontSize:12,color:invoiceVat?T.accent:T.sub,fontWeight:invoiceVat?700:400}}>VAT {invoiceForm.vatRate}%</span>
+              <label style={{display:"flex",alignItems:"center",gap:8,cursor:invoiceDocType==="tax"?"not-allowed":"pointer",padding:"7px 14px",borderRadius:8,border:`1px solid ${invoiceVat?"#3b5b8b":T.border}`,background:invoiceVat?"rgba(59,91,139,0.15)":"transparent",opacity:invoiceDocType==="tax"?0.8:1}}
+                title={invoiceDocType==="tax"?"ใบกำกับภาษีต้องมี VAT 7% เสมอ":""}>
+                <input type="checkbox" checked={invoiceVat} disabled={invoiceDocType==="tax"} onChange={e=>setInvoiceVat(e.target.checked)} style={{cursor:invoiceDocType==="tax"?"not-allowed":"pointer"}}/>
+                <span style={{fontSize:12,color:invoiceVat?T.accent:T.sub,fontWeight:invoiceVat?700:400}}>VAT {invoiceForm.vatRate}% {invoiceDocType==="tax"&&<span style={{color:T.red,fontSize:10,marginLeft:4}}>🔒 บังคับ</span>}</span>
               </label>
             </div>
           </div>
+
+          {/* แจ้งเตือนเมื่อเป็นใบกำกับภาษี — ต้องมี taxId */}
+          {invoiceDocType==="tax"&&(
+            <div style={{marginBottom:14,padding:"10px 14px",background:"rgba(184,134,0,0.08)",border:"1px solid rgba(184,134,0,0.3)",borderRadius:8,fontSize:12,color:T.amber,lineHeight:1.7}}>
+              ⚠️ <b>ใบกำกับภาษีต้องมีข้อมูลครบ:</b>
+              <ul style={{marginLeft:18,marginTop:4,marginBottom:0}}>
+                <li>✓ VAT 7% (บังคับ)</li>
+                <li>{companyInfo.taxId ? "✓" : "❌"} เลขผู้เสียภาษีบริษัท {!companyInfo.taxId && <span style={{color:T.red,fontWeight:700}}>(ยังไม่ได้ตั้ง — ไปที่ ⚙️ ตั้งค่า → ข้อมูลบริษัท)</span>}</li>
+                <li>{invoiceForm.customerTaxId ? "✓" : "❌"} เลขผู้เสียภาษีลูกค้า {!invoiceForm.customerTaxId && <span style={{color:T.red,fontWeight:700}}>(กรอกในช่องด้านล่าง)</span>}</li>
+              </ul>
+            </div>
+          )}
 
           {/* บัญชีรับเงิน */}
           <div style={{marginBottom:14}}>
