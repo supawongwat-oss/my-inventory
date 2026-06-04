@@ -3266,16 +3266,16 @@ export default function App() {
 
               {/* ── บัญชีรับเงิน ── */}
               {showPrintInvoice.bankAccount&&(
-                <div style={{padding:"12px 16px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,marginBottom:12,display:"flex",alignItems:"center",gap:14}}>
-                  <div style={{fontSize:24}}>🏦</div>
+                <div style={{padding:"16px 20px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,marginBottom:12,display:"flex",alignItems:"center",gap:16}}>
+                  <div style={{fontSize:34}}>🏦</div>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:10,color:"#3b5b8b",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3}}>
+                    <div style={{fontSize:14,color:"#3b5b8b",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>
                       โอนชำระเข้าบัญชี{showPrintInvoice.bankAccount.label?` (${showPrintInvoice.bankAccount.label})`:""}
                     </div>
-                    <div style={{display:"flex",flexWrap:"wrap",gap:18,fontSize:12,color:"#1e293b"}}>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:22,fontSize:15,color:"#1e293b",lineHeight:1.6}}>
                       <div><b>ธนาคาร:</b> {showPrintInvoice.bankAccount.bankName||"-"}</div>
                       <div><b>ชื่อบัญชี:</b> {showPrintInvoice.bankAccount.accountName||"-"}</div>
-                      <div><b>เลขที่:</b> <span style={{fontFamily:"monospace",fontWeight:700,color:"#3b5b8b"}}>{showPrintInvoice.bankAccount.accountNo||"-"}</span></div>
+                      <div><b>เลขที่:</b> <span style={{fontFamily:"monospace",fontWeight:700,color:"#3b5b8b",fontSize:17}}>{showPrintInvoice.bankAccount.accountNo||"-"}</span></div>
                     </div>
                   </div>
                 </div>
