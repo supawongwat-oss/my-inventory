@@ -51,42 +51,14 @@ export default function BarcodeScanner({ onScan, onClose, title = "📸 สแ�
     return () => { cancel = true; };
   }, []);
 
-  // ── Start decode loop (iOS-friendly: ใช้ getUserMedia ตรง + zxing decode จาก stream) ──
+  // ── Start decode loop — ใช้ decodeFromConstraints (handle stream + decode ในตัวเดียว) ──
   useEffect(() => {
     if (!videoRef.current) return;
     let mounted = true;
-    let stream = null;
 
     const start = async () => {
       try {
-        // 1) ขอ stream เอง — iOS Safari เสถียรกว่าใช้ decodeFromVideoDevice
-        const constraints = {
-          audio: false,
-          video: selectedCamId
-            ? { deviceId: { exact: selectedCamId }, facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }
-            : { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        };
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-        if (!mounted) { stream.getTracks().forEach(t => t.stop()); return; }
-
-        const video = videoRef.current;
-        if (!video) return;
-
-        // 2) Attach stream + iOS-friendly attributes
-        video.srcObject = stream;
-        video.setAttribute("playsinline", "true");
-        video.setAttribute("autoplay", "true");
-        video.setAttribute("muted", "true");
-        video.muted = true;
-
-        // 3) บังคับ play() — iOS ต้องการ explicit call
-        try {
-          await video.play();
-        } catch (playErr) {
-          console.warn("video.play() warning:", playErr);
-        }
-
-        // 4) เริ่ม decode loop
+        // ตั้ง hints
         const hints = new Map();
         hints.set(DecodeHintType.POSSIBLE_FORMATS, [
           BarcodeFormat.EAN_13, BarcodeFormat.EAN_8,
@@ -100,36 +72,51 @@ export default function BarcodeScanner({ onScan, onClose, title = "📸 สแ�
         const reader = new BrowserMultiFormatReader(hints);
         readerRef.current = reader;
 
-        // 5) ใช้ decodeFromVideoElement (รับ video element ที่มี stream แล้ว)
-        const controls = await reader.decodeFromVideoElement(video, (result, error) => {
-          if (!mounted) return;
-          if (result) {
-            const code = result.getText();
-            const now = Date.now();
-            if (code === lastScanRef.current.code && now - lastScanRef.current.time < 1500) return;
-            lastScanRef.current = { code, time: now };
-            setLastScan(code);
-            setScanCount(c => c + 1);
-            beep();
-            onScan?.(code);
-            if (!continuous) {
-              try { controls?.stop(); } catch {}
-              try { stream?.getTracks().forEach(t => t.stop()); } catch {}
-            }
-          }
-        });
-        controlsRef.current = controls;
+        // ใช้ decodeFromConstraints — zxing handle stream เอง + รองรับ iOS ดีกว่า
+        const constraints = {
+          audio: false,
+          video: selectedCamId
+            ? { deviceId: { exact: selectedCamId } }
+            : { facingMode: { ideal: "environment" } },
+        };
 
-        // 6) เช็ค torch
-        setTimeout(() => checkTorchSupport(), 500);
+        console.log("[scanner] starting with constraints:", constraints);
+
+        const controls = await reader.decodeFromConstraints(
+          constraints,
+          videoRef.current,
+          (result, error) => {
+            if (!mounted) return;
+            if (result) {
+              const code = result.getText();
+              const fmt = result.getBarcodeFormat?.();
+              console.log("[scanner] decoded:", code, "format:", fmt);
+              const now = Date.now();
+              if (code === lastScanRef.current.code && now - lastScanRef.current.time < 1500) return;
+              lastScanRef.current = { code, time: now };
+              setLastScan(code);
+              setScanCount(c => c + 1);
+              beep();
+              onScan?.(code);
+              if (!continuous) {
+                try { controls?.stop(); } catch {}
+              }
+            }
+            // error คือ frame ที่อ่านไม่ออก — ignore
+          }
+        );
+        controlsRef.current = controls;
+        console.log("[scanner] ready, controls:", controls);
+
+        // เช็ค torch หลังกล้องพร้อม
+        setTimeout(() => checkTorchSupport(), 800);
       } catch (e) {
         if (!mounted) return;
-        console.error("scanner start error:", e);
+        console.error("[scanner] start error:", e);
         const msg = e?.name === "NotAllowedError" ? "ไม่ได้รับสิทธิ์ใช้กล้อง — กรุณาอนุญาตใน Settings"
-          : e?.name === "NotFoundError" ? "ไม่พบกล้องที่เลือก"
+          : e?.name === "NotFoundError" ? "ไม่พบกล้อง"
           : e?.name === "NotReadableError" ? "กล้องถูกใช้งานโดยแอปอื่น — ปิดแอปอื่นก่อน"
-          : e?.name === "OverconstrainedError" ? "กล้องไม่รองรับ resolution ที่ขอ"
-          : e?.name === "NotSupportedError" ? "Browser ไม่รองรับ — ลอง Safari หรือ Chrome รุ่นใหม่"
+          : e?.name === "OverconstrainedError" ? "กล้องไม่รองรับ — ลองเลือกกล้องอื่น"
           : ("เริ่มกล้องไม่ได้: " + (e?.message || e?.name || e));
         setErr(msg);
       }
@@ -140,7 +127,6 @@ export default function BarcodeScanner({ onScan, onClose, title = "📸 สแ�
     return () => {
       mounted = false;
       try { controlsRef.current?.stop(); controlsRef.current = null; } catch {}
-      try { stream?.getTracks().forEach(t => t.stop()); } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCamId]);
