@@ -51,75 +51,96 @@ export default function BarcodeScanner({ onScan, onClose, title = "📸 สแ�
     return () => { cancel = true; };
   }, []);
 
-  // ── Start decode loop ──
+  // ── Start decode loop (iOS-friendly: ใช้ getUserMedia ตรง + zxing decode จาก stream) ──
   useEffect(() => {
-    if (!selectedCamId || !videoRef.current) return;
-
+    if (!videoRef.current) return;
     let mounted = true;
+    let stream = null;
 
-    // Hints: รองรับหลาย format + try harder
-    const hints = new Map();
-    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-      BarcodeFormat.EAN_13,
-      BarcodeFormat.EAN_8,
-      BarcodeFormat.CODE_128,
-      BarcodeFormat.CODE_39,
-      BarcodeFormat.UPC_A,
-      BarcodeFormat.UPC_E,
-      BarcodeFormat.ITF,
-      BarcodeFormat.CODABAR,
-      BarcodeFormat.QR_CODE,
-      BarcodeFormat.DATA_MATRIX,
-    ]);
-    hints.set(DecodeHintType.TRY_HARDER, true);
+    const start = async () => {
+      try {
+        // 1) ขอ stream เอง — iOS Safari เสถียรกว่าใช้ decodeFromVideoDevice
+        const constraints = {
+          audio: false,
+          video: selectedCamId
+            ? { deviceId: { exact: selectedCamId }, facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }
+            : { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        if (!mounted) { stream.getTracks().forEach(t => t.stop()); return; }
 
-    // ⚠️ สำคัญ: pass เฉพาะ hints (อย่าใส่ options arg ที่ 2 — version 0.2 ไม่รองรับ)
-    const reader = new BrowserMultiFormatReader(hints);
-    readerRef.current = reader;
+        const video = videoRef.current;
+        if (!video) return;
 
-    reader.decodeFromVideoDevice(
-      selectedCamId,
-      videoRef.current,
-      (result, error, controls) => {
-        if (!mounted) return;
-        // Save controls reference (first call)
-        if (controls && !controlsRef.current) {
-          controlsRef.current = controls;
-          // เช็ค torch หลังจาก video พร้อม
-          setTimeout(() => checkTorchSupport(), 500);
+        // 2) Attach stream + iOS-friendly attributes
+        video.srcObject = stream;
+        video.setAttribute("playsinline", "true");
+        video.setAttribute("autoplay", "true");
+        video.setAttribute("muted", "true");
+        video.muted = true;
+
+        // 3) บังคับ play() — iOS ต้องการ explicit call
+        try {
+          await video.play();
+        } catch (playErr) {
+          console.warn("video.play() warning:", playErr);
         }
-        if (result) {
-          const code = result.getText();
-          const now = Date.now();
-          // debounce
-          if (code === lastScanRef.current.code && now - lastScanRef.current.time < 1500) return;
-          lastScanRef.current = { code, time: now };
-          setLastScan(code);
-          setScanCount(c => c + 1);
-          beep();
-          onScan?.(code);
-          if (!continuous) {
-            try { controls?.stop(); } catch {}
+
+        // 4) เริ่ม decode loop
+        const hints = new Map();
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+          BarcodeFormat.EAN_13, BarcodeFormat.EAN_8,
+          BarcodeFormat.CODE_128, BarcodeFormat.CODE_39,
+          BarcodeFormat.UPC_A, BarcodeFormat.UPC_E,
+          BarcodeFormat.ITF, BarcodeFormat.CODABAR,
+          BarcodeFormat.QR_CODE, BarcodeFormat.DATA_MATRIX,
+        ]);
+        hints.set(DecodeHintType.TRY_HARDER, true);
+
+        const reader = new BrowserMultiFormatReader(hints);
+        readerRef.current = reader;
+
+        // 5) ใช้ decodeFromVideoElement (รับ video element ที่มี stream แล้ว)
+        const controls = await reader.decodeFromVideoElement(video, (result, error) => {
+          if (!mounted) return;
+          if (result) {
+            const code = result.getText();
+            const now = Date.now();
+            if (code === lastScanRef.current.code && now - lastScanRef.current.time < 1500) return;
+            lastScanRef.current = { code, time: now };
+            setLastScan(code);
+            setScanCount(c => c + 1);
+            beep();
+            onScan?.(code);
+            if (!continuous) {
+              try { controls?.stop(); } catch {}
+              try { stream?.getTracks().forEach(t => t.stop()); } catch {}
+            }
           }
-        }
-        // ignore decode errors (frame ที่ไม่เจอ barcode)
+        });
+        controlsRef.current = controls;
+
+        // 6) เช็ค torch
+        setTimeout(() => checkTorchSupport(), 500);
+      } catch (e) {
+        if (!mounted) return;
+        console.error("scanner start error:", e);
+        const msg = e?.name === "NotAllowedError" ? "ไม่ได้รับสิทธิ์ใช้กล้อง — กรุณาอนุญาตใน Settings"
+          : e?.name === "NotFoundError" ? "ไม่พบกล้องที่เลือก"
+          : e?.name === "NotReadableError" ? "กล้องถูกใช้งานโดยแอปอื่น — ปิดแอปอื่นก่อน"
+          : e?.name === "OverconstrainedError" ? "กล้องไม่รองรับ resolution ที่ขอ"
+          : e?.name === "NotSupportedError" ? "Browser ไม่รองรับ — ลอง Safari หรือ Chrome รุ่นใหม่"
+          : ("เริ่มกล้องไม่ได้: " + (e?.message || e?.name || e));
+        setErr(msg);
       }
-    ).catch(e => {
-      if (!mounted) return;
-      console.error("scanner error:", e);
-      const msg = e?.name === "NotAllowedError" ? "ไม่ได้รับสิทธิ์ใช้กล้อง"
-        : e?.name === "NotFoundError" ? "ไม่พบกล้องที่เลือก"
-        : e?.name === "NotReadableError" ? "กล้องถูกใช้งานโดยแอปอื่น"
-        : ("เริ่มกล้องไม่ได้: " + (e?.message || e));
-      setErr(msg);
-    });
+    };
+
+    start();
 
     return () => {
       mounted = false;
-      try {
-        controlsRef.current?.stop();
-        controlsRef.current = null;
-      } catch {}
+      try { controlsRef.current?.stop(); controlsRef.current = null; } catch {}
+      try { stream?.getTracks().forEach(t => t.stop()); } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCamId]);
@@ -223,7 +244,12 @@ export default function BarcodeScanner({ onScan, onClose, title = "📸 สแ�
 
             {/* Video viewport */}
             <div style={{ padding: 14, background: "#000", position: "relative", minHeight: 320 }}>
-              <video ref={videoRef} style={{ width: "100%", maxHeight: "55vh", borderRadius: 8, display: "block", objectFit: "cover" }} playsInline muted/>
+              <video ref={videoRef}
+                style={{ width: "100%", maxHeight: "55vh", borderRadius: 8, display: "block", objectFit: "cover", background: "#000" }}
+                playsInline muted autoPlay
+                webkit-playsinline="true"
+                x5-playsinline="true"
+              />
               {/* Aiming overlay */}
               <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: "75%", height: "30%", border: "2px solid rgba(58,189,248,0.6)", borderRadius: 8, pointerEvents: "none", boxShadow: "0 0 0 9999px rgba(0,0,0,0.25)" }}/>
               {err && (
