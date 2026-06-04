@@ -53,12 +53,29 @@ export default function StocktakeTab({ products, clothingItems, user, role }) {
   // === Handle barcode scan → เปิด quick-add modal ===
   const handleScan = (code) => {
     setShowScanner(false);
-    const found = products.find(p =>
-      (p.barcode||"").toLowerCase() === code.toLowerCase() ||
-      (p.code||"").toLowerCase() === code.toLowerCase()
-    );
-    if (found) openQuickAdd(found);
-    else alert(`❌ ไม่พบสินค้าในระบบ — รหัส/บาร์โค้ด: ${code}`);
+    const c = String(code).trim();
+    const norm = (s) => String(s||"").trim().toLowerCase().replace(/\s+/g,"");
+    const codeNorm = norm(c);
+
+    // 1) ค้นใน products
+    const found = products.find(p => norm(p.barcode)===codeNorm || norm(p.code)===codeNorm);
+    if (found) { openQuickAdd(found); return; }
+
+    // 2) (อนาคต) ค้นใน clothing — ปัจจุบัน stocktake mode general เท่านั้น
+
+    // 3) debug: หาที่ใกล้เคียง
+    const close = products
+      .filter(p => norm(p.barcode).includes(codeNorm) || norm(p.code).includes(codeNorm) || codeNorm.includes(norm(p.barcode)) || codeNorm.includes(norm(p.code)))
+      .slice(0, 3);
+    console.log("[stocktake-scan] not found. code:", JSON.stringify(c), "products:", products.length, "close:", close);
+
+    let extra = "";
+    if (close.length > 0) extra = "\n\nใกล้เคียง: " + close.map(p => `${p.code}/${p.barcode}`).join(", ");
+    else {
+      const sample = products.slice(0,3).map(p => `${p.code}=${p.barcode||"(ว่าง)"}`).join(", ");
+      if (sample) extra = "\n\nตัวอย่างใน DB: " + sample;
+    }
+    alert(`❌ ไม่พบในระบบ — รหัสที่อ่าน: "${c}"${extra}`);
   };
 
   const openQuickAdd = (product) => {
