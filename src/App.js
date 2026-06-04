@@ -253,6 +253,7 @@ export default function App() {
   const [barcodeSearch, setBarcodeSearch] = useState("");
   const [showScanner, setShowScanner] = useState(false); // โหมดสแกนกล้อง
   const [showBarcodePrint, setShowBarcodePrint] = useState(false); // ปริ้น barcode stickers
+  const [showTxScanner, setShowTxScanner] = useState(false); // สแกนใน Tx modal
   const [inventoryTab, setInventoryTab] = useState("general"); // "general" | "clothing"
   const [clothingTxModal, setClothingTxModal] = useState(null); // {item, colorIdx, size}
   const [clothingTxType, setClothingTxType] = useState("รับ");
@@ -2481,11 +2482,19 @@ export default function App() {
           {txSuccess&&<Toast msg="บันทึกสำเร็จ!"/>}
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div>
-              <label style={{fontSize:11,color:T.sub,display:"block",marginBottom:5,fontWeight:500}}>สินค้า</label>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+                <label style={{fontSize:11,color:T.sub,fontWeight:500}}>สินค้า</label>
+                <button onClick={()=>setShowTxScanner(true)} style={{padding:"4px 12px",borderRadius:6,border:"1px solid rgba(124,58,237,0.3)",background:"rgba(124,58,237,0.08)",color:"#7c3aed",cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>📸 สแกน</button>
+              </div>
               <select value={txForm.productId} onChange={e=>setTxForm(f=>({...f,productId:e.target.value}))} style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
                 <option value="">-- เลือกสินค้า --</option>
                 {products.map(p=><option key={p.id} value={p.id}>{p.code} — {p.name} (คงเหลือ: {p.qty} {p.unit})</option>)}
               </select>
+              {txForm.productId && (()=>{
+                const p = products.find(x=>x.id===txForm.productId);
+                if(!p) return null;
+                return <div style={{marginTop:6,padding:"6px 10px",background:"rgba(58,122,82,0.08)",border:"1px solid rgba(58,122,82,0.2)",borderRadius:6,fontSize:11,color:T.green}}>✓ {p.code} · {p.name} · คงเหลือ <b>{p.qty} {p.unit}</b></div>;
+              })()}
             </div>
             <Input label="จำนวน" type="number" placeholder="0" value={txForm.qty} onChange={e=>setTxForm(f=>({...f,qty:e.target.value}))}/>
             <Input label="หมายเหตุ" placeholder="ระบุหมายเหตุ (ถ้ามี)" value={txForm.note} onChange={e=>setTxForm(f=>({...f,note:e.target.value}))}/>
@@ -3963,6 +3972,26 @@ export default function App() {
             setTimeout(() => handleBarcodeSearch(c), 100);
           }}
           onClose={() => setShowScanner(false)}
+        />
+      )}
+
+      {/* ── Scanner สำหรับ Tx modal — สแกนเพื่อเลือกสินค้า ── */}
+      {showTxScanner && (
+        <BarcodeScanner
+          title={`📸 สแกน${txType==="รับ"?"รับสินค้า":"จ่ายสินค้า"}`}
+          onScan={(code) => {
+            const c = String(code).trim();
+            const norm = (s) => String(s||"").trim().toLowerCase().replace(/\s+/g,"");
+            const cNorm = norm(c);
+            const found = products.find(p => norm(p.barcode)===cNorm || norm(p.code)===cNorm);
+            setShowTxScanner(false);
+            if (found) {
+              setTxForm(f=>({...f, productId: String(found.id)}));
+            } else {
+              alert(`❌ ไม่พบสินค้าในระบบ\nรหัสที่อ่าน: "${c}"\n\nลองพิมพ์มือ หรือเลือกจาก dropdown`);
+            }
+          }}
+          onClose={() => setShowTxScanner(false)}
         />
       )}
 
