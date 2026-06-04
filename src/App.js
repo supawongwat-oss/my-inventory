@@ -14,6 +14,7 @@ import ImportCustomersModal from "./components/ImportCustomersModal";
 import BackupRestore, { shouldRemindBackup, getLastBackupDate } from "./components/BackupRestore";
 import BarcodeScanner from "./components/BarcodeScanner";
 import InstallPWA from "./components/InstallPWA";
+import CustomerProfile from "./components/CustomerProfile";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
 // ── MAIN APP ───────────────────────────────────────────────────
 export default function App() {
@@ -222,6 +223,7 @@ export default function App() {
 
   // ── Invoice & Company state ───────────────────────────────────
   const [showNewInvoice, setShowNewInvoice] = useState(false);
+  const [profileCustomer, setProfileCustomer] = useState(null);
   const [showPrintInvoice, setShowPrintInvoice] = useState(null);
   const [invoiceDocType, setInvoiceDocType] = useState("receipt"); // receipt | tax | quotation
   const [invoiceVat, setInvoiceVat] = useState(false);
@@ -1703,7 +1705,8 @@ export default function App() {
                     const q=customerSearch.toLowerCase().trim();
                     return (c.name||"").toLowerCase().includes(q)||(c.phone||"").toLowerCase().includes(q)||(c.address||"").toLowerCase().includes(q)||(c.email||"").toLowerCase().includes(q);
                   }).map((c,i,arr)=>(
-                    <div key={c.id} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 20px",borderBottom:i<arr.length-1?`1px solid ${T.border}`:"none"}}
+                    <div key={c.id} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 20px",borderBottom:i<arr.length-1?`1px solid ${T.border}`:"none",cursor:"pointer"}}
+                      onClick={()=>setProfileCustomer(c)}
                       onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.04)"}
                       onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                       <div style={{width:48,height:48,borderRadius:"50%",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0,boxShadow:"0 4px 10px rgba(59,91,139,0.3)"}}>👤</div>
@@ -1712,8 +1715,12 @@ export default function App() {
                         <div style={{fontSize:11,color:T.muted,marginTop:2}}>📞 {c.phone||"-"}</div>
                         <div style={{fontSize:11,color:T.muted}}>📍 {c.address||"-"}</div>
                       </div>
-                      <div style={{fontSize:11,color:T.sub}}>สั่งซื้อ {orders.filter(o=>o.customerId===c.id).length} ครั้ง</div>
-                      {role.canDelete&&<button onClick={async()=>{
+                      <div style={{fontSize:11,color:T.sub,textAlign:"right"}}>
+                        <div>สั่งซื้อ {orders.filter(o=>o.customerId===c.id).length} ครั้ง</div>
+                        <div style={{color:T.accent,fontSize:10,marginTop:2}}>👁 ดูโปรไฟล์</div>
+                      </div>
+                      {role.canDelete&&<button onClick={async(e)=>{
+                        e.stopPropagation();
                         await deleteDoc(doc(db,"customers",c.id));
                         logAudit(user,{action:AUDIT_ACTIONS.DELETE,collection:"customers",targetId:c.id,targetLabel:c.name,before:{name:c.name,phone:c.phone}});
                       }} style={{padding:"5px 8px",borderRadius:7,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:11}}>✕</button>}
@@ -2178,6 +2185,19 @@ export default function App() {
             <div style={{display:"flex",gap:10}}><BtnGhost onClick={()=>setShowClearConfirm(false)} style={{flex:1}}>ยกเลิก</BtnGhost><BtnDanger onClick={handleClear} style={{flex:1}}>ล้างคลังทั้งหมด</BtnDanger></div>
           </div>
         </Modal>
+      )}
+
+      {profileCustomer&&(
+        <CustomerProfile
+          customer={profileCustomer}
+          invoices={invoices}
+          orders={orders}
+          onClose={()=>setProfileCustomer(null)}
+          onNewInvoice={(c)=>{
+            setInvoiceForm(f=>({...f,customerId:c.id||"",customerName:c.name||"",customerPhone:c.phone||"",customerAddress:c.address||"",customerTaxId:c.taxId||""}));
+            setShowNewInvoice(true);
+          }}
+        />
       )}
 
       {/* ── MODAL: Settings ── */}
