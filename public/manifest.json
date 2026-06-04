@@ -23,7 +23,7 @@
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "theme_color": "#1a73e8",
-  "background_color": "#ffffff",
+  "theme_color": "#3b5b8b",
+  "background_color": "#f4f5f7",
   "description": "ระบบบริหารคลังสินค้าสำหรับธุรกิจ"
 }
