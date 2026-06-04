@@ -16,6 +16,7 @@ import BarcodeScanner from "./components/BarcodeScanner";
 import InstallPWA from "./components/InstallPWA";
 import CustomerProfile from "./components/CustomerProfile";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
+import { generateDocNo } from "./utils/docNumber";
 // ── MAIN APP ───────────────────────────────────────────────────
 export default function App() {
   // ── รอ Firebase Anonymous Auth พร้อมก่อน — เพื่อให้ Security Rules ผ่าน ──
@@ -588,7 +589,7 @@ export default function App() {
         createdAt: serverTimestamp(), category: "เสื้อผ้า"
       });
     }
-    const orderNo = `ORD${Date.now().toString().slice(-6)}`;
+    const orderNo = generateDocNo("ORD", orders, "orderNo");
     const ref = await addDoc(collection(db, "orders"), {
       orderNo, ...orderForm, status: "สำเร็จ",
       by: user.name, date: now(), createdAt: serverTimestamp()
@@ -706,7 +707,7 @@ export default function App() {
   const handleConfirmInvoice = async () => {
     if(!invoiceForm.customerName||invoiceForm.items.length===0) return;
     const calc = calcInvoice(invoiceForm.items, invoiceForm.vatRate, invoiceVat);
-    const invNo = `INV${Date.now().toString().slice(-6)}`;
+    const invNo = generateDocNo("INV", invoices, "invoiceNo");
     const bank = (invoiceForm.bankAccountIdx!=null&&invoiceForm.bankAccountIdx>=0)
       ? (companyInfo.bankAccounts||[])[invoiceForm.bankAccountIdx] : null;
     const data = {
