@@ -441,17 +441,18 @@ export default function App() {
     setBarcodeErr(""); setBarcodeResult(null);
     const code = String(codeArg ?? barcodeSearch ?? "").trim();
     if (!code) return;
-    // 1) ค้นใน products — match barcode หรือ code (case-insensitive)
-    const found = products.find(p =>
-      (p.barcode || "").trim().toLowerCase() === code.toLowerCase() ||
-      (p.code || "").trim().toLowerCase() === code.toLowerCase()
-    );
+    const codeNorm = code.toLowerCase().replace(/\s+/g,"");
+
+    // 1) ค้นใน products — match barcode หรือ code (normalize: trim+lowercase+ลบ space)
+    const norm = (s) => String(s||"").trim().toLowerCase().replace(/\s+/g,"");
+    const found = products.find(p => norm(p.barcode)===codeNorm || norm(p.code)===codeNorm);
     if (found) { setBarcodeResult(found); return; }
-    // 2) ค้นใน clothing (เผื่อ barcode อยู่ที่ระดับสี)
+
+    // 2) ค้นใน clothing
     for (const item of clothingItems) {
       for (let ci = 0; ci < (item.colors||[]).length; ci++) {
         const col = item.colors[ci];
-        if ((col.barcode || "").trim().toLowerCase() === code.toLowerCase()) {
+        if (norm(col.barcode) === codeNorm) {
           setBarcodeResult({
             _isClothing: true,
             id: item.id, colorIdx: ci,
@@ -467,7 +468,22 @@ export default function App() {
         }
       }
     }
-    setBarcodeErr(`ไม่พบสินค้าในระบบ (รหัส: ${code})`);
+
+    // ── DEBUG: หาที่ "ใกล้เคียง" → ช่วย user แก้ปัญหา ──
+    const closeMatches = products
+      .filter(p => norm(p.barcode).includes(codeNorm) || norm(p.code).includes(codeNorm) || codeNorm.includes(norm(p.barcode)) || codeNorm.includes(norm(p.code)))
+      .slice(0,3);
+    console.log("[scan] not found. code:", JSON.stringify(code), "len:", code.length, "products in db:", products.length, "close matches:", closeMatches);
+
+    let extra = "";
+    if (closeMatches.length > 0) {
+      extra = "\n\nใกล้เคียง: " + closeMatches.map(p => `${p.code}/${p.barcode}`).join(", ");
+    } else {
+      // แสดง barcode ที่มีใน DB 3 ตัวแรก
+      const sample = products.slice(0,3).map(p => `${p.code}=${p.barcode}`).join(", ");
+      if (sample) extra = "\n\nตัวอย่างใน DB: " + sample;
+    }
+    setBarcodeErr(`ไม่พบสินค้าในระบบ — รหัสที่อ่านได้: "${code}"${extra}`);
   };
 
   const handleAddCat = async () => {
