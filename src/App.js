@@ -214,6 +214,7 @@ export default function App() {
   const [uploadingClothingId, setUploadingClothingId] = useState(null);
 
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
   const [showTxModal, setShowTxModal] = useState(false);
   const [showBarcodeModal, setShowBarcodeModal] = useState(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -343,6 +344,41 @@ export default function App() {
     await addDoc(collection(db, "products"), data);
     setAddSuccess(true);
     setTimeout(() => { setAddSuccess(false); setShowAddModal(false); setNewProduct({code:"",name:"",category:"",qty:"",unit:"",minQty:"",location:"",barcode:"",image:""}); }, 1000);
+  };
+
+  const handleSaveEditProduct = async () => {
+    if (!editingProduct) return;
+    const p = editingProduct;
+    if (!p.code || !p.name || !p.unit) return;
+    const original = products.find(x => x.id === p.id) || {};
+    const changes = [];
+    ["code","name","category","unit","location","barcode","costPrice","salePrice","minQty","qty","image"].forEach(k => {
+      const ov = original[k] ?? "";
+      const nv = p[k] ?? "";
+      if (String(ov) !== String(nv)) changes.push(`${k}: ${ov||"-"} → ${nv||"-"}`);
+    });
+    const data = {
+      ...p,
+      qty: Number(p.qty)||0,
+      minQty: p.minQty === "" ? 0 : Number(p.minQty),
+      costPrice: p.costPrice === "" ? "" : Number(p.costPrice),
+      salePrice: p.salePrice === "" ? "" : Number(p.salePrice),
+      lastUpdate: now(),
+      history: [
+        { action:"แก้ไขรายละเอียด", by: user.name, date: now(), note: changes.length ? changes.join(" · ") : "ไม่มีการเปลี่ยนแปลง" },
+        ...(original.history||[])
+      ]
+    };
+    delete data.id;
+    await updateDoc(doc(db,"products",p.id), data);
+    logAudit(user, {
+      action: AUDIT_ACTIONS.UPDATE,
+      collection: "products",
+      targetId: p.id,
+      targetLabel: `${data.code} · ${data.name}`,
+      note: changes.length ? changes.join(" · ") : "บันทึกไม่มีการเปลี่ยนแปลง",
+    });
+    setEditingProduct(null);
   };
 
   const handleTx = async () => {
@@ -1206,6 +1242,7 @@ export default function App() {
                     <div style={{display:"flex",gap:3,justifyContent:"center"}}>
                       <button title="ประวัติ" onClick={()=>setShowHistoryModal(p)} style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:12}}>📅</button>
                       <button title="บาร์โค้ด" onClick={()=>setShowBarcodeModal(p)} style={{background:"#eff6ff",border:`1px solid ${T.navActiveBorder}`,borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:12}}>▦</button>
+                      {role.canAdd&&<button title="แก้ไข" onClick={()=>setEditingProduct({...p})} style={{background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:12,color:"#059669"}}>✏️</button>}
                       {role.canDelete&&<button title="ลบ" onClick={()=>setShowDeleteConfirm(p.id)} style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:12,color:T.red}}>✕</button>}
                     </div>
                   </div>
@@ -2190,6 +2227,57 @@ export default function App() {
           <div style={{display:"flex",gap:10,marginTop:20}}>
             <BtnGhost onClick={()=>setShowAddModal(false)} style={{flex:1}}>ยกเลิก</BtnGhost>
             <BtnPrimary onClick={handleAddProduct} disabled={!newProduct.code||!newProduct.name||newProduct.qty===""||!newProduct.unit} style={{flex:1}}>✅ บันทึกสินค้า</BtnPrimary>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── MODAL: แก้ไขสินค้า ── */}
+      {editingProduct&&(
+        <Modal onClose={()=>setEditingProduct(null)} w={640}>
+          <MHead title="✏️ แก้ไขรายละเอียดสินค้า" sub={`${editingProduct.code} · ${editingProduct.name}`} onClose={()=>setEditingProduct(null)}/>
+          <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:18,padding:14,background:"#f8fafc",borderRadius:10,border:`1px solid ${T.border}`}}>
+            <div style={{flexShrink:0}}>
+              {editingProduct.image
+                ? <img src={editingProduct.image} alt="" style={{width:96,height:96,borderRadius:10,objectFit:"cover",border:`2px solid ${T.blue}`}}/>
+                : <div style={{width:96,height:96,borderRadius:10,background:T.input,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,border:`2px dashed ${T.inputBorder}`}}>📷</div>}
+            </div>
+            <div>
+              <div style={{fontSize:12,color:T.sub,marginBottom:8,fontWeight:500}}>📸 รูปสินค้า</div>
+              <BtnGhost onClick={()=>{
+                const inp=document.createElement("input");inp.type="file";inp.accept="image/*";
+                inp.onchange=(e)=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>setEditingProduct(p=>({...p,image:r.result}));r.readAsDataURL(f);};
+                inp.click();
+              }} style={{fontSize:12,padding:"6px 14px"}}>📁 เปลี่ยนรูป</BtnGhost>
+              {editingProduct.image&&<BtnGhost onClick={()=>setEditingProduct(p=>({...p,image:""}))} style={{fontSize:12,padding:"6px 14px",marginLeft:6,color:T.red}}>✕ ลบรูป</BtnGhost>}
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            {[{k:"code",l:"รหัสสินค้า *"},{k:"name",l:"ชื่อสินค้า *"},{k:"unit",l:"หน่วยนับ *"},{k:"location",l:"ตำแหน่งที่เก็บ"},{k:"qty",l:"คงเหลือ",t:"number"},{k:"minQty",l:"จำนวนขั้นต่ำ",t:"number"},{k:"costPrice",l:"ราคาทุน (฿)",t:"number"},{k:"salePrice",l:"ราคาขาย (฿)",t:"number"}].map(f=>(
+              <Input key={f.k} label={f.l} type={f.t||"text"} value={editingProduct[f.k]??""} onChange={e=>setEditingProduct(p=>({...p,[f.k]:e.target.value}))}/>
+            ))}
+            <div>
+              <label style={{fontSize:11,color:T.sub,display:"block",marginBottom:5,fontWeight:500}}>หมวดหมู่</label>
+              <select value={editingProduct.category||categories[0]||""} onChange={e=>setEditingProduct(p=>({...p,category:e.target.value}))} style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
+                {categories.map(c=><option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <Input label="บาร์โค้ด" value={editingProduct.barcode||""} onChange={e=>setEditingProduct(p=>({...p,barcode:e.target.value}))}/>
+          </div>
+          {editingProduct.costPrice&&editingProduct.salePrice&&Number(editingProduct.costPrice)>0&&(
+            <div style={{marginTop:12,padding:"10px 14px",borderRadius:8,background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+                <span style={{color:T.sub}}>กำไรต่อชิ้น</span>
+                <span style={{fontFamily:"monospace",fontWeight:700,color:"#34d399"}}>฿{(Number(editingProduct.salePrice)-Number(editingProduct.costPrice)).toLocaleString("th-TH",{minimumFractionDigits:2})}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginTop:4}}>
+                <span style={{color:T.sub}}>% กำไร</span>
+                <span style={{fontFamily:"monospace",fontWeight:700,color:"#34d399"}}>{(((Number(editingProduct.salePrice)-Number(editingProduct.costPrice))/Number(editingProduct.costPrice))*100).toFixed(1)}%</span>
+              </div>
+            </div>
+          )}
+          <div style={{display:"flex",gap:10,marginTop:20}}>
+            <BtnGhost onClick={()=>setEditingProduct(null)} style={{flex:1}}>ยกเลิก</BtnGhost>
+            <BtnPrimary onClick={handleSaveEditProduct} disabled={!editingProduct.code||!editingProduct.name||!editingProduct.unit} style={{flex:1}}>💾 บันทึกการแก้ไข</BtnPrimary>
           </div>
         </Modal>
       )}
