@@ -55,6 +55,8 @@ export default function BarcodeScanner({ onScan, onClose, title = "📸 สแ�
   useEffect(() => {
     if (!selectedCamId || !videoRef.current) return;
 
+    let mounted = true;
+
     // Hints: รองรับหลาย format + try harder
     const hints = new Map();
     hints.set(DecodeHintType.POSSIBLE_FORMATS, [
@@ -70,22 +72,21 @@ export default function BarcodeScanner({ onScan, onClose, title = "📸 สแ�
       BarcodeFormat.DATA_MATRIX,
     ]);
     hints.set(DecodeHintType.TRY_HARDER, true);
-    hints.set(DecodeHintType.PURE_BARCODE, false);
 
-    const reader = new BrowserMultiFormatReader(hints, {
-      delayBetweenScanAttempts: 80,  // อ่านเร็ว
-      delayBetweenScanSuccess: 1500, // กันสแกนซ้ำ
-    });
+    // ⚠️ สำคัญ: pass เฉพาะ hints (อย่าใส่ options arg ที่ 2 — version 0.2 ไม่รองรับ)
+    const reader = new BrowserMultiFormatReader(hints);
     readerRef.current = reader;
 
     reader.decodeFromVideoDevice(
       selectedCamId,
       videoRef.current,
       (result, error, controls) => {
+        if (!mounted) return;
+        // Save controls reference (first call)
         if (controls && !controlsRef.current) {
           controlsRef.current = controls;
-          // เช็ค torch support
-          checkTorchSupport(controls);
+          // เช็ค torch หลังจาก video พร้อม
+          setTimeout(() => checkTorchSupport(), 500);
         }
         if (result) {
           const code = result.getText();
@@ -96,19 +97,25 @@ export default function BarcodeScanner({ onScan, onClose, title = "📸 สแ�
           setLastScan(code);
           setScanCount(c => c + 1);
           beep();
-          // call back
           onScan?.(code);
           if (!continuous) {
-            // หยุดกล้องหลังสแกน
             try { controls?.stop(); } catch {}
           }
         }
+        // ignore decode errors (frame ที่ไม่เจอ barcode)
       }
     ).catch(e => {
-      setErr("เริ่มกล้องไม่ได้: " + (e?.message || e));
+      if (!mounted) return;
+      console.error("scanner error:", e);
+      const msg = e?.name === "NotAllowedError" ? "ไม่ได้รับสิทธิ์ใช้กล้อง"
+        : e?.name === "NotFoundError" ? "ไม่พบกล้องที่เลือก"
+        : e?.name === "NotReadableError" ? "กล้องถูกใช้งานโดยแอปอื่น"
+        : ("เริ่มกล้องไม่ได้: " + (e?.message || e));
+      setErr(msg);
     });
 
     return () => {
+      mounted = false;
       try {
         controlsRef.current?.stop();
         controlsRef.current = null;
@@ -118,14 +125,17 @@ export default function BarcodeScanner({ onScan, onClose, title = "📸 สแ�
   }, [selectedCamId]);
 
   // ── Torch support check ──
-  const checkTorchSupport = async (controls) => {
+  const checkTorchSupport = () => {
     try {
       const stream = videoRef.current?.srcObject;
       if (!stream) return;
       const track = stream.getVideoTracks()[0];
-      const caps = track.getCapabilities?.();
+      if (!track || !track.getCapabilities) return;
+      const caps = track.getCapabilities();
       if (caps?.torch) setTorchSupported(true);
-    } catch {}
+    } catch (e) {
+      console.warn("torch check failed:", e);
+    }
   };
 
   // ── Toggle torch ──
