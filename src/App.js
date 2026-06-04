@@ -754,6 +754,33 @@ export default function App() {
     });
   };
 
+  // scale fontSize ของทุก element ใน clone (ใช้ก่อนพิมพ์/PDF) — ค่าเริ่มต้น 1.3 = ใหญ่ขึ้น 30%
+  const PRINT_FONT_SCALE = 1.3;
+  const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
+    // ต้อง attach root เข้า DOM ชั่วคราวเพื่ออ่าน computed style
+    const holder = document.createElement("div");
+    holder.style.position = "fixed";
+    holder.style.left = "-99999px";
+    holder.style.top = "0";
+    holder.style.visibility = "hidden";
+    holder.appendChild(root);
+    document.body.appendChild(holder);
+    try {
+      const all = [root, ...root.querySelectorAll("*")];
+      all.forEach(n => {
+        try {
+          const cs = window.getComputedStyle(n);
+          const fs = parseFloat(cs.fontSize);
+          if (!isNaN(fs) && fs > 0) n.style.fontSize = (fs * factor).toFixed(2) + "px";
+        } catch (e) {}
+      });
+    } finally {
+      holder.removeChild(root);
+      document.body.removeChild(holder);
+    }
+    return root;
+  };
+
   // ปริ้นผ่าน iframe — เนื้อหาใหญ่เต็ม A4 และไหลข้ามหน้าได้
   const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10mm") => {
     const el = document.getElementById(id);
@@ -779,7 +806,9 @@ export default function App() {
         thead { display: table-header-group; }
         tfoot { display: table-footer-group; }
         img { max-width: 100%; }
-      </style></head><body>${el.outerHTML}</body></html>`);
+      </style></head><body></body></html>`);
+    const scaled = scaleFontInElement(el.cloneNode(true));
+    doc.body.appendChild(doc.importNode(scaled, true));
     doc.close();
     const trigger = () => {
       try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e){}
@@ -796,15 +825,6 @@ export default function App() {
   const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"]) => {
     const el = document.getElementById(id);
     if (!el) return;
-    const pages = labels.map((label, i) => {
-      const clone = el.cloneNode(true);
-      const tag = clone.querySelector("[data-doc-label]");
-      if (tag) tag.textContent = label;
-      const wrap = document.createElement("div");
-      if (i < labels.length - 1) wrap.style.pageBreakAfter = "always";
-      wrap.appendChild(clone);
-      return wrap.outerHTML;
-    }).join("");
     const iframe = document.createElement("iframe");
     iframe.style.position = "fixed"; iframe.style.right = "0"; iframe.style.bottom = "0";
     iframe.style.width = "0"; iframe.style.height = "0"; iframe.style.border = "0";
@@ -820,7 +840,17 @@ export default function App() {
         tr, td, th { page-break-inside: avoid; }
         thead { display: table-header-group; }
         img { max-width: 100%; }
-      </style></head><body>${pages}</body></html>`);
+      </style></head><body></body></html>`);
+    labels.forEach((label, i) => {
+      const clone = el.cloneNode(true);
+      const tag = clone.querySelector("[data-doc-label]");
+      if (tag) tag.textContent = label;
+      scaleFontInElement(clone);
+      const wrap = doc.createElement("div");
+      if (i < labels.length - 1) wrap.style.pageBreakAfter = "always";
+      wrap.appendChild(doc.importNode(clone, true));
+      doc.body.appendChild(wrap);
+    });
     doc.close();
     const trigger = () => {
       try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e){}
@@ -844,6 +874,7 @@ export default function App() {
         const clone = el.cloneNode(true);
         const tag = clone.querySelector("[data-doc-label]");
         if (tag) tag.textContent = label;
+        scaleFontInElement(clone);
         const pageWrap = document.createElement("div");
         if (i < labels.length - 1) pageWrap.style.pageBreakAfter = "always";
         pageWrap.appendChild(clone);
@@ -851,7 +882,7 @@ export default function App() {
       });
       source = wrap;
     } else {
-      source = el.cloneNode(true);
+      source = scaleFontInElement(el.cloneNode(true));
     }
     html2pdf().set({
       margin: 10,
