@@ -138,7 +138,7 @@ export default function LoginPage({ users, onLogin, onResetPassword, onRegister 
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}input:focus{outline:none;border-color:#93c5fd!important}`}</style>
       <div className="login-form-wrap" style={{width:400,position:"relative",zIndex:1}}>
         <div style={{textAlign:"center",marginBottom:24}}>
-          <div style={{fontSize:30,fontWeight:800,color:"#1f2933",fontFamily:"'Space Mono',monospace",letterSpacing:5,textShadow:"0 1px 2px rgba(255,255,255,0.8)"}}>CPU</div>
+          <img src={`${process.env.PUBLIC_URL}/cpu-logo.png`} alt="CPU" style={{width:96,height:96,objectFit:"contain",marginBottom:8,filter:"drop-shadow(0 4px 12px rgba(0,0,0,0.15))"}}/>
           <div style={{fontSize:12,color:"#52606d",marginTop:4,fontWeight:600,letterSpacing:1}}>ระบบบริหารคลังสินค้า</div>
         </div>
 

@@ -965,7 +965,9 @@ export default function App() {
       {/* SIDEBAR */}
       <div style={{width:sidebarOpen?224:60,background:T.sidebar,borderRight:`1px solid ${T.border}`,transition:"width .28s",display:"flex",flexDirection:"column",flexShrink:0,boxShadow:"2px 0 8px rgba(0,0,0,0.04)"}}>
         <div style={{padding:"18px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10}}>
-          <div style={{width:34,height:34,background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18,boxShadow:"0 2px 12px rgba(59,91,139,0.4)"}}>⚙️</div>
+          <div style={{width:36,height:36,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden"}}>
+            <img src={`${process.env.PUBLIC_URL}/cpu-logo.png`} alt="CPU" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
+          </div>
           {sidebarOpen&&<div><div style={{fontSize:15,fontWeight:800,color:T.text,fontFamily:"'Space Mono',monospace",letterSpacing:3}}>CPU</div><div style={{fontSize:9,color:T.muted}}>ระบบคลังสินค้า</div></div>}
         </div>
 
@@ -3059,7 +3061,10 @@ export default function App() {
                 {/* ข้อมูลบริษัท */}
                 <div style={{flex:1}}>
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
-                    <div style={{width:46,height:46,background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>{companyInfo.logo||"⚙️"}</div>
+                    <div style={{width:54,height:54,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden",background:"white"}}>
+                      <img src={`${process.env.PUBLIC_URL}/cpu-logo.png`} alt="CPU Logo" style={{width:"100%",height:"100%",objectFit:"contain"}}
+                        onError={(e)=>{e.target.style.display="none";e.target.parentElement.innerHTML=companyInfo.logo||"⚙️";e.target.parentElement.style.background="linear-gradient(135deg,#3b5b8b,#3b5b8b)";e.target.parentElement.style.fontSize="24px";e.target.parentElement.style.color="white";}}/>
+                    </div>
                     <div>
                       <div style={{fontSize:20,fontWeight:800,color:"#3b5b8b",letterSpacing:2}}>{companyInfo.name||"CPU"}</div>
                     </div>
