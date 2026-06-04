@@ -69,13 +69,18 @@ export default function StocktakeTab({ products, clothingItems, user, role }) {
       .slice(0, 3);
     console.log("[stocktake-scan] not found. code:", JSON.stringify(c), "products:", products.length, "close:", close);
 
-    let extra = "";
-    if (close.length > 0) extra = "\n\nใกล้เคียง: " + close.map(p => `${p.code}/${p.barcode}`).join(", ");
-    else {
-      const sample = products.slice(0,3).map(p => `${p.code}=${p.barcode||"(ว่าง)"}`).join(", ");
-      if (sample) extra = "\n\nตัวอย่างใน DB: " + sample;
+    // ── always show debug info ──
+    const lines = [`❌ ไม่พบในระบบ`, `รหัสที่อ่าน: "${c}"`, `จำนวนสินค้าใน DB: ${products.length}`];
+    if (close.length > 0) {
+      lines.push(`\nใกล้เคียง:`);
+      close.forEach(p => lines.push(`  • ${p.code} | barcode: ${p.barcode || "(ว่าง)"}`));
+    } else if (products.length > 0) {
+      lines.push(`\nตัวอย่าง 5 รายการใน DB:`);
+      products.slice(0,5).forEach(p => lines.push(`  • ${p.code || "(ไม่มี code)"} | barcode: ${p.barcode || "(ว่าง)"}`));
+    } else {
+      lines.push(`\n⚠️ DB ไม่มีสินค้าเลย — อยู่ Firebase ผิด project หรือไม่?`);
     }
-    alert(`❌ ไม่พบในระบบ — รหัสที่อ่าน: "${c}"${extra}`);
+    alert(lines.join("\n"));
   };
 
   const openQuickAdd = (product) => {
