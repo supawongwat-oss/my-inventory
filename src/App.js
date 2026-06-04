@@ -788,6 +788,44 @@ export default function App() {
     }
   };
 
+  // พิมพ์เอกสารหลายชุด (ต้นฉบับ + สำเนา) บน A4 — ขึ้นหน้าใหม่ทุกชุด
+  const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const pages = labels.map((label, i) => {
+      const clone = el.cloneNode(true);
+      const tag = clone.querySelector("[data-doc-label]");
+      if (tag) tag.textContent = label;
+      const wrap = document.createElement("div");
+      if (i < labels.length - 1) wrap.style.pageBreakAfter = "always";
+      wrap.appendChild(clone);
+      return wrap.outerHTML;
+    }).join("");
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed"; iframe.style.right = "0"; iframe.style.bottom = "0";
+    iframe.style.width = "0"; iframe.style.height = "0"; iframe.style.border = "0";
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(`<!doctype html><html><head><meta charset="utf-8"/>
+      <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+      <style>
+        @page { size: A4 portrait; margin: 10mm; }
+        html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun', sans-serif; }
+        table { border-collapse: collapse; width: 100%; }
+        tr, td, th { page-break-inside: avoid; }
+        thead { display: table-header-group; }
+        img { max-width: 100%; }
+      </style></head><body>${pages}</body></html>`);
+    doc.close();
+    const trigger = () => {
+      try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e){}
+      setTimeout(() => iframe.remove(), 1000);
+    };
+    if (doc.fonts && doc.fonts.ready) doc.fonts.ready.then(() => setTimeout(trigger, 200));
+    else setTimeout(trigger, 500);
+  };
+
   const handleResetPassword = async (username, newPassword) => {
     const u = users.find(u => u.username === username);
     if (!u) return;
@@ -2944,7 +2982,7 @@ export default function App() {
 
                 {/* ประเภทเอกสาร + เลขที่ */}
                 <div style={{textAlign:"right",minWidth:220}}>
-                  <div style={{display:"inline-block",background:"#3b5b8b",color:"white",padding:"6px 22px",borderRadius:6,fontSize:16,fontWeight:800,marginBottom:10,letterSpacing:1}}>
+                  <div data-doc-label style={{display:"inline-block",background:"#3b5b8b",color:"white",padding:"6px 22px",borderRadius:6,fontSize:16,fontWeight:800,marginBottom:10,letterSpacing:1}}>
                     {docTypeLabel(showPrintInvoice.docType)}
                   </div>
                   <div style={{display:"flex",flexDirection:"column",gap:4}}>
@@ -3167,7 +3205,8 @@ export default function App() {
               </div>
               <div style={{display:"flex",gap:10}}>
                 <button onClick={()=>setShowPrintInvoice(null)} style={{padding:"9px 20px",borderRadius:9,border:"1px solid #e2e8f0",background:"white",color:"#64748b",fontSize:13,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>ปิด</button>
-                <button onClick={()=>printElementById("invoice-print-area")} style={{padding:"9px 20px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>🖨️ พิมพ์เอกสาร</button>
+                <button onClick={()=>printElementById("invoice-print-area")} style={{padding:"9px 20px",borderRadius:9,border:"1px solid rgba(59,91,139,0.35)",background:"white",color:"#3b5b8b",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>🖨️ พิมพ์ปกติ</button>
+                <button onClick={()=>printInvoiceCopies("invoice-print-area")} style={{padding:"9px 20px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>🖨️ พิมพ์ A4 × 3 ชุด</button>
               </div>
             </div>
           </div>
