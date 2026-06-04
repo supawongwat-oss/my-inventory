@@ -763,8 +763,12 @@ export default function App() {
   };
 
   const docTypeLabel = (type) => ({
-    receipt:"ใบเสร็จรับเงิน", tax:"ใบกำกับภาษี", quotation:"ใบวางบิล/ใบแจ้งหนี้"
+    receipt:"ใบเสร็จรับเงิน", tax:"ใบกำกับภาษี", quotation:"ใบเสนอราคา/ใบวางบิล"
   }[type]||"ใบเสร็จรับเงิน");
+
+  const docTypeLabelEn = (type) => ({
+    receipt:"Receipt", tax:"Tax Invoice", quotation:"Quotation"
+  }[type]||"Receipt");
 
   const handleConfirmInvoice = async () => {
     if(!invoiceForm.customerName||invoiceForm.items.length===0) return;
@@ -3405,8 +3409,11 @@ export default function App() {
 
                 {/* ประเภทเอกสาร + เลขที่ */}
                 <div style={{textAlign:"right",minWidth:220}}>
-                  <div data-doc-label style={{display:"inline-block",background:"#3b5b8b",color:"white",padding:"6px 22px",borderRadius:6,fontSize:16,fontWeight:800,marginBottom:10,letterSpacing:1}}>
+                  <div data-doc-label style={{display:"inline-block",background:"#3b5b8b",color:"white",padding:"6px 22px",borderRadius:6,fontSize:16,fontWeight:800,marginBottom:4,letterSpacing:1}}>
                     {docTypeLabel(showPrintInvoice.docType)}
+                  </div>
+                  <div style={{fontSize:11,color:"#64748b",fontStyle:"italic",letterSpacing:1,marginBottom:10}}>
+                    {docTypeLabelEn(showPrintInvoice.docType)}
                   </div>
                   {showPrintInvoice.revisions>0 && (
                     <div style={{fontSize:10,color:"#b45309",marginBottom:6,fontWeight:600}}>
