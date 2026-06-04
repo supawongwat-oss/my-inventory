@@ -226,6 +226,9 @@ export default function App() {
   // ── Invoice & Company state ───────────────────────────────────
   const [showNewInvoice, setShowNewInvoice] = useState(false);
   const [profileCustomer, setProfileCustomer] = useState(null);
+  const [orderSearch, setOrderSearch] = useState("");
+  const [orderDateFrom, setOrderDateFrom] = useState("");
+  const [orderDateTo, setOrderDateTo] = useState("");
   const [showPrintInvoice, setShowPrintInvoice] = useState(null);
   const [invoiceDocType, setInvoiceDocType] = useState("receipt"); // receipt | tax | quotation
   const [invoiceVat, setInvoiceVat] = useState(false);
@@ -1689,8 +1692,61 @@ export default function App() {
                   <div style={{fontSize:11,color:T.muted}}>กด "️ สร้างใบสั่งของ" เพื่อเริ่มต้น</div>
                 </div>
               ):(()=>{
+                // ── filter helpers ──
+                const parseThaiDate=(s)=>{if(!s)return null;const [d,m,y]=String(s).slice(0,10).split("/");if(!d||!m||!y)return null;return new Date(`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`);};
+                const filteredOrders=orders.filter(o=>{
+                  if(orderSearch){const q=orderSearch.toLowerCase().trim();const hit=(o.orderNo||"").toLowerCase().includes(q)||(o.customerName||"").toLowerCase().includes(q)||(o.customerPhone||"").toLowerCase().includes(q);if(!hit)return false;}
+                  const od=parseThaiDate(o.date);
+                  if(orderDateFrom){const f=new Date(orderDateFrom);if(!od||od<f)return false;}
+                  if(orderDateTo){const t=new Date(orderDateTo);t.setHours(23,59,59);if(!od||od>t)return false;}
+                  return true;
+                });
+                const totalQtyAll=filteredOrders.reduce((s,o)=>s+(o.items||[]).reduce((a,i)=>a+i.qty,0),0);
+                const setPreset=(preset)=>{
+                  const today=new Date();const y=today.getFullYear();const m=today.getMonth();
+                  const fmt=(d)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+                  if(preset==="all"){setOrderDateFrom("");setOrderDateTo("");}
+                  else if(preset==="today"){setOrderDateFrom(fmt(today));setOrderDateTo(fmt(today));}
+                  else if(preset==="month"){setOrderDateFrom(fmt(new Date(y,m,1)));setOrderDateTo(fmt(new Date(y,m+1,0)));}
+                  else if(preset==="year"){setOrderDateFrom(fmt(new Date(y,0,1)));setOrderDateTo(fmt(new Date(y,11,31)));}
+                  else if(preset==="lastyear"){setOrderDateFrom(fmt(new Date(y-1,0,1)));setOrderDateTo(fmt(new Date(y-1,11,31)));}
+                };
+                const presets=[{k:"all",l:"ทั้งหมด"},{k:"today",l:"วันนี้"},{k:"month",l:"เดือนนี้"},{k:"year",l:"ปีนี้"},{k:"lastyear",l:"ปีที่แล้ว"}];
+
+                return (<>
+                {/* ── FILTER BAR ── */}
+                <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:14,marginBottom:14}}>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+                    <input value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} placeholder="🔍 ค้นหาเลขที่ใบสั่ง / ชื่อลูกค้า / เบอร์โทร"
+                      style={{flex:"1 1 240px",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+                    <input type="date" value={orderDateFrom} onChange={e=>setOrderDateFrom(e.target.value)}
+                      style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"8px 10px",fontSize:12,fontFamily:"'Sarabun',sans-serif"}}/>
+                    <span style={{alignSelf:"center",color:T.muted,fontSize:12}}>ถึง</span>
+                    <input type="date" value={orderDateTo} onChange={e=>setOrderDateTo(e.target.value)}
+                      style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"8px 10px",fontSize:12,fontFamily:"'Sarabun',sans-serif"}}/>
+                  </div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                    {presets.map(p=>(
+                      <button key={p.k} onClick={()=>setPreset(p.k)}
+                        style={{padding:"5px 12px",borderRadius:14,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,cursor:"pointer",fontSize:11,fontFamily:"'Sarabun',sans-serif"}}>{p.l}</button>
+                    ))}
+                    <div style={{flex:1}}/>
+                    <div style={{fontSize:11,color:T.muted}}>
+                      พบ <b style={{color:T.accent}}>{filteredOrders.length}</b> / {orders.length} ใบ
+                      <span style={{margin:"0 6px",color:T.border}}>·</span>
+                      รวม <b style={{color:"#16a34a"}}>{totalQtyAll.toLocaleString("th-TH")}</b> ชิ้น
+                    </div>
+                  </div>
+                </div>
+
+                {filteredOrders.length===0?(
+                  <div style={{textAlign:"center",padding:40,background:T.card,borderRadius:14,border:`1px solid ${T.border}`}}>
+                    <div style={{fontSize:36,marginBottom:8,opacity:0.3}}>🔍</div>
+                    <div style={{fontSize:13,color:T.muted}}>ไม่พบใบสั่งของตามที่ค้นหา</div>
+                  </div>
+                ):(()=>{
                 // group ตามวันที่ (10 ตัวแรก = "DD/MM/YYYY")
-                const groups=orders.reduce((acc,o)=>{
+                const groups=filteredOrders.reduce((acc,o)=>{
                   const d=(o.date||"").slice(0,10)||"ไม่ระบุวันที่";
                   if(!acc[d]) acc[d]=[];
                   acc[d].push(o);
@@ -1747,6 +1803,8 @@ export default function App() {
                     })}
                   </div>
                 );
+              })()}
+              </>);
               })()}
             </div>
           )}
