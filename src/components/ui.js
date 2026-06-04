@@ -1,18 +1,36 @@
+import { useEffect, useRef } from "react";
+import JsBarcode from "jsbarcode";
 import { T } from "../theme";
 
-export function BarcodeDisplay({ value }) {
-  if (!value || String(value).trim() === '') return null;
-  const bars = []; let x = 8;
-  const seed = String(value).split("").reduce((a,c) => a + c.charCodeAt(0), 0);
-  for (let i = 0; i < 38; i++) {
-    const w = ((seed * (i + 7) * 13) % 17 > 7) ? 3 : 1.5;
-    bars.push(<rect key={i} x={x} y={8} width={w} height={44} fill={i % 2 === 0 ? "#1e293b" : "#fff"} />);
-    x += w + 0.5;
-  }
+// 📊 BarcodeDisplay — สร้างบาร์โค้ดจริง (Code 128) ด้วย jsbarcode → สแกนได้จริง
+export function BarcodeDisplay({ value, format = "CODE128", width = 1.6, height = 44, fontSize = 11, displayValue = true }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!ref.current || !value) return;
+    try {
+      JsBarcode(ref.current, String(value), {
+        format,
+        width,
+        height,
+        displayValue,
+        fontSize,
+        fontOptions: "",
+        font: "monospace",
+        textMargin: 2,
+        margin: 4,
+        background: "#ffffff",
+        lineColor: "#1e293b",
+      });
+    } catch (e) {
+      console.warn("[barcode] failed to render:", value, e);
+    }
+  }, [value, format, width, height, fontSize, displayValue]);
+
+  if (!value || String(value).trim() === "") return null;
   return (
-    <div style={{background:"white",borderRadius:8,padding:"6px 10px",display:"inline-block",textAlign:"center",border:`1px solid ${T.border}`}}>
-      <svg width={x + 8} height={60}><rect width="100%" height="100%" fill="white"/>{bars}</svg>
-      <div style={{fontSize:10,fontFamily:"monospace",color:"#1e293b",marginTop:2,letterSpacing:2}}>{value}</div>
+    <div style={{ background: "white", borderRadius: 6, padding: "4px 6px", display: "inline-block", border: `1px solid ${T.border}`, lineHeight: 0 }}>
+      <svg ref={ref} />
     </div>
   );
 }
