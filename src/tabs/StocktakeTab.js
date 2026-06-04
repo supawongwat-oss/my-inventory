@@ -23,6 +23,8 @@ export default function StocktakeTab({ products, clothingItems, user, role }) {
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
   const [confirmFinalize, setConfirmFinalize] = useState(false);
+  const [quickAdd, setQuickAdd] = useState(null); // {product, addQty}
+  const [quickSearch, setQuickSearch] = useState(""); // search-to-add input
 
   // === General products ===
   const filteredProducts = useMemo(() => {
@@ -48,27 +50,47 @@ export default function StocktakeTab({ products, clothingItems, user, role }) {
     return { counted, total: products.length, diff, totalDiffQty };
   }, [products, counts]);
 
-  // === Handle barcode scan ===
+  // === Handle barcode scan → เปิด quick-add modal ===
   const handleScan = (code) => {
     setShowScanner(false);
-    // หาใน products
     const found = products.find(p =>
       (p.barcode||"").toLowerCase() === code.toLowerCase() ||
       (p.code||"").toLowerCase() === code.toLowerCase()
     );
-    if (found) {
-      // โฟกัสที่แถวนั้น + เพิ่ม +1
-      const cur = counts[found.id] !== undefined && counts[found.id] !== "" ? Number(counts[found.id]) : 0;
-      setCounts(c => ({ ...c, [found.id]: cur + 1 }));
-      setSearch(found.code || found.name); // filter ให้เห็นบรรทัด
-      setTimeout(() => {
-        const el = document.querySelector(`[data-stocktake-id="${found.id}"]`);
-        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-      }, 100);
-    } else {
-      alert(`❌ ไม่พบสินค้าในระบบ — รหัส/บาร์โค้ด: ${code}`);
-    }
+    if (found) openQuickAdd(found);
+    else alert(`❌ ไม่พบสินค้าในระบบ — รหัส/บาร์โค้ด: ${code}`);
   };
+
+  const openQuickAdd = (product) => {
+    setQuickAdd({ product, addQty: "" });
+  };
+
+  const applyQuickAdd = () => {
+    if (!quickAdd) return;
+    const { product, addQty } = quickAdd;
+    const n = Number(addQty);
+    if (!n || n <= 0) { alert("ใส่จำนวนที่ถูกต้อง"); return; }
+    const cur = counts[product.id] !== undefined && counts[product.id] !== "" ? Number(counts[product.id]) : 0;
+    setCounts(c => ({ ...c, [product.id]: cur + n }));
+    setQuickAdd(null);
+    // scroll ไปแถวนั้น
+    setSearch(product.code || product.name);
+    setTimeout(() => {
+      const el = document.querySelector(`[data-stocktake-id="${product.id}"]`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+  };
+
+  // ค้นหาเพื่อ quick add (ค้นชื่อ/รหัส/บาร์โค้ด)
+  const quickSearchResults = useMemo(() => {
+    const q = quickSearch.toLowerCase().trim();
+    if (!q) return [];
+    return products.filter(p =>
+      (p.name||"").toLowerCase().includes(q) ||
+      (p.code||"").toLowerCase().includes(q) ||
+      (p.barcode||"").toLowerCase().includes(q)
+    ).slice(0, 6);
+  }, [products, quickSearch]);
 
   // === Save adjustments ===
   const handleFinalize = async () => {
@@ -147,14 +169,53 @@ export default function StocktakeTab({ products, clothingItems, user, role }) {
           <div style={{ fontSize: 14, fontWeight: 600, color: T.text }}>📦 Stocktake — นับสต็อกจริง</div>
           <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>นับสินค้าจริง → ระบบจะปรับ qty ให้ตรง พร้อมบันทึก audit log</div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={()=>setShowScanner(true)} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid rgba(124,58,237,0.3)", background: "rgba(124,58,237,0.1)", color: "#7c3aed", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "'Sarabun',sans-serif" }}>
-            📸 สแกน +1
-          </button>
-        </div>
       </div>
 
       {savedMsg && <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(58,122,82,0.1)", border: "1px solid rgba(58,122,82,0.3)", borderRadius: 8, color: T.green, fontSize: 13, fontWeight: 600 }}>{savedMsg}</div>}
+
+      {/* === Quick Add Bar — สแกน/พิมพ์ → เลือก → ใส่จำนวน === */}
+      <div style={{ marginBottom: 14, padding: 14, background: "linear-gradient(135deg,rgba(124,58,237,0.06),rgba(59,91,139,0.04))", border: "1px solid rgba(124,58,237,0.25)", borderRadius: 10 }}>
+        <div style={{ fontSize: 11, color: "#7c3aed", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>⚡ Quick Add — สแกนหรือพิมพ์ ชื่อ/รหัส แล้วใส่จำนวน</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", position: "relative" }}>
+          <input
+            value={quickSearch}
+            onChange={e => setQuickSearch(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter" && quickSearchResults.length > 0) {
+                openQuickAdd(quickSearchResults[0]);
+                setQuickSearch("");
+              }
+            }}
+            placeholder="🔎 พิมพ์ชื่อ/รหัส/บาร์โค้ด — กด Enter เพื่อเลือกอันแรก..."
+            style={{ flex: 1, background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 8, padding: "10px 14px", fontFamily: "'Sarabun',sans-serif", fontSize: 14, outline: "none" }}/>
+          <button onClick={()=>setShowScanner(true)} style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid rgba(124,58,237,0.4)", background: "rgba(124,58,237,0.15)", color: "#7c3aed", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Sarabun',sans-serif", whiteSpace: "nowrap" }}>
+            📸 สแกนกล้อง
+          </button>
+          {/* Dropdown */}
+          {quickSearch && quickSearchResults.length > 0 && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 100, marginTop: 4, background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.15)", maxHeight: 280, overflowY: "auto", zIndex: 50 }}>
+              {quickSearchResults.map((p,i)=>(
+                <div key={p.id} onClick={()=>{openQuickAdd(p); setQuickSearch("");}}
+                  style={{ display: "grid", gridTemplateColumns: "80px 1fr 80px", padding: "10px 14px", borderBottom: i<quickSearchResults.length-1?`1px solid ${T.border}`:"none", cursor: "pointer", fontSize: 12, alignItems: "center" }}
+                  onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.06)"}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <div style={{ fontFamily: "monospace", color: T.accent, fontWeight: 700 }}>{p.code}</div>
+                  <div>
+                    <div style={{ fontWeight: 600, color: T.text }}>{p.name}</div>
+                    {p.barcode && <div style={{ fontSize: 10, color: T.muted, fontFamily: "monospace" }}>{p.barcode}</div>}
+                  </div>
+                  <div style={{ textAlign: "right", fontFamily: "monospace", color: T.sub }}>คงเหลือ {p.qty||0}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {quickSearch && quickSearchResults.length === 0 && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 100, marginTop: 4, background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: 14, fontSize: 12, color: T.muted, textAlign: "center", zIndex: 50 }}>
+              ไม่พบสินค้าที่ตรงกับ "{quickSearch}"
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Summary cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 14 }}>
@@ -253,7 +314,68 @@ export default function StocktakeTab({ products, clothingItems, user, role }) {
         </Modal>
       )}
 
-      {showScanner && <BarcodeScanner onScan={handleScan} onClose={()=>setShowScanner(false)} title="📸 สแกน +1 (Stocktake)"/>}
+      {/* ── Quick Add Modal ── */}
+      {quickAdd && (()=>{
+        const { product, addQty } = quickAdd;
+        const currentCount = counts[product.id] !== undefined && counts[product.id] !== "" ? Number(counts[product.id]) : 0;
+        const systemQty = Number(product.qty||0);
+        const newTotal = currentCount + (Number(addQty)||0);
+        const diff = newTotal - systemQty;
+        return (
+          <Modal onClose={()=>setQuickAdd(null)} w={460}>
+            <MHead title="⚡ Quick Add" sub="เพิ่มจำนวนที่นับเข้าไป" onClose={()=>setQuickAdd(null)} color="#7c3aed"/>
+            {/* Product info */}
+            <div style={{ marginBottom: 14, padding: 14, background: "rgba(124,58,237,0.06)", borderRadius: 10, border: "1px solid rgba(124,58,237,0.2)" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 4 }}>{product.name}</div>
+              <div style={{ fontSize: 11, color: T.muted, fontFamily: "monospace" }}>{product.code}{product.barcode?` · ${product.barcode}`:""}</div>
+              <div style={{ marginTop: 8, display: "flex", gap: 14, fontSize: 12 }}>
+                <span style={{ color: T.sub }}>ระบบ: <b style={{ color: T.text, fontFamily: "monospace" }}>{systemQty}</b></span>
+                <span style={{ color: T.sub }}>นับไว้แล้ว: <b style={{ color: T.accent, fontFamily: "monospace" }}>{currentCount}</b></span>
+              </div>
+            </div>
+
+            {/* Qty input + quick buttons */}
+            <label style={{ fontSize: 11, color: T.muted, display: "block", marginBottom: 6, fontWeight: 600 }}>จำนวนที่เพิ่ม (นับเจอ)</label>
+            <input type="number" min="1" autoFocus value={addQty}
+              onChange={e=>setQuickAdd(q=>({...q, addQty: e.target.value}))}
+              onFocus={e=>e.target.select()}
+              onKeyDown={e=>{ if(e.key==="Enter") applyQuickAdd(); }}
+              placeholder="ใส่จำนวน..."
+              style={{ width: "100%", background: T.input, border: `1.5px solid ${T.accent}`, color: T.text, borderRadius: 9, padding: "12px 14px", fontFamily: "monospace", fontSize: 22, fontWeight: 700, outline: "none", textAlign: "center", marginBottom: 10 }}/>
+
+            {/* Quick add buttons */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 6, marginBottom: 14 }}>
+              {[1,5,10,12,50,100].map(n=>(
+                <button key={n} onClick={()=>setQuickAdd(q=>({...q, addQty: String((Number(q.addQty)||0)+n)}))}
+                  style={{ padding: "10px 6px", borderRadius: 7, border: `1px solid ${T.border}`, background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "monospace" }}>
+                  +{n}
+                </button>
+              ))}
+            </div>
+
+            {/* Preview */}
+            {Number(addQty)>0 && (
+              <div style={{ marginBottom: 14, padding: 10, background: diff===0?"rgba(58,122,82,0.08)":diff>0?"rgba(59,91,139,0.08)":"rgba(185,74,72,0.08)", borderRadius: 8, border: `1px solid ${diff===0?"rgba(58,122,82,0.3)":diff>0?"rgba(59,91,139,0.3)":"rgba(185,74,72,0.3)"}`, fontSize: 12, textAlign: "center" }}>
+                หลังเพิ่ม: <b style={{ fontFamily: "monospace", fontSize: 16, color: T.text }}>{newTotal}</b> ชิ้น ·
+                ส่วนต่างจากระบบ: <b style={{ fontFamily: "monospace", color: diff===0?T.green:diff>0?T.accent:T.red }}>{diff>0?"+":""}{diff}</b>
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <BtnGhost onClick={()=>setQuickAdd(null)} style={{ flex: 1 }}>ยกเลิก</BtnGhost>
+              <BtnPrimary onClick={applyQuickAdd} disabled={!addQty||Number(addQty)<=0} style={{ flex: 2 }}>
+                ➕ เพิ่ม {addQty || "0"} ชิ้น
+              </BtnPrimary>
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 10, color: T.muted, textAlign: "center" }}>
+              💡 เคล็ดลับ: กด Enter เพื่อยืนยันเร็ว · จะเพิ่ม <b>สะสม</b> เข้ากับจำนวนที่นับไว้แล้ว
+            </div>
+          </Modal>
+        );
+      })()}
+
+      {showScanner && <BarcodeScanner onScan={handleScan} onClose={()=>setShowScanner(false)} title="📸 สแกน Stocktake"/>}
     </div>
   );
 }
