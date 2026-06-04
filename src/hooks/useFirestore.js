@@ -22,14 +22,25 @@ export function useFirestore() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // 🛡️ ห้าม auto-overwrite ด้วย INIT_USERS!
+    // เดิม: ถ้า snap.empty → batch.set(INIT_USERS) → กรณี permission-denied transient
+    // ทำให้รหัสผ่านของ user ถูก RESET กลับเป็น "1234" และ login ไม่ได้
+    // แก้: ถ้า empty (จากปัญหา network/permission) → ไม่ทำอะไร, users state เก็บค่าเดิมไว้
+    let initialChecked = false;
     const unsub = onSnapshot(collection(db, "users"), snap => {
       if (snap.empty) {
-        const batch = writeBatch(db);
-        INIT_USERS.forEach(u => batch.set(doc(db, "users", String(u.id)), u));
-        batch.commit();
+        // ครั้งแรกที่ subscribe + จริงๆ ว่าง → ใช้ INIT_USERS เป็น fallback (local only)
+        // แต่ "ห้าม" เขียน Firestore — ป้องกัน race condition ทับข้อมูลจริง
+        if (!initialChecked) {
+          setUsers(INIT_USERS);
+        }
       } else {
         setUsers(snap.docs.map(d => ({ ...d.data(), id: d.id })));
       }
+      initialChecked = true;
+    }, (err) => {
+      console.warn("[users] subscription error:", err);
+      // permission-denied/network error → ใช้ค่าเดิม ไม่ overwrite อะไร
     });
     return () => unsub();
   }, []);

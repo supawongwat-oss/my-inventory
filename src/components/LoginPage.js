@@ -102,11 +102,22 @@ export default function LoginPage({ users, onLogin, onResetPassword, onRegister 
 
   const handle = () => {
     if (!u || !p) { setErr("กรุณากรอกชื่อผู้ใช้และรหัสผ่าน"); return; }
+    if (!users || users.length === 0) { setErr("⏳ ระบบกำลังโหลด กรุณารอสักครู่แล้วลองใหม่"); return; }
     setLoading(true); setErr("");
     setTimeout(() => {
-      const found = users.find(x => x.username === u && x.password === p);
-      if (found) onLogin(found, rememberMe);
-      else { setErr("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"); setLoading(false); }
+      // ตรวจ username ก่อน — แยก error ระหว่าง "ไม่พบ user" กับ "รหัสผิด"
+      const userMatch = users.find(x => x.username === u);
+      if (!userMatch) {
+        setErr("ไม่พบบัญชี — ตรวจสอบชื่อผู้ใช้");
+        setLoading(false);
+        return;
+      }
+      if (userMatch.password !== p) {
+        setErr("รหัสผ่านไม่ถูกต้อง");
+        setLoading(false);
+        return;
+      }
+      onLogin(userMatch, rememberMe);
     }, 500);
   };
 
