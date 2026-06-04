@@ -17,6 +17,7 @@ import InstallPWA from "./components/InstallPWA";
 import CustomerProfile from "./components/CustomerProfile";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
 import { generateDocNo } from "./utils/docNumber";
+import html2pdf from "html2pdf.js";
 // ── MAIN APP ───────────────────────────────────────────────────
 export default function App() {
   // ── รอ Firebase Anonymous Auth พร้อมก่อน — เพื่อให้ Security Rules ผ่าน ──
@@ -824,6 +825,39 @@ export default function App() {
     };
     if (doc.fonts && doc.fonts.ready) doc.fonts.ready.then(() => setTimeout(trigger, 200));
     else setTimeout(trigger, 500);
+  };
+
+  // ดาวน์โหลดเอกสารเป็น PDF (ใช้ html2pdf.js)
+  const downloadInvoicePdf = (inv, copies = false) => {
+    const el = document.getElementById("invoice-print-area");
+    if (!el || !inv) return;
+    const safeName = (inv.customerName || "ลูกค้า").replace(/[\\/:*?"<>|]/g, "_").slice(0, 30);
+    const filename = `${inv.invoiceNo || "INV"}_${safeName}.pdf`;
+    let source;
+    if (copies) {
+      const labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"];
+      const wrap = document.createElement("div");
+      labels.forEach((label, i) => {
+        const clone = el.cloneNode(true);
+        const tag = clone.querySelector("[data-doc-label]");
+        if (tag) tag.textContent = label;
+        const pageWrap = document.createElement("div");
+        if (i < labels.length - 1) pageWrap.style.pageBreakAfter = "always";
+        pageWrap.appendChild(clone);
+        wrap.appendChild(pageWrap);
+      });
+      source = wrap;
+    } else {
+      source = el.cloneNode(true);
+    }
+    html2pdf().set({
+      margin: 10,
+      filename,
+      image: { type: "jpeg", quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      pagebreak: { mode: ["css", "legacy"] }
+    }).from(source).save();
   };
 
   const handleResetPassword = async (username, newPassword) => {
@@ -3204,9 +3238,11 @@ export default function App() {
                 </div>
               </div>
               <div style={{display:"flex",gap:10}}>
-                <button onClick={()=>setShowPrintInvoice(null)} style={{padding:"9px 20px",borderRadius:9,border:"1px solid #e2e8f0",background:"white",color:"#64748b",fontSize:13,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>ปิด</button>
-                <button onClick={()=>printElementById("invoice-print-area")} style={{padding:"9px 20px",borderRadius:9,border:"1px solid rgba(59,91,139,0.35)",background:"white",color:"#3b5b8b",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>🖨️ พิมพ์ปกติ</button>
-                <button onClick={()=>printInvoiceCopies("invoice-print-area")} style={{padding:"9px 20px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>🖨️ พิมพ์ A4 × 3 ชุด</button>
+                <button onClick={()=>setShowPrintInvoice(null)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid #e2e8f0",background:"white",color:"#64748b",fontSize:13,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>ปิด</button>
+                <button onClick={()=>downloadInvoicePdf(showPrintInvoice,false)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(220,38,38,0.35)",background:"white",color:"#dc2626",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>📄 PDF</button>
+                <button onClick={()=>downloadInvoicePdf(showPrintInvoice,true)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(220,38,38,0.35)",background:"white",color:"#dc2626",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>📄 PDF × 3 ชุด</button>
+                <button onClick={()=>printElementById("invoice-print-area")} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(59,91,139,0.35)",background:"white",color:"#3b5b8b",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>🖨️ พิมพ์ปกติ</button>
+                <button onClick={()=>printInvoiceCopies("invoice-print-area")} style={{padding:"9px 16px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>🖨️ พิมพ์ × 3 ชุด</button>
               </div>
             </div>
           </div>
