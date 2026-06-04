@@ -75,7 +75,7 @@ export { CompanyEditor };
 
 export default function LoginPage({ users, onLogin, onResetPassword, onRegister }) {
   const [u,setU]=useState(""); const [p,setP]=useState(""); const [err,setErr]=useState(""); const [loading,setLoading]=useState(false);
-  const [rememberMe,setRememberMe]=useState(false);
+  const [rememberMe,setRememberMe]=useState(true); // default ติ๊กไว้ — กันรหัสหลุดบ่อย
   const [showForgot,setShowForgot]=useState(false);
   const [showRegister,setShowRegister]=useState(false);
   const [regForm,setRegForm]=useState({name:"",username:"",password:"",confirm:""});

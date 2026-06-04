@@ -27,11 +27,11 @@ export default function App() {
   const rLabel = (key) => roleLabels[key] || ROLES[key]?.label || key;
 
   // ── Session timeouts (ms) ─────────────────────────────────
-  // Default (ไม่ติ๊ก "จำฉันไว้"): inactivity 8 ชม. + hard expiry 16 ชม.
-  // "จำฉันไว้":                  inactivity OFF + hard expiry 30 วัน
-  const SESSION_DEFAULT_INACTIVITY = 8 * 60 * 60 * 1000;       // 8 ชม.
-  const SESSION_DEFAULT_HARD       = 16 * 60 * 60 * 1000;      // 16 ชม.
-  const SESSION_REMEMBER_HARD      = 30 * 24 * 60 * 60 * 1000; // 30 วัน
+  // Default (ไม่ติ๊ก "จำฉันไว้"): inactivity 3 วัน + hard expiry 7 วัน
+  // "จำฉันไว้":                  inactivity OFF + hard expiry 90 วัน
+  const SESSION_DEFAULT_INACTIVITY = 3 * 24 * 60 * 60 * 1000;  // 3 วัน
+  const SESSION_DEFAULT_HARD       = 7 * 24 * 60 * 60 * 1000;  // 7 วัน
+  const SESSION_REMEMBER_HARD      = 90 * 24 * 60 * 60 * 1000; // 90 วัน
 
   const checkSessionValid = () => {
     try {
@@ -119,16 +119,15 @@ export default function App() {
     };
   }, [user]);
 
-  // เช็ค session ทุก 30 วิ — ถ้าหมดอายุ → auto logout
+  // เช็ค session ทุก 60 วิ — ถ้าหมดอายุ → auto logout (เงียบๆ ไม่มี alert)
   useEffect(() => {
     if (!user) return;
     const t = setInterval(() => {
       if (!checkSessionValid()) {
         clearSession();
         setUser(null);
-        alert("⏰ Session หมดอายุ — กรุณาเข้าสู่ระบบใหม่");
       }
-    }, 30000);
+    }, 60000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
