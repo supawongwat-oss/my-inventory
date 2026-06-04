@@ -3,7 +3,7 @@
 // .env.production  → ใช้ตอน npm run build / deploy (บริษัท)
 // ถ้าไม่มี env → fallback config (บริษัท)
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 
 const firebaseConfig = {
@@ -25,6 +25,17 @@ if (process.env.NODE_ENV === "development") {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+
+// เปิด offline persistence — ข้อมูลยังใช้งานได้แม้เน็ตหลุด
+enableIndexedDbPersistence(db).catch((err) => {
+  if (err.code === 'failed-precondition') {
+    // เปิดหลายแท็บพร้อมกัน — persistence ใช้ได้แค่แท็บเดียว
+    console.warn('PWA offline: multiple tabs open, persistence disabled.');
+  } else if (err.code === 'unimplemented') {
+    // browser ไม่รองรับ
+    console.warn('PWA offline: browser does not support persistence.');
+  }
+});
 
 // ── Anonymous Auth ───────────────────────────────────────────
 // แอปจะ sign in แบบ anonymous เงียบๆ ทันทีที่โหลดเสร็จ

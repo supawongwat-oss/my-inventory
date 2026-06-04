@@ -13,7 +13,12 @@ import AuditLogTab from "./tabs/AuditLogTab";
 import ImportCustomersModal from "./components/ImportCustomersModal";
 import BackupRestore, { shouldRemindBackup, getLastBackupDate } from "./components/BackupRestore";
 import BarcodeScanner from "./components/BarcodeScanner";
+import InstallPWA from "./components/InstallPWA";
+import CustomerProfile from "./components/CustomerProfile";
+import ProductionTab from "./tabs/ProductionTab";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
+import { generateDocNo } from "./utils/docNumber";
+import html2pdf from "html2pdf.js";
 // ── MAIN APP ───────────────────────────────────────────────────
 export default function App() {
   // ── รอ Firebase Anonymous Auth พร้อมก่อน — เพื่อให้ Security Rules ผ่าน ──
@@ -22,7 +27,7 @@ export default function App() {
     authReady.then(() => setAuthChecked(true));
   }, []);
 
-  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements } = useFirestore();
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms } = useFirestore();
   // ใช้แทน ROLES[role].label เพื่อให้ admin เปลี่ยนชื่อบทบาทได้
   const rLabel = (key) => roleLabels[key] || ROLES[key]?.label || key;
 
@@ -209,6 +214,7 @@ export default function App() {
   const [uploadingClothingId, setUploadingClothingId] = useState(null);
 
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
   const [showTxModal, setShowTxModal] = useState(false);
   const [showBarcodeModal, setShowBarcodeModal] = useState(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -220,6 +226,10 @@ export default function App() {
 
   // ── Invoice & Company state ───────────────────────────────────
   const [showNewInvoice, setShowNewInvoice] = useState(false);
+  const [profileCustomer, setProfileCustomer] = useState(null);
+  const [orderSearch, setOrderSearch] = useState("");
+  const [orderDateFrom, setOrderDateFrom] = useState("");
+  const [orderDateTo, setOrderDateTo] = useState("");
   const [showPrintInvoice, setShowPrintInvoice] = useState(null);
   const [invoiceDocType, setInvoiceDocType] = useState("receipt"); // receipt | tax | quotation
   const [invoiceVat, setInvoiceVat] = useState(false);
@@ -334,6 +344,41 @@ export default function App() {
     await addDoc(collection(db, "products"), data);
     setAddSuccess(true);
     setTimeout(() => { setAddSuccess(false); setShowAddModal(false); setNewProduct({code:"",name:"",category:"",qty:"",unit:"",minQty:"",location:"",barcode:"",image:""}); }, 1000);
+  };
+
+  const handleSaveEditProduct = async () => {
+    if (!editingProduct) return;
+    const p = editingProduct;
+    if (!p.code || !p.name || !p.unit) return;
+    const original = products.find(x => x.id === p.id) || {};
+    const changes = [];
+    ["code","name","category","unit","location","barcode","costPrice","salePrice","minQty","qty","image"].forEach(k => {
+      const ov = original[k] ?? "";
+      const nv = p[k] ?? "";
+      if (String(ov) !== String(nv)) changes.push(`${k}: ${ov||"-"} → ${nv||"-"}`);
+    });
+    const data = {
+      ...p,
+      qty: Number(p.qty)||0,
+      minQty: p.minQty === "" ? 0 : Number(p.minQty),
+      costPrice: p.costPrice === "" ? "" : Number(p.costPrice),
+      salePrice: p.salePrice === "" ? "" : Number(p.salePrice),
+      lastUpdate: now(),
+      history: [
+        { action:"แก้ไขรายละเอียด", by: user.name, date: now(), note: changes.length ? changes.join(" · ") : "ไม่มีการเปลี่ยนแปลง" },
+        ...(original.history||[])
+      ]
+    };
+    delete data.id;
+    await updateDoc(doc(db,"products",p.id), data);
+    logAudit(user, {
+      action: AUDIT_ACTIONS.UPDATE,
+      collection: "products",
+      targetId: p.id,
+      targetLabel: `${data.code} · ${data.name}`,
+      note: changes.length ? changes.join(" · ") : "บันทึกไม่มีการเปลี่ยนแปลง",
+    });
+    setEditingProduct(null);
   };
 
   const handleTx = async () => {
@@ -584,7 +629,7 @@ export default function App() {
         createdAt: serverTimestamp(), category: "เสื้อผ้า"
       });
     }
-    const orderNo = `ORD${Date.now().toString().slice(-6)}`;
+    const orderNo = generateDocNo("ORD", orders, "orderNo");
     const ref = await addDoc(collection(db, "orders"), {
       orderNo, ...orderForm, status: "สำเร็จ",
       by: user.name, date: now(), createdAt: serverTimestamp()
@@ -702,7 +747,7 @@ export default function App() {
   const handleConfirmInvoice = async () => {
     if(!invoiceForm.customerName||invoiceForm.items.length===0) return;
     const calc = calcInvoice(invoiceForm.items, invoiceForm.vatRate, invoiceVat);
-    const invNo = `INV${Date.now().toString().slice(-6)}`;
+    const invNo = generateDocNo("INV", invoices, "invoiceNo");
     const bank = (invoiceForm.bankAccountIdx!=null&&invoiceForm.bankAccountIdx>=0)
       ? (companyInfo.bankAccounts||[])[invoiceForm.bankAccountIdx] : null;
     const data = {
@@ -745,6 +790,33 @@ export default function App() {
     });
   };
 
+  // scale fontSize ของทุก element ใน clone (ใช้ก่อนพิมพ์/PDF) — ค่าเริ่มต้น 1.3 = ใหญ่ขึ้น 30%
+  const PRINT_FONT_SCALE = 1.3;
+  const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
+    // ต้อง attach root เข้า DOM ชั่วคราวเพื่ออ่าน computed style
+    const holder = document.createElement("div");
+    holder.style.position = "fixed";
+    holder.style.left = "-99999px";
+    holder.style.top = "0";
+    holder.style.visibility = "hidden";
+    holder.appendChild(root);
+    document.body.appendChild(holder);
+    try {
+      const all = [root, ...root.querySelectorAll("*")];
+      all.forEach(n => {
+        try {
+          const cs = window.getComputedStyle(n);
+          const fs = parseFloat(cs.fontSize);
+          if (!isNaN(fs) && fs > 0) n.style.fontSize = (fs * factor).toFixed(2) + "px";
+        } catch (e) {}
+      });
+    } finally {
+      holder.removeChild(root);
+      document.body.removeChild(holder);
+    }
+    return root;
+  };
+
   // ปริ้นผ่าน iframe — เนื้อหาใหญ่เต็ม A4 และไหลข้ามหน้าได้
   const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10mm") => {
     const el = document.getElementById(id);
@@ -770,7 +842,9 @@ export default function App() {
         thead { display: table-header-group; }
         tfoot { display: table-footer-group; }
         img { max-width: 100%; }
-      </style></head><body>${el.outerHTML}</body></html>`);
+      </style></head><body></body></html>`);
+    const scaled = scaleFontInElement(el.cloneNode(true));
+    doc.body.appendChild(doc.importNode(scaled, true));
     doc.close();
     const trigger = () => {
       try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e){}
@@ -781,6 +855,79 @@ export default function App() {
     } else {
       setTimeout(trigger, 500);
     }
+  };
+
+  // พิมพ์เอกสารหลายชุด (ต้นฉบับ + สำเนา) บน A4 — ขึ้นหน้าใหม่ทุกชุด
+  const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed"; iframe.style.right = "0"; iframe.style.bottom = "0";
+    iframe.style.width = "0"; iframe.style.height = "0"; iframe.style.border = "0";
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(`<!doctype html><html><head><meta charset="utf-8"/>
+      <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+      <style>
+        @page { size: A4 portrait; margin: 10mm; }
+        html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun', sans-serif; }
+        table { border-collapse: collapse; width: 100%; }
+        tr, td, th { page-break-inside: avoid; }
+        thead { display: table-header-group; }
+        img { max-width: 100%; }
+      </style></head><body></body></html>`);
+    labels.forEach((label, i) => {
+      const clone = el.cloneNode(true);
+      const tag = clone.querySelector("[data-doc-label]");
+      if (tag) tag.textContent = label;
+      scaleFontInElement(clone);
+      const wrap = doc.createElement("div");
+      if (i < labels.length - 1) wrap.style.pageBreakAfter = "always";
+      wrap.appendChild(doc.importNode(clone, true));
+      doc.body.appendChild(wrap);
+    });
+    doc.close();
+    const trigger = () => {
+      try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e){}
+      setTimeout(() => iframe.remove(), 1000);
+    };
+    if (doc.fonts && doc.fonts.ready) doc.fonts.ready.then(() => setTimeout(trigger, 200));
+    else setTimeout(trigger, 500);
+  };
+
+  // ดาวน์โหลดเอกสารเป็น PDF (ใช้ html2pdf.js)
+  const downloadInvoicePdf = (inv, copies = false) => {
+    const el = document.getElementById("invoice-print-area");
+    if (!el || !inv) return;
+    const safeName = (inv.customerName || "ลูกค้า").replace(/[\\/:*?"<>|]/g, "_").slice(0, 30);
+    const filename = `${inv.invoiceNo || "INV"}_${safeName}.pdf`;
+    let source;
+    if (copies) {
+      const labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"];
+      const wrap = document.createElement("div");
+      labels.forEach((label, i) => {
+        const clone = el.cloneNode(true);
+        const tag = clone.querySelector("[data-doc-label]");
+        if (tag) tag.textContent = label;
+        scaleFontInElement(clone);
+        const pageWrap = document.createElement("div");
+        if (i < labels.length - 1) pageWrap.style.pageBreakAfter = "always";
+        pageWrap.appendChild(clone);
+        wrap.appendChild(pageWrap);
+      });
+      source = wrap;
+    } else {
+      source = scaleFontInElement(el.cloneNode(true));
+    }
+    html2pdf().set({
+      margin: 10,
+      filename,
+      image: { type: "jpeg", quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      pagebreak: { mode: ["css", "legacy"] }
+    }).from(source).save();
   };
 
   const handleResetPassword = async (username, newPassword) => {
@@ -814,6 +961,7 @@ export default function App() {
     { id:"inventory",    icon:"📦", label:"สินค้าคงคลัง" },
     { id:"transactions", icon:"🔄", label:"รับ/จ่ายสินค้า" },
     { id:"barcode",      icon:"▦",  label:"สแกนบาร์โค้ด" },
+    { id:"production",   icon:"🏭", label:"การผลิต" },
     { id:"orders",       icon:"📋", label:"ใบสั่งของ" },
     { id:"invoice",      icon:"🧾", label:"ออกบิล" },
     { id:"statements",   icon:"📃", label:"วางบิลเก็บเงิน" },
@@ -885,7 +1033,9 @@ export default function App() {
       {/* SIDEBAR */}
       <div style={{width:sidebarOpen?224:60,background:T.sidebar,borderRight:`1px solid ${T.border}`,transition:"width .28s",display:"flex",flexDirection:"column",flexShrink:0,boxShadow:"2px 0 8px rgba(0,0,0,0.04)"}}>
         <div style={{padding:"18px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10}}>
-          <div style={{width:34,height:34,background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18,boxShadow:"0 2px 12px rgba(59,91,139,0.4)"}}>⚙️</div>
+          <div style={{width:36,height:36,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden"}}>
+            <img src={`${process.env.PUBLIC_URL}/cpu-logo.png`} alt="CPU" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
+          </div>
           {sidebarOpen&&<div><div style={{fontSize:15,fontWeight:800,color:T.text,fontFamily:"'Space Mono',monospace",letterSpacing:3}}>CPU</div><div style={{fontSize:9,color:T.muted}}>ระบบคลังสินค้า</div></div>}
         </div>
 
@@ -1093,6 +1243,7 @@ export default function App() {
                     <div style={{display:"flex",gap:3,justifyContent:"center"}}>
                       <button title="ประวัติ" onClick={()=>setShowHistoryModal(p)} style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:12}}>📅</button>
                       <button title="บาร์โค้ด" onClick={()=>setShowBarcodeModal(p)} style={{background:"#eff6ff",border:`1px solid ${T.navActiveBorder}`,borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:12}}>▦</button>
+                      {role.canAdd&&<button title="แก้ไข" onClick={()=>setEditingProduct({...p})} style={{background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:12,color:"#059669"}}>✏️</button>}
                       {role.canDelete&&<button title="ลบ" onClick={()=>setShowDeleteConfirm(p.id)} style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:12,color:T.red}}>✕</button>}
                     </div>
                   </div>
@@ -1596,6 +1747,19 @@ export default function App() {
           )}
 
           {/* ── ORDERS ── */}
+          {activeTab==="production"&&(
+            <ProductionTab
+              productionOrders={productionOrders||[]}
+              boms={boms||[]}
+              products={products}
+              clothingItems={clothingItems}
+              companyInfo={companyInfo}
+              user={user}
+              role={role}
+              printElementById={printElementById}
+            />
+          )}
+
           {activeTab==="orders"&&(
             <div style={{animation:"fadeUp 0.4s ease"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
@@ -1612,8 +1776,61 @@ export default function App() {
                   <div style={{fontSize:11,color:T.muted}}>กด "️ สร้างใบสั่งของ" เพื่อเริ่มต้น</div>
                 </div>
               ):(()=>{
+                // ── filter helpers ──
+                const parseThaiDate=(s)=>{if(!s)return null;const [d,m,y]=String(s).slice(0,10).split("/");if(!d||!m||!y)return null;return new Date(`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`);};
+                const filteredOrders=orders.filter(o=>{
+                  if(orderSearch){const q=orderSearch.toLowerCase().trim();const hit=(o.orderNo||"").toLowerCase().includes(q)||(o.customerName||"").toLowerCase().includes(q)||(o.customerPhone||"").toLowerCase().includes(q);if(!hit)return false;}
+                  const od=parseThaiDate(o.date);
+                  if(orderDateFrom){const f=new Date(orderDateFrom);if(!od||od<f)return false;}
+                  if(orderDateTo){const t=new Date(orderDateTo);t.setHours(23,59,59);if(!od||od>t)return false;}
+                  return true;
+                });
+                const totalQtyAll=filteredOrders.reduce((s,o)=>s+(o.items||[]).reduce((a,i)=>a+i.qty,0),0);
+                const setPreset=(preset)=>{
+                  const today=new Date();const y=today.getFullYear();const m=today.getMonth();
+                  const fmt=(d)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+                  if(preset==="all"){setOrderDateFrom("");setOrderDateTo("");}
+                  else if(preset==="today"){setOrderDateFrom(fmt(today));setOrderDateTo(fmt(today));}
+                  else if(preset==="month"){setOrderDateFrom(fmt(new Date(y,m,1)));setOrderDateTo(fmt(new Date(y,m+1,0)));}
+                  else if(preset==="year"){setOrderDateFrom(fmt(new Date(y,0,1)));setOrderDateTo(fmt(new Date(y,11,31)));}
+                  else if(preset==="lastyear"){setOrderDateFrom(fmt(new Date(y-1,0,1)));setOrderDateTo(fmt(new Date(y-1,11,31)));}
+                };
+                const presets=[{k:"all",l:"ทั้งหมด"},{k:"today",l:"วันนี้"},{k:"month",l:"เดือนนี้"},{k:"year",l:"ปีนี้"},{k:"lastyear",l:"ปีที่แล้ว"}];
+
+                return (<>
+                {/* ── FILTER BAR ── */}
+                <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:14,marginBottom:14}}>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+                    <input value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} placeholder="🔍 ค้นหาเลขที่ใบสั่ง / ชื่อลูกค้า / เบอร์โทร"
+                      style={{flex:"1 1 240px",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+                    <input type="date" value={orderDateFrom} onChange={e=>setOrderDateFrom(e.target.value)}
+                      style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"8px 10px",fontSize:12,fontFamily:"'Sarabun',sans-serif"}}/>
+                    <span style={{alignSelf:"center",color:T.muted,fontSize:12}}>ถึง</span>
+                    <input type="date" value={orderDateTo} onChange={e=>setOrderDateTo(e.target.value)}
+                      style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"8px 10px",fontSize:12,fontFamily:"'Sarabun',sans-serif"}}/>
+                  </div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                    {presets.map(p=>(
+                      <button key={p.k} onClick={()=>setPreset(p.k)}
+                        style={{padding:"5px 12px",borderRadius:14,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,cursor:"pointer",fontSize:11,fontFamily:"'Sarabun',sans-serif"}}>{p.l}</button>
+                    ))}
+                    <div style={{flex:1}}/>
+                    <div style={{fontSize:11,color:T.muted}}>
+                      พบ <b style={{color:T.accent}}>{filteredOrders.length}</b> / {orders.length} ใบ
+                      <span style={{margin:"0 6px",color:T.border}}>·</span>
+                      รวม <b style={{color:"#16a34a"}}>{totalQtyAll.toLocaleString("th-TH")}</b> ชิ้น
+                    </div>
+                  </div>
+                </div>
+
+                {filteredOrders.length===0?(
+                  <div style={{textAlign:"center",padding:40,background:T.card,borderRadius:14,border:`1px solid ${T.border}`}}>
+                    <div style={{fontSize:36,marginBottom:8,opacity:0.3}}>🔍</div>
+                    <div style={{fontSize:13,color:T.muted}}>ไม่พบใบสั่งของตามที่ค้นหา</div>
+                  </div>
+                ):(()=>{
                 // group ตามวันที่ (10 ตัวแรก = "DD/MM/YYYY")
-                const groups=orders.reduce((acc,o)=>{
+                const groups=filteredOrders.reduce((acc,o)=>{
                   const d=(o.date||"").slice(0,10)||"ไม่ระบุวันที่";
                   if(!acc[d]) acc[d]=[];
                   acc[d].push(o);
@@ -1671,6 +1888,8 @@ export default function App() {
                   </div>
                 );
               })()}
+              </>);
+              })()}
             </div>
           )}
 
@@ -1701,7 +1920,8 @@ export default function App() {
                     const q=customerSearch.toLowerCase().trim();
                     return (c.name||"").toLowerCase().includes(q)||(c.phone||"").toLowerCase().includes(q)||(c.address||"").toLowerCase().includes(q)||(c.email||"").toLowerCase().includes(q);
                   }).map((c,i,arr)=>(
-                    <div key={c.id} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 20px",borderBottom:i<arr.length-1?`1px solid ${T.border}`:"none"}}
+                    <div key={c.id} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 20px",borderBottom:i<arr.length-1?`1px solid ${T.border}`:"none",cursor:"pointer"}}
+                      onClick={()=>setProfileCustomer(c)}
                       onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.04)"}
                       onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                       <div style={{width:48,height:48,borderRadius:"50%",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0,boxShadow:"0 4px 10px rgba(59,91,139,0.3)"}}>👤</div>
@@ -1710,8 +1930,12 @@ export default function App() {
                         <div style={{fontSize:11,color:T.muted,marginTop:2}}>📞 {c.phone||"-"}</div>
                         <div style={{fontSize:11,color:T.muted}}>📍 {c.address||"-"}</div>
                       </div>
-                      <div style={{fontSize:11,color:T.sub}}>สั่งซื้อ {orders.filter(o=>o.customerId===c.id).length} ครั้ง</div>
-                      {role.canDelete&&<button onClick={async()=>{
+                      <div style={{fontSize:11,color:T.sub,textAlign:"right"}}>
+                        <div>สั่งซื้อ {orders.filter(o=>o.customerId===c.id).length} ครั้ง</div>
+                        <div style={{color:T.accent,fontSize:10,marginTop:2}}>👁 ดูโปรไฟล์</div>
+                      </div>
+                      {role.canDelete&&<button onClick={async(e)=>{
+                        e.stopPropagation();
                         await deleteDoc(doc(db,"customers",c.id));
                         logAudit(user,{action:AUDIT_ACTIONS.DELETE,collection:"customers",targetId:c.id,targetLabel:c.name,before:{name:c.name,phone:c.phone}});
                       }} style={{padding:"5px 8px",borderRadius:7,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:11}}>✕</button>}
@@ -2021,6 +2245,57 @@ export default function App() {
         </Modal>
       )}
 
+      {/* ── MODAL: แก้ไขสินค้า ── */}
+      {editingProduct&&(
+        <Modal onClose={()=>setEditingProduct(null)} w={640}>
+          <MHead title="✏️ แก้ไขรายละเอียดสินค้า" sub={`${editingProduct.code} · ${editingProduct.name}`} onClose={()=>setEditingProduct(null)}/>
+          <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:18,padding:14,background:"#f8fafc",borderRadius:10,border:`1px solid ${T.border}`}}>
+            <div style={{flexShrink:0}}>
+              {editingProduct.image
+                ? <img src={editingProduct.image} alt="" style={{width:96,height:96,borderRadius:10,objectFit:"cover",border:`2px solid ${T.blue}`}}/>
+                : <div style={{width:96,height:96,borderRadius:10,background:T.input,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,border:`2px dashed ${T.inputBorder}`}}>📷</div>}
+            </div>
+            <div>
+              <div style={{fontSize:12,color:T.sub,marginBottom:8,fontWeight:500}}>📸 รูปสินค้า</div>
+              <BtnGhost onClick={()=>{
+                const inp=document.createElement("input");inp.type="file";inp.accept="image/*";
+                inp.onchange=(e)=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>setEditingProduct(p=>({...p,image:r.result}));r.readAsDataURL(f);};
+                inp.click();
+              }} style={{fontSize:12,padding:"6px 14px"}}>📁 เปลี่ยนรูป</BtnGhost>
+              {editingProduct.image&&<BtnGhost onClick={()=>setEditingProduct(p=>({...p,image:""}))} style={{fontSize:12,padding:"6px 14px",marginLeft:6,color:T.red}}>✕ ลบรูป</BtnGhost>}
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            {[{k:"code",l:"รหัสสินค้า *"},{k:"name",l:"ชื่อสินค้า *"},{k:"unit",l:"หน่วยนับ *"},{k:"location",l:"ตำแหน่งที่เก็บ"},{k:"qty",l:"คงเหลือ",t:"number"},{k:"minQty",l:"จำนวนขั้นต่ำ",t:"number"},{k:"costPrice",l:"ราคาทุน (฿)",t:"number"},{k:"salePrice",l:"ราคาขาย (฿)",t:"number"}].map(f=>(
+              <Input key={f.k} label={f.l} type={f.t||"text"} value={editingProduct[f.k]??""} onChange={e=>setEditingProduct(p=>({...p,[f.k]:e.target.value}))}/>
+            ))}
+            <div>
+              <label style={{fontSize:11,color:T.sub,display:"block",marginBottom:5,fontWeight:500}}>หมวดหมู่</label>
+              <select value={editingProduct.category||categories[0]||""} onChange={e=>setEditingProduct(p=>({...p,category:e.target.value}))} style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
+                {categories.map(c=><option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <Input label="บาร์โค้ด" value={editingProduct.barcode||""} onChange={e=>setEditingProduct(p=>({...p,barcode:e.target.value}))}/>
+          </div>
+          {editingProduct.costPrice&&editingProduct.salePrice&&Number(editingProduct.costPrice)>0&&(
+            <div style={{marginTop:12,padding:"10px 14px",borderRadius:8,background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+                <span style={{color:T.sub}}>กำไรต่อชิ้น</span>
+                <span style={{fontFamily:"monospace",fontWeight:700,color:"#34d399"}}>฿{(Number(editingProduct.salePrice)-Number(editingProduct.costPrice)).toLocaleString("th-TH",{minimumFractionDigits:2})}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginTop:4}}>
+                <span style={{color:T.sub}}>% กำไร</span>
+                <span style={{fontFamily:"monospace",fontWeight:700,color:"#34d399"}}>{(((Number(editingProduct.salePrice)-Number(editingProduct.costPrice))/Number(editingProduct.costPrice))*100).toFixed(1)}%</span>
+              </div>
+            </div>
+          )}
+          <div style={{display:"flex",gap:10,marginTop:20}}>
+            <BtnGhost onClick={()=>setEditingProduct(null)} style={{flex:1}}>ยกเลิก</BtnGhost>
+            <BtnPrimary onClick={handleSaveEditProduct} disabled={!editingProduct.code||!editingProduct.name||!editingProduct.unit} style={{flex:1}}>💾 บันทึกการแก้ไข</BtnPrimary>
+          </div>
+        </Modal>
+      )}
+
       {/* ── MODAL: รับ/จ่าย ── */}
       {showTxModal&&(
         <Modal onClose={()=>setShowTxModal(false)} w={520}>
@@ -2178,13 +2453,26 @@ export default function App() {
         </Modal>
       )}
 
+      {profileCustomer&&(
+        <CustomerProfile
+          customer={profileCustomer}
+          invoices={invoices}
+          orders={orders}
+          onClose={()=>setProfileCustomer(null)}
+          onNewInvoice={(c)=>{
+            setInvoiceForm(f=>({...f,customerId:c.id||"",customerName:c.name||"",customerPhone:c.phone||"",customerAddress:c.address||"",customerTaxId:c.taxId||""}));
+            setShowNewInvoice(true);
+          }}
+        />
+      )}
+
       {/* ── MODAL: Settings ── */}
       {showSettings&&(
         <Modal onClose={()=>setShowSettings(false)} w={640}>
           <MHead title="⚙️ ตั้งค่าระบบ" onClose={()=>setShowSettings(false)}/>
           {/* Settings tabs */}
           <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:`1px solid ${T.border}`,paddingBottom:12}}>
-            {[{id:"profile",label:"👤 โปรไฟล์"},{id:"system",label:"🏢 ระบบ"},{id:"backup",label:"💾 Backup"},{id:"about",label:"ℹ️ เกี่ยวกับ"}].map(t=>(
+            {[{id:"profile",label:"👤 โปรไฟล์"},...(user.role==="admin"?[{id:"system",label:"🏢 ระบบ"},{id:"backup",label:"💾 Backup"}]:[]),{id:"install",label:"📱 ติดตั้งแอป"},{id:"about",label:"ℹ️ เกี่ยวกับ"}].map(t=>(
               <button key={t.id} onClick={()=>setSettingsTab(t.id)} style={{padding:"7px 16px",borderRadius:8,border:settingsTab===t.id?`1px solid ${T.navActiveBorder}`:`1px solid transparent`,background:settingsTab===t.id?"rgba(59,91,139,0.15)":"transparent",color:settingsTab===t.id?"#3b5b8b":T.sub,cursor:"pointer",fontSize:13,fontFamily:"'Sarabun',sans-serif",fontWeight:settingsTab===t.id?600:400}}>{t.label}</button>
             ))}
           </div>
@@ -2216,7 +2504,7 @@ export default function App() {
             </div>
           )}
 
-          {settingsTab==="system"&&(
+          {settingsTab==="system"&&user.role==="admin"&&(
             <div>
               {/* Company Info */}
               <div style={{fontSize:13,fontWeight:600,color:T.text,marginBottom:14}}>🏢 ข้อมูลบริษัท / ร้านค้า</div>
@@ -2248,12 +2536,16 @@ export default function App() {
             </div>
           )}
 
-          {settingsTab==="backup"&&(
+          {settingsTab==="backup"&&user.role==="admin"&&(
             <BackupRestore
               projectId={(typeof process !== "undefined" && process.env && process.env.REACT_APP_FB_PROJECT_ID) || "cpu-erp"}
               user={user}
               role={role}
             />
+          )}
+
+          {settingsTab==="install"&&(
+            <InstallPWA/>
           )}
 
           {settingsTab==="about"&&(
@@ -2498,29 +2790,29 @@ export default function App() {
               </div>
 
               {/* Customer info */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:24,padding:16,background:"#f8fafc",borderRadius:10,border:"1px solid #e2e8f0"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:24,padding:18,background:"#f8fafc",borderRadius:10,border:"1px solid #e2e8f0"}}>
                 <div>
-                  <div style={{fontSize:11,color:"#64748b",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>ลูกค้า</div>
-                  <div style={{fontSize:14,fontWeight:700,color:"#1e293b"}}>{showPrintOrder.customerName}</div>
-                  <div style={{fontSize:12,color:"#475569",marginTop:2}}>📞 {showPrintOrder.customerPhone||"-"}</div>
+                  <div style={{fontSize:12,color:"#64748b",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>ลูกค้า</div>
+                  <div style={{fontSize:17,fontWeight:700,color:"#1e293b"}}>{showPrintOrder.customerName}</div>
+                  <div style={{fontSize:14,color:"#475569",marginTop:4}}>📞 {showPrintOrder.customerPhone||"-"}</div>
                 </div>
                 <div>
-                  <div style={{fontSize:11,color:"#64748b",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>ที่อยู่จัดส่ง</div>
-                  <div style={{fontSize:12,color:"#475569"}}>{showPrintOrder.customerAddress||"-"}</div>
+                  <div style={{fontSize:12,color:"#64748b",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>ที่อยู่จัดส่ง</div>
+                  <div style={{fontSize:14,color:"#475569",lineHeight:1.6}}>{showPrintOrder.customerAddress||"-"}</div>
                 </div>
               </div>
 
               {/* Items table — Model | Color | SIZE+qty ×4 | จำนวน */}
-              <table style={{width:"100%",borderCollapse:"collapse",marginBottom:20,fontSize:11}}>
+              <table style={{width:"100%",borderCollapse:"collapse",marginBottom:20,fontSize:14}}>
                 <thead>
                   <tr style={{background:"#3b5b8b",color:"white"}}>
-                    <th style={{padding:"7px 8px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7"}}>รุ่น</th>
-                    <th style={{padding:"7px 8px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7"}}>สี</th>
+                    <th style={{padding:"9px 10px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:13}}>รุ่น</th>
+                    <th style={{padding:"9px 10px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:13}}>สี</th>
                     {[1,2,3,4].flatMap(i=>[
-                      <th key={`sh${i}`} style={{padding:"6px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",background:"#166534",color:"#bbf7d0",minWidth:36}}>SIZE</th>,
-                      <th key={`qh${i}`} style={{padding:"6px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",minWidth:28}}></th>
+                      <th key={`sh${i}`} style={{padding:"8px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",background:"#166534",color:"#bbf7d0",minWidth:40,fontSize:12}}>SIZE</th>,
+                      <th key={`qh${i}`} style={{padding:"8px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",minWidth:32,fontSize:12}}></th>
                     ])}
-                    <th style={{padding:"7px 8px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7"}}>จำนวน</th>
+                    <th style={{padding:"9px 10px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",fontSize:13}}>จำนวน</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2545,30 +2837,30 @@ export default function App() {
                     const lastIdx=rows.length-1;
                     return rows.map((chunk,ci)=>(
                       <tr key={`${gi}-${ci}`} style={{borderBottom:"1px solid #e2e8f0",background:gi%2===0?"white":"#f8fafc"}}>
-                        <td style={{padding:"7px 8px",fontWeight:600,color:"#1e293b",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>{ci===0?group.clothingName:""}</td>
-                        <td style={{padding:"7px 8px",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>
+                        <td style={{padding:"9px 10px",fontWeight:600,color:"#1e293b",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:14}}>{ci===0?group.clothingName:""}</td>
+                        <td style={{padding:"9px 10px",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:14}}>
                           {ci===0&&<div style={{display:"flex",alignItems:"center",gap:5}}>
-                            <div style={{width:10,height:10,borderRadius:2,background:group.colorHex,border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/>
+                            <div style={{width:12,height:12,borderRadius:2,background:group.colorHex,border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/>
                             <span>{group.colorName}</span>
                           </div>}
                         </td>
                         {chunk.map(oi=>[
-                          <td key={`s-${oi.size}`} style={{padding:"6px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#3b5b8b",border:"1px solid #e2e8f0",background:"rgba(219,234,254,0.4)"}}>{oi.size}</td>,
-                          <td key={`q-${oi.size}`} style={{padding:"6px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#059669",border:"1px solid #e2e8f0"}}>{oi.qty}</td>
+                          <td key={`s-${oi.size}`} style={{padding:"8px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#3b5b8b",border:"1px solid #e2e8f0",background:"rgba(219,234,254,0.4)",fontSize:14}}>{oi.size}</td>,
+                          <td key={`q-${oi.size}`} style={{padding:"8px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#059669",border:"1px solid #e2e8f0",fontSize:14}}>{oi.qty}</td>
                         ])}
                         {Array(4-chunk.length).fill(null).flatMap((_,i)=>[
                           <td key={`e1-${ci}-${i}`} style={{border:"1px solid #f1f5f9",background:"#fafafa"}}/>,
                           <td key={`e2-${ci}-${i}`} style={{border:"1px solid #f1f5f9"}}/>
                         ])}
-                        <td style={{padding:"7px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:13,color:"#3b5b8b",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>{ci===lastIdx?totalQty:""}</td>
+                        <td style={{padding:"9px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:16,color:"#3b5b8b",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>{ci===lastIdx?totalQty:""}</td>
                       </tr>
                     ));
                   })}
                 </tbody>
                 <tfoot>
                   <tr style={{background:"#f1f5f9",fontWeight:700}}>
-                    <td colSpan={10} style={{padding:"9px 12px",textAlign:"right",color:"#475569",fontSize:11}}>รวมทั้งหมด</td>
-                    <td style={{padding:"9px 12px",textAlign:"center",fontFamily:"monospace",fontSize:14,color:"#3b5b8b",border:"1px solid #e2e8f0"}}>{(showPrintOrder.items||[]).reduce((s,i)=>s+i.qty,0)} ชิ้น</td>
+                    <td colSpan={10} style={{padding:"11px 14px",textAlign:"right",color:"#475569",fontSize:13}}>รวมทั้งหมด</td>
+                    <td style={{padding:"11px 14px",textAlign:"center",fontFamily:"monospace",fontSize:16,color:"#3b5b8b",border:"1px solid #e2e8f0"}}>{(showPrintOrder.items||[]).reduce((s,i)=>s+i.qty,0)} ชิ้น</td>
                   </tr>
                 </tfoot>
               </table>
@@ -2902,7 +3194,10 @@ export default function App() {
                 {/* ข้อมูลบริษัท */}
                 <div style={{flex:1}}>
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
-                    <div style={{width:46,height:46,background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>{companyInfo.logo||"⚙️"}</div>
+                    <div style={{width:54,height:54,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden",background:"white"}}>
+                      <img src={`${process.env.PUBLIC_URL}/cpu-logo.png`} alt="CPU Logo" style={{width:"100%",height:"100%",objectFit:"contain"}}
+                        onError={(e)=>{e.target.style.display="none";e.target.parentElement.innerHTML=companyInfo.logo||"⚙️";e.target.parentElement.style.background="linear-gradient(135deg,#3b5b8b,#3b5b8b)";e.target.parentElement.style.fontSize="24px";e.target.parentElement.style.color="white";}}/>
+                    </div>
                     <div>
                       <div style={{fontSize:20,fontWeight:800,color:"#3b5b8b",letterSpacing:2}}>{companyInfo.name||"CPU"}</div>
                     </div>
@@ -2917,22 +3212,22 @@ export default function App() {
 
                 {/* ประเภทเอกสาร + เลขที่ */}
                 <div style={{textAlign:"right",minWidth:220}}>
-                  <div style={{display:"inline-block",background:"#3b5b8b",color:"white",padding:"6px 22px",borderRadius:6,fontSize:16,fontWeight:800,marginBottom:10,letterSpacing:1}}>
+                  <div data-doc-label style={{display:"inline-block",background:"#3b5b8b",color:"white",padding:"6px 22px",borderRadius:6,fontSize:16,fontWeight:800,marginBottom:10,letterSpacing:1}}>
                     {docTypeLabel(showPrintInvoice.docType)}
                   </div>
-                  <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  <div style={{display:"flex",flexDirection:"column",gap:5}}>
                     <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
-                      <span style={{fontSize:11,color:"#64748b",fontWeight:500,minWidth:68,textAlign:"right"}}>เลขที่:</span>
-                      <span style={{fontSize:13,color:"#3b5b8b",fontFamily:"monospace",fontWeight:700}}>{showPrintInvoice.invoiceNo}</span>
+                      <span style={{fontSize:13,color:"#64748b",fontWeight:500,minWidth:72,textAlign:"right"}}>เลขที่:</span>
+                      <span style={{fontSize:15,color:"#3b5b8b",fontFamily:"monospace",fontWeight:700}}>{showPrintInvoice.invoiceNo}</span>
                     </div>
                     <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
-                      <span style={{fontSize:11,color:"#64748b",fontWeight:500,minWidth:68,textAlign:"right"}}>วันที่ออก:</span>
-                      <span style={{fontSize:12,color:"#1e293b",fontWeight:600}}>{showPrintInvoice.date}</span>
+                      <span style={{fontSize:13,color:"#64748b",fontWeight:500,minWidth:72,textAlign:"right"}}>วันที่ออก:</span>
+                      <span style={{fontSize:14,color:"#1e293b",fontWeight:600}}>{showPrintInvoice.date}</span>
                     </div>
                     {showPrintInvoice.dueDate&&(
                       <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
-                        <span style={{fontSize:11,color:"#64748b",fontWeight:500,minWidth:68,textAlign:"right"}}>ครบกำหนด:</span>
-                        <span style={{fontSize:12,color:"#ef4444",fontWeight:700}}>{showPrintInvoice.dueDate}</span>
+                        <span style={{fontSize:13,color:"#64748b",fontWeight:500,minWidth:72,textAlign:"right"}}>ครบกำหนด:</span>
+                        <span style={{fontSize:14,color:"#ef4444",fontWeight:700}}>{showPrintInvoice.dueDate}</span>
                       </div>
                     )}
                     {showPrintInvoice.useVat&&(
@@ -2946,20 +3241,20 @@ export default function App() {
 
               {/* ── BILL TO / FROM ── */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:0,marginBottom:20,border:"1px solid #e2e8f0",borderRadius:8,overflow:"hidden"}}>
-                <div style={{padding:"14px 18px",background:"#f8fafc",borderRight:"1px solid #e2e8f0"}}>
-                  <div style={{fontSize:9,color:"#3b5b8b",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8,paddingBottom:6,borderBottom:"1px solid #e2e8f0"}}>ออกให้แก่ (Bill To)</div>
-                  <div style={{fontSize:14,fontWeight:700,color:"#1e293b",marginBottom:3}}>{showPrintInvoice.customerName||"-"}</div>
-                  {showPrintInvoice.customerPhone&&<div style={{fontSize:11,color:"#475569",marginBottom:2}}>โทร: {showPrintInvoice.customerPhone}</div>}
-                  {showPrintInvoice.customerTaxId&&<div style={{fontSize:11,color:"#475569",marginBottom:2}}>เลขผู้เสียภาษี: {showPrintInvoice.customerTaxId}</div>}
-                  {showPrintInvoice.customerAddress&&<div style={{fontSize:11,color:"#475569",lineHeight:1.6,marginTop:4}}>{showPrintInvoice.customerAddress}</div>}
+                <div style={{padding:"16px 20px",background:"#f8fafc",borderRight:"1px solid #e2e8f0"}}>
+                  <div style={{fontSize:11,color:"#3b5b8b",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8,paddingBottom:6,borderBottom:"1px solid #e2e8f0"}}>ออกให้แก่ (Bill To)</div>
+                  <div style={{fontSize:17,fontWeight:700,color:"#1e293b",marginBottom:4}}>{showPrintInvoice.customerName||"-"}</div>
+                  {showPrintInvoice.customerPhone&&<div style={{fontSize:13,color:"#475569",marginBottom:3}}>โทร: {showPrintInvoice.customerPhone}</div>}
+                  {showPrintInvoice.customerTaxId&&<div style={{fontSize:13,color:"#475569",marginBottom:3}}>เลขผู้เสียภาษี: {showPrintInvoice.customerTaxId}</div>}
+                  {showPrintInvoice.customerAddress&&<div style={{fontSize:13,color:"#475569",lineHeight:1.6,marginTop:4}}>{showPrintInvoice.customerAddress}</div>}
                 </div>
-                <div style={{padding:"14px 18px",background:"#f8fafc"}}>
-                  <div style={{fontSize:9,color:"#3b5b8b",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8,paddingBottom:6,borderBottom:"1px solid #e2e8f0"}}>ออกโดย (From)</div>
-                  <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:3}}>{companyInfo.name||"CPU"}</div>
-                  {companyInfo.phone&&<div style={{fontSize:11,color:"#475569",marginBottom:2}}>โทร: {companyInfo.phone}</div>}
-                  {companyInfo.email&&<div style={{fontSize:11,color:"#475569",marginBottom:2}}>{companyInfo.email}</div>}
-                  {companyInfo.address&&<div style={{fontSize:11,color:"#475569",lineHeight:1.6,marginTop:4}}>{companyInfo.address}</div>}
-                  {companyInfo.taxId&&<div style={{fontSize:11,color:"#475569",marginTop:2}}>เลขผู้เสียภาษี: {companyInfo.taxId}</div>}
+                <div style={{padding:"16px 20px",background:"#f8fafc"}}>
+                  <div style={{fontSize:11,color:"#3b5b8b",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8,paddingBottom:6,borderBottom:"1px solid #e2e8f0"}}>ออกโดย (From)</div>
+                  <div style={{fontSize:15,fontWeight:700,color:"#1e293b",marginBottom:4}}>{companyInfo.name||"CPU"}</div>
+                  {companyInfo.phone&&<div style={{fontSize:13,color:"#475569",marginBottom:3}}>โทร: {companyInfo.phone}</div>}
+                  {companyInfo.email&&<div style={{fontSize:13,color:"#475569",marginBottom:3}}>{companyInfo.email}</div>}
+                  {companyInfo.address&&<div style={{fontSize:13,color:"#475569",lineHeight:1.6,marginTop:4}}>{companyInfo.address}</div>}
+                  {companyInfo.taxId&&<div style={{fontSize:13,color:"#475569",marginTop:3}}>เลขผู้เสียภาษี: {companyInfo.taxId}</div>}
                 </div>
               </div>
 
@@ -2975,17 +3270,17 @@ export default function App() {
                   return acc;
                 },{}));
                 return (
-                  <table style={{width:"100%",borderCollapse:"collapse",marginBottom:16,fontSize:11}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",marginBottom:16,fontSize:14}}>
                     <thead>
                       <tr style={{background:"#3b5b8b",color:"white"}}>
-                        <th style={{padding:"7px 8px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7"}}>รุ่น</th>
-                        <th style={{padding:"7px 8px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7"}}>สี</th>
+                        <th style={{padding:"9px 10px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:13}}>รุ่น</th>
+                        <th style={{padding:"9px 10px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:13}}>สี</th>
                         {[1,2,3,4].flatMap(i=>[
-                          <th key={`sh${i}`} style={{padding:"6px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",background:"#166534",color:"#bbf7d0",minWidth:36,fontSize:10}}>SIZE</th>,
-                          <th key={`qh${i}`} style={{padding:"6px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",minWidth:28,fontSize:10}}></th>
+                          <th key={`sh${i}`} style={{padding:"8px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",background:"#166534",color:"#bbf7d0",minWidth:40,fontSize:12}}>SIZE</th>,
+                          <th key={`qh${i}`} style={{padding:"8px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",minWidth:32,fontSize:12}}></th>
                         ])}
-                        <th style={{padding:"7px 8px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",width:60}}>จำนวน</th>
-                        <th style={{padding:"7px 8px",textAlign:"right",fontWeight:700,border:"1px solid #0284c7",width:100}}>ราคา (฿)</th>
+                        <th style={{padding:"9px 10px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",width:64,fontSize:13}}>จำนวน</th>
+                        <th style={{padding:"9px 10px",textAlign:"right",fontWeight:700,border:"1px solid #0284c7",width:110,fontSize:13}}>ราคา (฿)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3008,23 +3303,23 @@ export default function App() {
                           const rowSub=chunk.reduce((s,i)=>s+(Number(i.unitPrice)||0)*i.qty,0);
                           return (
                             <tr key={`${gi}-${ci}`} style={{background:gi%2===0?"white":"#f8fafc"}}>
-                              <td style={{padding:"7px 8px",fontWeight:600,color:"#1e293b",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>{ci===0?group.clothingName:""}</td>
-                              <td style={{padding:"7px 8px",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>
+                              <td style={{padding:"9px 10px",fontWeight:600,color:"#1e293b",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:14}}>{ci===0?group.clothingName:""}</td>
+                              <td style={{padding:"9px 10px",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:14}}>
                                 {ci===0&&<div style={{display:"flex",alignItems:"center",gap:5}}>
-                                  <div style={{width:10,height:10,borderRadius:2,background:group.colorHex,border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/>
+                                  <div style={{width:12,height:12,borderRadius:2,background:group.colorHex,border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/>
                                   <span>{group.colorName}</span>
                                 </div>}
                               </td>
                               {chunk.map(it=>[
-                                <td key={`s-${it.size}`} style={{padding:"6px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#3b5b8b",border:"1px solid #e2e8f0",background:"rgba(219,234,254,0.4)"}}>{it.size}</td>,
-                                <td key={`q-${it.size}`} style={{padding:"6px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#059669",border:"1px solid #e2e8f0"}}>{it.qty}</td>
+                                <td key={`s-${it.size}`} style={{padding:"8px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#3b5b8b",border:"1px solid #e2e8f0",background:"rgba(219,234,254,0.4)",fontSize:14}}>{it.size}</td>,
+                                <td key={`q-${it.size}`} style={{padding:"8px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#059669",border:"1px solid #e2e8f0",fontSize:14}}>{it.qty}</td>
                               ])}
                               {Array(4-chunk.length).fill(null).flatMap((_,i)=>[
                                 <td key={`e1-${ci}-${i}`} style={{border:"1px solid #f1f5f9",background:"#fafafa"}}/>,
                                 <td key={`e2-${ci}-${i}`} style={{border:"1px solid #f1f5f9"}}/>
                               ])}
-                              <td style={{padding:"7px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:13,color:"#3b5b8b",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>{rowQty}</td>
-                              <td style={{padding:"7px 8px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#1e293b",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>{rowSub.toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                              <td style={{padding:"9px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:16,color:"#3b5b8b",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>{rowQty}</td>
+                              <td style={{padding:"9px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#1e293b",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:14}}>{rowSub.toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                             </tr>
                           );
                         });
@@ -3032,16 +3327,16 @@ export default function App() {
                       {/* รายการกรอกเอง (ไม่มี clothing) — span คอลัมน์รุ่น+สี+ไซส์ */}
                       {generic.map((it,i)=>(
                         <tr key={`g${i}`} style={{background:(groups.length+i)%2===0?"white":"#f8fafc"}}>
-                          <td colSpan={10} style={{padding:"7px 8px",fontWeight:500,color:"#1e293b",border:"1px solid #e2e8f0"}}>
+                          <td colSpan={10} style={{padding:"9px 10px",fontWeight:500,color:"#1e293b",border:"1px solid #e2e8f0",fontSize:14}}>
                             <div style={{display:"flex",alignItems:"center",gap:6}}>
-                              {it.colorHex&&<div style={{width:10,height:10,borderRadius:2,background:it.colorHex,border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/>}
+                              {it.colorHex&&<div style={{width:12,height:12,borderRadius:2,background:it.colorHex,border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/>}
                               <span>{it.description}</span>
-                              {it.colorName&&<span style={{color:"#64748b",fontSize:10}}>· {it.colorName}</span>}
-                              {it.unit&&<span style={{color:"#64748b",fontSize:10}}>· {it.unit}</span>}
+                              {it.colorName&&<span style={{color:"#64748b",fontSize:12}}>· {it.colorName}</span>}
+                              {it.unit&&<span style={{color:"#64748b",fontSize:12}}>· {it.unit}</span>}
                             </div>
                           </td>
-                          <td style={{padding:"7px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:13,color:"#3b5b8b",border:"1px solid #e2e8f0"}}>{it.qty}</td>
-                          <td style={{padding:"7px 8px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#1e293b",border:"1px solid #e2e8f0"}}>{(it.qty*it.unitPrice).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                          <td style={{padding:"9px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:16,color:"#3b5b8b",border:"1px solid #e2e8f0"}}>{it.qty}</td>
+                          <td style={{padding:"9px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#1e293b",border:"1px solid #e2e8f0",fontSize:14}}>{(it.qty*it.unitPrice).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                         </tr>
                       ))}
                       {/* padding rows */}
@@ -3053,18 +3348,18 @@ export default function App() {
                     </tbody>
                     <tfoot>
                       <tr style={{background:"#f8fafc",borderTop:"2px solid #e2e8f0"}}>
-                        <td colSpan={11} style={{padding:"10px 12px",textAlign:"right",fontWeight:600,fontSize:12,color:"#64748b",border:"1px solid #e2e8f0"}}>ยอดรวมก่อนภาษี</td>
-                        <td style={{padding:"10px 12px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#1e293b",fontSize:13,border:"1px solid #e2e8f0"}}>{(showPrintInvoice.subtotal||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                        <td colSpan={11} style={{padding:"11px 14px",textAlign:"right",fontWeight:600,fontSize:14,color:"#64748b",border:"1px solid #e2e8f0"}}>ยอดรวมก่อนภาษี</td>
+                        <td style={{padding:"11px 14px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#1e293b",fontSize:15,border:"1px solid #e2e8f0"}}>{(showPrintInvoice.subtotal||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                       </tr>
                       {showPrintInvoice.useVat&&(
                         <tr style={{background:"#f8fafc"}}>
-                          <td colSpan={11} style={{padding:"8px 12px",textAlign:"right",fontSize:12,color:"#64748b",border:"1px solid #e2e8f0"}}>ภาษีมูลค่าเพิ่ม (VAT {showPrintInvoice.vatRate}%)</td>
-                          <td style={{padding:"8px 12px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#334155",border:"1px solid #e2e8f0"}}>{(showPrintInvoice.vat||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                          <td colSpan={11} style={{padding:"10px 14px",textAlign:"right",fontSize:14,color:"#64748b",border:"1px solid #e2e8f0"}}>ภาษีมูลค่าเพิ่ม (VAT {showPrintInvoice.vatRate}%)</td>
+                          <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#334155",border:"1px solid #e2e8f0",fontSize:14}}>{(showPrintInvoice.vat||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                         </tr>
                       )}
                       <tr style={{background:"#3b5b8b"}}>
-                        <td colSpan={11} style={{padding:"12px 14px",textAlign:"right",fontWeight:800,fontSize:14,color:"white"}}>ยอดรวมทั้งสิ้น</td>
-                        <td style={{padding:"12px 14px",textAlign:"right",fontFamily:"monospace",fontWeight:800,fontSize:15,color:"white"}}>{(showPrintInvoice.total||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                        <td colSpan={11} style={{padding:"14px 16px",textAlign:"right",fontWeight:800,fontSize:16,color:"white"}}>ยอดรวมทั้งสิ้น</td>
+                        <td style={{padding:"14px 16px",textAlign:"right",fontFamily:"monospace",fontWeight:800,fontSize:18,color:"white"}}>{(showPrintInvoice.total||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -3073,16 +3368,16 @@ export default function App() {
 
               {/* ── บัญชีรับเงิน ── */}
               {showPrintInvoice.bankAccount&&(
-                <div style={{padding:"12px 16px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,marginBottom:12,display:"flex",alignItems:"center",gap:14}}>
-                  <div style={{fontSize:24}}>🏦</div>
+                <div style={{padding:"16px 20px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,marginBottom:12,display:"flex",alignItems:"center",gap:16}}>
+                  <div style={{fontSize:34}}>🏦</div>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:10,color:"#3b5b8b",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3}}>
+                    <div style={{fontSize:14,color:"#3b5b8b",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>
                       โอนชำระเข้าบัญชี{showPrintInvoice.bankAccount.label?` (${showPrintInvoice.bankAccount.label})`:""}
                     </div>
-                    <div style={{display:"flex",flexWrap:"wrap",gap:18,fontSize:12,color:"#1e293b"}}>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:22,fontSize:15,color:"#1e293b",lineHeight:1.6}}>
                       <div><b>ธนาคาร:</b> {showPrintInvoice.bankAccount.bankName||"-"}</div>
                       <div><b>ชื่อบัญชี:</b> {showPrintInvoice.bankAccount.accountName||"-"}</div>
-                      <div><b>เลขที่:</b> <span style={{fontFamily:"monospace",fontWeight:700,color:"#3b5b8b"}}>{showPrintInvoice.bankAccount.accountNo||"-"}</span></div>
+                      <div><b>เลขที่:</b> <span style={{fontFamily:"monospace",fontWeight:700,color:"#3b5b8b",fontSize:17}}>{showPrintInvoice.bankAccount.accountNo||"-"}</span></div>
                     </div>
                   </div>
                 </div>
@@ -3139,8 +3434,11 @@ export default function App() {
                 </div>
               </div>
               <div style={{display:"flex",gap:10}}>
-                <button onClick={()=>setShowPrintInvoice(null)} style={{padding:"9px 20px",borderRadius:9,border:"1px solid #e2e8f0",background:"white",color:"#64748b",fontSize:13,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>ปิด</button>
-                <button onClick={()=>printElementById("invoice-print-area")} style={{padding:"9px 20px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>🖨️ พิมพ์เอกสาร</button>
+                <button onClick={()=>setShowPrintInvoice(null)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid #e2e8f0",background:"white",color:"#64748b",fontSize:13,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>ปิด</button>
+                <button onClick={()=>downloadInvoicePdf(showPrintInvoice,false)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(220,38,38,0.35)",background:"white",color:"#dc2626",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>📄 PDF</button>
+                <button onClick={()=>downloadInvoicePdf(showPrintInvoice,true)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(220,38,38,0.35)",background:"white",color:"#dc2626",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>📄 PDF × 3 ชุด</button>
+                <button onClick={()=>printElementById("invoice-print-area")} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(59,91,139,0.35)",background:"white",color:"#3b5b8b",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>🖨️ พิมพ์ปกติ</button>
+                <button onClick={()=>printInvoiceCopies("invoice-print-area")} style={{padding:"9px 16px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>🖨️ พิมพ์ × 3 ชุด</button>
               </div>
             </div>
           </div>
