@@ -3635,7 +3635,7 @@ export default function App() {
           <div className="print-modal-card" onMouseDown={e=>e.stopPropagation()} style={{background:"white",borderRadius:16,width:760,maxHeight:"94vh",overflowY:"auto",boxShadow:"0 24px 60px rgba(0,0,0,0.7)"}}>
 
             {/* ── เนื้อหาบิล (พิมพ์ได้) ── */}
-            <div id="invoice-print-area" style={{padding:"36px 44px",fontFamily:"'Sarabun',sans-serif",color:"#1e293b"}}>
+            <div id="invoice-print-area" style={{padding:"14px 44px 18px",fontFamily:"'Sarabun',sans-serif",color:"#1e293b"}}>
 
               {/* ── HEADER ── */}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,paddingBottom:18,borderBottom:"3px solid #3b5b8b"}}>
@@ -3740,8 +3740,9 @@ export default function App() {
                           <th key={`sh${i}`} style={{padding:"8px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",background:"#166534",color:"#bbf7d0",minWidth:40,fontSize:12}}>SIZE</th>,
                           <th key={`qh${i}`} style={{padding:"8px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",minWidth:32,fontSize:12}}></th>
                         ])}
-                        <th style={{padding:"9px 10px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",width:64,fontSize:13}}>จำนวน</th>
-                        <th style={{padding:"9px 10px",textAlign:"right",fontWeight:700,border:"1px solid #0284c7",width:110,fontSize:13}}>ราคา (฿)</th>
+                        <th style={{padding:"9px 10px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",width:60,fontSize:13}}>จำนวน</th>
+                        <th style={{padding:"9px 8px",textAlign:"right",fontWeight:700,border:"1px solid #0284c7",width:80,fontSize:12}}>ราคา/หน่วย</th>
+                        <th style={{padding:"9px 10px",textAlign:"right",fontWeight:700,border:"1px solid #0284c7",width:100,fontSize:13}}>ราคารวม (฿)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3780,17 +3781,15 @@ export default function App() {
                                 <td key={`e2-${ci}-${i}`} style={{border:"1px solid #f1f5f9"}}/>
                               ])}
                               <td style={{padding:"9px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:16,color:"#3b5b8b",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>{rowQty}</td>
-                              <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>
-                                {(()=>{
-                                  const prices=chunk.map(i=>Number(i.unitPrice)||0).filter(p=>p>0);
-                                  const uniq=[...new Set(prices)];
-                                  const unitTxt=uniq.length===1?`@${uniq[0].toLocaleString("th-TH",{minimumFractionDigits:2})}`:(rowQty>0?`@${(rowSub/rowQty).toFixed(2)}*`:"");
-                                  return (<>
-                                    <div style={{fontSize:10,color:"#64748b",fontWeight:500}}>{unitTxt}</div>
-                                    <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{rowSub.toLocaleString("th-TH",{minimumFractionDigits:2})}</div>
-                                  </>);
-                                })()}
-                              </td>
+                              {(()=>{
+                                const prices=chunk.map(i=>Number(i.unitPrice)||0).filter(p=>p>0);
+                                const uniq=[...new Set(prices)];
+                                const unitTxt=uniq.length===1?uniq[0].toLocaleString("th-TH",{minimumFractionDigits:2}):(rowQty>0?`${(rowSub/rowQty).toFixed(2)}*`:"-");
+                                return (<>
+                                  <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"monospace",fontSize:12,color:"#475569",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>{unitTxt}</td>
+                                  <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:700,fontSize:13,color:"#1e293b",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>{rowSub.toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                                </>);
+                              })()}
                             </tr>
                           );
                         });
@@ -3807,50 +3806,48 @@ export default function App() {
                             </div>
                           </td>
                           <td style={{padding:"9px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:16,color:"#3b5b8b",border:"1px solid #e2e8f0"}}>{it.qty}</td>
-                          <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",border:"1px solid #e2e8f0"}}>
-                            <div style={{fontSize:10,color:"#64748b",fontWeight:500}}>@{(Number(it.unitPrice)||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</div>
-                            <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{(it.qty*it.unitPrice).toLocaleString("th-TH",{minimumFractionDigits:2})}</div>
-                          </td>
+                          <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"monospace",fontSize:12,color:"#475569",border:"1px solid #e2e8f0"}}>{(Number(it.unitPrice)||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                          <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:700,fontSize:13,color:"#1e293b",border:"1px solid #e2e8f0"}}>{(it.qty*it.unitPrice).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                         </tr>
                       ))}
                       {/* padding rows */}
                       {(showPrintInvoice.items||[]).length<4&&Array.from({length:Math.max(0,4-(showPrintInvoice.items||[]).length)}).map((_,i)=>(
                         <tr key={`pad-${i}`}>
-                          <td colSpan={12} style={{padding:"9px 12px",border:"1px solid #f1f5f9"}}>&nbsp;</td>
+                          <td colSpan={13} style={{padding:"9px 12px",border:"1px solid #f1f5f9"}}>&nbsp;</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       {(showPrintInvoice.itemDiscountTotal>0||showPrintInvoice.billDiscount>0)&&(
                         <tr style={{background:"#fffbeb"}}>
-                          <td colSpan={11} style={{padding:"9px 14px",textAlign:"right",fontSize:13,color:"#92400e",border:"1px solid #e2e8f0"}}>ราคารวมก่อนส่วนลด</td>
+                          <td colSpan={12} style={{padding:"9px 14px",textAlign:"right",fontSize:13,color:"#92400e",border:"1px solid #e2e8f0"}}>ราคารวมก่อนส่วนลด</td>
                           <td style={{padding:"9px 14px",textAlign:"right",fontFamily:"monospace",color:"#475569",border:"1px solid #e2e8f0",fontSize:13}}>{(showPrintInvoice.grossSubtotal||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                         </tr>
                       )}
                       {showPrintInvoice.itemDiscountTotal>0&&(
                         <tr style={{background:"#fffbeb"}}>
-                          <td colSpan={11} style={{padding:"9px 14px",textAlign:"right",fontSize:13,color:"#92400e",border:"1px solid #e2e8f0"}}>ส่วนลดรายการ</td>
+                          <td colSpan={12} style={{padding:"9px 14px",textAlign:"right",fontSize:13,color:"#92400e",border:"1px solid #e2e8f0"}}>ส่วนลดรายการ</td>
                           <td style={{padding:"9px 14px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#b45309",border:"1px solid #e2e8f0",fontSize:13}}>-{(showPrintInvoice.itemDiscountTotal||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                         </tr>
                       )}
                       {showPrintInvoice.billDiscount>0&&(
                         <tr style={{background:"#fffbeb"}}>
-                          <td colSpan={11} style={{padding:"9px 14px",textAlign:"right",fontSize:13,color:"#92400e",border:"1px solid #e2e8f0"}}>ส่วนลดท้ายบิล{showPrintInvoice.discountType==="percent"?` (${showPrintInvoice.discount}%)`:""}</td>
+                          <td colSpan={12} style={{padding:"9px 14px",textAlign:"right",fontSize:13,color:"#92400e",border:"1px solid #e2e8f0"}}>ส่วนลดท้ายบิล{showPrintInvoice.discountType==="percent"?` (${showPrintInvoice.discount}%)`:""}</td>
                           <td style={{padding:"9px 14px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#b45309",border:"1px solid #e2e8f0",fontSize:13}}>-{(showPrintInvoice.billDiscount||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                         </tr>
                       )}
                       <tr style={{background:"#f8fafc",borderTop:"2px solid #e2e8f0"}}>
-                        <td colSpan={11} style={{padding:"11px 14px",textAlign:"right",fontWeight:600,fontSize:14,color:"#64748b",border:"1px solid #e2e8f0"}}>ยอดรวมก่อนภาษี</td>
+                        <td colSpan={12} style={{padding:"11px 14px",textAlign:"right",fontWeight:600,fontSize:14,color:"#64748b",border:"1px solid #e2e8f0"}}>ยอดรวมก่อนภาษี</td>
                         <td style={{padding:"11px 14px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#1e293b",fontSize:15,border:"1px solid #e2e8f0"}}>{(showPrintInvoice.subtotal||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                       </tr>
                       {showPrintInvoice.useVat&&(
                         <tr style={{background:"#f8fafc"}}>
-                          <td colSpan={11} style={{padding:"10px 14px",textAlign:"right",fontSize:14,color:"#64748b",border:"1px solid #e2e8f0"}}>ภาษีมูลค่าเพิ่ม (VAT {showPrintInvoice.vatRate}%)</td>
+                          <td colSpan={12} style={{padding:"10px 14px",textAlign:"right",fontSize:14,color:"#64748b",border:"1px solid #e2e8f0"}}>ภาษีมูลค่าเพิ่ม (VAT {showPrintInvoice.vatRate}%)</td>
                           <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#334155",border:"1px solid #e2e8f0",fontSize:14}}>{(showPrintInvoice.vat||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                         </tr>
                       )}
                       <tr style={{background:"#3b5b8b"}}>
-                        <td colSpan={11} style={{padding:"14px 16px",textAlign:"right",fontWeight:800,fontSize:16,color:"white"}}>ยอดรวมทั้งสิ้น</td>
+                        <td colSpan={12} style={{padding:"14px 16px",textAlign:"right",fontWeight:800,fontSize:16,color:"white"}}>ยอดรวมทั้งสิ้น</td>
                         <td style={{padding:"14px 16px",textAlign:"right",fontFamily:"monospace",fontWeight:800,fontSize:18,color:"white"}}>{(showPrintInvoice.total||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                       </tr>
                     </tfoot>
@@ -3898,11 +3895,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* ── footer ── */}
-              <div style={{marginTop:16,paddingTop:10,borderTop:"1px solid #f1f5f9",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div style={{fontSize:9,color:"#cbd5e1"}}>เอกสารออกโดยระบบ CPU ERP · {showPrintInvoice.invoiceNo}</div>
-                <div style={{fontSize:9,color:"#cbd5e1"}}>ผู้ออกเอกสาร: {showPrintInvoice.by} · {showPrintInvoice.date}</div>
-              </div>
             </div>
 
             {/* ── ปุ่มด้านล่าง (ไม่พิมพ์) ── */}
