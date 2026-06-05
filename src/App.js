@@ -2546,7 +2546,85 @@ export default function App() {
 
           {/* ── CATALOG INBOX — order จาก /catalog ── */}
           {activeTab==="catalogInbox"&&(
-            <CatalogInboxTab catalogOrders={catalogOrders}/>
+            <CatalogInboxTab
+              catalogOrders={catalogOrders}
+              customers={customers}
+              clothingItems={clothingItems}
+              user={user}
+              onConvert={async (co) => {
+                // 1) หาลูกค้าจากเบอร์โทร (normalize: เอาเฉพาะเลข)
+                const normPhone = (s) => String(s||"").replace(/\D/g, "");
+                const phoneKey = normPhone(co.phone);
+                let customer = customers.find(c => normPhone(c.phone) === phoneKey && phoneKey);
+                let customerId = customer?.id || "";
+                if (!customer) {
+                  const newCust = {
+                    name: co.customerName || "(ลูกค้าใหม่)",
+                    phone: co.phone || "",
+                    address: co.address || "",
+                    taxId: "",
+                    note: "จาก Catalog",
+                    createdAt: serverTimestamp(),
+                  };
+                  const cref = await addDoc(collection(db, "customers"), newCust);
+                  customerId = cref.id;
+                }
+                // 2) แปลง lines → items (lookup clothing + color + price)
+                const items = [];
+                for (const ln of (co.lines||[])) {
+                  const ci = clothingItems.find(c => c.id === co.itemId);
+                  if (!ci) continue;
+                  const colorIdx = (ci.colors||[]).findIndex(c => c.name === ln.color);
+                  if (colorIdx < 0) continue;
+                  const colorData = ci.colors[colorIdx];
+                  const unitPrice = getPriceForSize(colorData, ln.size) || 0;
+                  items.push({
+                    clothingId: ci.id,
+                    clothingName: ci.name,
+                    colorIdx,
+                    colorName: colorData.name,
+                    size: ln.size,
+                    qty: Number(ln.qty)||0,
+                    unitPrice,
+                  });
+                }
+                if (items.length === 0) {
+                  alert("⚠️ ไม่สามารถแปลงได้ — ไม่พบสินค้า/สี/ไซส์ ที่ตรงกับในระบบ\n(สินค้าอาจถูกลบไปแล้ว)");
+                  return;
+                }
+                // 3) สร้าง order (status: รอดำเนินการ — ยังไม่ตัดสต็อก)
+                const orderNo = generateDocNo("ORD", orders, "orderNo");
+                const newOrder = {
+                  orderNo,
+                  customerId,
+                  customerName: co.customerName || "",
+                  customerPhone: co.phone || "",
+                  customerAddress: co.address || "",
+                  note: `จาก Catalog Inbox${co.note?` · ${co.note}`:""}`,
+                  items,
+                  status: "รอดำเนินการ",
+                  by: user.name,
+                  date: now(),
+                  createdAt: serverTimestamp(),
+                  fromCatalog: co.id,
+                };
+                const oref = await addDoc(collection(db, "orders"), newOrder);
+                // 4) อัพเดต catalogOrder = converted
+                await updateDoc(doc(db, "catalogOrders", co.id), {
+                  status: "converted",
+                  convertedOrderId: oref.id,
+                  convertedOrderNo: orderNo,
+                });
+                logAudit(user, {
+                  action: AUDIT_ACTIONS.CREATE,
+                  collection: "orders",
+                  targetId: oref.id,
+                  targetLabel: `${orderNo} · ${co.customerName}`,
+                  note: `แปลงจาก Catalog · ${items.length} รายการ`,
+                });
+                alert(`✅ สร้างคำสั่งซื้อ ${orderNo} แล้ว\nไปที่ tab "คำสั่งซื้อ" เพื่อยืนยัน/ปริ้น/ตัดสต็อก`);
+              }}
+            />
           )}
 
           {/* ── STATEMENTS (ใบวางบิลรวมเดือน) ── */}

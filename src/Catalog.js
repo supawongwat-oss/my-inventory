@@ -42,7 +42,13 @@ export default function Catalog() {
     return true;
   }), [items, search, filterCat]);
 
-  const lineHref = company.lineUrl || (company.lineId ? `https://line.me/R/ti/p/~${company.lineId.replace(/^@/, "")}` : "");
+  // 💬 LINE link: @xxx (OA) → ใช้ตรงๆ, ส่วน personal ID → prefix ~
+  const lineHref = company.lineUrl
+    || (company.lineId
+        ? (company.lineId.startsWith("@")
+            ? `https://line.me/R/ti/p/${encodeURIComponent(company.lineId)}`
+            : `https://line.me/R/ti/p/~${encodeURIComponent(company.lineId)}`)
+        : "");
 
   return (
     <div style={{ minHeight: "100vh", background: T.bg, fontFamily: "'Sarabun',sans-serif", color: T.text }}>

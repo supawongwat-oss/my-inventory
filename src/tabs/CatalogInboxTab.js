@@ -8,10 +8,11 @@ const STATUS = {
   new:       { label: "ใหม่",        color: "#3b5b8b", bg: "#dbeafe" },
   contacted: { label: "ติดต่อแล้ว",  color: "#b88600", bg: "#fef3c7" },
   confirmed: { label: "ยืนยันแล้ว",  color: "#3a7a52", bg: "#dcfce7" },
+  converted: { label: "แปลงเป็น Order แล้ว", color: "#7c3aed", bg: "#ede9fe" },
   cancelled: { label: "ยกเลิก",      color: "#b94a48", bg: "#fee2e2" },
 };
 
-export default function CatalogInboxTab({ catalogOrders = [] }) {
+export default function CatalogInboxTab({ catalogOrders = [], onConvert }) {
   const [filter, setFilter] = useState("");
 
   const list = catalogOrders.filter(o => !filter || o.status === filter);
@@ -90,8 +91,22 @@ export default function CatalogInboxTab({ catalogOrders = [] }) {
                 {o.address && <div style={{ fontSize: 12, color: T.sub, marginBottom: 4 }}>📍 {o.address}</div>}
                 {o.note && <div style={{ fontSize: 12, color: T.amber, background: "#fffbeb", padding: 6, borderRadius: 6 }}>📝 {o.note}</div>}
 
-                <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
                   <a href={`tel:${o.phone}`} style={{ background: T.blue, color: "white", padding: "6px 12px", borderRadius: 6, textDecoration: "none", fontSize: 12, fontWeight: 600 }}>📞 โทรกลับ</a>
+                  {o.status !== "converted" && onConvert && (
+                    <button onClick={async () => {
+                      if (!window.confirm(`สร้างคำสั่งซื้อจากรายการนี้?\n\nลูกค้า: ${o.customerName}\nรายการ: ${(o.lines||[]).length} แถว · ${(o.lines||[]).reduce((s,l)=>s+(Number(l.qty)||0),0)} ชิ้น\n\nระบบจะ:\n• เพิ่มลูกค้าใหม่ (ถ้ายังไม่มี)\n• สร้าง Order ใน tab คำสั่งซื้อ (สถานะ: รอดำเนินการ)\n• ยังไม่ตัดสต็อก — รอคุณยืนยันใน Order นั้น`)) return;
+                      try { await onConvert(o); }
+                      catch (e) { alert("เกิดข้อผิดพลาด: " + e.message); }
+                    }} style={{ background: T.green, color: "white", border: "none", padding: "6px 12px", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                      ➡️ สร้างเป็นคำสั่งซื้อ
+                    </button>
+                  )}
+                  {o.status === "converted" && o.convertedOrderNo && (
+                    <span style={{ background: "#ede9fe", color: "#7c3aed", padding: "6px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
+                      ✅ Order: {o.convertedOrderNo}
+                    </span>
+                  )}
                 </div>
               </div>
             );
