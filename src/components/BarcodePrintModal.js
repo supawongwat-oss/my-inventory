@@ -11,7 +11,7 @@ const LAYOUTS = [
   { key: "4x10", cols: 4, rows: 10, label: "4×10 (40 ดวง / A4)", w: 48, h: 28 },
   { key: "2x8",  cols: 2, rows: 8,  label: "2×8 (16 ดวง / A4 — ใหญ่)", w: 95, h: 35 },
   { key: "5x13", cols: 5, rows: 13, label: "5×13 (65 ดวง / A4 — เล็ก)", w: 38, h: 20 },
-  { key: "thermal", thermal: true, cols: 1, rows: 1, label: "🔥 สติกเกอร์ความร้อน (Aimo) — ตั้งขนาดเอง", w: 40, h: 30 },
+  { key: "thermal", thermal: true, cols: 1, rows: 1, label: "🔥 สติกเกอร์ความร้อน (Aimo) — ตั้งขนาดเอง", w: 60, h: 40 },
 ];
 
 export default function BarcodePrintModal({ products = [], clothingItems = [], onClose, printElementById }) {
@@ -21,8 +21,8 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], o
   const [showName, setShowName] = useState(true);
   const [showPrice, setShowPrice] = useState(true);
   const [copies, setCopies] = useState({}); // {productId: count}
-  const [thermalW, setThermalW] = useState(40); // mm
-  const [thermalH, setThermalH] = useState(30); // mm
+  const [thermalW, setThermalW] = useState(60); // mm
+  const [thermalH, setThermalH] = useState(40); // mm
 
   // รวม products + clothing ที่มี barcode
   const allItems = useMemo(() => {
@@ -47,7 +47,7 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], o
 
   const layoutBase = LAYOUTS.find(l => l.key === layoutKey) || LAYOUTS[0];
   const layout = layoutBase.thermal
-    ? { ...layoutBase, w: Number(thermalW) || 40, h: Number(thermalH) || 30 }
+    ? { ...layoutBase, w: Number(thermalW) || 60, h: Number(thermalH) || 40 }
     : layoutBase;
 
   // สร้างรายการที่จะปริ้น (รวม copies)
@@ -75,7 +75,7 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], o
   const handlePrint = () => {
     if (printList.length === 0) { alert("เลือกสินค้าอย่างน้อย 1 รายการ"); return; }
     if (layout.thermal) {
-      const w = Number(thermalW) || 40, h = Number(thermalH) || 30;
+      const w = Number(thermalW) || 60, h = Number(thermalH) || 40;
       setTimeout(() => printElementById?.("barcode-sticker-area", `${w}mm ${h}mm`, "0mm"), 100);
     } else {
       setTimeout(() => printElementById?.("barcode-sticker-area", "A4 portrait", "8mm"), 100);
@@ -86,8 +86,8 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], o
     if (printList.length === 0) { alert("เลือกสินค้าอย่างน้อย 1 รายการ"); return; }
     const el = document.getElementById("barcode-sticker-area");
     if (!el) return;
-    const w = Number(thermalW) || 40;
-    const h = Number(thermalH) || 30;
+    const w = Number(thermalW) || 60;
+    const h = Number(thermalH) || 40;
     const filename = layout.thermal
       ? `stickers-${printList.length}x-${w}x${h}mm.pdf`
       : `stickers-${printList.length}x-A4.pdf`;
@@ -123,7 +123,7 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], o
               <span style={{ color: T.muted, fontSize: 12 }}>×</span>
               <input type="number" min="10" max="200" value={thermalH} onChange={e => setThermalH(e.target.value)}
                 style={{ width: 70, background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 6, padding: "5px 8px", fontSize: 12, outline: "none", fontFamily: "monospace", textAlign: "center" }}/>
-              <span style={{ fontSize: 11, color: T.muted }}>(เริ่มต้น 40×30 mm)</span>
+              <span style={{ fontSize: 11, color: T.muted }}>(เริ่มต้น 60×40 mm)</span>
             </div>
           )}
         </div>
@@ -188,7 +188,7 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], o
         <div style={{ fontSize: 12, color: T.sub }}>
           เลือก <b style={{ color: T.accent }}>{selectedIds.size}</b> รายการ · จะปริ้น <b style={{ color: T.green }}>{printList.length}</b> ดวง ·
           {layout.thermal
-            ? <> ใช้ <b>{printList.length}</b> ดวง × {Number(thermalW)||40}×{Number(thermalH)||30} mm</>
+            ? <> ใช้ <b>{printList.length}</b> ดวง × {Number(thermalW)||60}×{Number(thermalH)||40} mm</>
             : <> ใช้ <b>{Math.ceil(printList.length / (layout.cols * layout.rows))}</b> หน้า A4</>}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
