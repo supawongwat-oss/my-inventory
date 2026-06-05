@@ -23,7 +23,9 @@ export default function Catalog() {
 
   useEffect(() => {
     const u1 = onSnapshot(collection(db, "clothing"), s =>
-      setItems(s.docs.map(d => ({ ...d.data(), id: d.id })).filter(it => !it.hideFromCatalog))
+      setItems(s.docs.map(d => ({ ...d.data(), id: d.id }))
+        .filter(it => !it.hideFromCatalog)
+        .filter(it => (it.name || "").trim().length > 0)) // ❌ ซ่อนสินค้าที่ยังไม่มีชื่อ
     );
     const u2 = onSnapshot(doc(db, "settings", "company"), s => {
       if (s.exists()) setCompany(prev => ({ ...prev, ...s.data() }));

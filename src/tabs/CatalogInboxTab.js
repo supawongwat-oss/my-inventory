@@ -79,9 +79,15 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
                   // 🔄 lookup ชื่อสด จาก clothingItems (กันกรณีตอนสั่งยังไม่ได้กรอกชื่อ)
                   const liveItem = clothingItems.find(c => c.id === o.itemId);
                   const itemName = (liveItem && liveItem.name) || o.itemName || "(ไม่ระบุชื่อสินค้า)";
+                  const itemMissing = !liveItem && o.itemId;
                   return (
                     <div style={{ background:"#f8fafc", borderRadius: 8, padding: 10, marginBottom: 8 }}>
-                      <div style={{ fontSize: 12, color: T.sub, fontWeight: 600, marginBottom: 6 }}>📦 {itemName}</div>
+                      <div style={{ fontSize: 12, color: T.sub, fontWeight: 600, marginBottom: 6, display:"flex", alignItems:"center", gap:6 }}>
+                        📦 {itemName}
+                        {itemMissing && <span style={{ fontSize: 10, color: "#b94a48", background: "#fee2e2", padding: "1px 6px", borderRadius: 4 }}>⚠️ สินค้าถูกลบจาก ERP</span>}
+                        {!o.itemId && <span style={{ fontSize: 10, color: "#b94a48", background: "#fee2e2", padding: "1px 6px", borderRadius: 4 }}>⚠️ ไม่มี itemId</span>}
+                        {o.itemId && <span style={{ fontSize: 9, color: T.muted, fontFamily: "monospace" }}>id: {String(o.itemId).slice(0,8)}…</span>}
+                      </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                         {(o.lines||[]).map((ln, i) => {
                           // lookup สีสดจาก color index ใน clothing item ปัจจุบัน
