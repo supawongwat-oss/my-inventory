@@ -277,28 +277,38 @@ export default function Catalog() {
                     // flatten qtyMap → lines
                     const valid = [];
                     Object.entries(order.qtyMap || {}).forEach(([ci, row]) => {
-                      const col = (order.item.colors || [])[ci];
+                      const col = (order.item?.colors || [])[ci];
                       if (!col) return;
                       Object.entries(row).forEach(([size, qty]) => {
-                        if (qty > 0) valid.push({ color: col.name, colorHex: col.hex || "", size, qty: Number(qty) });
+                        if (qty > 0) valid.push({
+                          color: col.name || "(ไม่ระบุสี)",
+                          colorHex: col.hex || "",
+                          size: size || "",
+                          qty: Number(qty) || 0,
+                        });
                       });
                     });
                     if (valid.length === 0) { alert("กรุณากรอกจำนวนอย่างน้อย 1 ช่อง"); return; }
                     try {
-                      await addDoc(collection(db, "catalogOrders"), {
-                        customerName: order.name.trim() || "",
-                        phone: order.phone.trim() || "",
-                        address: order.address.trim() || "",
-                        note: order.note.trim() || "",
-                        itemId: order.item?.id || "",
-                        itemName: order.item?.name || "(ไม่ระบุชื่อสินค้า)",
-                        itemCategory: order.item?.category || "",
+                      // build payload + ลบ undefined ออกทั้งหมด (Firestore ไม่รับ undefined)
+                      const payload = {
+                        customerName: (order.name || "").trim(),
+                        phone: (order.phone || "").trim(),
+                        address: (order.address || "").trim(),
+                        note: (order.note || "").trim(),
+                        itemId: (order.item && order.item.id) || "",
+                        itemName: (order.item && order.item.name) || "(ไม่ระบุชื่อสินค้า)",
+                        itemCategory: (order.item && order.item.category) || "",
                         lines: valid,
-                        totalQty: valid.reduce((s, l) => s + (l.qty || 0), 0),
+                        totalQty: valid.reduce((s, l) => s + (Number(l.qty) || 0), 0),
                         status: "new",
-                        createdAt: serverTimestamp(),
                         source: "catalog",
-                      });
+                        createdAt: serverTimestamp(),
+                      };
+                      // strip undefined recursively
+                      const clean = JSON.parse(JSON.stringify(payload, (k, v) => v === undefined ? null : v));
+                      clean.createdAt = serverTimestamp(); // serverTimestamp ผ่าน JSON ไม่ได้ → ใส่กลับ
+                      await addDoc(collection(db, "catalogOrders"), clean);
                       setSent(true);
                     } catch (e) {
                       alert("เกิดข้อผิดพลาด: " + e.message);
