@@ -2582,9 +2582,9 @@ export default function App() {
                   const unitPrice = getPriceForSize(colorData, ln.size) || 0;
                   items.push({
                     clothingId: ci.id,
-                    clothingName: ci.name || "(ไม่มีชื่อ)",
+                    clothingName: ci.name || `สินค้า ${ci.id.slice(0,6)}`,
                     colorIdx,
-                    colorName: colorData.name || `สี #${colorIdx+1}`,
+                    colorName: colorData.name || ln.color || `สี #${colorIdx+1}`,
                     size: ln.size,
                     qty: Number(ln.qty)||0,
                     unitPrice,

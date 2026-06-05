@@ -12,6 +12,27 @@ const T = {
   blue: "#3b5b8b", green: "#3a7a52", line: "#06C755",
 };
 
+// 🎨 hex → ชื่อสีไทย — fallback เมื่อ ERP ไม่ได้กรอกชื่อสี
+const COLOR_NAME_FROM_HEX = {
+  "#000000": "ดำ", "#000": "ดำ",
+  "#ffffff": "ขาว", "#fff": "ขาว",
+  "#ff0000": "แดง", "#f00": "แดง", "#dc2626": "แดง", "#ef4444": "แดง", "#b94a48": "แดง",
+  "#0000ff": "น้ำเงิน", "#00f": "น้ำเงิน", "#2563eb": "น้ำเงิน", "#3b82f6": "น้ำเงิน", "#3b5b8b": "น้ำเงิน",
+  "#008000": "เขียว", "#22c55e": "เขียว", "#16a34a": "เขียว", "#3a7a52": "เขียว",
+  "#ffff00": "เหลือง", "#ff0": "เหลือง", "#facc15": "เหลือง", "#eab308": "เหลือง",
+  "#ffa500": "ส้ม", "#f97316": "ส้ม", "#fb923c": "ส้ม",
+  "#800080": "ม่วง", "#a855f7": "ม่วง", "#7c3aed": "ม่วง",
+  "#ffc0cb": "ชมพู", "#ec4899": "ชมพู", "#f472b6": "ชมพู",
+  "#a52a2a": "น้ำตาล", "#92400e": "น้ำตาล", "#78350f": "น้ำตาล",
+  "#808080": "เทา", "#6b7280": "เทา", "#9ca3af": "เทา",
+  "#f5deb3": "ครีม", "#fef3c7": "ครีม", "#fde68a": "ครีม",
+};
+function guessColorName(hex, fallbackIdx) {
+  if (!hex) return `สี #${fallbackIdx+1}`;
+  const h = String(hex).toLowerCase().trim();
+  return COLOR_NAME_FROM_HEX[h] || `สี #${fallbackIdx+1}`;
+}
+
 export default function Catalog() {
   const [items, setItems] = useState([]);
   const [company, setCompany] = useState({ name: "CPU", phone: "", lineId: "", lineUrl: "" });
@@ -235,7 +256,7 @@ export default function Catalog() {
                           <tbody>
                             {colors.map((c, ci) => {
                               const rowQty = Object.values((order.qtyMap||{})[ci] || {}).reduce((a,b) => a+b, 0);
-                              const colorLabel = c.name || `สี #${ci+1}`;
+                              const colorLabel = c.name || guessColorName(c.hex, ci);
                               return (
                                 <tr key={ci} style={{ background: ci % 2 ? "#fafbfc" : "white" }}>
                                   <td style={{ padding: "6px 10px", borderBottom: `1px solid ${T.border}` }}>
@@ -292,7 +313,7 @@ export default function Catalog() {
                       Object.entries(row).forEach(([size, qty]) => {
                         if (qty > 0) valid.push({
                           colorIdx: idx, // 🔑 ใช้ index ตรง ๆ — convert จะ lookup จาก index ไม่ใช่ชื่อ
-                          color: col.name || `สี #${idx+1}`,
+                          color: col.name || guessColorName(col.hex, idx),
                           colorHex: col.hex || "",
                           size: size || "",
                           qty: Number(qty) || 0,

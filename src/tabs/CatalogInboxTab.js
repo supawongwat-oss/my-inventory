@@ -4,6 +4,10 @@ import { db } from "../firebase";
 import { doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { T } from "../theme";
 
+// 🎨 hex → ชื่อสีไทย — fallback (sync กับใน Catalog.js)
+const HEX_NAMES = { "#000000":"ดำ","#000":"ดำ","#ffffff":"ขาว","#fff":"ขาว","#ff0000":"แดง","#f00":"แดง","#dc2626":"แดง","#ef4444":"แดง","#b94a48":"แดง","#0000ff":"น้ำเงิน","#00f":"น้ำเงิน","#2563eb":"น้ำเงิน","#3b82f6":"น้ำเงิน","#3b5b8b":"น้ำเงิน","#008000":"เขียว","#22c55e":"เขียว","#16a34a":"เขียว","#3a7a52":"เขียว","#ffff00":"เหลือง","#ff0":"เหลือง","#facc15":"เหลือง","#eab308":"เหลือง","#ffa500":"ส้ม","#f97316":"ส้ม","#fb923c":"ส้ม","#800080":"ม่วง","#a855f7":"ม่วง","#7c3aed":"ม่วง","#ffc0cb":"ชมพู","#ec4899":"ชมพู","#f472b6":"ชมพู","#a52a2a":"น้ำตาล","#92400e":"น้ำตาล","#78350f":"น้ำตาล","#808080":"เทา","#6b7280":"เทา","#9ca3af":"เทา","#f5deb3":"ครีม","#fef3c7":"ครีม","#fde68a":"ครีม"};
+const guessColor = (hex) => HEX_NAMES[String(hex||"").toLowerCase().trim()] || "";
+
 const STATUS = {
   new:       { label: "ใหม่",        color: "#3b5b8b", bg: "#dbeafe" },
   contacted: { label: "ติดต่อแล้ว",  color: "#b88600", bg: "#fef3c7" },
@@ -92,8 +96,8 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
                         {(o.lines||[]).map((ln, i) => {
                           // lookup สีสดจาก color index ใน clothing item ปัจจุบัน
                           const liveCol = (liveItem && typeof ln.colorIdx === "number") ? (liveItem.colors||[])[ln.colorIdx] : null;
-                          const colorName = (liveCol && liveCol.name) || ln.color || "(ไม่ระบุสี)";
                           const colorHex = (liveCol && liveCol.hex) || ln.colorHex || "#ddd";
+                          const colorName = (liveCol && liveCol.name) || ln.color || guessColor(colorHex) || "(ไม่ระบุสี)";
                           return (
                             <div key={i} style={{ fontSize: 12, color: T.text, display: "flex", gap: 8, alignItems: "center" }}>
                               <span style={{ minWidth: 110, display: "flex", alignItems: "center", gap: 5 }}>
