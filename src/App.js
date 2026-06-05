@@ -21,6 +21,7 @@ import InstallPWA from "./components/InstallPWA";
 import CustomerProfile from "./components/CustomerProfile";
 import ProductionTab from "./tabs/ProductionTab";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
+import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiRegion";
 import { generateDocNo } from "./utils/docNumber";
 import html2pdf from "html2pdf.js";
 // ── MAIN APP ───────────────────────────────────────────────────
@@ -201,6 +202,7 @@ export default function App() {
   });
   const [newCustomerForm, setNewCustomerForm] = useState({ name:"", phone:"", address:"" });
   const [customerSearch, setCustomerSearch] = useState("");
+  const [customerRegion, setCustomerRegion] = useState("ทั้งหมด"); // filter ภาค
   const [orderItemForm, setOrderItemForm] = useState({ clothingId:"", colorIdx:"", size:"", qty:"" });
 
 
@@ -2193,41 +2195,80 @@ export default function App() {
           )}
 
           {/* ── CUSTOMERS ── */}
-          {activeTab==="customers"&&(
-            <div style={{animation:"fadeUp 0.4s ease",maxWidth:700}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
-                <div style={{fontSize:12,color:T.sub}}>ลูกค้าทั้งหมด <b style={{color:T.accent}}>{customers.length} ราย</b></div>
+          {activeTab==="customers"&&(()=>{
+            // จัดกลุ่มลูกค้าตามภาค + filter
+            const enriched = customers.map(c => ({ ...c, _region: c.region || detectRegion(c.address), _province: c.province || detectProvince(c.address) }));
+            const counts = {};
+            REGIONS.forEach(r => counts[r.key] = 0);
+            enriched.forEach(c => { counts[c._region] = (counts[c._region]||0) + 1; });
+            const filtered = enriched.filter(c => {
+              if (customerRegion !== "ทั้งหมด" && c._region !== customerRegion) return false;
+              if (customerSearch) {
+                const q = customerSearch.toLowerCase().trim();
+                return (c.name||"").toLowerCase().includes(q)||(c.phone||"").toLowerCase().includes(q)||(c.address||"").toLowerCase().includes(q)||(c.email||"").toLowerCase().includes(q)||(c._province||"").toLowerCase().includes(q);
+              }
+              return true;
+            });
+            return (
+            <div style={{animation:"fadeUp 0.4s ease",maxWidth:1000}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
+                <div style={{fontSize:12,color:T.sub}}>ลูกค้าทั้งหมด <b style={{color:T.accent}}>{customers.length} ราย</b> · กรองแล้ว {filtered.length}</div>
                 <div style={{display:"flex",gap:8}}>
                   {role.canAdd&&<button onClick={()=>setShowImportCustomers(true)} style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${T.border}`,cursor:"pointer",background:"rgba(59,91,139,0.06)",color:T.accent,fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>📥 นำเข้า Excel</button>}
                   <button onClick={()=>setShowNewCustomer(true)} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>＋ เพิ่มลูกค้าใหม่</button>
                 </div>
               </div>
+
+              {/* Region filter tabs */}
+              <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+                <button onClick={()=>setCustomerRegion("ทั้งหมด")}
+                  style={{padding:"7px 14px",borderRadius:9,border:`1px solid ${customerRegion==="ทั้งหมด"?T.accent:T.border}`,background:customerRegion==="ทั้งหมด"?"rgba(59,91,139,0.12)":"transparent",color:customerRegion==="ทั้งหมด"?T.accent:T.sub,cursor:"pointer",fontSize:12,fontWeight:customerRegion==="ทั้งหมด"?700:500,fontFamily:"'Sarabun',sans-serif"}}>
+                  🌍 ทั้งหมด <span style={{marginLeft:4,fontSize:10,opacity:0.7}}>({customers.length})</span>
+                </button>
+                {REGIONS.map(r => {
+                  const sel = customerRegion === r.key;
+                  const ct = counts[r.key] || 0;
+                  if (ct === 0 && r.key !== "unknown") return null; // ซ่อนภาคที่ไม่มีลูกค้า
+                  return (
+                    <button key={r.key} onClick={()=>setCustomerRegion(r.key)}
+                      style={{padding:"7px 14px",borderRadius:9,border:`1px solid ${sel?r.color:T.border}`,background:sel?`${r.color}20`:"transparent",color:sel?r.color:T.sub,cursor:"pointer",fontSize:12,fontWeight:sel?700:500,fontFamily:"'Sarabun',sans-serif"}}>
+                      {r.icon} {r.label} <span style={{marginLeft:4,fontSize:10,opacity:0.7}}>({ct})</span>
+                    </button>
+                  );
+                })}
+              </div>
+
               <div style={{marginBottom:14}}>
-                <input value={customerSearch} onChange={e=>setCustomerSearch(e.target.value)} placeholder="🔍 ค้นหาชื่อ เบอร์ หรือที่อยู่..."
+                <input value={customerSearch} onChange={e=>setCustomerSearch(e.target.value)} placeholder="🔍 ค้นหาชื่อ เบอร์ ที่อยู่ จังหวัด..."
                   style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
               </div>
+
               {customers.length===0?(
                 <div style={{textAlign:"center",padding:60,background:T.card,borderRadius:16,border:`1px solid ${T.border}`}}>
                   <div style={{fontSize:48,marginBottom:12,opacity:0.3}}>👤</div>
                   <div style={{fontSize:14,fontWeight:600,color:T.accent,marginBottom:6}}>ยังไม่มีข้อมูลลูกค้า</div>
                   <div style={{fontSize:11,color:T.muted}}>กด "️ เพิ่มลูกค้าใหม่" เพื่อเริ่มต้น</div>
                 </div>
+              ):filtered.length===0?(
+                <div style={{textAlign:"center",padding:40,color:T.muted,fontSize:13}}>ไม่พบลูกค้าตามเงื่อนไข</div>
               ):(
                 <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden"}}>
-                  {customers.filter(c=>{
-                    if(!customerSearch) return true;
-                    const q=customerSearch.toLowerCase().trim();
-                    return (c.name||"").toLowerCase().includes(q)||(c.phone||"").toLowerCase().includes(q)||(c.address||"").toLowerCase().includes(q)||(c.email||"").toLowerCase().includes(q);
-                  }).map((c,i,arr)=>(
+                  {filtered.map((c,i,arr)=>{
+                    const rm = regionMeta(c._region);
+                    return (
                     <div key={c.id} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 20px",borderBottom:i<arr.length-1?`1px solid ${T.border}`:"none",cursor:"pointer"}}
                       onClick={()=>setProfileCustomer(c)}
                       onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.04)"}
                       onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                      <div style={{width:48,height:48,borderRadius:"50%",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0,boxShadow:"0 4px 10px rgba(59,91,139,0.3)"}}>👤</div>
-                      <div style={{flex:1}}>
-                        <div style={{fontWeight:600,color:T.text,fontSize:13}}>{c.name}</div>
-                        <div style={{fontSize:11,color:T.muted,marginTop:2}}>📞 {c.phone||"-"}</div>
-                        <div style={{fontSize:11,color:T.muted}}>📍 {c.address||"-"}</div>
+                      <div style={{width:48,height:48,borderRadius:"50%",background:`linear-gradient(135deg,${rm.color},${rm.color}dd)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0,boxShadow:`0 4px 10px ${rm.color}55`}}>{rm.icon}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2,flexWrap:"wrap"}}>
+                          <span style={{fontWeight:600,color:T.text,fontSize:13}}>{c.name}</span>
+                          <span style={{padding:"1px 8px",borderRadius:10,fontSize:9,fontWeight:700,background:`${rm.color}15`,color:rm.color,border:`1px solid ${rm.color}30`}}>{rm.label}</span>
+                          {c._province && <span style={{fontSize:10,color:T.muted}}>{c._province}</span>}
+                        </div>
+                        <div style={{fontSize:11,color:T.muted}}>📞 {c.phone||"-"}</div>
+                        <div style={{fontSize:11,color:T.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📍 {c.address||"-"}</div>
                       </div>
                       <div style={{fontSize:11,color:T.sub,textAlign:"right"}}>
                         <div>สั่งซื้อ {orders.filter(o=>o.customerId===c.id).length} ครั้ง</div>
@@ -2239,10 +2280,12 @@ export default function App() {
                         logAudit(user,{action:AUDIT_ACTIONS.DELETE,collection:"customers",targetId:c.id,targetLabel:c.name,before:{name:c.name,phone:c.phone}});
                       }} style={{padding:"5px 8px",borderRadius:7,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:11}}>✕</button>}
                     </div>
-                  ))}
+                  );})}
                 </div>
               )}
             </div>
+            );
+          })()}
           )}
 
           {/* ALERTS */}
