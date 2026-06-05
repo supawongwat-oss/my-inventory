@@ -58,8 +58,10 @@ export default function Catalog() {
   const filtered = useMemo(() => items.filter(i => {
     if (filterCat && i.category !== filterCat) return false;
     if (search) {
-      const q = search.toLowerCase();
-      const text = `${i.name||""} ${i.category||""} ${(i.colors||[]).map(c=>c.name).join(" ")}`.toLowerCase();
+      // normalize: lowercase + ลบ space — "CPU125" จะ match "CPU 125"
+      const norm = (s) => String(s||"").toLowerCase().replace(/\s+/g, "");
+      const q = norm(search);
+      const text = norm(`${i.name||""} ${i.category||""} ${(i.colors||[]).map(c=>c.name).join(" ")}`);
       if (!text.includes(q)) return false;
     }
     return true;
