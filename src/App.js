@@ -31,11 +31,7 @@ export default function App() {
     authReady.then(() => setAuthChecked(true));
   }, []);
 
-<<<<<<< HEAD
-  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, employees, taxDocs } = useFirestore();
-=======
-  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders } = useFirestore();
->>>>>>> d727e9b5430f1feef13ff4b169948484e7d66038
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs } = useFirestore();
   // ใช้แทน ROLES[role].label เพื่อให้ admin เปลี่ยนชื่อบทบาทได้
   const rLabel = (key) => roleLabels[key] || ROLES[key]?.label || key;
 
@@ -1163,25 +1159,7 @@ export default function App() {
 
   if (!user) return <LoginPage users={users} onLogin={(u, rememberMe) => handleLogin(u, rememberMe)} onResetPassword={handleResetPassword} onRegister={handleRegisterUser}/>;
 
-<<<<<<< HEAD
-  const allNavItems = [
-    { id:"dashboard",    icon:"📊", label:"ภาพรวม" },
-    { id:"inventory",    icon:"📦", label:"สินค้าคงคลัง" },
-    { id:"transactions", icon:"🔄", label:"รับ/จ่ายสินค้า" },
-    { id:"stocktake",    icon:"📦", label:"นับสต็อก" },
-    { id:"barcode",      icon:"▦",  label:"สแกนบาร์โค้ด" },
-    { id:"production",   icon:"🏭", label:"การผลิต" },
-    { id:"orders",       icon:"📋", label:"ใบสั่งของ" },
-    { id:"invoice",      icon:"🧾", label:"ออกบิล" },
-    { id:"statements",   icon:"📃", label:"วางบิลเก็บเงิน" },
-    { id:"customers",    icon:"👤", label:"ลูกค้า" },
-    { id:"alerts",       icon:"🔔", label:"แจ้งเตือน", badge: lowStock.length },
-    { id:"reports",      icon:"📊", label:"รายงาน" },
-    { id:"suppliers",    icon:"🏭", label:"ซัพพลายเออร์" },
-    { id:"employees",    icon:"👷", label:"บัตรลูกจ้าง" },
-    { id:"taxdocs",      icon:"🧾", label:"คลังเอกสารภาษี" },
-=======
-  // โครงสร้างเมนู: รวม 3 กลุ่มย่อย — คลัง&ผลิต / บิล&เก็บเงิน / รายงาน&ผู้ดูแล
+  // โครงสร้างเมนู: รวมกลุ่มย่อย — คลัง&ผลิต / บิล&เก็บเงิน / เอกสาร&บุคลากร / รายงาน&ผู้ดูแล
   const navStructure = [
     { type:"item",  id:"dashboard", icon:"📊", label:"ภาพรวม" },
     { type:"group", id:"warehouse", icon:"📦", label:"คลัง & ผลิต", children:[
@@ -1199,12 +1177,15 @@ export default function App() {
     { type:"item",  id:"customers", icon:"👤", label:"ลูกค้า" },
     { type:"item",  id:"suppliers", icon:"🏭", label:"ซัพพลายเออร์" },
     { type:"item",  id:"alerts",    icon:"🔔", label:"แจ้งเตือน", badge: lowStock.length },
+    { type:"group", id:"hrdocs", icon:"📂", label:"เอกสาร & บุคลากร", children:[
+      { id:"employees", icon:"👷", label:"บัตรลูกจ้าง" },
+      { id:"taxdocs",   icon:"🧾", label:"คลังเอกสารภาษี" },
+    ]},
     { type:"group", id:"adminhub", icon:"⚙️", label:"รายงาน & ผู้ดูแล", children:[
       { id:"reports",  icon:"📊", label:"รายงาน" },
       { id:"users",    icon:"👥", label:"จัดการผู้ใช้",   adminOnly:true },
       { id:"auditlog", icon:"📝", label:"ประวัติการใช้",  adminOnly:true },
     ]},
->>>>>>> d727e9b5430f1feef13ff4b169948484e7d66038
   ];
   // flat list ของทุก tab (รวม children ของ group) — ใช้สำหรับตั้งสิทธิ์ใน Tab Access modal
   const allNavItems = navStructure.flatMap(entry =>
