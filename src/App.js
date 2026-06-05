@@ -2549,14 +2549,14 @@ export default function App() {
             <CatalogInboxTab
               catalogOrders={catalogOrders}
               clothingItems={clothingItems}
+              customers={customers}
               user={user}
-              onConvert={async (co) => {
-                // 1) หาลูกค้าจากเบอร์โทร (normalize: เอาเฉพาะเลข)
-                const normPhone = (s) => String(s||"").replace(/\D/g, "");
-                const phoneKey = normPhone(co.phone);
-                let customer = customers.find(c => normPhone(c.phone) === phoneKey && phoneKey);
-                let customerId = customer?.id || "";
-                if (!customer) {
+              onConvert={async (co, customerChoice) => {
+                // customerChoice = { mode: "new" | "existing" | "none", existingId?: string }
+                let customerId = "";
+                if (customerChoice?.mode === "existing") {
+                  customerId = customerChoice.existingId || "";
+                } else if (customerChoice?.mode === "new") {
                   const newCust = {
                     name: co.customerName || "(ลูกค้าใหม่)",
                     phone: co.phone || "",
@@ -2568,6 +2568,7 @@ export default function App() {
                   const cref = await addDoc(collection(db, "customers"), newCust);
                   customerId = cref.id;
                 }
+                // mode === "none" → customerId = "" (one-time)
                 // 2) แปลง lines → items (lookup clothing + color + price)
                 const items = [];
                 for (const ln of (co.lines||[])) {
