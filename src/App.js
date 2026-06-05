@@ -29,7 +29,7 @@ export default function App() {
     authReady.then(() => setAuthChecked(true));
   }, []);
 
-  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms } = useFirestore();
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders } = useFirestore();
   // ใช้แทน ROLES[role].label เพื่อให้ admin เปลี่ยนชื่อบทบาทได้
   const rLabel = (key) => roleLabels[key] || ROLES[key]?.label || key;
 
@@ -186,6 +186,7 @@ export default function App() {
 
 
   const [showNewOrder, setShowNewOrder] = useState(false);
+  const [freeItemForm, setFreeItemForm] = useState({ name:"", colorName:"", size:"", qty:"" });
   const [collapsedOrderDates, setCollapsedOrderDates] = useState({});
   const [collapsedInvoiceDates, setCollapsedInvoiceDates] = useState({});
   const [showNewCustomer, setShowNewCustomer] = useState(false);
@@ -1924,9 +1925,11 @@ export default function App() {
           {activeTab==="production"&&(
             <ProductionTab
               productionOrders={productionOrders||[]}
+              customOrders={customOrders||[]}
               boms={boms||[]}
               products={products}
               clothingItems={clothingItems}
+              customers={customers}
               companyInfo={companyInfo}
               user={user}
               role={role}
@@ -2879,6 +2882,35 @@ export default function App() {
               </div>
             );
           })()}
+
+          {/* Step 2b: เพิ่มแถวอิสระ (free-text) — ใช้กรณีไม่มีในระบบ ไม่ตัดสต็อก */}
+          <div style={{marginBottom:14,padding:12,background:"rgba(217,119,6,0.04)",border:"1px dashed rgba(217,119,6,0.35)",borderRadius:10}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:8,letterSpacing:"0.04em"}}>✍️ เพิ่มแถวอิสระ (พิมพ์เอง — ไม่ตัดสต็อก)</div>
+            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 80px 80px",gap:6,alignItems:"end"}}>
+              <input value={freeItemForm.name} onChange={e=>setFreeItemForm(f=>({...f,name:e.target.value}))} placeholder="รุ่น / ชื่อสินค้า"
+                style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}/>
+              <input value={freeItemForm.colorName} onChange={e=>setFreeItemForm(f=>({...f,colorName:e.target.value}))} placeholder="สี"
+                style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}/>
+              <input value={freeItemForm.size} onChange={e=>setFreeItemForm(f=>({...f,size:e.target.value}))} placeholder="ไซส์ (เช่น XL, 12)"
+                style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none",fontWeight:600,textAlign:"center"}}/>
+              <input type="number" min="1" value={freeItemForm.qty} onChange={e=>setFreeItemForm(f=>({...f,qty:e.target.value}))} placeholder="จำนวน"
+                style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none",fontFamily:"monospace",textAlign:"center"}}/>
+              <button onClick={()=>{
+                const name=freeItemForm.name.trim(); const qty=Number(freeItemForm.qty)||0;
+                if(!name||qty<=0) return;
+                setOrderForm(f=>({...f,items:[...f.items,{
+                  freeText:true,
+                  clothingId:`free_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+                  clothingName:name,
+                  colorIdx:0, colorName:freeItemForm.colorName||"-", colorHex:"#94a3b8",
+                  size:freeItemForm.size||"-", qty
+                }]}));
+                setFreeItemForm({name:"",colorName:"",size:"",qty:""});
+              }} disabled={!freeItemForm.name.trim()||!Number(freeItemForm.qty)}
+                style={{padding:"7px 12px",borderRadius:7,border:"none",background:"#d97706",color:"white",fontSize:12,fontWeight:700,cursor:freeItemForm.name.trim()&&Number(freeItemForm.qty)?"pointer":"not-allowed",opacity:freeItemForm.name.trim()&&Number(freeItemForm.qty)?1:0.4,fontFamily:"inherit"}}>+ เพิ่ม</button>
+            </div>
+            <div style={{fontSize:10,color:"#92400e",marginTop:6,opacity:0.8}}>💡 ใช้กรณีรุ่น/สี/ไซส์ไม่มีในระบบ — แถวนี้จะไม่หักสต็อก</div>
+          </div>
 
           {/* Step 3: สรุปรายการ */}
           {orderForm.items.length>0&&(

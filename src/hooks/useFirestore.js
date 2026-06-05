@@ -19,6 +19,7 @@ export function useFirestore() {
   const [auditLogs, setAuditLogs] = useState([]);
   const [productionOrders, setProductionOrders] = useState([]);
   const [boms, setBoms] = useState([]);
+  const [customOrders, setCustomOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -137,6 +138,13 @@ export function useFirestore() {
     return () => unsub();
   }, []);
 
+  // Custom orders (ผลิตเฉพาะแบบ — ไม่ตัดสต็อกวัตถุดิบ/สินค้า)
+  useEffect(() => {
+    const q = query(collection(db, "customOrders"), orderBy("createdAt","desc"));
+    const unsub = onSnapshot(q, snap => setCustomOrders(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
+    return () => unsub();
+  }, []);
+
   return {
     users, setUsers,
     suppliers,
@@ -153,6 +161,7 @@ export function useFirestore() {
     auditLogs,
     productionOrders,
     boms,
+    customOrders,
     loading, setLoading,
   };
 }

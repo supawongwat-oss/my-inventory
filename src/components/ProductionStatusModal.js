@@ -24,7 +24,7 @@ function nowStr() {
   return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-export default function ProductionStatusModal({ order, products = [], clothingItems = [], user, onClose }) {
+export default function ProductionStatusModal({ order, products = [], clothingItems = [], user, onClose, collectionName = "productionOrders", isCustom = false }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
@@ -131,10 +131,10 @@ export default function ProductionStatusModal({ order, products = [], clothingIt
       // กฎ: materialsConsumed = true เกิดขึ้น ณ ตอนสร้าง (status เริ่มเป็น "พิมพ์ลาย")
       // แต่ side effect จริง (หัก stock) เกิด ณ ตอนกด "ยืนยันเริ่มผลิต" → เลื่อนไป "ตัดผ้า"
       // เปลี่ยนนิยาม: หัก stock ทันทีก่อนเลื่อนออกจาก "พิมพ์ลาย" ครั้งแรก
-      const needsConsume = order.status === "พิมพ์ลาย" && !order.materialsConsumed;
+      const needsConsume = !isCustom && order.status === "พิมพ์ลาย" && !order.materialsConsumed;
       if (needsConsume) await consumeMaterials();
 
-      const needsStock = nextStep === "เข้าคลัง" && !order.finishedStocked;
+      const needsStock = !isCustom && nextStep === "เข้าคลัง" && !order.finishedStocked;
       if (needsStock) await stockFinished();
 
       const update = {
@@ -147,13 +147,13 @@ export default function ProductionStatusModal({ order, products = [], clothingIt
       if (needsConsume) update.materialsConsumed = true;
       if (needsStock) update.finishedStocked = true;
 
-      await updateDoc(doc(db, "productionOrders", order.id), update);
+      await updateDoc(doc(db, collectionName, order.id), update);
       logAudit(user, {
         action: AUDIT_ACTIONS.PRODUCTION_STATUS,
-        collection: "productionOrders",
+        collection: collectionName,
         targetId: order.id,
         targetLabel: `${order.prodNo} · ${order.clothingName}`,
-        note: `${order.status} → ${nextStep}${needsConsume ? " · หักวัตถุดิบ" : ""}${needsStock ? " · รับเข้าคลัง" : ""}${note ? " · " + note : ""}`,
+        note: `${order.status} → ${nextStep}${needsConsume ? " · หักวัตถุดิบ" : ""}${needsStock ? " · รับเข้าคลัง" : ""}${isCustom ? " · (custom)" : ""}${note ? " · " + note : ""}`,
       });
       setToast(`เลื่อนเป็น "${nextStep}" สำเร็จ`);
       setTimeout(() => { onClose && onClose(); }, 700);
@@ -166,19 +166,19 @@ export default function ProductionStatusModal({ order, products = [], clothingIt
 
   const cancel = async () => {
     if (busy) return;
-    if (!window.confirm("ยืนยันยกเลิกใบสั่งผลิตนี้?\n" + (order.materialsConsumed && !order.finishedStocked ? "ระบบจะคืนวัตถุดิบกลับเข้าคลังให้อัตโนมัติ" : ""))) return;
+    if (!window.confirm("ยืนยันยกเลิกใบสั่งผลิตนี้?\n" + (!isCustom && order.materialsConsumed && !order.finishedStocked ? "ระบบจะคืนวัตถุดิบกลับเข้าคลังให้อัตโนมัติ" : ""))) return;
     setBusy(true);
     try {
-      if (order.materialsConsumed && !order.finishedStocked) await returnMaterials();
+      if (!isCustom && order.materialsConsumed && !order.finishedStocked) await returnMaterials();
       const update = {
         status: "ยกเลิก",
         statusHistory: [...(order.statusHistory || []), { status:"ยกเลิก", at:nowStr(), by:user?.name || "", note: note || "" }],
       };
-      if (order.materialsConsumed && !order.finishedStocked) update.materialsConsumed = false;
-      await updateDoc(doc(db, "productionOrders", order.id), update);
+      if (!isCustom && order.materialsConsumed && !order.finishedStocked) update.materialsConsumed = false;
+      await updateDoc(doc(db, collectionName, order.id), update);
       logAudit(user, {
         action: AUDIT_ACTIONS.PRODUCTION_CANCEL,
-        collection: "productionOrders",
+        collection: collectionName,
         targetId: order.id,
         targetLabel: `${order.prodNo} · ${order.clothingName}`,
         note: note || "ยกเลิกใบสั่งผลิต",

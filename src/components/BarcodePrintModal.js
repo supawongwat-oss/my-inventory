@@ -10,6 +10,7 @@ const LAYOUTS = [
   { key: "4x10", cols: 4, rows: 10, label: "4×10 (40 ดวง / A4)", w: 48, h: 28 },
   { key: "2x8",  cols: 2, rows: 8,  label: "2×8 (16 ดวง / A4 — ใหญ่)", w: 95, h: 35 },
   { key: "5x13", cols: 5, rows: 13, label: "5×13 (65 ดวง / A4 — เล็ก)", w: 38, h: 20 },
+  { key: "thermal", thermal: true, cols: 1, rows: 1, label: "🔥 สติกเกอร์ความร้อน (Aimo) — ตั้งขนาดเอง", w: 40, h: 30 },
 ];
 
 export default function BarcodePrintModal({ products = [], clothingItems = [], onClose, printElementById }) {
@@ -19,6 +20,8 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], o
   const [showName, setShowName] = useState(true);
   const [showPrice, setShowPrice] = useState(true);
   const [copies, setCopies] = useState({}); // {productId: count}
+  const [thermalW, setThermalW] = useState(40); // mm
+  const [thermalH, setThermalH] = useState(30); // mm
 
   // รวม products + clothing ที่มี barcode
   const allItems = useMemo(() => {
@@ -41,7 +44,10 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], o
     return allItems.filter(i => (i.name||"").toLowerCase().includes(q) || (i.code||"").toLowerCase().includes(q) || (i.barcode||"").toLowerCase().includes(q));
   }, [allItems, search]);
 
-  const layout = LAYOUTS.find(l => l.key === layoutKey) || LAYOUTS[0];
+  const layoutBase = LAYOUTS.find(l => l.key === layoutKey) || LAYOUTS[0];
+  const layout = layoutBase.thermal
+    ? { ...layoutBase, w: Number(thermalW) || 40, h: Number(thermalH) || 30 }
+    : layoutBase;
 
   // สร้างรายการที่จะปริ้น (รวม copies)
   const printList = useMemo(() => {
@@ -67,7 +73,12 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], o
 
   const handlePrint = () => {
     if (printList.length === 0) { alert("เลือกสินค้าอย่างน้อย 1 รายการ"); return; }
-    setTimeout(() => printElementById?.("barcode-sticker-area", "A4 portrait", "8mm"), 100);
+    if (layout.thermal) {
+      const w = Number(thermalW) || 40, h = Number(thermalH) || 30;
+      setTimeout(() => printElementById?.("barcode-sticker-area", `${w}mm ${h}mm`, "0mm"), 100);
+    } else {
+      setTimeout(() => printElementById?.("barcode-sticker-area", "A4 portrait", "8mm"), 100);
+    }
   };
 
   return (
@@ -82,6 +93,17 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], o
             style={{ width: "100%", background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 7, padding: "7px 10px", fontSize: 12, outline: "none", cursor: "pointer" }}>
             {LAYOUTS.map(l => <option key={l.key} value={l.key}>{l.label}</option>)}
           </select>
+          {layout.thermal && (
+            <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: T.muted, fontWeight: 600 }}>ขนาด (mm):</span>
+              <input type="number" min="10" max="200" value={thermalW} onChange={e => setThermalW(e.target.value)}
+                style={{ width: 70, background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 6, padding: "5px 8px", fontSize: 12, outline: "none", fontFamily: "monospace", textAlign: "center" }}/>
+              <span style={{ color: T.muted, fontSize: 12 }}>×</span>
+              <input type="number" min="10" max="200" value={thermalH} onChange={e => setThermalH(e.target.value)}
+                style={{ width: 70, background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 6, padding: "5px 8px", fontSize: 12, outline: "none", fontFamily: "monospace", textAlign: "center" }}/>
+              <span style={{ fontSize: 11, color: T.muted }}>(เริ่มต้น 40×30 mm)</span>
+            </div>
+          )}
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: T.text, cursor: "pointer" }}>
@@ -142,7 +164,10 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], o
       {/* Summary + actions */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <div style={{ fontSize: 12, color: T.sub }}>
-          เลือก <b style={{ color: T.accent }}>{selectedIds.size}</b> รายการ · จะปริ้น <b style={{ color: T.green }}>{printList.length}</b> ดวง · ใช้ <b>{Math.ceil(printList.length / (layout.cols * layout.rows))}</b> หน้า A4
+          เลือก <b style={{ color: T.accent }}>{selectedIds.size}</b> รายการ · จะปริ้น <b style={{ color: T.green }}>{printList.length}</b> ดวง ·
+          {layout.thermal
+            ? <> ใช้ <b>{printList.length}</b> ดวง × {Number(thermalW)||40}×{Number(thermalH)||30} mm</>
+            : <> ใช้ <b>{Math.ceil(printList.length / (layout.cols * layout.rows))}</b> หน้า A4</>}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <BtnGhost onClick={onClose}>ปิด</BtnGhost>
@@ -152,24 +177,45 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], o
 
       {/* Print area — hidden, used by printElementById */}
       <div style={{ position: "fixed", left: -99999, top: 0, width: 794 }}>
-        <div id="barcode-sticker-area" style={{ background: "white", padding: "8mm", fontFamily: "'Sarabun',sans-serif", color: "#1e293b" }}>
-          <style>{`
-            .bc-grid { display: grid; grid-template-columns: repeat(${layout.cols}, 1fr); gap: 4mm; }
-            .bc-cell { border: 1px dashed #cbd5e1; border-radius: 4px; padding: 4px; text-align: center; height: ${layout.h}mm; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
-            .bc-cell .bc-name { font-size: 9px; font-weight: 600; margin-bottom: 2px; line-height: 1.2; max-height: 22px; overflow: hidden; }
-            .bc-cell .bc-price { font-size: 11px; font-weight: 700; margin-top: 2px; color: #166534; font-family: monospace; }
-            .bc-cell svg { max-width: 100%; max-height: ${layout.h * 0.4}mm; }
-            @media print { .bc-cell { border: none; } }
-          `}</style>
-          <div className="bc-grid">
-            {printList.map((it, i) => (
-              <div key={i} className="bc-cell">
-                {showName && <div className="bc-name">{(it.name || "").slice(0, 30)}</div>}
-                <BarcodeDisplay value={it.barcode} />
-                {showPrice && it.price > 0 && <div className="bc-price">฿{Number(it.price).toLocaleString()}</div>}
+        <div id="barcode-sticker-area" style={{ background: "white", padding: layout.thermal ? 0 : "8mm", fontFamily: "'Sarabun',sans-serif", color: "#1e293b" }}>
+          {layout.thermal ? (
+            <>
+              <style>{`
+                .bc-thermal { width: ${layout.w}mm; height: ${layout.h}mm; padding: 1mm; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; page-break-after: always; }
+                .bc-thermal:last-child { page-break-after: auto; }
+                .bc-thermal .bc-name { font-size: 9px; font-weight: 700; margin-bottom: 1mm; line-height: 1.15; max-height: 8mm; overflow: hidden; text-align: center; padding: 0 1mm; }
+                .bc-thermal .bc-price { font-size: 11px; font-weight: 800; margin-top: 1mm; color: #000; font-family: monospace; }
+                .bc-thermal svg { max-width: 100%; max-height: ${Math.max(8, layout.h * 0.45)}mm; }
+              `}</style>
+              {printList.map((it, i) => (
+                <div key={i} className="bc-thermal">
+                  {showName && <div className="bc-name">{(it.name || "").slice(0, 30)}</div>}
+                  <BarcodeDisplay value={it.barcode} />
+                  {showPrice && it.price > 0 && <div className="bc-price">฿{Number(it.price).toLocaleString()}</div>}
+                </div>
+              ))}
+            </>
+          ) : (
+            <>
+              <style>{`
+                .bc-grid { display: grid; grid-template-columns: repeat(${layout.cols}, 1fr); gap: 4mm; }
+                .bc-cell { border: 1px dashed #cbd5e1; border-radius: 4px; padding: 4px; text-align: center; height: ${layout.h}mm; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+                .bc-cell .bc-name { font-size: 9px; font-weight: 600; margin-bottom: 2px; line-height: 1.2; max-height: 22px; overflow: hidden; }
+                .bc-cell .bc-price { font-size: 11px; font-weight: 700; margin-top: 2px; color: #166534; font-family: monospace; }
+                .bc-cell svg { max-width: 100%; max-height: ${layout.h * 0.4}mm; }
+                @media print { .bc-cell { border: none; } }
+              `}</style>
+              <div className="bc-grid">
+                {printList.map((it, i) => (
+                  <div key={i} className="bc-cell">
+                    {showName && <div className="bc-name">{(it.name || "").slice(0, 30)}</div>}
+                    <BarcodeDisplay value={it.barcode} />
+                    {showPrice && it.price > 0 && <div className="bc-price">฿{Number(it.price).toLocaleString()}</div>}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
         </div>
       </div>
     </Modal>

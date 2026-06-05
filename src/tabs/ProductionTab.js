@@ -4,6 +4,7 @@ import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import BOMEditor from "../components/BOMEditor";
 import NewProductionOrderModal from "../components/NewProductionOrderModal";
+import NewCustomOrderModal from "../components/NewCustomOrderModal";
 import ProductionStatusModal from "../components/ProductionStatusModal";
 import PrintProductionOrder from "../components/PrintProductionOrder";
 
@@ -32,10 +33,12 @@ function parseThaiDate(s) {
   return new Date(`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`);
 }
 
-export default function ProductionTab({ productionOrders=[], boms=[], products=[], clothingItems=[], companyInfo={}, user, role, printElementById }) {
-  const [subTab, setSubTab] = useState("orders"); // orders | bom
+export default function ProductionTab({ productionOrders=[], customOrders=[], boms=[], products=[], clothingItems=[], customers=[], companyInfo={}, user, role, printElementById }) {
+  const [subTab, setSubTab] = useState("orders"); // orders | bom | custom
   const [showNew, setShowNew] = useState(false);
+  const [showNewCustom, setShowNewCustom] = useState(false);
   const [statusOrder, setStatusOrder] = useState(null);
+  const [statusCustom, setStatusCustom] = useState(null);
   const [printOrder, setPrintOrder] = useState(null);
   const [editBom, setEditBom] = useState(null);   // null | {} (new) | {existing}
   const [search, setSearch] = useState("");
@@ -80,7 +83,7 @@ export default function ProductionTab({ productionOrders=[], boms=[], products=[
     <div style={{animation:"fadeUp 0.4s ease"}}>
       {/* Sub-tabs */}
       <div style={{display:"flex",gap:6,marginBottom:18,borderBottom:`1px solid ${T.border}`}}>
-        {[{id:"orders",l:"📋 ใบสั่งผลิต"},{id:"bom",l:"🧪 BOM (สูตรผลิต)"}].map(t => (
+        {[{id:"orders",l:"📋 ใบสั่งผลิต"},{id:"custom",l:"🎨 Custom Order"},{id:"bom",l:"🧪 BOM (สูตรผลิต)"}].map(t => (
           <button key={t.id} onClick={()=>setSubTab(t.id)}
             style={{padding:"8px 18px",borderRadius:"8px 8px 0 0",border:"none",background:subTab===t.id?"rgba(59,91,139,0.1)":"transparent",color:subTab===t.id?T.accent:T.sub,cursor:"pointer",fontSize:13,fontWeight:subTab===t.id?700:500,fontFamily:"'Sarabun',sans-serif",borderBottom:subTab===t.id?`2px solid ${T.accent}`:"2px solid transparent"}}>
             {t.l}
@@ -178,6 +181,62 @@ export default function ProductionTab({ productionOrders=[], boms=[], products=[
         </>
       )}
 
+      {/* ── CUSTOM ORDERS ── */}
+      {subTab === "custom" && (
+        <>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div style={{fontSize:12,color:T.sub}}>Custom Order ทั้งหมด <b style={{color:T.accent}}>{customOrders.length} ใบ</b></div>
+            {role?.canProduction && (
+              <button onClick={()=>setShowNewCustom(true)} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#d97706,#d97706)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(217,119,6,0.3)"}}>+ สร้าง Custom Order</button>
+            )}
+          </div>
+
+          {customOrders.length === 0 ? (
+            <div style={{textAlign:"center",padding:60,background:T.card,borderRadius:16,border:`1px solid ${T.border}`}}>
+              <div style={{fontSize:48,marginBottom:12,opacity:0.3}}>🎨</div>
+              <div style={{fontSize:14,fontWeight:600,color:T.accent,marginBottom:6}}>ยังไม่มี Custom Order</div>
+              {role?.canProduction && <div style={{fontSize:11,color:T.muted}}>สั่งผลิตเฉพาะแบบ — ใส่รูป + พิมพ์ไซส์เอง</div>}
+            </div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {customOrders.map(o => {
+                const color = STATUS_COLORS[o.status] || "#6b7280";
+                return (
+                  <div key={o.id} onClick={()=>setStatusCustom(o)}
+                    style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 18px",cursor:"pointer",display:"grid",gridTemplateColumns:"60px 120px 1fr 130px 110px 130px 80px",alignItems:"center",gap:14,transition:"background 0.15s"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="rgba(217,119,6,0.04)"}
+                    onMouseLeave={e=>e.currentTarget.style.background="white"}>
+                    {o.clothingImage ? <img src={o.clothingImage} alt="" style={{width:54,height:54,borderRadius:8,objectFit:"cover",border:`1px solid ${T.border}`}}/> : <div style={{width:54,height:54,borderRadius:8,background:"#f1f5f9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>🎨</div>}
+                    <div>
+                      <div style={{fontFamily:"monospace",fontSize:12,color:"#d97706",fontWeight:700}}>{o.prodNo}</div>
+                      <div style={{fontSize:10,color:T.muted,marginTop:2}}>{o.date}</div>
+                    </div>
+                    <div>
+                      <div style={{fontWeight:600,color:T.text,fontSize:13}}>{o.clothingName}</div>
+                      <div style={{fontSize:11,color:T.muted,marginTop:2}}>{o.customerName ? `👤 ${o.customerName}` : ""} {o.customerPhone ? `· ${o.customerPhone}` : ""}</div>
+                    </div>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{fontSize:11,color:T.muted}}>จำนวน</div>
+                      <div style={{fontFamily:"monospace",fontWeight:700,color:T.text,fontSize:15}}>{fmtInt(o.totalQty)}</div>
+                    </div>
+                    <div style={{textAlign:"center"}}>
+                      <span style={{padding:"4px 10px",borderRadius:14,fontSize:11,fontWeight:700,background:`${color}18`,color,border:`1px solid ${color}40`}}>{o.status}</span>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:11,color:T.muted}}>ต้นทุนรวม</div>
+                      <div style={{fontFamily:"monospace",fontWeight:700,color:"#d97706",fontSize:14}}>฿{fmt(o.costSnapshot?.grandTotal)}</div>
+                    </div>
+                    <div style={{display:"flex",gap:6,justifyContent:"flex-end"}} onClick={e=>e.stopPropagation()}>
+                      <button onClick={()=>setPrintOrder(o)} title="พิมพ์" style={{padding:"6px 10px",borderRadius:7,border:"1px solid rgba(59,91,139,0.25)",background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:12}}>🖨️</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
       {/* ── BOM ── */}
       {subTab === "bom" && (
         <>
@@ -238,6 +297,25 @@ export default function ProductionTab({ productionOrders=[], boms=[], products=[
           clothingItems={clothingItems}
           user={user}
           onClose={()=>setStatusOrder(null)}
+        />
+      )}
+      {showNewCustom && (
+        <NewCustomOrderModal
+          customOrders={customOrders}
+          customers={customers}
+          user={user}
+          onClose={()=>setShowNewCustom(false)}
+        />
+      )}
+      {statusCustom && (
+        <ProductionStatusModal
+          order={customOrders.find(o => o.id === statusCustom.id) || statusCustom}
+          products={products}
+          clothingItems={clothingItems}
+          user={user}
+          collectionName="customOrders"
+          isCustom={true}
+          onClose={()=>setStatusCustom(null)}
         />
       )}
       {printOrder && (
