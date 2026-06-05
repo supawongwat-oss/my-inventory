@@ -45,8 +45,7 @@ export default function Catalog() {
   useEffect(() => {
     const u1 = onSnapshot(collection(db, "clothing"), s =>
       setItems(s.docs.map(d => ({ ...d.data(), id: d.id }))
-        .filter(it => !it.hideFromCatalog)
-        .filter(it => (it.name || "").trim().length > 0)) // ❌ ซ่อนสินค้าที่ยังไม่มีชื่อ
+        .filter(it => !it.hideFromCatalog))
     );
     const u2 = onSnapshot(doc(db, "settings", "company"), s => {
       if (s.exists()) setCompany(prev => ({ ...prev, ...s.data() }));
@@ -136,7 +135,7 @@ export default function Catalog() {
                       : <div style={{ fontSize: 56, color: T.muted }}>👕</div>}
                   </div>
                   <div style={{ padding: 12 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: T.text, marginBottom: 4 }}>{it.name}</div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: T.text, marginBottom: 4 }}>{it.name || `(ไม่ระบุชื่อ — ${it.id.slice(0,6)})`}</div>
                     {it.category && <div style={{ fontSize: 11, color: T.muted, marginBottom: 6 }}>{it.category}</div>}
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
                       {(it.colors || []).slice(0, 8).map((c, i) => (
