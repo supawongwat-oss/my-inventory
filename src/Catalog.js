@@ -161,7 +161,7 @@ export default function Catalog() {
               {lineHref && (
                 <a href={lineHref} target="_blank" rel="noreferrer" style={{ flex: 1, background: T.line, color: "white", padding: "12px", textAlign: "center", borderRadius: 8, textDecoration: "none", fontWeight: 700, fontSize: 13 }}>💬 ติดต่อ LINE</a>
               )}
-              <button onClick={() => { setOrder({ item: detail, name: "", phone: "", address: "", note: "", lines: [{ color: "", size: "", qty: 1 }] }); setDetail(null); }}
+              <button onClick={() => { setOrder({ item: detail, name: "", phone: "", address: "", note: "", qtyMap: {} }); setDetail(null); }}
                 style={{ flex: 1, background: T.blue, color: "white", padding: "12px", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>🛒 สั่งซื้อ</button>
             </div>
           </div>
@@ -171,7 +171,7 @@ export default function Catalog() {
       {/* ORDER FORM */}
       {order && (
         <div onClick={() => !sent && setOrder(null)} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 110, padding: 12 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: 14, maxWidth: 480, width: "100%", maxHeight: "92vh", overflowY: "auto" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: 14, maxWidth: 720, width: "100%", maxHeight: "92vh", overflowY: "auto" }}>
             {sent ? (
               <div style={{ padding: 36, textAlign: "center" }}>
                 <div style={{ fontSize: 56 }}>✅</div>
@@ -190,31 +190,83 @@ export default function Catalog() {
                   <Field label="เบอร์โทร *" value={order.phone} onChange={v => setOrder({ ...order, phone: v })} />
                   <Field label="ที่อยู่จัดส่ง" value={order.address} onChange={v => setOrder({ ...order, address: v })} textarea />
 
-                  <div style={{ fontSize: 12, color: T.sub, fontWeight: 600, marginTop: 6 }}>รายการสั่งซื้อ</div>
-                  {order.lines.map((ln, li) => (
-                    <div key={li} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 70px 28px", gap: 6 }}>
-                      <select value={ln.color} onChange={e => { const lines = [...order.lines]; lines[li].color = e.target.value; setOrder({ ...order, lines }); }}
-                        style={{ padding: "8px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 12 }}>
-                        <option value="">เลือกสี</option>
-                        {(order.item.colors || []).map((c, i) => <option key={i} value={c.name}>{c.name}</option>)}
-                      </select>
-                      <select value={ln.size} onChange={e => { const lines = [...order.lines]; lines[li].size = e.target.value; setOrder({ ...order, lines }); }}
-                        style={{ padding: "8px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 12 }}>
-                        <option value="">ไซส์</option>
-                        {(() => {
-                          const col = (order.item.colors || []).find(c => c.name === ln.color);
-                          const sizes = col ? Object.keys(col.stock || {}) : [];
-                          return sizes.map(s => <option key={s} value={s}>{s}</option>);
-                        })()}
-                      </select>
-                      <input type="number" min="1" value={ln.qty} onChange={e => { const lines = [...order.lines]; lines[li].qty = Number(e.target.value) || 1; setOrder({ ...order, lines }); }}
-                        style={{ padding: "8px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 12 }} />
-                      <button onClick={() => { const lines = order.lines.filter((_, i) => i !== li); setOrder({ ...order, lines: lines.length ? lines : [{ color: "", size: "", qty: 1 }] }); }}
-                        style={{ background: "#fee2e2", border: "none", borderRadius: 6, color: "#991b1b", cursor: "pointer" }}>✕</button>
-                    </div>
-                  ))}
-                  <button onClick={() => setOrder({ ...order, lines: [...order.lines, { color: "", size: "", qty: 1 }] })}
-                    style={{ background: "#eff6ff", color: T.blue, border: `1px dashed ${T.blue}`, padding: 8, borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>+ เพิ่มรายการ</button>
+                  <div style={{ fontSize: 12, color: T.sub, fontWeight: 600, marginTop: 6 }}>รายการสั่งซื้อ (กรอกจำนวนในช่องไซส์ที่ต้องการ)</div>
+                  {(() => {
+                    const colors = order.item.colors || [];
+                    // union sizes across all colors, sorted by SIZES order
+                    const SIZES_ORDER = ["XS","S","M","L","XL","2XL","3XL","4XL","5XL","6XL"];
+                    const allSizes = [...new Set(colors.flatMap(c => Object.keys(c.stock || {})))]
+                      .sort((a,b) => {
+                        const ia = SIZES_ORDER.indexOf(a), ib = SIZES_ORDER.indexOf(b);
+                        if (ia >= 0 && ib >= 0) return ia - ib;
+                        if (ia >= 0) return -1; if (ib >= 0) return 1;
+                        return a.localeCompare(b);
+                      });
+                    const setQty = (ci, sz, v) => {
+                      const qtyMap = { ...(order.qtyMap || {}) };
+                      qtyMap[ci] = { ...(qtyMap[ci] || {}) };
+                      const n = Math.max(0, Number(v) || 0);
+                      if (n === 0) delete qtyMap[ci][sz]; else qtyMap[ci][sz] = n;
+                      if (Object.keys(qtyMap[ci]).length === 0) delete qtyMap[ci];
+                      setOrder({ ...order, qtyMap });
+                    };
+                    const grandTotal = Object.values(order.qtyMap || {}).reduce((s, row) => s + Object.values(row).reduce((a,b) => a+b, 0), 0);
+
+                    return (
+                      <div style={{ overflowX: "auto", border: `1px solid ${T.border}`, borderRadius: 8 }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                          <thead>
+                            <tr style={{ background: "#eef2f7" }}>
+                              <th style={{ padding: "8px 10px", textAlign: "left", fontWeight: 700, color: T.blue, borderBottom: `1px solid ${T.border}`, minWidth: 110 }}>สี</th>
+                              {allSizes.map(sz => (
+                                <th key={sz} style={{ padding: "8px 6px", textAlign: "center", fontWeight: 700, color: T.blue, borderBottom: `1px solid ${T.border}`, borderLeft: `1px solid ${T.border}`, minWidth: 56 }}>{sz}</th>
+                              ))}
+                              <th style={{ padding: "8px 10px", textAlign: "center", fontWeight: 700, color: T.green, borderBottom: `1px solid ${T.border}`, borderLeft: `1px solid ${T.border}`, minWidth: 60 }}>รวม</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {colors.map((c, ci) => {
+                              const rowQty = Object.values((order.qtyMap||{})[ci] || {}).reduce((a,b) => a+b, 0);
+                              return (
+                                <tr key={ci} style={{ background: ci % 2 ? "#fafbfc" : "white" }}>
+                                  <td style={{ padding: "6px 10px", borderBottom: `1px solid ${T.border}` }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                      <div style={{ width: 14, height: 14, borderRadius: 3, background: c.hex || "#ddd", border: "1px solid rgba(0,0,0,.2)" }} />
+                                      <span style={{ fontSize: 12, fontWeight: 600 }}>{c.name}</span>
+                                    </div>
+                                  </td>
+                                  {allSizes.map(sz => {
+                                    const inStock = (c.stock || {})[sz];
+                                    const has = inStock !== undefined && inStock !== null;
+                                    const isOut = has && Number(inStock) <= 0;
+                                    const val = ((order.qtyMap||{})[ci] || {})[sz] || "";
+                                    return (
+                                      <td key={sz} style={{ padding: 3, borderLeft: `1px solid ${T.border}`, borderBottom: `1px solid ${T.border}`, background: !has ? "#f1f5f9" : isOut ? "#fef2f2" : "transparent" }}>
+                                        {has ? (
+                                          <input type="number" min="0" value={val}
+                                            onFocus={e => e.target.select()}
+                                            onChange={e => setQty(ci, sz, e.target.value)}
+                                            style={{ width: "100%", padding: "6px 4px", border: "none", background: "transparent", textAlign: "center", fontSize: 13, fontWeight: 600, color: val ? T.blue : T.text, outline: "none", fontFamily: "inherit" }}
+                                          />
+                                        ) : <div style={{ textAlign: "center", color: T.muted, fontSize: 11 }}>—</div>}
+                                      </td>
+                                    );
+                                  })}
+                                  <td style={{ padding: "6px 10px", textAlign: "center", borderLeft: `1px solid ${T.border}`, borderBottom: `1px solid ${T.border}`, fontWeight: 700, color: rowQty > 0 ? T.green : T.muted, fontSize: 13 }}>{rowQty || "-"}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot>
+                            <tr style={{ background: "#f1f5f9" }}>
+                              <td colSpan={allSizes.length + 1} style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700, color: T.sub }}>รวมทั้งหมด</td>
+                              <td style={{ padding: "8px 10px", textAlign: "center", fontWeight: 800, color: grandTotal > 0 ? T.green : T.muted, fontSize: 14 }}>{grandTotal || 0}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    );
+                  })()}
 
                   <Field label="หมายเหตุ (ถ้ามี)" value={order.note} onChange={v => setOrder({ ...order, note: v })} textarea />
                 </div>
@@ -222,8 +274,16 @@ export default function Catalog() {
                   <button onClick={() => setOrder(null)} style={{ flex: 1, background: "white", border: `1px solid ${T.border}`, padding: 12, borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>ยกเลิก</button>
                   <button onClick={async () => {
                     if (!order.name.trim() || !order.phone.trim()) { alert("กรุณากรอกชื่อและเบอร์โทร"); return; }
-                    const valid = order.lines.filter(l => l.color && l.size && l.qty > 0);
-                    if (valid.length === 0) { alert("กรุณาเลือกอย่างน้อย 1 รายการ"); return; }
+                    // flatten qtyMap → lines
+                    const valid = [];
+                    Object.entries(order.qtyMap || {}).forEach(([ci, row]) => {
+                      const col = (order.item.colors || [])[ci];
+                      if (!col) return;
+                      Object.entries(row).forEach(([size, qty]) => {
+                        if (qty > 0) valid.push({ color: col.name, colorHex: col.hex || "", size, qty: Number(qty) });
+                      });
+                    });
+                    if (valid.length === 0) { alert("กรุณากรอกจำนวนอย่างน้อย 1 ช่อง"); return; }
                     try {
                       await addDoc(collection(db, "catalogOrders"), {
                         customerName: order.name.trim(),
