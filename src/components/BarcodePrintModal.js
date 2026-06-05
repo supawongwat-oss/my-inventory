@@ -206,16 +206,18 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], o
           {layout.thermal ? (
             <>
               <style>{`
-                .bc-thermal { width: ${layout.w}mm; height: ${layout.h}mm; padding: 1mm; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; page-break-after: always; }
+                .bc-thermal { width: ${layout.w}mm; height: ${layout.h}mm; padding: 2mm; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; page-break-after: always; background: #fff; }
                 .bc-thermal:last-child { page-break-after: auto; }
-                .bc-thermal .bc-name { font-size: 9px; font-weight: 700; margin-bottom: 1mm; line-height: 1.15; max-height: 8mm; overflow: hidden; text-align: center; padding: 0 1mm; }
-                .bc-thermal .bc-price { font-size: 11px; font-weight: 800; margin-top: 1mm; color: #000; font-family: monospace; }
-                .bc-thermal svg { max-width: 100%; max-height: ${Math.max(8, layout.h * 0.45)}mm; }
+                .bc-thermal .bc-name { font-size: 10px; font-weight: 700; margin-bottom: 1mm; line-height: 1.15; max-height: 7mm; overflow: hidden; text-align: center; padding: 0 1mm; color: #000; }
+                .bc-thermal .bc-price { font-size: 12px; font-weight: 800; margin-top: 1mm; color: #000; font-family: monospace; }
+                /* barcode ใหญ่เกือบเต็มสติกเกอร์ — scanner สแกนติดง่ายขึ้น */
+                .bc-thermal > div:has(svg) { width: 100%; }
+                .bc-thermal svg { width: 100% !important; height: auto !important; max-height: ${Math.max(14, layout.h * 0.6)}mm; display: block; margin: 0 auto; }
               `}</style>
               {printList.map((it, i) => (
                 <div key={i} className="bc-thermal">
                   {showName && <div className="bc-name">{(it.name || "").slice(0, 30)}</div>}
-                  <BarcodeDisplay value={it.barcode} />
+                  <BarcodeDisplay value={it.barcode} width={2.5} height={70} fontSize={14} margin={14} />
                   {showPrice && it.price > 0 && <div className="bc-price">฿{Number(it.price).toLocaleString()}</div>}
                 </div>
               ))}

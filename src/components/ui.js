@@ -3,7 +3,11 @@ import JsBarcode from "jsbarcode";
 import { T } from "../theme";
 
 // 📊 BarcodeDisplay — สร้างบาร์โค้ดจริง (Code 128) ด้วย jsbarcode → สแกนได้จริง
-export function BarcodeDisplay({ value, format = "CODE128", width = 1.6, height = 44, fontSize = 11, displayValue = true }) {
+// ค่า default ปรับเพื่อให้สแกนติดบนสติกเกอร์ thermal:
+//   - width=2.2 (bar หนาขึ้น), height=60 (สูง → scan ง่าย),
+//   - margin=12 (quiet zone กว้างพอตามมาตรฐาน Code 128),
+//   - lineColor=#000 (ดำสนิทเพื่อ contrast สูงสุด)
+export function BarcodeDisplay({ value, format = "CODE128", width = 2.2, height = 60, fontSize = 14, displayValue = true, margin = 12 }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -15,21 +19,21 @@ export function BarcodeDisplay({ value, format = "CODE128", width = 1.6, height 
         height,
         displayValue,
         fontSize,
-        fontOptions: "",
+        fontOptions: "bold",
         font: "monospace",
         textMargin: 2,
-        margin: 4,
+        margin,
         background: "#ffffff",
-        lineColor: "#1e293b",
+        lineColor: "#000000",
       });
     } catch (e) {
       console.warn("[barcode] failed to render:", value, e);
     }
-  }, [value, format, width, height, fontSize, displayValue]);
+  }, [value, format, width, height, fontSize, displayValue, margin]);
 
   if (!value || String(value).trim() === "") return null;
   return (
-    <div style={{ background: "white", borderRadius: 6, padding: "4px 6px", display: "inline-block", border: `1px solid ${T.border}`, lineHeight: 0 }}>
+    <div style={{ background: "white", borderRadius: 4, padding: "2px 4px", display: "inline-block", lineHeight: 0 }}>
       <svg ref={ref} />
     </div>
   );
