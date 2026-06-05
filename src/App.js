@@ -2548,7 +2548,6 @@ export default function App() {
           {activeTab==="catalogInbox"&&(
             <CatalogInboxTab
               catalogOrders={catalogOrders}
-              customers={customers}
               clothingItems={clothingItems}
               user={user}
               onConvert={async (co) => {

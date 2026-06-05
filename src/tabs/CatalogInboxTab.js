@@ -12,7 +12,7 @@ const STATUS = {
   cancelled: { label: "ยกเลิก",      color: "#b94a48", bg: "#fee2e2" },
 };
 
-export default function CatalogInboxTab({ catalogOrders = [], onConvert }) {
+export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothingItems = [] }) {
   const [filter, setFilter] = useState("");
 
   const list = catalogOrders.filter(o => !filter || o.status === filter);
@@ -75,18 +75,34 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert }) {
                   </div>
                 </div>
 
-                <div style={{ background:"#f8fafc", borderRadius: 8, padding: 10, marginBottom: 8 }}>
-                  <div style={{ fontSize: 12, color: T.sub, fontWeight: 600, marginBottom: 6 }}>📦 {o.itemName}</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    {(o.lines||[]).map((ln, i) => (
-                      <div key={i} style={{ fontSize: 12, color: T.text, display: "flex", gap: 8 }}>
-                        <span style={{ minWidth: 100 }}>สี: <b>{ln.color}</b></span>
-                        <span style={{ minWidth: 80 }}>ไซส์: <b>{ln.size}</b></span>
-                        <span>จำนวน: <b style={{ color: T.blue }}>{ln.qty}</b></span>
+                {(() => {
+                  // 🔄 lookup ชื่อสด จาก clothingItems (กันกรณีตอนสั่งยังไม่ได้กรอกชื่อ)
+                  const liveItem = clothingItems.find(c => c.id === o.itemId);
+                  const itemName = (liveItem && liveItem.name) || o.itemName || "(ไม่ระบุชื่อสินค้า)";
+                  return (
+                    <div style={{ background:"#f8fafc", borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                      <div style={{ fontSize: 12, color: T.sub, fontWeight: 600, marginBottom: 6 }}>📦 {itemName}</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {(o.lines||[]).map((ln, i) => {
+                          // lookup สีสดจาก color index ใน clothing item ปัจจุบัน
+                          const liveCol = (liveItem && typeof ln.colorIdx === "number") ? (liveItem.colors||[])[ln.colorIdx] : null;
+                          const colorName = (liveCol && liveCol.name) || ln.color || "(ไม่ระบุสี)";
+                          const colorHex = (liveCol && liveCol.hex) || ln.colorHex || "#ddd";
+                          return (
+                            <div key={i} style={{ fontSize: 12, color: T.text, display: "flex", gap: 8, alignItems: "center" }}>
+                              <span style={{ minWidth: 110, display: "flex", alignItems: "center", gap: 5 }}>
+                                <span style={{ width: 12, height: 12, borderRadius: 3, background: colorHex, border: "1px solid rgba(0,0,0,.2)", display: "inline-block" }} />
+                                สี: <b>{colorName}</b>
+                              </span>
+                              <span style={{ minWidth: 80 }}>ไซส์: <b>{ln.size}</b></span>
+                              <span>จำนวน: <b style={{ color: T.blue }}>{ln.qty}</b></span>
+                            </div>
+                          );
+                        })}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </div>
+                  );
+                })()}
 
                 {o.address && <div style={{ fontSize: 12, color: T.sub, marginBottom: 4 }}>📍 {o.address}</div>}
                 {o.note && <div style={{ fontSize: 12, color: T.amber, background: "#fffbeb", padding: 6, borderRadius: 6 }}>📝 {o.note}</div>}
