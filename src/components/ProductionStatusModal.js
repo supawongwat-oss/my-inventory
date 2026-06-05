@@ -246,14 +246,7 @@ export default function ProductionStatusModal({ order, products = [], clothingIt
         </div>
       </div>
 
-      {/* Cost summary */}
-      {order.costSnapshot && (
-        <div style={{padding:12,background:"linear-gradient(135deg,rgba(59,91,139,0.06),rgba(16,185,129,0.06))",border:`1px solid ${T.border}`,borderRadius:10,marginBottom:16,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,fontSize:12}}>
-          <div><div style={{color:T.muted,fontSize:10}}>วัตถุดิบ/ตัว</div><div style={{fontFamily:"monospace",fontWeight:700,color:T.text}}>฿{fmt(order.costSnapshot.materialCostPerPiece)}</div></div>
-          <div><div style={{color:T.muted,fontSize:10}}>ค่าแรง/ตัว</div><div style={{fontFamily:"monospace",fontWeight:700,color:T.text}}>฿{fmt(order.costSnapshot.laborCostPerPiece)}</div></div>
-          <div><div style={{color:T.muted,fontSize:10}}>รวม</div><div style={{fontFamily:"monospace",fontWeight:700,color:T.accent}}>฿{fmt(order.costSnapshot.grandTotal)}</div></div>
-        </div>
-      )}
+      {/* Cost summary ถูกซ่อน — ดูได้จาก BOM tab หรือ audit log (ไม่ขึ้นในใบสั่งผลิตให้ทีมเห็น) */}
 
       {!isCancelled && !isFinal && nextStep && (
         <>

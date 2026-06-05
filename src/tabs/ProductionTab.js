@@ -62,7 +62,6 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
   }, [productionOrders, search, statusFilter, dateFrom, dateTo]);
 
   const totalQtyAll = filteredOrders.reduce((s,o) => s + (Number(o.totalQty)||0), 0);
-  const totalCostAll = filteredOrders.reduce((s,o) => s + (Number(o.costSnapshot?.grandTotal)||0), 0);
 
   const setPreset = (k) => {
     const today = new Date(); const y=today.getFullYear(); const m=today.getMonth();
@@ -124,8 +123,6 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
                 พบ <b style={{color:T.accent}}>{filteredOrders.length}</b> / {productionOrders.length} ใบ
                 <span style={{margin:"0 6px",color:T.border}}>·</span>
                 รวม <b style={{color:"#16a34a"}}>{fmtInt(totalQtyAll)}</b> ตัว
-                <span style={{margin:"0 6px",color:T.border}}>·</span>
-                ต้นทุน <b style={{color:T.accent}}>฿{fmt(totalCostAll)}</b>
               </div>
             </div>
           </div>
@@ -147,7 +144,7 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
                 const color = STATUS_COLORS[o.status] || "#6b7280";
                 return (
                   <div key={o.id} onClick={()=>setStatusOrder(o)}
-                    style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 18px",cursor:"pointer",display:"grid",gridTemplateColumns:"120px 1fr 130px 110px 130px 130px",alignItems:"center",gap:14,transition:"background 0.15s"}}
+                    style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 18px",cursor:"pointer",display:"grid",gridTemplateColumns:"120px 1fr 130px 130px 130px",alignItems:"center",gap:14,transition:"background 0.15s"}}
                     onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.04)"}
                     onMouseLeave={e=>e.currentTarget.style.background="white"}>
                     <div>
@@ -164,10 +161,6 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
                     </div>
                     <div style={{textAlign:"center"}}>
                       <span style={{padding:"4px 10px",borderRadius:14,fontSize:11,fontWeight:700,background:`${color}18`,color,border:`1px solid ${color}40`}}>{o.status}</span>
-                    </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontSize:11,color:T.muted}}>ต้นทุนรวม</div>
-                      <div style={{fontFamily:"monospace",fontWeight:700,color:T.accent,fontSize:14}}>฿{fmt(o.costSnapshot?.grandTotal)}</div>
                     </div>
                     <div style={{display:"flex",gap:6,justifyContent:"flex-end"}} onClick={e=>e.stopPropagation()}>
                       <button onClick={()=>setPrintOrder(o)} title="พิมพ์" style={{padding:"6px 10px",borderRadius:7,border:"1px solid rgba(59,91,139,0.25)",background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:12}}>🖨️</button>
@@ -203,7 +196,7 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
                 const color = STATUS_COLORS[o.status] || "#6b7280";
                 return (
                   <div key={o.id} onClick={()=>setStatusCustom(o)}
-                    style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 18px",cursor:"pointer",display:"grid",gridTemplateColumns:"60px 120px 1fr 130px 110px 130px 80px",alignItems:"center",gap:14,transition:"background 0.15s"}}
+                    style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 18px",cursor:"pointer",display:"grid",gridTemplateColumns:"60px 120px 1fr 130px 130px 80px",alignItems:"center",gap:14,transition:"background 0.15s"}}
                     onMouseEnter={e=>e.currentTarget.style.background="rgba(217,119,6,0.04)"}
                     onMouseLeave={e=>e.currentTarget.style.background="white"}>
                     {o.clothingImage ? <img src={o.clothingImage} alt="" style={{width:54,height:54,borderRadius:8,objectFit:"cover",border:`1px solid ${T.border}`}}/> : <div style={{width:54,height:54,borderRadius:8,background:"#f1f5f9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>🎨</div>}
@@ -221,10 +214,6 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
                     </div>
                     <div style={{textAlign:"center"}}>
                       <span style={{padding:"4px 10px",borderRadius:14,fontSize:11,fontWeight:700,background:`${color}18`,color,border:`1px solid ${color}40`}}>{o.status}</span>
-                    </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontSize:11,color:T.muted}}>ต้นทุนรวม</div>
-                      <div style={{fontFamily:"monospace",fontWeight:700,color:"#d97706",fontSize:14}}>฿{fmt(o.costSnapshot?.grandTotal)}</div>
                     </div>
                     <div style={{display:"flex",gap:6,justifyContent:"flex-end"}} onClick={e=>e.stopPropagation()}>
                       <button onClick={()=>setPrintOrder(o)} title="พิมพ์" style={{padding:"6px 10px",borderRadius:7,border:"1px solid rgba(59,91,139,0.25)",background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:12}}>🖨️</button>
