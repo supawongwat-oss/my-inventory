@@ -3208,7 +3208,8 @@ export default function App() {
                       <th key={`qh${i}`} style={{padding:"8px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",minWidth:32,fontSize:12}}></th>
                     ])}
                     <th style={{padding:"9px 10px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",fontSize:13}}>จำนวน</th>
-                    <th style={{padding:"9px 10px",textAlign:"right",fontWeight:700,border:"1px solid #0284c7",fontSize:13}}>ราคา (฿)</th>
+                    <th style={{padding:"9px 10px",textAlign:"right",fontWeight:700,border:"1px solid #0284c7",fontSize:13}}>ราคา/หน่วย</th>
+                    <th style={{padding:"9px 10px",textAlign:"right",fontWeight:700,border:"1px solid #0284c7",fontSize:13}}>ราคารวม (฿)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3253,6 +3254,18 @@ export default function App() {
                           <td key={`e2-${ci}-${i}`} style={{border:"1px solid #f1f5f9"}}/>
                         ])}
                         <td style={{padding:"9px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:16,color:"#3b5b8b",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>{ci===lastIdx?totalQty:""}</td>
+                        <td style={{padding:"9px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:600,fontSize:13,color:"#475569",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>
+                          {ci===lastIdx && totalQty > 0 && groupTotalPrice > 0
+                            ? (()=>{
+                                // ถ้าทุกไซส์ราคาเดียวกัน → แสดงราคานั้น | ถ้าต่าง → แสดงเฉลี่ย
+                                const prices = group.items.map(oi => getPriceForSize(colorData, oi.size) || 0).filter(p => p > 0);
+                                const uniq = [...new Set(prices)];
+                                if (uniq.length === 1) return `฿${uniq[0].toLocaleString("th-TH",{minimumFractionDigits:2})}`;
+                                const avg = groupTotalPrice / totalQty;
+                                return `฿${avg.toFixed(2)} *`;
+                              })()
+                            : ""}
+                        </td>
                         <td style={{padding:"9px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:700,fontSize:14,color:"#1e293b",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>
                           {ci===lastIdx && groupTotalPrice > 0 ? `฿${groupTotalPrice.toLocaleString("th-TH",{minimumFractionDigits:2})}` : ""}
                         </td>
@@ -3264,6 +3277,7 @@ export default function App() {
                   <tr style={{background:"#f1f5f9",fontWeight:700}}>
                     <td colSpan={10} style={{padding:"11px 14px",textAlign:"right",color:"#475569",fontSize:13}}>รวมทั้งหมด</td>
                     <td style={{padding:"11px 14px",textAlign:"center",fontFamily:"monospace",fontSize:16,color:"#3b5b8b",border:"1px solid #e2e8f0"}}>{(showPrintOrder.items||[]).reduce((s,i)=>s+i.qty,0)} ชิ้น</td>
+                    <td style={{padding:"11px 14px",border:"1px solid #e2e8f0"}}></td>
                     <td style={{padding:"11px 14px",textAlign:"right",fontFamily:"monospace",fontWeight:800,fontSize:16,color:"#166534",border:"1px solid #e2e8f0",background:"#f0fdf4"}}>
                       ฿{(()=>{
                         const total = (showPrintOrder.items||[]).reduce((s,oi)=>{
@@ -3855,19 +3869,17 @@ export default function App() {
                 );
               })()}
 
-              {/* ── บัญชีรับเงิน ── */}
+              {/* ── บัญชีรับเงิน — compact ── */}
               {showPrintInvoice.bankAccount&&(
-                <div style={{padding:"16px 20px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,marginBottom:12,display:"flex",alignItems:"center",gap:16}}>
-                  <div style={{fontSize:34}}>🏦</div>
+                <div style={{padding:"8px 12px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:6,marginBottom:10,display:"flex",alignItems:"center",gap:10,fontSize:11,lineHeight:1.5}}>
+                  <div style={{fontSize:18}}>🏦</div>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:14,color:"#3b5b8b",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>
-                      โอนชำระเข้าบัญชี{showPrintInvoice.bankAccount.label?` (${showPrintInvoice.bankAccount.label})`:""}
-                    </div>
-                    <div style={{display:"flex",flexWrap:"wrap",gap:22,fontSize:15,color:"#1e293b",lineHeight:1.6}}>
-                      <div><b>ธนาคาร:</b> {showPrintInvoice.bankAccount.bankName||"-"}</div>
-                      <div><b>ชื่อบัญชี:</b> {showPrintInvoice.bankAccount.accountName||"-"}</div>
-                      <div><b>เลขที่:</b> <span style={{fontFamily:"monospace",fontWeight:700,color:"#3b5b8b",fontSize:17}}>{showPrintInvoice.bankAccount.accountNo||"-"}</span></div>
-                    </div>
+                    <span style={{color:"#3b5b8b",fontWeight:700,marginRight:8}}>
+                      โอนชำระเข้าบัญชี{showPrintInvoice.bankAccount.label?` (${showPrintInvoice.bankAccount.label})`:""}:
+                    </span>
+                    <span style={{color:"#1e293b"}}>
+                      {showPrintInvoice.bankAccount.bankName||"-"} · {showPrintInvoice.bankAccount.accountName||"-"} · <b style={{fontFamily:"monospace",color:"#3b5b8b",fontSize:12}}>{showPrintInvoice.bankAccount.accountNo||"-"}</b>
+                    </span>
                   </div>
                 </div>
               )}
