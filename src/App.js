@@ -1032,6 +1032,8 @@ export default function App() {
       body > * { width: ${tW}mm; max-width: ${tW}mm; box-sizing: border-box; }
     ` : "";
     doc.write(`<!doctype html><html><head><meta charset="utf-8"/>
+      <title> </title>
+      <link rel="icon" href="data:,">
       <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
       <style>
         @page { size: ${pageSize}; margin: ${pageMargin}; }
