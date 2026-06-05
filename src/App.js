@@ -1025,6 +1025,9 @@ export default function App() {
     iframe.style.height = "0";
     iframe.style.border = "0";
     document.body.appendChild(iframe);
+    // 🩹 Browser print header ใช้ parent document.title (ไม่ใช่ iframe title) — swap ชั่วคราว
+    const prevTitle = document.title;
+    document.title = " ";
     const doc = iframe.contentWindow.document;
     doc.open();
     const extraThermal = isThermal ? `
@@ -1056,7 +1059,7 @@ export default function App() {
     const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
     const trigger = () => {
       try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e){}
-      setTimeout(() => iframe.remove(), 2000);
+      setTimeout(() => { iframe.remove(); document.title = prevTitle; }, 2000);
     };
     if (doc.fonts && doc.fonts.ready) {
       doc.fonts.ready.then(() => setTimeout(trigger, isMobile ? 600 : 200));
@@ -3845,15 +3848,15 @@ export default function App() {
 
               {/* ── บัญชีรับเงิน — compact ── */}
               {showPrintInvoice.bankAccount&&(
-                <div style={{padding:"8px 12px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:6,marginBottom:10,display:"flex",alignItems:"center",gap:10,fontSize:11,lineHeight:1.5}}>
-                  <div style={{fontSize:18}}>🏦</div>
+                <div style={{padding:"10px 14px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,marginBottom:10,display:"flex",alignItems:"center",gap:12,lineHeight:1.4}}>
+                  <div style={{fontSize:20}}>🏦</div>
                   <div style={{flex:1}}>
-                    <span style={{color:"#3b5b8b",fontWeight:700,marginRight:8}}>
-                      โอนชำระเข้าบัญชี{showPrintInvoice.bankAccount.label?` (${showPrintInvoice.bankAccount.label})`:""}:
-                    </span>
-                    <span style={{color:"#1e293b"}}>
-                      {showPrintInvoice.bankAccount.bankName||"-"} · {showPrintInvoice.bankAccount.accountName||"-"} · <b style={{fontFamily:"monospace",color:"#3b5b8b",fontSize:12}}>{showPrintInvoice.bankAccount.accountNo||"-"}</b>
-                    </span>
+                    <div style={{fontSize:9,color:"#64748b",fontWeight:600,letterSpacing:0.3,marginBottom:2}}>
+                      โอนชำระเข้าบัญชี{showPrintInvoice.bankAccount.label?` (${showPrintInvoice.bankAccount.label})`:""} · {showPrintInvoice.bankAccount.bankName||"-"} · {showPrintInvoice.bankAccount.accountName||"-"}
+                    </div>
+                    <div style={{fontFamily:"monospace",color:"#1e293b",fontWeight:800,fontSize:22,letterSpacing:2}}>
+                      {showPrintInvoice.bankAccount.accountNo||"-"}
+                    </div>
                   </div>
                 </div>
               )}
