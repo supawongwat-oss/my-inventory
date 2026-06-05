@@ -1,4 +1,6 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { doc, setDoc, onSnapshot } from "firebase/firestore";
+import { db } from "../firebase";
 import { PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot } from "../utils/productionLots";
 import LotDetailModal from "./LotDetailModal";
 
@@ -12,6 +14,37 @@ export default function KanbanBoard({
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null); // { order, lotIdx }
   const [collapsed, setCollapsed] = useState({});
+  const [columnOrder, setColumnOrder] = useState(PRODUCTION_STEPS);
+  const canReorder = user?.role === "admin" || user?.role === "manager";
+
+  // โหลดลำดับ column ที่บันทึกไว้ (subscribe เพื่อ sync ทุกเครื่อง)
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "settings", "kanbanOrder"), snap => {
+      if (!snap.exists()) return;
+      const stored = Array.isArray(snap.data().steps) ? snap.data().steps : [];
+      const filtered = stored.filter(s => PRODUCTION_STEPS.includes(s));
+      // เติมขั้นที่อาจเพิ่มมาภายหลัง (กัน PRODUCTION_STEPS เปลี่ยน)
+      const missing = PRODUCTION_STEPS.filter(s => !filtered.includes(s));
+      setColumnOrder([...filtered, ...missing]);
+    }, () => {});
+    return () => unsub();
+  }, []);
+
+  const moveColumn = async (idx, dir) => {
+    const ni = idx + dir;
+    if (ni < 0 || ni >= columnOrder.length) return;
+    const newOrder = [...columnOrder];
+    [newOrder[idx], newOrder[ni]] = [newOrder[ni], newOrder[idx]];
+    setColumnOrder(newOrder);
+    try {
+      await setDoc(doc(db, "settings", "kanbanOrder"), { steps: newOrder });
+    } catch (e) { console.warn("[kanbanOrder] save failed:", e); }
+  };
+
+  const resetColumnOrder = async () => {
+    setColumnOrder(PRODUCTION_STEPS);
+    try { await setDoc(doc(db, "settings", "kanbanOrder"), { steps: PRODUCTION_STEPS }); } catch(e){}
+  };
 
   // กรอง orders + ไม่เอาที่ทุก lot เป็น "เข้าคลัง" หรือ "ยกเลิก"
   const visibleOrders = useMemo(() => {
@@ -68,11 +101,15 @@ export default function KanbanBoard({
           ทั้งหมด <b style={{color:T.accent}}>{allLots.length}</b> ล็อต
           {cancelledLots.length > 0 && <span style={{marginLeft:8,color:"#dc2626"}}>(ยกเลิก {cancelledLots.length})</span>}
         </div>
+        {canReorder && (
+          <button onClick={resetColumnOrder} title="กลับเป็นลำดับเริ่มต้น"
+            style={{padding:"8px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"white",color:T.sub,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>↺ ลำดับเริ่มต้น</button>
+        )}
       </div>
 
       {/* Kanban columns */}
       <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:8,minHeight:480}}>
-        {PRODUCTION_STEPS.map(step => {
+        {columnOrder.map((step, colIdx) => {
           const col = byStatus[step] || [];
           const color = STATUS_COLORS[step] || T.accent;
           const colTotal = col.reduce((s, l) => s + totalQtyOfLot(l), 0);
@@ -80,11 +117,24 @@ export default function KanbanBoard({
           return (
             <div key={step} style={{flex:"0 0 240px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:12,padding:8,display:"flex",flexDirection:"column",maxHeight:"calc(100vh - 280px)"}}>
               {/* Column header */}
-              <div onClick={() => setCollapsed(p => ({...p, [step]: !p[step]}))}
-                style={{padding:"8px 10px",borderRadius:8,background:color+"15",border:`1px solid ${color}30`,marginBottom:8,cursor:"pointer",userSelect:"none"}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <span style={{fontSize:12,fontWeight:700,color}}>{step}</span>
-                  <span style={{fontSize:11,color:T.sub}}>{col.length} ล็อต · {fmtInt(colTotal)} ตัว</span>
+              <div style={{padding:"8px 10px",borderRadius:8,background:color+"15",border:`1px solid ${color}30`,marginBottom:8,userSelect:"none"}}>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  {canReorder && (
+                    <button onClick={(e) => { e.stopPropagation(); moveColumn(colIdx, -1); }}
+                      disabled={colIdx === 0}
+                      title="ย้ายซ้าย"
+                      style={{width:22,height:22,borderRadius:5,border:"none",background:colIdx===0?"transparent":"rgba(255,255,255,0.7)",color:colIdx===0?T.muted:color,cursor:colIdx===0?"not-allowed":"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit",padding:0,opacity:colIdx===0?0.3:1}}>◀</button>
+                  )}
+                  <div onClick={() => setCollapsed(p => ({...p, [step]: !p[step]}))} style={{flex:1,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6}}>
+                    <span style={{fontSize:12,fontWeight:700,color}}>{step}</span>
+                    <span style={{fontSize:11,color:T.sub,whiteSpace:"nowrap"}}>{col.length} ล็อต · {fmtInt(colTotal)} ตัว</span>
+                  </div>
+                  {canReorder && (
+                    <button onClick={(e) => { e.stopPropagation(); moveColumn(colIdx, 1); }}
+                      disabled={colIdx === columnOrder.length - 1}
+                      title="ย้ายขวา"
+                      style={{width:22,height:22,borderRadius:5,border:"none",background:colIdx===columnOrder.length-1?"transparent":"rgba(255,255,255,0.7)",color:colIdx===columnOrder.length-1?T.muted:color,cursor:colIdx===columnOrder.length-1?"not-allowed":"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit",padding:0,opacity:colIdx===columnOrder.length-1?0.3:1}}>▶</button>
+                  )}
                 </div>
               </div>
               {/* Cards */}
