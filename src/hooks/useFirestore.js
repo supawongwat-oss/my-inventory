@@ -22,6 +22,7 @@ export function useFirestore() {
   const [productionOrders, setProductionOrders] = useState([]);
   const [boms, setBoms] = useState([]);
   const [customOrders, setCustomOrders] = useState([]);
+  const [catalogOrders, setCatalogOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -160,6 +161,13 @@ export function useFirestore() {
     return () => unsub();
   }, []);
 
+  // Catalog orders — สั่งจาก /catalog (public)
+  useEffect(() => {
+    const q = query(collection(db, "catalogOrders"), orderBy("createdAt","desc"));
+    const unsub = onSnapshot(q, snap => setCatalogOrders(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
+    return () => unsub();
+  }, []);
+
   return {
     users, setUsers,
     suppliers,
@@ -177,6 +185,7 @@ export function useFirestore() {
     productionOrders,
     boms,
     customOrders,
+    catalogOrders,
     employees,
     taxDocs,
     loading, setLoading,

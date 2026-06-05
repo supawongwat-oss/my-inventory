@@ -13,6 +13,7 @@ import AuditLogTab from "./tabs/AuditLogTab";
 import StocktakeTab from "./tabs/StocktakeTab";
 import EmployeeTab from "./tabs/EmployeeTab";
 import TaxDocsTab from "./tabs/TaxDocsTab";
+import CatalogInboxTab from "./tabs/CatalogInboxTab";
 import BarcodePrintModal from "./components/BarcodePrintModal";
 import ImportCustomersModal from "./components/ImportCustomersModal";
 import BackupRestore, { shouldRemindBackup, getLastBackupDate } from "./components/BackupRestore";
@@ -32,7 +33,7 @@ export default function App() {
     authReady.then(() => setAuthChecked(true));
   }, []);
 
-  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs } = useFirestore();
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs, catalogOrders } = useFirestore();
   // ใช้แทน ROLES[role].label เพื่อให้ admin เปลี่ยนชื่อบทบาทได้
   const rLabel = (key) => roleLabels[key] || ROLES[key]?.label || key;
 
@@ -1185,6 +1186,7 @@ export default function App() {
     { type:"item",  id:"customers", icon:"👤", label:"ลูกค้า" },
     { type:"item",  id:"suppliers", icon:"🏭", label:"ซัพพลายเออร์" },
     { type:"item",  id:"alerts",    icon:"🔔", label:"แจ้งเตือน", badge: lowStock.length },
+    { type:"item",  id:"catalogInbox", icon:"📥", label:"Inbox (Catalog)", badge: (catalogOrders||[]).filter(o=>!o.status||o.status==="new").length },
     { type:"group", id:"hrdocs", icon:"📂", label:"เอกสาร & บุคลากร", children:[
       { id:"employees", icon:"👷", label:"บัตรลูกจ้าง" },
       { id:"taxdocs",   icon:"🧾", label:"คลังเอกสารภาษี" },
@@ -2540,6 +2542,11 @@ export default function App() {
           {/* ── TAX DOCS — คลังเอกสารภาษี ── */}
           {activeTab==="taxdocs"&&(
             <TaxDocsTab taxDocs={taxDocs} user={user} role={role}/>
+          )}
+
+          {/* ── CATALOG INBOX — order จาก /catalog ── */}
+          {activeTab==="catalogInbox"&&(
+            <CatalogInboxTab catalogOrders={catalogOrders}/>
           )}
 
           {/* ── STATEMENTS (ใบวางบิลรวมเดือน) ── */}

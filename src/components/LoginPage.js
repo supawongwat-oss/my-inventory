@@ -28,6 +28,8 @@ function CompanyEditor({ companyInfo, onSave }) {
           {k:"phone",l:"เบอร์โทรศัพท์",ph:"0812345678"},
           {k:"email",l:"Email",ph:"info@cpu.com"},
           {k:"taxId",l:"เลขผู้เสียภาษี",ph:"0000000000000"},
+          {k:"lineId",l:"LINE ID (สำหรับแคตตาล็อก)",ph:"@cpu หรือ shop123"},
+          {k:"lineUrl",l:"LINE URL (option, ใส่แทน ID ได้)",ph:"https://lin.ee/xxxxxx"},
         ].map(f=>(
           <div key={f.k}>
             <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:4,fontWeight:600}}>{f.l}</label>
