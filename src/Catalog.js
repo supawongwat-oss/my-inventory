@@ -286,13 +286,15 @@ export default function Catalog() {
                     if (valid.length === 0) { alert("กรุณากรอกจำนวนอย่างน้อย 1 ช่อง"); return; }
                     try {
                       await addDoc(collection(db, "catalogOrders"), {
-                        customerName: order.name.trim(),
-                        phone: order.phone.trim(),
-                        address: order.address.trim(),
-                        note: order.note.trim(),
-                        itemId: order.item.id,
-                        itemName: order.item.name,
+                        customerName: order.name.trim() || "",
+                        phone: order.phone.trim() || "",
+                        address: order.address.trim() || "",
+                        note: order.note.trim() || "",
+                        itemId: order.item?.id || "",
+                        itemName: order.item?.name || "(ไม่ระบุชื่อสินค้า)",
+                        itemCategory: order.item?.category || "",
                         lines: valid,
+                        totalQty: valid.reduce((s, l) => s + (l.qty || 0), 0),
                         status: "new",
                         createdAt: serverTimestamp(),
                         source: "catalog",
