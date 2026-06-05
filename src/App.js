@@ -987,6 +987,11 @@ export default function App() {
   const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10mm") => {
     const el = document.getElementById(id);
     if (!el) return;
+    // ตรวจว่าเป็น thermal mode (รูปแบบ "<W>mm <H>mm")
+    const thermalMatch = /^(\d+(?:\.\d+)?)mm\s+(\d+(?:\.\d+)?)mm$/i.exec(String(pageSize).trim());
+    const isThermal = !!thermalMatch;
+    const tW = isThermal ? Number(thermalMatch[1]) : null;
+    const tH = isThermal ? Number(thermalMatch[2]) : null;
     const iframe = document.createElement("iframe");
     iframe.style.position = "fixed";
     iframe.style.right = "0";
@@ -997,6 +1002,10 @@ export default function App() {
     document.body.appendChild(iframe);
     const doc = iframe.contentWindow.document;
     doc.open();
+    const extraThermal = isThermal ? `
+      html, body { width: ${tW}mm; height: auto; }
+      body > * { width: ${tW}mm; max-width: ${tW}mm; box-sizing: border-box; }
+    ` : "";
     doc.write(`<!doctype html><html><head><meta charset="utf-8"/>
       <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
       <style>
@@ -1008,18 +1017,23 @@ export default function App() {
         thead { display: table-header-group; }
         tfoot { display: table-footer-group; }
         img { max-width: 100%; }
+        ${extraThermal}
       </style></head><body></body></html>`);
-    const scaled = scaleFontInElement(el.cloneNode(true));
-    doc.body.appendChild(doc.importNode(scaled, true));
+    // thermal: ไม่ scale font (ขนาดเล็กอยู่แล้ว) — A4: scale ตามปกติ
+    const clone = el.cloneNode(true);
+    const finalEl = isThermal ? clone : scaleFontInElement(clone);
+    doc.body.appendChild(doc.importNode(finalEl, true));
     doc.close();
+    // มือถือต้อง delay มากกว่า desktop
+    const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
     const trigger = () => {
       try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e){}
-      setTimeout(() => iframe.remove(), 1000);
+      setTimeout(() => iframe.remove(), 2000);
     };
     if (doc.fonts && doc.fonts.ready) {
-      doc.fonts.ready.then(() => setTimeout(trigger, 200));
+      doc.fonts.ready.then(() => setTimeout(trigger, isMobile ? 600 : 200));
     } else {
-      setTimeout(trigger, 500);
+      setTimeout(trigger, isMobile ? 900 : 500);
     }
   };
 
