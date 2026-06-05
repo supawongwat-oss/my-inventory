@@ -2292,7 +2292,6 @@ export default function App() {
             </div>
             );
           })()}
-          )}
 
           {/* ALERTS */}
           {activeTab==="alerts"&&(
