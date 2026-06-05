@@ -1146,6 +1146,11 @@ export default function App() {
       { id:"auditlog", icon:"📝", label:"ประวัติการใช้",  adminOnly:true },
     ]},
   ];
+  // flat list ของทุก tab (รวม children ของ group) — ใช้สำหรับตั้งสิทธิ์ใน Tab Access modal
+  const allNavItems = navStructure.flatMap(entry =>
+    entry.type === "item" ? [{ id:entry.id, icon:entry.icon, label:entry.label }]
+                          : (entry.children || []).map(c => ({ id:c.id, icon:c.icon, label:c.label }))
+  );
   // filter ตาม permission: admin เห็นทุกอย่าง / non-admin เห็นเฉพาะที่อยู่ใน allowedTabs
   const canSee = (id) => user.role === "admin" || !user.allowedTabs || user.allowedTabs.includes(id);
   const navItems = navStructure
