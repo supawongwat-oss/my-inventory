@@ -3764,10 +3764,10 @@ export default function App() {
                           const rowSub=chunk.reduce((s,i)=>s+(Number(i.unitPrice)||0)*i.qty,0);
                           return (
                             <tr key={`${gi}-${ci}`} style={{background:gi%2===0?"white":"#f8fafc"}}>
-                              <td style={{padding:"9px 10px",fontWeight:600,color:"#1e293b",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:14}}>{ci===0?group.clothingName:""}</td>
-                              <td style={{padding:"9px 10px",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:14}}>
-                                {ci===0&&<div style={{display:"flex",alignItems:"center",gap:5}}>
-                                  <div style={{width:12,height:12,borderRadius:2,background:group.colorHex,border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/>
+                              <td style={{padding:"6px 8px",fontWeight:600,color:"#1e293b",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:11,width:60}}>{ci===0?group.clothingName:""}</td>
+                              <td style={{padding:"6px 8px",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:11,width:70}}>
+                                {ci===0&&<div style={{display:"flex",alignItems:"center",gap:4}}>
+                                  <div style={{width:9,height:9,borderRadius:2,background:group.colorHex,border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/>
                                   <span>{group.colorName}</span>
                                 </div>}
                               </td>
@@ -3780,7 +3780,17 @@ export default function App() {
                                 <td key={`e2-${ci}-${i}`} style={{border:"1px solid #f1f5f9"}}/>
                               ])}
                               <td style={{padding:"9px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:16,color:"#3b5b8b",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>{rowQty}</td>
-                              <td style={{padding:"9px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#1e293b",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:14}}>{rowSub.toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                              <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>
+                                {(()=>{
+                                  const prices=chunk.map(i=>Number(i.unitPrice)||0).filter(p=>p>0);
+                                  const uniq=[...new Set(prices)];
+                                  const unitTxt=uniq.length===1?`@${uniq[0].toLocaleString("th-TH",{minimumFractionDigits:2})}`:(rowQty>0?`@${(rowSub/rowQty).toFixed(2)}*`:"");
+                                  return (<>
+                                    <div style={{fontSize:10,color:"#64748b",fontWeight:500}}>{unitTxt}</div>
+                                    <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{rowSub.toLocaleString("th-TH",{minimumFractionDigits:2})}</div>
+                                  </>);
+                                })()}
+                              </td>
                             </tr>
                           );
                         });
@@ -3797,7 +3807,10 @@ export default function App() {
                             </div>
                           </td>
                           <td style={{padding:"9px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:16,color:"#3b5b8b",border:"1px solid #e2e8f0"}}>{it.qty}</td>
-                          <td style={{padding:"9px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#1e293b",border:"1px solid #e2e8f0",fontSize:14}}>{(it.qty*it.unitPrice).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                          <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",border:"1px solid #e2e8f0"}}>
+                            <div style={{fontSize:10,color:"#64748b",fontWeight:500}}>@{(Number(it.unitPrice)||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</div>
+                            <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{(it.qty*it.unitPrice).toLocaleString("th-TH",{minimumFractionDigits:2})}</div>
+                          </td>
                         </tr>
                       ))}
                       {/* padding rows */}
@@ -3850,10 +3863,10 @@ export default function App() {
                 <div style={{padding:"10px 14px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,marginBottom:10,display:"flex",alignItems:"center",gap:12,lineHeight:1.4}}>
                   <div style={{fontSize:20}}>🏦</div>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:9,color:"#64748b",fontWeight:600,letterSpacing:0.3,marginBottom:2}}>
-                      โอนชำระเข้าบัญชี{showPrintInvoice.bankAccount.label?` (${showPrintInvoice.bankAccount.label})`:""} · {showPrintInvoice.bankAccount.bankName||"-"} · {showPrintInvoice.bankAccount.accountName||"-"}
+                    <div style={{fontSize:12,color:"#475569",fontWeight:600,marginBottom:3}}>
+                      โอนชำระเข้าบัญชี{showPrintInvoice.bankAccount.label?` (${showPrintInvoice.bankAccount.label})`:""} · <span style={{color:"#1e293b"}}>{showPrintInvoice.bankAccount.bankName||"-"} · {showPrintInvoice.bankAccount.accountName||"-"}</span>
                     </div>
-                    <div style={{fontFamily:"monospace",color:"#1e293b",fontWeight:800,fontSize:22,letterSpacing:2}}>
+                    <div style={{fontFamily:"monospace",color:"#1e293b",fontWeight:800,fontSize:18,letterSpacing:1.5}}>
                       {showPrintInvoice.bankAccount.accountNo||"-"}
                     </div>
                   </div>
