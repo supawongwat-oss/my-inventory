@@ -17,6 +17,13 @@ const DOC_TYPES = [
   { key: "pnd53",        label: "📋 ภ.ง.ด.53 (นิติบุคคล WHT)", color: "#7c3aed", group: "filing" },
   { key: "ppor30",       label: "📋 ภ.พ.30 (VAT รายเดือน)", color: "#7c3aed", group: "filing" },
   { key: "pnd50",        label: "📋 ภ.ง.ด.50/51 (ภาษีนิติบุคคล)", color: "#7c3aed", group: "filing" },
+  { key: "utility_water",  label: "💧 ค่าน้ำ",              color: "#0891b2", group: "expense" },
+  { key: "utility_power",  label: "⚡ ค่าไฟ",              color: "#d97706", group: "expense" },
+  { key: "utility_other",  label: "📡 ค่าสาธารณูปโภคอื่น (เน็ต/โทร)", color: "#0891b2", group: "expense" },
+  { key: "equipment",      label: "🛠️ ค่าอุปกรณ์/เครื่องมือ", color: "#3a7a52", group: "expense" },
+  { key: "material",       label: "🧵 ค่าวัตถุดิบ",          color: "#3a7a52", group: "expense" },
+  { key: "rent",           label: "🏢 ค่าเช่า",              color: "#7c3aed", group: "expense" },
+  { key: "transport",      label: "🚚 ค่าขนส่ง/น้ำมัน",     color: "#d97706", group: "expense" },
   { key: "other",        label: "🗂️ อื่นๆ",            color: T.muted,  group: "other" },
 ];
 
