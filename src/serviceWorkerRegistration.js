@@ -34,6 +34,9 @@ function registerValidSW(swUrl, config) {
         installingWorker.onstatechange = () => {
           if (installingWorker.state === 'installed') {
             if (navigator.serviceWorker.controller) {
+              // 🔄 มี version ใหม่ → skip waiting แล้ว reload ทันที (กัน user เห็นโค้ดเก่า)
+              if (registration.waiting) registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+              window.location.reload();
               if (config && config.onUpdate) config.onUpdate(registration);
             } else {
               if (config && config.onSuccess) config.onSuccess(registration);
