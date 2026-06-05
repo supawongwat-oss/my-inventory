@@ -60,7 +60,7 @@ export default function Catalog() {
       // normalize: lowercase + ลบ space — "CPU125" จะ match "CPU 125"
       const norm = (s) => String(s||"").toLowerCase().replace(/\s+/g, "");
       const q = norm(search);
-      const text = norm(`${i.name||""} ${i.category||""} ${(i.colors||[]).map(c=>c.name).join(" ")}`);
+      const text = norm(`${i.model||i.name||""} ${i.category||""} ${(i.colors||[]).map(c=>c.name).join(" ")}`);
       if (!text.includes(q)) return false;
     }
     return true;
@@ -135,7 +135,7 @@ export default function Catalog() {
                       : <div style={{ fontSize: 56, color: T.muted }}>👕</div>}
                   </div>
                   <div style={{ padding: 12 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: T.text, marginBottom: 4 }}>{it.name || `(ไม่ระบุชื่อ — ${it.id.slice(0,6)})`}</div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: T.text, marginBottom: 4 }}>{it.model || it.name || `(ไม่ระบุชื่อ — ${it.id.slice(0,6)})`}</div>
                     {it.category && <div style={{ fontSize: 11, color: T.muted, marginBottom: 6 }}>{it.category}</div>}
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
                       {(it.colors || []).slice(0, 8).map((c, i) => (
@@ -162,7 +162,7 @@ export default function Catalog() {
           <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: 14, maxWidth: 540, width: "100%", maxHeight: "92vh", overflowY: "auto" }}>
             <div style={{ padding: 18, display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: `1px solid ${T.border}` }}>
               <div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: T.text }}>{detail.name}</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: T.text }}>{detail.model || detail.name}</div>
                 {detail.category && <div style={{ fontSize: 12, color: T.sub, marginTop: 2 }}>{detail.category}</div>}
               </div>
               <button onClick={() => setDetail(null)} style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>✕</button>
@@ -212,7 +212,7 @@ export default function Catalog() {
             ) : (
               <>
                 <div style={{ padding: 16, borderBottom: `1px solid ${T.border}` }}>
-                  <div style={{ fontSize: 16, fontWeight: 800 }}>🛒 สั่งซื้อ: {order.item.name}</div>
+                  <div style={{ fontSize: 16, fontWeight: 800 }}>🛒 สั่งซื้อ: {order.item.model || order.item.name}</div>
                   <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>กรอกข้อมูล → ทีมงานจะติดต่อกลับเพื่อยืนยันยอด</div>
                 </div>
                 <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -330,7 +330,7 @@ export default function Catalog() {
                         address: (order.address || "").trim(),
                         note: (order.note || "").trim(),
                         itemId: (order.item && order.item.id) || "",
-                        itemName: (order.item && order.item.name) || "(ไม่ระบุชื่อสินค้า)",
+                        itemName: (order.item && (order.item.model || order.item.name)) || "(ไม่ระบุชื่อสินค้า)",
                         itemCategory: (order.item && order.item.category) || "",
                         lines: valid,
                         totalQty: valid.reduce((s, l) => s + (Number(l.qty) || 0), 0),

@@ -82,7 +82,7 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
                 {(() => {
                   // 🔄 lookup ชื่อสด จาก clothingItems (กันกรณีตอนสั่งยังไม่ได้กรอกชื่อ)
                   const liveItem = clothingItems.find(c => c.id === o.itemId);
-                  const itemName = (liveItem && liveItem.name) || o.itemName || "(ไม่ระบุชื่อสินค้า)";
+                  const itemName = (liveItem && (liveItem.model || liveItem.name)) || o.itemName || "(ไม่ระบุชื่อสินค้า)";
                   const itemMissing = !liveItem && o.itemId;
                   return (
                     <div style={{ background:"#f8fafc", borderRadius: 8, padding: 10, marginBottom: 8 }}>
