@@ -1252,7 +1252,14 @@ export default function App() {
           .modal-card,div[role="dialog"]{max-width:96vw!important;width:96vw!important;max-height:92vh!important;}
         }
         @media print{
-          /* ปริ้นใช้ iframe — ไม่ต้องทำอะไรกับหน้าหลัก */
+          /* กรณี user สั่งพิมพ์จากเมนู Chrome (system print) แทนปุ่มใน app
+             → ซ่อน UI ที่ไม่เกี่ยวกับเอกสาร */
+          .print-hide{display:none !important;}
+          .print-modal-overlay{background:white !important;backdrop-filter:none !important;position:static !important;display:block !important;padding:0 !important;}
+          .print-modal-card{box-shadow:none !important;border:none !important;border-radius:0 !important;max-height:none !important;overflow:visible !important;width:100% !important;}
+          html,body{background:white !important;}
+          /* ซ่อน sidebar + header ของหน้าหลักตอนพิมพ์ */
+          .sidebar-collapse,nav,.main-header{display:none !important;}
         }
       `}</style>
 
@@ -3601,24 +3608,24 @@ export default function App() {
                       🔄 แปลงมาจาก {docTypeLabel(showPrintInvoice.convertedFrom.docType)} {showPrintInvoice.convertedFrom.invoiceNo}
                     </div>
                   )}
-                  <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                    <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
-                      <span style={{fontSize:13,color:"#64748b",fontWeight:500,minWidth:72,textAlign:"right"}}>เลขที่:</span>
-                      <span style={{fontSize:15,color:"#3b5b8b",fontFamily:"monospace",fontWeight:700}}>{showPrintInvoice.invoiceNo}</span>
+                  <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                    <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
+                      <span style={{fontSize:11,color:"#64748b",fontWeight:500,minWidth:58,textAlign:"right"}}>เลขที่:</span>
+                      <span style={{fontSize:12,color:"#3b5b8b",fontFamily:"monospace",fontWeight:700}}>{showPrintInvoice.invoiceNo}</span>
                     </div>
-                    <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
-                      <span style={{fontSize:13,color:"#64748b",fontWeight:500,minWidth:72,textAlign:"right"}}>วันที่ออก:</span>
-                      <span style={{fontSize:14,color:"#1e293b",fontWeight:600}}>{showPrintInvoice.date}</span>
+                    <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
+                      <span style={{fontSize:11,color:"#64748b",fontWeight:500,minWidth:58,textAlign:"right"}}>วันที่ออก:</span>
+                      <span style={{fontSize:11,color:"#1e293b",fontWeight:600}}>{showPrintInvoice.date}</span>
                     </div>
                     {showPrintInvoice.dueDate&&(
-                      <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
-                        <span style={{fontSize:13,color:"#64748b",fontWeight:500,minWidth:72,textAlign:"right"}}>ครบกำหนด:</span>
-                        <span style={{fontSize:14,color:"#ef4444",fontWeight:700}}>{showPrintInvoice.dueDate}</span>
+                      <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
+                        <span style={{fontSize:11,color:"#64748b",fontWeight:500,minWidth:58,textAlign:"right"}}>ครบกำหนด:</span>
+                        <span style={{fontSize:11,color:"#ef4444",fontWeight:700}}>{showPrintInvoice.dueDate}</span>
                       </div>
                     )}
                     {showPrintInvoice.useVat&&(
-                      <div style={{marginTop:4,textAlign:"right"}}>
-                        <span style={{padding:"2px 10px",background:"#dbeafe",borderRadius:10,fontSize:10,color:"#1d4ed8",fontWeight:700}}>มี VAT {showPrintInvoice.vatRate}%</span>
+                      <div style={{marginTop:3,textAlign:"right"}}>
+                        <span style={{padding:"1px 8px",background:"#dbeafe",borderRadius:8,fontSize:9,color:"#1d4ed8",fontWeight:700}}>มี VAT {showPrintInvoice.vatRate}%</span>
                       </div>
                     )}
                   </div>
