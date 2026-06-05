@@ -296,6 +296,7 @@ export default function App() {
   // toasts
   const [addSuccess, setAddSuccess] = useState(false);
   const [txSuccess, setTxSuccess] = useState(false);
+  const [txSaving, setTxSaving] = useState(false);
 
   const imageInputRef = useRef(null);
   const productImageRef = useRef(null);
@@ -391,24 +392,36 @@ export default function App() {
   };
 
   const handleTx = async () => {
+    if (txSaving) return; // กัน double-submit
     if (!txForm.productId || txForm.qty === "" || Number(txForm.qty) <= 0) return;
-    const pid = txForm.productId;
-    const qty = Number(txForm.qty);
-    const prod = products.find(p => p.id === pid);
-    const histEntry = { action: txType==="รับ" ? "รับสินค้าเข้าคลัง" : "จ่ายสินค้าออกคลัง", by: user.name, date: now(), note:`${txType==="รับ"?"+":"-"}${qty} ${prod?.unit||""}${txForm.note ? ` (${txForm.note})` : ""}` };
-    const oldQty = Number(prod.qty);
-    const newQty = txType==="รับ" ? oldQty+qty : Math.max(0, oldQty-qty);
-    await updateDoc(doc(db, "products", pid), { qty: newQty, lastUpdate: now(), history: [histEntry, ...(prod.history||[])] });
-    await addDoc(collection(db, "transactions"), { type:txType, code:prod?.code, name:prod?.name, qty, by:user.name, date:now(), note:txForm.note||"", createdAt: serverTimestamp() });
-    logAudit(user, {
-      action: AUDIT_ACTIONS.STOCK,
-      collection: "products",
-      targetId: pid,
-      targetLabel: `${prod?.code} ${prod?.name}`,
-      note: `${txType} ${qty} ${prod?.unit||""} (${oldQty}→${newQty})${txForm.note?` · ${txForm.note}`:""}`,
-    });
-    setTxSuccess(true);
-    setTimeout(() => { setTxSuccess(false); setShowTxModal(false); setTxForm({productId:"",qty:"",note:""}); }, 1000);
+    setTxSaving(true);
+    try {
+      const pid = txForm.productId;
+      const qty = Number(txForm.qty);
+      const prod = products.find(p => p.id === pid);
+      const histEntry = { action: txType==="รับ" ? "รับสินค้าเข้าคลัง" : "จ่ายสินค้าออกคลัง", by: user.name, date: now(), note:`${txType==="รับ"?"+":"-"}${qty} ${prod?.unit||""}${txForm.note ? ` (${txForm.note})` : ""}` };
+      const oldQty = Number(prod.qty);
+      const newQty = txType==="รับ" ? oldQty+qty : Math.max(0, oldQty-qty);
+      await updateDoc(doc(db, "products", pid), { qty: newQty, lastUpdate: now(), history: [histEntry, ...(prod.history||[])] });
+      await addDoc(collection(db, "transactions"), { type:txType, code:prod?.code, name:prod?.name, qty, by:user.name, date:now(), note:txForm.note||"", createdAt: serverTimestamp() });
+      logAudit(user, {
+        action: AUDIT_ACTIONS.STOCK,
+        collection: "products",
+        targetId: pid,
+        targetLabel: `${prod?.code} ${prod?.name}`,
+        note: `${txType} ${qty} ${prod?.unit||""} (${oldQty}→${newQty})${txForm.note?` · ${txForm.note}`:""}`,
+      });
+      // ปิด modal + reset ทันทีหลัง save → กันกดซ้ำ
+      setTxForm({productId:"",qty:"",note:""});
+      setShowTxModal(false);
+      setTxSuccess(true);
+      setTimeout(() => setTxSuccess(false), 1500);
+    } catch (e) {
+      console.error("[handleTx] failed:", e);
+      alert("บันทึกไม่สำเร็จ: " + (e.message || e));
+    } finally {
+      setTxSaving(false);
+    }
   };
 
   const handleDelete = async id => {
@@ -672,37 +685,45 @@ export default function App() {
   };
 
   const handleClothingTx = async () => {
+    if (txSaving) return; // กัน double-submit (ใช้ flag เดียวกัน)
     if (!clothingTxModal || !clothingTxQty || Number(clothingTxQty) <= 0) return;
-    const { item, colorIdx, size } = clothingTxModal;
-    const col = item.colors[colorIdx];
-    const curQty = (col.stock || {})[size] || 0;
-    const newQty = clothingTxType === "รับ"
-      ? curQty + Number(clothingTxQty)
-      : Math.max(0, curQty - Number(clothingTxQty));
-    const newColors = item.colors.map((c, i) =>
-      i === colorIdx ? { ...c, stock: { ...c.stock, [size]: newQty } } : c
-    );
-    await updateDoc(doc(db, "clothing", item.id), { colors: newColors });
-    // Log transaction
-    await addDoc(collection(db, "transactions"), {
-      type: clothingTxType, code: item.id,
-      name: `${item.model} / ${col.colorName} / ${size}`,
-      qty: Number(clothingTxQty), by: user.name,
-      date: now(), note: clothingTxNote || "", createdAt: serverTimestamp(),
-      category: "เสื้อผ้า"
-    });
-    logAudit(user, {
-      action: AUDIT_ACTIONS.STOCK,
-      collection: "clothing",
-      targetId: item.id,
-      targetLabel: `${item.model} / ${col.colorName} / ${size}`,
-      note: `${clothingTxType} ${clothingTxQty} ชิ้น (${curQty}→${newQty})${clothingTxNote?` · ${clothingTxNote}`:""}`,
-    });
-    setClothingTxSuccess(true);
-    setTimeout(() => {
-      setClothingTxSuccess(false); setClothingTxModal(null);
+    setTxSaving(true);
+    try {
+      const { item, colorIdx, size } = clothingTxModal;
+      const col = item.colors[colorIdx];
+      const curQty = (col.stock || {})[size] || 0;
+      const newQty = clothingTxType === "รับ"
+        ? curQty + Number(clothingTxQty)
+        : Math.max(0, curQty - Number(clothingTxQty));
+      const newColors = item.colors.map((c, i) =>
+        i === colorIdx ? { ...c, stock: { ...c.stock, [size]: newQty } } : c
+      );
+      await updateDoc(doc(db, "clothing", item.id), { colors: newColors });
+      await addDoc(collection(db, "transactions"), {
+        type: clothingTxType, code: item.id,
+        name: `${item.model} / ${col.colorName} / ${size}`,
+        qty: Number(clothingTxQty), by: user.name,
+        date: now(), note: clothingTxNote || "", createdAt: serverTimestamp(),
+        category: "เสื้อผ้า"
+      });
+      logAudit(user, {
+        action: AUDIT_ACTIONS.STOCK,
+        collection: "clothing",
+        targetId: item.id,
+        targetLabel: `${item.model} / ${col.colorName} / ${size}`,
+        note: `${clothingTxType} ${clothingTxQty} ชิ้น (${curQty}→${newQty})${clothingTxNote?` · ${clothingTxNote}`:""}`,
+      });
+      // ปิด modal + reset ทันที — กันกดซ้ำ
+      setClothingTxModal(null);
       setClothingTxQty(""); setClothingTxNote("");
-    }, 1000);
+      setTxSuccess(true);
+      setTimeout(() => setTxSuccess(false), 1500);
+    } catch (e) {
+      console.error("[handleClothingTx] failed:", e);
+      alert("บันทึกไม่สำเร็จ: " + (e.message || e));
+    } finally {
+      setTxSaving(false);
+    }
   };
 
   const handleClothingImageUpload = async (e) => {
@@ -1180,6 +1201,12 @@ export default function App() {
 
   return (
     <div style={{display:"flex",height:"100vh",fontFamily:"'Sarabun',sans-serif",background:T.bg,color:T.text,overflow:"hidden"}}>
+      {/* Global toast (เมื่อบันทึก stock ขณะ modal ปิดไปแล้ว) */}
+      {txSuccess && (
+        <div style={{position:"fixed",top:18,left:"50%",transform:"translateX(-50%)",zIndex:9999,background:"#dcfce7",border:"1px solid #86efac",borderRadius:10,padding:"10px 22px",color:"#166534",fontSize:13,fontWeight:600,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",animation:"fadeUp 0.25s ease"}}>
+          ✅ บันทึกรายการสำเร็จ
+        </div>
+      )}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
@@ -2584,10 +2611,10 @@ export default function App() {
             <Input label="จำนวน" type="number" placeholder="0" value={txForm.qty} onChange={e=>setTxForm(f=>({...f,qty:e.target.value}))}/>
             <Input label="หมายเหตุ" placeholder="ระบุหมายเหตุ (ถ้ามี)" value={txForm.note} onChange={e=>setTxForm(f=>({...f,note:e.target.value}))}/>
             <div style={{display:"flex",gap:10}}>
-              <BtnGhost onClick={()=>setShowTxModal(false)} style={{flex:1}}>ยกเลิก</BtnGhost>
+              <BtnGhost onClick={()=>setShowTxModal(false)} disabled={txSaving} style={{flex:1}}>ยกเลิก</BtnGhost>
               {txType==="รับ"
-                ?<BtnSuccess onClick={handleTx} disabled={!txForm.productId||!txForm.qty||Number(txForm.qty)<=0} style={{flex:1}}>ยืนยันรับสินค้า</BtnSuccess>
-                :<BtnDanger onClick={handleTx} disabled={!txForm.productId||!txForm.qty||Number(txForm.qty)<=0} style={{flex:1}}>ยืนยันจ่ายสินค้า</BtnDanger>
+                ?<BtnSuccess onClick={handleTx} disabled={txSaving||!txForm.productId||!txForm.qty||Number(txForm.qty)<=0} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":"ยืนยันรับสินค้า"}</BtnSuccess>
+                :<BtnDanger onClick={handleTx} disabled={txSaving||!txForm.productId||!txForm.qty||Number(txForm.qty)<=0} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":"ยืนยันจ่ายสินค้า"}</BtnDanger>
               }
             </div>
           </div>
@@ -3987,10 +4014,10 @@ export default function App() {
                 style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
             </div>
             <div style={{display:"flex",gap:10}}>
-              <BtnGhost onClick={()=>setClothingTxModal(null)} style={{flex:1}}>ยกเลิก</BtnGhost>
+              <BtnGhost onClick={()=>setClothingTxModal(null)} disabled={txSaving} style={{flex:1}}>ยกเลิก</BtnGhost>
               {clothingTxType==="รับ"
-                ?<BtnSuccess onClick={handleClothingTx} disabled={!clothingTxModal.size||!clothingTxQty||Number(clothingTxQty)<=0} style={{flex:1}}>✅ ยืนยันรับสินค้า</BtnSuccess>
-                :<BtnDanger onClick={handleClothingTx} disabled={!clothingTxModal.size||!clothingTxQty||Number(clothingTxQty)<=0} style={{flex:1}}>✅ ยืนยันจ่ายสินค้า</BtnDanger>
+                ?<BtnSuccess onClick={handleClothingTx} disabled={txSaving||!clothingTxModal.size||!clothingTxQty||Number(clothingTxQty)<=0} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":"✅ ยืนยันรับสินค้า"}</BtnSuccess>
+                :<BtnDanger onClick={handleClothingTx} disabled={txSaving||!clothingTxModal.size||!clothingTxQty||Number(clothingTxQty)<=0} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":"✅ ยืนยันจ่ายสินค้า"}</BtnDanger>
               }
             </div>
           </div>
