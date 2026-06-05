@@ -1042,6 +1042,7 @@ export default function App() {
         thead { display: table-header-group; }
         tfoot { display: table-footer-group; }
         img { max-width: 100%; }
+        .no-print, [data-no-print="true"] { display: none !important; }
         ${extraThermal}
       </style></head><body></body></html>`);
     // thermal: ไม่ scale font (ขนาดเล็กอยู่แล้ว) — A4: scale ตามปกติ
@@ -3196,7 +3197,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Items table — Model | Color | SIZE+qty ×4 | จำนวน */}
+              {/* Items table — Model | Color | SIZE+qty ×4 | จำนวน | ราคา(หน้าจอเท่านั้น) */}
               <table style={{width:"100%",borderCollapse:"collapse",marginBottom:20,fontSize:14}}>
                 <thead>
                   <tr style={{background:"#3b5b8b",color:"white"}}>
@@ -3207,6 +3208,7 @@ export default function App() {
                       <th key={`qh${i}`} style={{padding:"8px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",minWidth:32,fontSize:12}}></th>
                     ])}
                     <th style={{padding:"9px 10px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",fontSize:13}}>จำนวน</th>
+                    <th style={{padding:"9px 10px",textAlign:"right",fontWeight:700,border:"1px solid #0284c7",fontSize:13}}>ราคา (฿)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3228,6 +3230,10 @@ export default function App() {
                     plus.forEach(p=>rows.push([p]));
                     if(rows.length===0) rows.push([]);
                     const totalQty=group.items.reduce((s,i)=>s+i.qty,0);
+                    // คำนวณราคารวมของ group นี้ (qty × salePrice ตามไซส์)
+                    const clothingItem = clothingItems.find(ci=>ci.id===group.clothingId);
+                    const colorData = clothingItem?.colors?.[group.colorIdx];
+                    const groupTotalPrice = group.items.reduce((s,oi) => s + oi.qty * (getPriceForSize(colorData, oi.size) || 0), 0);
                     const lastIdx=rows.length-1;
                     return rows.map((chunk,ci)=>(
                       <tr key={`${gi}-${ci}`} style={{borderBottom:"1px solid #e2e8f0",background:gi%2===0?"white":"#f8fafc"}}>
@@ -3247,6 +3253,9 @@ export default function App() {
                           <td key={`e2-${ci}-${i}`} style={{border:"1px solid #f1f5f9"}}/>
                         ])}
                         <td style={{padding:"9px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:16,color:"#3b5b8b",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>{ci===lastIdx?totalQty:""}</td>
+                        <td style={{padding:"9px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:700,fontSize:14,color:"#1e293b",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>
+                          {ci===lastIdx && groupTotalPrice > 0 ? `฿${groupTotalPrice.toLocaleString("th-TH",{minimumFractionDigits:2})}` : ""}
+                        </td>
                       </tr>
                     ));
                   })}
@@ -3255,6 +3264,16 @@ export default function App() {
                   <tr style={{background:"#f1f5f9",fontWeight:700}}>
                     <td colSpan={10} style={{padding:"11px 14px",textAlign:"right",color:"#475569",fontSize:13}}>รวมทั้งหมด</td>
                     <td style={{padding:"11px 14px",textAlign:"center",fontFamily:"monospace",fontSize:16,color:"#3b5b8b",border:"1px solid #e2e8f0"}}>{(showPrintOrder.items||[]).reduce((s,i)=>s+i.qty,0)} ชิ้น</td>
+                    <td style={{padding:"11px 14px",textAlign:"right",fontFamily:"monospace",fontWeight:800,fontSize:16,color:"#166534",border:"1px solid #e2e8f0",background:"#f0fdf4"}}>
+                      ฿{(()=>{
+                        const total = (showPrintOrder.items||[]).reduce((s,oi)=>{
+                          const ci = clothingItems.find(c=>c.id===oi.clothingId);
+                          const col = ci?.colors?.[oi.colorIdx];
+                          return s + oi.qty * (getPriceForSize(col, oi.size) || 0);
+                        }, 0);
+                        return total.toLocaleString("th-TH",{minimumFractionDigits:2});
+                      })()}
+                    </td>
                   </tr>
                 </tfoot>
               </table>
