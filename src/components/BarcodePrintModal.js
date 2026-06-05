@@ -1,5 +1,6 @@
 // 🏷️ Print Barcode Stickers — ปริ้น barcode หลายๆ ใบใน 1 หน้า A4
 import { useState, useMemo } from "react";
+import html2pdf from "html2pdf.js";
 import { T } from "../theme";
 import { Modal, MHead, BtnPrimary, BtnGhost } from "./ui";
 import { BarcodeDisplay } from "./ui";
@@ -79,6 +80,27 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], o
     } else {
       setTimeout(() => printElementById?.("barcode-sticker-area", "A4 portrait", "8mm"), 100);
     }
+  };
+
+  const handleDownloadPdf = () => {
+    if (printList.length === 0) { alert("เลือกสินค้าอย่างน้อย 1 รายการ"); return; }
+    const el = document.getElementById("barcode-sticker-area");
+    if (!el) return;
+    const w = Number(thermalW) || 40;
+    const h = Number(thermalH) || 30;
+    const filename = layout.thermal
+      ? `stickers-${printList.length}x-${w}x${h}mm.pdf`
+      : `stickers-${printList.length}x-A4.pdf`;
+    html2pdf().set({
+      margin: 0,
+      filename,
+      image: { type: "jpeg", quality: 0.98 },
+      html2canvas: { scale: 4, useCORS: true, backgroundColor: "#ffffff" },
+      jsPDF: layout.thermal
+        ? { unit: "mm", format: [w, h], orientation: w > h ? "landscape" : "portrait" }
+        : { unit: "mm", format: "a4", orientation: "portrait" },
+      pagebreak: { mode: ["css", "legacy"] }
+    }).from(el.cloneNode(true)).save();
   };
 
   return (
@@ -169,8 +191,11 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], o
             ? <> ใช้ <b>{printList.length}</b> ดวง × {Number(thermalW)||40}×{Number(thermalH)||30} mm</>
             : <> ใช้ <b>{Math.ceil(printList.length / (layout.cols * layout.rows))}</b> หน้า A4</>}
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <BtnGhost onClick={onClose}>ปิด</BtnGhost>
+          <BtnGhost onClick={handleDownloadPdf} disabled={printList.length === 0} style={{ color: "#dc2626", borderColor: "rgba(220,38,38,0.35)" }}>
+            📥 PDF{layout.thermal ? " (สำหรับแอป Aimo)" : ""} ({printList.length})
+          </BtnGhost>
           <BtnPrimary onClick={handlePrint} disabled={printList.length === 0}>🖨️ พิมพ์ ({printList.length})</BtnPrimary>
         </div>
       </div>
