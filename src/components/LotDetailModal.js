@@ -1,12 +1,13 @@
-import React, { useState } from "react";
-import { Modal, MHead, Input, BtnPrimary, BtnGhost, BtnDanger, Toast } from "./ui";
-import { collection, addDoc, updateDoc, doc, serverTimestamp } from "firebase/firestore";
+import React, { useState, useEffect, useRef } from "react";
+import { Modal, MHead, BtnPrimary, BtnGhost, BtnDanger, Toast } from "./ui";
+import { collection, addDoc, updateDoc, doc, getDocs, query, where, documentId, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import {
   PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot,
   moveLot, splitLot, addLotNote, nextStep, canMoveTo, nowStr,
 } from "../utils/productionLots";
+import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
 
 const T = { border:"#e3e8ef", sub:"#5b6b85", text:"#1f2a44", muted:"#8a9bb3", accent:"#3b5b8b", red:"#dc2626", green:"#16a34a" };
 const fmtInt = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -20,14 +21,46 @@ export default function LotDetailModal({
   const [toast, setToast] = useState("");
   const [showSplit, setShowSplit] = useState(false);
   const [noteText, setNoteText] = useState("");
+  const [pendingPhotos, setPendingPhotos] = useState([]); // [{dataUrl, sizeKB}]
+  const [photoCache, setPhotoCache] = useState({}); // {photoId: dataUrl}
+  const [lightbox, setLightbox] = useState(null);    // dataUrl
+  const fileRef = useRef(null);
 
   const lots = getLots(order);
   const lot = lots[lotIdx];
-  if (!lot) return null;
-  const lotTotal = totalQtyOfLot(lot);
-  const next = nextStep(lot.status);
-  const isFinal = lot.status === "เข้าคลัง";
+  const lotTotal = lot ? totalQtyOfLot(lot) : 0;
+  const next = lot ? nextStep(lot.status) : null;
+  const isFinal = lot && lot.status === "เข้าคลัง";
   const userRole = user?.role || "staff";
+
+  // โหลดรูปจาก sub-collection สำหรับ note ที่มี photoIds
+  useEffect(() => {
+    const ids = new Set();
+    (lot?.notes || []).forEach(n => (n.photoIds || []).forEach(id => {
+      if (!photoCache[id]) ids.add(id);
+    }));
+    if (ids.size === 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const idList = Array.from(ids);
+        // Firestore in() รับสูงสุด 30 ids/ครั้ง
+        const chunks = [];
+        for (let i = 0; i < idList.length; i += 30) chunks.push(idList.slice(i, i + 30));
+        const out = {};
+        for (const chunk of chunks) {
+          const q = query(collection(db, collectionName, order.id, "photos"), where(documentId(), "in", chunk));
+          const snap = await getDocs(q);
+          snap.forEach(d => { out[d.id] = d.data().dataUrl || ""; });
+        }
+        if (!cancelled) setPhotoCache(p => ({ ...p, ...out }));
+      } catch (e) { console.warn("[photos] load failed:", e); }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lot?.notes, order.id, collectionName]);
+
+  if (!lot) return null;
 
   // ── persist helper ──
   const persistLots = async (newLots, extras = {}) => {
@@ -141,21 +174,68 @@ export default function LotDetailModal({
     }
   };
 
-  // ── add note ──
-  const handleAddNote = async () => {
-    if (busy || !noteText.trim()) return;
+  // ── pick photos ──
+  const handlePickFiles = async (files) => {
+    if (!files || files.length === 0) return;
     setBusy(true);
     try {
-      const newLots = addLotNote(lots, lotIdx, noteText.trim(), user?.name || "");
+      const compressed = [];
+      for (const f of files) {
+        if (!f.type?.startsWith("image/")) continue;
+        const dataUrl = await compressImage(f, { maxDim: 1000, quality: 0.75 });
+        compressed.push({ dataUrl, sizeKB: dataUrlSizeKB(dataUrl) });
+      }
+      setPendingPhotos(prev => [...prev, ...compressed]);
+      setToast(`เลือก ${compressed.length} รูป รวมที่ค้างจะส่ง ${compressed.length + pendingPhotos.length} รูป`);
+    } catch (e) {
+      console.error(e); setToast("ผิดพลาด: " + (e.message || e));
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  // ── add note ──
+  const handleAddNote = async () => {
+    if (busy) return;
+    if (!noteText.trim() && pendingPhotos.length === 0) return;
+    setBusy(true);
+    try {
+      // 1) upload รูปลง sub-collection
+      const photoIds = [];
+      for (const ph of pendingPhotos) {
+        const ref = await addDoc(collection(db, collectionName, order.id, "photos"), {
+          dataUrl: ph.dataUrl, by: user?.name || "", at: nowStr(), createdAt: serverTimestamp(),
+        });
+        photoIds.push(ref.id);
+        setPhotoCache(p => ({ ...p, [ref.id]: ph.dataUrl }));
+      }
+      // 2) เพิ่ม note ใน lots (รวม photoIds)
+      const newLots = lots.map((l, i) => {
+        if (i !== lotIdx) return l;
+        return {
+          ...l,
+          notes: [...(l.notes || []), {
+            at: nowStr(),
+            by: user?.name || "",
+            text: noteText.trim(),
+            photoIds: photoIds,
+          }],
+        };
+      });
       await persistLots(newLots);
       setNoteText("");
-      setToast("เพิ่มหมายเหตุสำเร็จ");
+      setPendingPhotos([]);
+      setToast(`บันทึกหมายเหตุสำเร็จ ${photoIds.length > 0 ? `(${photoIds.length} รูป)` : ""}`);
     } catch (e) {
       console.error(e); setToast("ผิดพลาด: " + (e.message || e));
     } finally {
       setBusy(false);
     }
   };
+
+  // unused import suppression
+  void addLotNote;
 
   // ── cancel lot ──
   const handleCancel = async () => {
@@ -259,7 +339,7 @@ export default function LotDetailModal({
       {/* Notes */}
       <div style={{padding:12,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,marginBottom:12}}>
         <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:8,textTransform:"uppercase",letterSpacing:"0.06em"}}>📝 หมายเหตุล็อต ({(lot.notes||[]).length})</div>
-        <div style={{maxHeight:180,overflowY:"auto",marginBottom:8}}>
+        <div style={{maxHeight:220,overflowY:"auto",marginBottom:8}}>
           {(lot.notes || []).length === 0 ? (
             <div style={{fontSize:12,color:T.muted,textAlign:"center",padding:14}}>— ยังไม่มี —</div>
           ) : [...(lot.notes||[])].reverse().map((n, i, arr) => (
@@ -268,19 +348,59 @@ export default function LotDetailModal({
                 <span style={{fontWeight:600,color:T.text}}>{n.by || "ไม่ระบุ"}</span>
                 <span style={{color:T.muted,fontSize:11}}>{n.at}</span>
               </div>
-              <div style={{color:T.sub,whiteSpace:"pre-wrap"}}>{n.text}</div>
+              {n.text && <div style={{color:T.sub,whiteSpace:"pre-wrap",marginBottom:n.photoIds?.length?6:0}}>{n.text}</div>}
+              {(n.photoIds || []).length > 0 && (
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {n.photoIds.map((pid, j) => {
+                    const url = photoCache[pid];
+                    return url ? (
+                      <img key={j} src={url} alt="" onClick={() => setLightbox(url)}
+                        style={{width:62,height:62,objectFit:"cover",borderRadius:6,border:`1px solid ${T.border}`,cursor:"zoom-in"}}/>
+                    ) : (
+                      <div key={j} style={{width:62,height:62,borderRadius:6,background:"#f1f5f9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,color:T.muted}}>⏳</div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           ))}
         </div>
+
+        {/* Pending photos preview */}
+        {pendingPhotos.length > 0 && (
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8,padding:6,background:"rgba(146,64,14,0.06)",borderRadius:7}}>
+            {pendingPhotos.map((ph, i) => (
+              <div key={i} style={{position:"relative"}}>
+                <img src={ph.dataUrl} alt="" style={{width:50,height:50,objectFit:"cover",borderRadius:5,border:`1px solid ${T.border}`}}/>
+                <button onClick={() => setPendingPhotos(prev => prev.filter((_, j) => j !== i))}
+                  style={{position:"absolute",top:-4,right:-4,width:18,height:18,borderRadius:"50%",border:"1px solid #fecaca",background:"white",cursor:"pointer",fontSize:10,color:T.red,lineHeight:1,padding:0}}>✕</button>
+                <div style={{fontSize:9,color:T.muted,textAlign:"center",marginTop:2}}>{ph.sizeKB} KB</div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div style={{display:"flex",gap:6}}>
           <input value={noteText} onChange={e => setNoteText(e.target.value)}
-            placeholder="เพิ่มหมายเหตุ (เช่น พิมพ์เสร็จ 30 ตัว เหลือพรุ่งนี้)"
+            placeholder="พิมพ์ข้อความ หรือกด 📷 แนบรูป"
             onKeyDown={e => e.key === "Enter" && handleAddNote()}
             style={{flex:1,padding:"7px 12px",border:`1px solid ${T.border}`,borderRadius:7,fontSize:12,fontFamily:"'Sarabun',sans-serif",outline:"none",background:"white"}}/>
-          <button onClick={handleAddNote} disabled={busy || !noteText.trim()}
-            style={{padding:"7px 14px",border:"none",borderRadius:7,background:"#92400e",color:"white",fontSize:12,fontWeight:600,cursor:noteText.trim()?"pointer":"not-allowed",opacity:noteText.trim()?1:0.5,fontFamily:"inherit"}}>+ เพิ่ม</button>
+          <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}}
+            onChange={e => handlePickFiles(Array.from(e.target.files || []))}/>
+          <button onClick={() => fileRef.current?.click()} disabled={busy}
+            title="แนบรูป" style={{padding:"7px 12px",border:`1px solid #fde68a`,borderRadius:7,background:"white",color:"#92400e",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>📷</button>
+          <button onClick={handleAddNote} disabled={busy || (!noteText.trim() && pendingPhotos.length === 0)}
+            style={{padding:"7px 14px",border:"none",borderRadius:7,background:"#92400e",color:"white",fontSize:12,fontWeight:600,cursor:(noteText.trim()||pendingPhotos.length)?"pointer":"not-allowed",opacity:(noteText.trim()||pendingPhotos.length)?1:0.5,fontFamily:"inherit"}}>+ เพิ่ม</button>
         </div>
       </div>
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div onClick={() => setLightbox(null)}
+          style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,cursor:"zoom-out",padding:20}}>
+          <img src={lightbox} alt="" style={{maxWidth:"95%",maxHeight:"95%",borderRadius:8,boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}/>
+        </div>
+      )}
 
       {/* History */}
       <div style={{padding:12,background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:10,marginBottom:12}}>
