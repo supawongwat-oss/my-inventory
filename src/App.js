@@ -142,6 +142,7 @@ export default function App() {
   const [selectedCat, setSelectedCat] = useState("ทั้งหมด");
   const [search, setSearch] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(typeof window!=="undefined"?window.innerWidth>900:true);
+  const [expandedGroups, setExpandedGroups] = useState({ warehouse:true, billing:true, adminhub:true });
   useEffect(()=>{
     const onResize=()=>{ if(window.innerWidth<=900) setSidebarOpen(false); };
     window.addEventListener("resize",onResize);
@@ -1121,25 +1122,41 @@ export default function App() {
 
   if (!user) return <LoginPage users={users} onLogin={(u, rememberMe) => handleLogin(u, rememberMe)} onResetPassword={handleResetPassword} onRegister={handleRegisterUser}/>;
 
-  const allNavItems = [
-    { id:"dashboard",    icon:"📊", label:"ภาพรวม" },
-    { id:"inventory",    icon:"📦", label:"สินค้าคงคลัง" },
-    { id:"transactions", icon:"🔄", label:"รับ/จ่ายสินค้า" },
-    { id:"stocktake",    icon:"📦", label:"นับสต็อก" },
-    { id:"barcode",      icon:"▦",  label:"สแกนบาร์โค้ด" },
-    { id:"production",   icon:"🏭", label:"การผลิต" },
-    { id:"orders",       icon:"📋", label:"ใบสั่งของ" },
-    { id:"invoice",      icon:"🧾", label:"ออกบิล" },
-    { id:"statements",   icon:"📃", label:"วางบิลเก็บเงิน" },
-    { id:"customers",    icon:"👤", label:"ลูกค้า" },
-    { id:"alerts",       icon:"🔔", label:"แจ้งเตือน", badge: lowStock.length },
-    { id:"reports",      icon:"📊", label:"รายงาน" },
-    { id:"suppliers",    icon:"🏭", label:"ซัพพลายเออร์" },
+  // โครงสร้างเมนู: รวม 3 กลุ่มย่อย — คลัง&ผลิต / บิล&เก็บเงิน / รายงาน&ผู้ดูแล
+  const navStructure = [
+    { type:"item",  id:"dashboard", icon:"📊", label:"ภาพรวม" },
+    { type:"group", id:"warehouse", icon:"📦", label:"คลัง & ผลิต", children:[
+      { id:"inventory", icon:"📦", label:"สินค้าคงคลัง" },
+      { id:"stocktake", icon:"🧮", label:"นับสต็อก" },
+      { id:"production",icon:"🏭", label:"การผลิต" },
+    ]},
+    { type:"item",  id:"transactions", icon:"🔄", label:"รับ/จ่ายสินค้า" },
+    { type:"item",  id:"barcode",      icon:"▦",  label:"สแกนบาร์โค้ด" },
+    { type:"item",  id:"orders",       icon:"📋", label:"ใบสั่งของ" },
+    { type:"group", id:"billing", icon:"🧾", label:"บิล & เก็บเงิน", children:[
+      { id:"invoice",    icon:"🧾", label:"ออกบิล" },
+      { id:"statements", icon:"📃", label:"วางบิลเก็บเงิน" },
+    ]},
+    { type:"item",  id:"customers", icon:"👤", label:"ลูกค้า" },
+    { type:"item",  id:"suppliers", icon:"🏭", label:"ซัพพลายเออร์" },
+    { type:"item",  id:"alerts",    icon:"🔔", label:"แจ้งเตือน", badge: lowStock.length },
+    { type:"group", id:"adminhub", icon:"⚙️", label:"รายงาน & ผู้ดูแล", children:[
+      { id:"reports",  icon:"📊", label:"รายงาน" },
+      { id:"users",    icon:"👥", label:"จัดการผู้ใช้",   adminOnly:true },
+      { id:"auditlog", icon:"📝", label:"ประวัติการใช้",  adminOnly:true },
+    ]},
   ];
-  // admin เห็นทุก tab + จัดการผู้ใช้ + audit log — คนอื่น filter ตาม allowedTabs ที่ admin กำหนดไว้
-  const navItems = user.role==="admin"
-    ? [...allNavItems, { id:"users", icon:"👥", label:"จัดการผู้ใช้" }, { id:"auditlog", icon:"📝", label:"ประวัติการใช้" }]
-    : allNavItems.filter(it => !user.allowedTabs || user.allowedTabs.includes(it.id));
+  // filter ตาม permission: admin เห็นทุกอย่าง / non-admin เห็นเฉพาะที่อยู่ใน allowedTabs
+  const canSee = (id) => user.role === "admin" || !user.allowedTabs || user.allowedTabs.includes(id);
+  const navItems = navStructure
+    .map(entry => {
+      if (entry.type === "item") return canSee(entry.id) ? entry : null;
+      // group → filter children
+      const children = (entry.children || []).filter(c => (!c.adminOnly || user.role === "admin") && canSee(c.id));
+      if (children.length === 0) return null;
+      return { ...entry, children };
+    })
+    .filter(Boolean);
 
 
   return (
@@ -1205,16 +1222,62 @@ export default function App() {
           {sidebarOpen&&<div><div style={{fontSize:15,fontWeight:800,color:T.text,fontFamily:"'Space Mono',monospace",letterSpacing:3}}>CPU</div><div style={{fontSize:9,color:T.muted}}>ระบบคลังสินค้า</div></div>}
         </div>
 
-        <nav style={{padding:"10px 8px",flex:1}}>
-          {navItems.map(item => {
-            const active = activeTab === item.id;
+        <nav style={{padding:"10px 8px",flex:1,overflowY:"auto"}}>
+          {navItems.map(entry => {
+            // ── flat item ──
+            if (entry.type === "item") {
+              const active = activeTab === entry.id;
+              return (
+                <div key={entry.id} onClick={() => setActiveTab(entry.id)}
+                  className={active?"nav-active-bar":""}
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontWeight:active?600:400,fontSize:13,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,justifyContent:sidebarOpen?"flex-start":"center",position:"relative",boxShadow:active?"0 0 12px rgba(59,91,139,0.08)":"none"}}>
+                  <span style={{fontSize:15,flexShrink:0}}>{entry.icon}</span>
+                  {sidebarOpen&&<span style={{fontFamily:"'DM Sans','Sarabun',sans-serif"}}>{entry.label}</span>}
+                  {sidebarOpen&&entry.badge>0&&<span style={{marginLeft:"auto",background:T.red,color:"white",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{entry.badge}</span>}
+                </div>
+              );
+            }
+            // ── group ──
+            const isOpen = expandedGroups[entry.id] !== false;
+            const hasActiveChild = entry.children.some(c => c.id === activeTab);
+            // Sidebar collapsed mode → render children flat as icons
+            if (!sidebarOpen) {
+              return (
+                <div key={entry.id}>
+                  {entry.children.map(c => {
+                    const active = activeTab === c.id;
+                    return (
+                      <div key={c.id} onClick={() => setActiveTab(c.id)} title={c.label}
+                        style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontSize:13,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,justifyContent:"center"}}>
+                        <span style={{fontSize:15}}>{c.icon}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            }
+            // Sidebar open → group header + children
             return (
-              <div key={item.id} onClick={() => setActiveTab(item.id)}
-                className={active?"nav-active-bar":""}
-                style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontWeight:active?600:400,fontSize:13,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,justifyContent:sidebarOpen?"flex-start":"center",position:"relative",boxShadow:active?"0 0 12px rgba(59,91,139,0.08)":"none"}}>
-                <span style={{fontSize:15,flexShrink:0}}>{item.icon}</span>
-                {sidebarOpen&&<span style={{fontFamily:"'DM Sans','Sarabun',sans-serif"}}>{item.label}</span>}
-                {sidebarOpen&&item.badge>0&&<span style={{marginLeft:"auto",background:T.red,color:"white",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{item.badge}</span>}
+              <div key={entry.id} style={{marginBottom:4}}>
+                <div onClick={() => setExpandedGroups(p => ({...p, [entry.id]: !isOpen}))}
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",borderRadius:10,cursor:"pointer",color:hasActiveChild?T.accent:T.muted,fontWeight:600,fontSize:11,letterSpacing:"0.06em",textTransform:"uppercase",transition:"background .15s",background:hasActiveChild?"rgba(59,91,139,0.04)":"transparent",marginTop:6,marginBottom:3}}
+                  onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.06)"}
+                  onMouseLeave={e=>e.currentTarget.style.background=hasActiveChild?"rgba(59,91,139,0.04)":"transparent"}>
+                  <span style={{fontSize:13,flexShrink:0}}>{entry.icon}</span>
+                  <span style={{flex:1,fontFamily:"'DM Sans','Sarabun',sans-serif"}}>{entry.label}</span>
+                  <span style={{fontSize:9,opacity:0.6,transition:"transform .2s",transform:isOpen?"rotate(0deg)":"rotate(-90deg)"}}>▼</span>
+                </div>
+                {isOpen && entry.children.map(c => {
+                  const active = activeTab === c.id;
+                  return (
+                    <div key={c.id} onClick={() => setActiveTab(c.id)}
+                      className={active?"nav-active-bar":""}
+                      style={{display:"flex",alignItems:"center",gap:10,padding:"8px 14px 8px 26px",borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontWeight:active?600:400,fontSize:12.5,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,position:"relative",boxShadow:active?"0 0 12px rgba(59,91,139,0.08)":"none"}}>
+                      <span style={{fontSize:14,flexShrink:0}}>{c.icon}</span>
+                      <span style={{fontFamily:"'DM Sans','Sarabun',sans-serif"}}>{c.label}</span>
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
