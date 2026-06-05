@@ -86,7 +86,7 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
             </tfoot>
           </table>
 
-          {/* Materials */}
+          {/* Materials (ไม่มีคอลัมน์ราคา/มูลค่า — ใบสั่งผลิตให้ทีมผลิต) */}
           {order.costSnapshot?.materials?.length > 0 && (
             <div style={{marginBottom:18}}>
               <div style={{fontSize:14,fontWeight:700,color:"#3b5b8b",marginBottom:8}}>🧪 วัตถุดิบที่ต้องใช้</div>
@@ -94,9 +94,8 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                 <thead>
                   <tr style={{background:"#f1f5f9"}}>
                     <th style={{padding:"8px 10px",textAlign:"left",border:"1px solid #e2e8f0",fontSize:12,color:"#475569"}}>วัตถุดิบ</th>
-                    <th style={{padding:"8px 10px",textAlign:"right",border:"1px solid #e2e8f0",fontSize:12,color:"#475569",width:100}}>ใช้/ตัว</th>
-                    <th style={{padding:"8px 10px",textAlign:"right",border:"1px solid #e2e8f0",fontSize:12,color:"#475569",width:120}}>รวม</th>
-                    <th style={{padding:"8px 10px",textAlign:"right",border:"1px solid #e2e8f0",fontSize:12,color:"#475569",width:120}}>มูลค่า (฿)</th>
+                    <th style={{padding:"8px 10px",textAlign:"right",border:"1px solid #e2e8f0",fontSize:12,color:"#475569",width:110}}>ใช้/ตัว</th>
+                    <th style={{padding:"8px 10px",textAlign:"right",border:"1px solid #e2e8f0",fontSize:12,color:"#475569",width:140}}>รวม</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -105,24 +104,12 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                       <td style={{padding:"8px 10px",border:"1px solid #e2e8f0"}}>{m.productName}</td>
                       <td style={{padding:"8px 10px",textAlign:"right",fontFamily:"monospace",border:"1px solid #e2e8f0"}}>{fmt(m.qtyPerPiece)} {m.unit}</td>
                       <td style={{padding:"8px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:700,border:"1px solid #e2e8f0"}}>{fmtInt(m.totalQty)} {m.unit}</td>
-                      <td style={{padding:"8px 10px",textAlign:"right",fontFamily:"monospace",border:"1px solid #e2e8f0"}}>{fmt(m.totalCost)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-
-          {/* Cost summary */}
-          {order.costSnapshot && (
-            <div style={{padding:"14px 18px",background:"linear-gradient(135deg,rgba(59,91,139,0.06),rgba(16,185,129,0.06))",border:"1px solid #e2e8f0",borderRadius:10,marginBottom:18}}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,fontSize:13}}>
-                <div><div style={{color:"#64748b",fontSize:11}}>ค่าวัตถุดิบ/ตัว</div><div style={{fontFamily:"monospace",fontWeight:700,fontSize:15}}>฿{fmt(order.costSnapshot.materialCostPerPiece)}</div></div>
-                <div><div style={{color:"#64748b",fontSize:11}}>ค่าแรง/ตัว</div><div style={{fontFamily:"monospace",fontWeight:700,fontSize:15}}>฿{fmt(order.costSnapshot.laborCostPerPiece)}</div></div>
-                <div><div style={{color:"#64748b",fontSize:11}}>ต้นทุน/ตัว</div><div style={{fontFamily:"monospace",fontWeight:700,fontSize:15,color:"#3b5b8b"}}>฿{fmt(order.costSnapshot.totalCostPerPiece)}</div></div>
-                <div><div style={{color:"#64748b",fontSize:11}}>ต้นทุนรวม</div><div style={{fontFamily:"monospace",fontWeight:800,fontSize:18,color:"#3b5b8b"}}>฿{fmt(order.costSnapshot.grandTotal)}</div></div>
-              </div>
-            </div>
           )}
 
           {order.note && (

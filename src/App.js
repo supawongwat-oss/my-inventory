@@ -31,7 +31,11 @@ export default function App() {
     authReady.then(() => setAuthChecked(true));
   }, []);
 
+<<<<<<< HEAD
   const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, employees, taxDocs } = useFirestore();
+=======
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders } = useFirestore();
+>>>>>>> d727e9b5430f1feef13ff4b169948484e7d66038
   // ใช้แทน ROLES[role].label เพื่อให้ admin เปลี่ยนชื่อบทบาทได้
   const rLabel = (key) => roleLabels[key] || ROLES[key]?.label || key;
 
@@ -144,6 +148,7 @@ export default function App() {
   const [selectedCat, setSelectedCat] = useState("ทั้งหมด");
   const [search, setSearch] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(typeof window!=="undefined"?window.innerWidth>900:true);
+  const [expandedGroups, setExpandedGroups] = useState({ warehouse:true, billing:true, adminhub:true });
   useEffect(()=>{
     const onResize=()=>{ if(window.innerWidth<=900) setSidebarOpen(false); };
     window.addEventListener("resize",onResize);
@@ -188,6 +193,7 @@ export default function App() {
 
 
   const [showNewOrder, setShowNewOrder] = useState(false);
+  const [freeItemForm, setFreeItemForm] = useState({ name:"", colorName:"", size:"", qty:"" });
   const [collapsedOrderDates, setCollapsedOrderDates] = useState({});
   const [collapsedInvoiceDates, setCollapsedInvoiceDates] = useState({});
   const [showNewCustomer, setShowNewCustomer] = useState(false);
@@ -296,6 +302,7 @@ export default function App() {
   // toasts
   const [addSuccess, setAddSuccess] = useState(false);
   const [txSuccess, setTxSuccess] = useState(false);
+  const [txSaving, setTxSaving] = useState(false);
 
   const imageInputRef = useRef(null);
   const productImageRef = useRef(null);
@@ -391,24 +398,36 @@ export default function App() {
   };
 
   const handleTx = async () => {
+    if (txSaving) return; // กัน double-submit
     if (!txForm.productId || txForm.qty === "" || Number(txForm.qty) <= 0) return;
-    const pid = txForm.productId;
-    const qty = Number(txForm.qty);
-    const prod = products.find(p => p.id === pid);
-    const histEntry = { action: txType==="รับ" ? "รับสินค้าเข้าคลัง" : "จ่ายสินค้าออกคลัง", by: user.name, date: now(), note:`${txType==="รับ"?"+":"-"}${qty} ${prod?.unit||""}${txForm.note ? ` (${txForm.note})` : ""}` };
-    const oldQty = Number(prod.qty);
-    const newQty = txType==="รับ" ? oldQty+qty : Math.max(0, oldQty-qty);
-    await updateDoc(doc(db, "products", pid), { qty: newQty, lastUpdate: now(), history: [histEntry, ...(prod.history||[])] });
-    await addDoc(collection(db, "transactions"), { type:txType, code:prod?.code, name:prod?.name, qty, by:user.name, date:now(), note:txForm.note||"", createdAt: serverTimestamp() });
-    logAudit(user, {
-      action: AUDIT_ACTIONS.STOCK,
-      collection: "products",
-      targetId: pid,
-      targetLabel: `${prod?.code} ${prod?.name}`,
-      note: `${txType} ${qty} ${prod?.unit||""} (${oldQty}→${newQty})${txForm.note?` · ${txForm.note}`:""}`,
-    });
-    setTxSuccess(true);
-    setTimeout(() => { setTxSuccess(false); setShowTxModal(false); setTxForm({productId:"",qty:"",note:""}); }, 1000);
+    setTxSaving(true);
+    try {
+      const pid = txForm.productId;
+      const qty = Number(txForm.qty);
+      const prod = products.find(p => p.id === pid);
+      const histEntry = { action: txType==="รับ" ? "รับสินค้าเข้าคลัง" : "จ่ายสินค้าออกคลัง", by: user.name, date: now(), note:`${txType==="รับ"?"+":"-"}${qty} ${prod?.unit||""}${txForm.note ? ` (${txForm.note})` : ""}` };
+      const oldQty = Number(prod.qty);
+      const newQty = txType==="รับ" ? oldQty+qty : Math.max(0, oldQty-qty);
+      await updateDoc(doc(db, "products", pid), { qty: newQty, lastUpdate: now(), history: [histEntry, ...(prod.history||[])] });
+      await addDoc(collection(db, "transactions"), { type:txType, code:prod?.code, name:prod?.name, qty, by:user.name, date:now(), note:txForm.note||"", createdAt: serverTimestamp() });
+      logAudit(user, {
+        action: AUDIT_ACTIONS.STOCK,
+        collection: "products",
+        targetId: pid,
+        targetLabel: `${prod?.code} ${prod?.name}`,
+        note: `${txType} ${qty} ${prod?.unit||""} (${oldQty}→${newQty})${txForm.note?` · ${txForm.note}`:""}`,
+      });
+      // ปิด modal + reset ทันทีหลัง save → กันกดซ้ำ
+      setTxForm({productId:"",qty:"",note:""});
+      setShowTxModal(false);
+      setTxSuccess(true);
+      setTimeout(() => setTxSuccess(false), 1500);
+    } catch (e) {
+      console.error("[handleTx] failed:", e);
+      alert("บันทึกไม่สำเร็จ: " + (e.message || e));
+    } finally {
+      setTxSaving(false);
+    }
   };
 
   const handleDelete = async id => {
@@ -672,37 +691,45 @@ export default function App() {
   };
 
   const handleClothingTx = async () => {
+    if (txSaving) return; // กัน double-submit (ใช้ flag เดียวกัน)
     if (!clothingTxModal || !clothingTxQty || Number(clothingTxQty) <= 0) return;
-    const { item, colorIdx, size } = clothingTxModal;
-    const col = item.colors[colorIdx];
-    const curQty = (col.stock || {})[size] || 0;
-    const newQty = clothingTxType === "รับ"
-      ? curQty + Number(clothingTxQty)
-      : Math.max(0, curQty - Number(clothingTxQty));
-    const newColors = item.colors.map((c, i) =>
-      i === colorIdx ? { ...c, stock: { ...c.stock, [size]: newQty } } : c
-    );
-    await updateDoc(doc(db, "clothing", item.id), { colors: newColors });
-    // Log transaction
-    await addDoc(collection(db, "transactions"), {
-      type: clothingTxType, code: item.id,
-      name: `${item.model} / ${col.colorName} / ${size}`,
-      qty: Number(clothingTxQty), by: user.name,
-      date: now(), note: clothingTxNote || "", createdAt: serverTimestamp(),
-      category: "เสื้อผ้า"
-    });
-    logAudit(user, {
-      action: AUDIT_ACTIONS.STOCK,
-      collection: "clothing",
-      targetId: item.id,
-      targetLabel: `${item.model} / ${col.colorName} / ${size}`,
-      note: `${clothingTxType} ${clothingTxQty} ชิ้น (${curQty}→${newQty})${clothingTxNote?` · ${clothingTxNote}`:""}`,
-    });
-    setClothingTxSuccess(true);
-    setTimeout(() => {
-      setClothingTxSuccess(false); setClothingTxModal(null);
+    setTxSaving(true);
+    try {
+      const { item, colorIdx, size } = clothingTxModal;
+      const col = item.colors[colorIdx];
+      const curQty = (col.stock || {})[size] || 0;
+      const newQty = clothingTxType === "รับ"
+        ? curQty + Number(clothingTxQty)
+        : Math.max(0, curQty - Number(clothingTxQty));
+      const newColors = item.colors.map((c, i) =>
+        i === colorIdx ? { ...c, stock: { ...c.stock, [size]: newQty } } : c
+      );
+      await updateDoc(doc(db, "clothing", item.id), { colors: newColors });
+      await addDoc(collection(db, "transactions"), {
+        type: clothingTxType, code: item.id,
+        name: `${item.model} / ${col.colorName} / ${size}`,
+        qty: Number(clothingTxQty), by: user.name,
+        date: now(), note: clothingTxNote || "", createdAt: serverTimestamp(),
+        category: "เสื้อผ้า"
+      });
+      logAudit(user, {
+        action: AUDIT_ACTIONS.STOCK,
+        collection: "clothing",
+        targetId: item.id,
+        targetLabel: `${item.model} / ${col.colorName} / ${size}`,
+        note: `${clothingTxType} ${clothingTxQty} ชิ้น (${curQty}→${newQty})${clothingTxNote?` · ${clothingTxNote}`:""}`,
+      });
+      // ปิด modal + reset ทันที — กันกดซ้ำ
+      setClothingTxModal(null);
       setClothingTxQty(""); setClothingTxNote("");
-    }, 1000);
+      setTxSuccess(true);
+      setTimeout(() => setTxSuccess(false), 1500);
+    } catch (e) {
+      console.error("[handleClothingTx] failed:", e);
+      alert("บันทึกไม่สำเร็จ: " + (e.message || e));
+    } finally {
+      setTxSaving(false);
+    }
   };
 
   const handleClothingImageUpload = async (e) => {
@@ -987,6 +1014,11 @@ export default function App() {
   const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10mm") => {
     const el = document.getElementById(id);
     if (!el) return;
+    // ตรวจว่าเป็น thermal mode (รูปแบบ "<W>mm <H>mm")
+    const thermalMatch = /^(\d+(?:\.\d+)?)mm\s+(\d+(?:\.\d+)?)mm$/i.exec(String(pageSize).trim());
+    const isThermal = !!thermalMatch;
+    const tW = isThermal ? Number(thermalMatch[1]) : null;
+    const tH = isThermal ? Number(thermalMatch[2]) : null;
     const iframe = document.createElement("iframe");
     iframe.style.position = "fixed";
     iframe.style.right = "0";
@@ -997,6 +1029,10 @@ export default function App() {
     document.body.appendChild(iframe);
     const doc = iframe.contentWindow.document;
     doc.open();
+    const extraThermal = isThermal ? `
+      html, body { width: ${tW}mm; height: auto; }
+      body > * { width: ${tW}mm; max-width: ${tW}mm; box-sizing: border-box; }
+    ` : "";
     doc.write(`<!doctype html><html><head><meta charset="utf-8"/>
       <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
       <style>
@@ -1008,18 +1044,23 @@ export default function App() {
         thead { display: table-header-group; }
         tfoot { display: table-footer-group; }
         img { max-width: 100%; }
+        ${extraThermal}
       </style></head><body></body></html>`);
-    const scaled = scaleFontInElement(el.cloneNode(true));
-    doc.body.appendChild(doc.importNode(scaled, true));
+    // thermal: ไม่ scale font (ขนาดเล็กอยู่แล้ว) — A4: scale ตามปกติ
+    const clone = el.cloneNode(true);
+    const finalEl = isThermal ? clone : scaleFontInElement(clone);
+    doc.body.appendChild(doc.importNode(finalEl, true));
     doc.close();
+    // มือถือต้อง delay มากกว่า desktop
+    const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
     const trigger = () => {
       try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e){}
-      setTimeout(() => iframe.remove(), 1000);
+      setTimeout(() => iframe.remove(), 2000);
     };
     if (doc.fonts && doc.fonts.ready) {
-      doc.fonts.ready.then(() => setTimeout(trigger, 200));
+      doc.fonts.ready.then(() => setTimeout(trigger, isMobile ? 600 : 200));
     } else {
-      setTimeout(trigger, 500);
+      setTimeout(trigger, isMobile ? 900 : 500);
     }
   };
 
@@ -1122,6 +1163,7 @@ export default function App() {
 
   if (!user) return <LoginPage users={users} onLogin={(u, rememberMe) => handleLogin(u, rememberMe)} onResetPassword={handleResetPassword} onRegister={handleRegisterUser}/>;
 
+<<<<<<< HEAD
   const allNavItems = [
     { id:"dashboard",    icon:"📊", label:"ภาพรวม" },
     { id:"inventory",    icon:"📦", label:"สินค้าคงคลัง" },
@@ -1138,15 +1180,58 @@ export default function App() {
     { id:"suppliers",    icon:"🏭", label:"ซัพพลายเออร์" },
     { id:"employees",    icon:"👷", label:"บัตรลูกจ้าง" },
     { id:"taxdocs",      icon:"🧾", label:"คลังเอกสารภาษี" },
+=======
+  // โครงสร้างเมนู: รวม 3 กลุ่มย่อย — คลัง&ผลิต / บิล&เก็บเงิน / รายงาน&ผู้ดูแล
+  const navStructure = [
+    { type:"item",  id:"dashboard", icon:"📊", label:"ภาพรวม" },
+    { type:"group", id:"warehouse", icon:"📦", label:"คลัง & ผลิต", children:[
+      { id:"inventory", icon:"📦", label:"สินค้าคงคลัง" },
+      { id:"stocktake", icon:"🧮", label:"นับสต็อก" },
+      { id:"production",icon:"🏭", label:"การผลิต" },
+    ]},
+    { type:"item",  id:"transactions", icon:"🔄", label:"รับ/จ่ายสินค้า" },
+    { type:"item",  id:"barcode",      icon:"▦",  label:"สแกนบาร์โค้ด" },
+    { type:"item",  id:"orders",       icon:"📋", label:"ใบสั่งของ" },
+    { type:"group", id:"billing", icon:"🧾", label:"บิล & เก็บเงิน", children:[
+      { id:"invoice",    icon:"🧾", label:"ออกบิล" },
+      { id:"statements", icon:"📃", label:"วางบิลเก็บเงิน" },
+    ]},
+    { type:"item",  id:"customers", icon:"👤", label:"ลูกค้า" },
+    { type:"item",  id:"suppliers", icon:"🏭", label:"ซัพพลายเออร์" },
+    { type:"item",  id:"alerts",    icon:"🔔", label:"แจ้งเตือน", badge: lowStock.length },
+    { type:"group", id:"adminhub", icon:"⚙️", label:"รายงาน & ผู้ดูแล", children:[
+      { id:"reports",  icon:"📊", label:"รายงาน" },
+      { id:"users",    icon:"👥", label:"จัดการผู้ใช้",   adminOnly:true },
+      { id:"auditlog", icon:"📝", label:"ประวัติการใช้",  adminOnly:true },
+    ]},
+>>>>>>> d727e9b5430f1feef13ff4b169948484e7d66038
   ];
-  // admin เห็นทุก tab + จัดการผู้ใช้ + audit log — คนอื่น filter ตาม allowedTabs ที่ admin กำหนดไว้
-  const navItems = user.role==="admin"
-    ? [...allNavItems, { id:"users", icon:"👥", label:"จัดการผู้ใช้" }, { id:"auditlog", icon:"📝", label:"ประวัติการใช้" }]
-    : allNavItems.filter(it => !user.allowedTabs || user.allowedTabs.includes(it.id));
+  // flat list ของทุก tab (รวม children ของ group) — ใช้สำหรับตั้งสิทธิ์ใน Tab Access modal
+  const allNavItems = navStructure.flatMap(entry =>
+    entry.type === "item" ? [{ id:entry.id, icon:entry.icon, label:entry.label }]
+                          : (entry.children || []).map(c => ({ id:c.id, icon:c.icon, label:c.label }))
+  );
+  // filter ตาม permission: admin เห็นทุกอย่าง / non-admin เห็นเฉพาะที่อยู่ใน allowedTabs
+  const canSee = (id) => user.role === "admin" || !user.allowedTabs || user.allowedTabs.includes(id);
+  const navItems = navStructure
+    .map(entry => {
+      if (entry.type === "item") return canSee(entry.id) ? entry : null;
+      // group → filter children
+      const children = (entry.children || []).filter(c => (!c.adminOnly || user.role === "admin") && canSee(c.id));
+      if (children.length === 0) return null;
+      return { ...entry, children };
+    })
+    .filter(Boolean);
 
 
   return (
     <div style={{display:"flex",height:"100vh",fontFamily:"'Sarabun',sans-serif",background:T.bg,color:T.text,overflow:"hidden"}}>
+      {/* Global toast (เมื่อบันทึก stock ขณะ modal ปิดไปแล้ว) */}
+      {txSuccess && (
+        <div style={{position:"fixed",top:18,left:"50%",transform:"translateX(-50%)",zIndex:9999,background:"#dcfce7",border:"1px solid #86efac",borderRadius:10,padding:"10px 22px",color:"#166534",fontSize:13,fontWeight:600,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",animation:"fadeUp 0.25s ease"}}>
+          ✅ บันทึกรายการสำเร็จ
+        </div>
+      )}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
@@ -1192,7 +1277,14 @@ export default function App() {
           .modal-card,div[role="dialog"]{max-width:96vw!important;width:96vw!important;max-height:92vh!important;}
         }
         @media print{
-          /* ปริ้นใช้ iframe — ไม่ต้องทำอะไรกับหน้าหลัก */
+          /* กรณี user สั่งพิมพ์จากเมนู Chrome (system print) แทนปุ่มใน app
+             → ซ่อน UI ที่ไม่เกี่ยวกับเอกสาร */
+          .print-hide{display:none !important;}
+          .print-modal-overlay{background:white !important;backdrop-filter:none !important;position:static !important;display:block !important;padding:0 !important;}
+          .print-modal-card{box-shadow:none !important;border:none !important;border-radius:0 !important;max-height:none !important;overflow:visible !important;width:100% !important;}
+          html,body{background:white !important;}
+          /* ซ่อน sidebar + header ของหน้าหลักตอนพิมพ์ */
+          .sidebar-collapse,nav,.main-header{display:none !important;}
         }
       `}</style>
 
@@ -1208,16 +1300,62 @@ export default function App() {
           {sidebarOpen&&<div><div style={{fontSize:15,fontWeight:800,color:T.text,fontFamily:"'Space Mono',monospace",letterSpacing:3}}>CPU</div><div style={{fontSize:9,color:T.muted}}>ระบบคลังสินค้า</div></div>}
         </div>
 
-        <nav style={{padding:"10px 8px",flex:1}}>
-          {navItems.map(item => {
-            const active = activeTab === item.id;
+        <nav style={{padding:"10px 8px",flex:1,overflowY:"auto"}}>
+          {navItems.map(entry => {
+            // ── flat item ──
+            if (entry.type === "item") {
+              const active = activeTab === entry.id;
+              return (
+                <div key={entry.id} onClick={() => setActiveTab(entry.id)}
+                  className={active?"nav-active-bar":""}
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontWeight:active?600:400,fontSize:13,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,justifyContent:sidebarOpen?"flex-start":"center",position:"relative",boxShadow:active?"0 0 12px rgba(59,91,139,0.08)":"none"}}>
+                  <span style={{fontSize:15,flexShrink:0}}>{entry.icon}</span>
+                  {sidebarOpen&&<span style={{fontFamily:"'DM Sans','Sarabun',sans-serif"}}>{entry.label}</span>}
+                  {sidebarOpen&&entry.badge>0&&<span style={{marginLeft:"auto",background:T.red,color:"white",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{entry.badge}</span>}
+                </div>
+              );
+            }
+            // ── group ──
+            const isOpen = expandedGroups[entry.id] !== false;
+            const hasActiveChild = entry.children.some(c => c.id === activeTab);
+            // Sidebar collapsed mode → render children flat as icons
+            if (!sidebarOpen) {
+              return (
+                <div key={entry.id}>
+                  {entry.children.map(c => {
+                    const active = activeTab === c.id;
+                    return (
+                      <div key={c.id} onClick={() => setActiveTab(c.id)} title={c.label}
+                        style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontSize:13,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,justifyContent:"center"}}>
+                        <span style={{fontSize:15}}>{c.icon}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            }
+            // Sidebar open → group header + children
             return (
-              <div key={item.id} onClick={() => setActiveTab(item.id)}
-                className={active?"nav-active-bar":""}
-                style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontWeight:active?600:400,fontSize:13,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,justifyContent:sidebarOpen?"flex-start":"center",position:"relative",boxShadow:active?"0 0 12px rgba(59,91,139,0.08)":"none"}}>
-                <span style={{fontSize:15,flexShrink:0}}>{item.icon}</span>
-                {sidebarOpen&&<span style={{fontFamily:"'DM Sans','Sarabun',sans-serif"}}>{item.label}</span>}
-                {sidebarOpen&&item.badge>0&&<span style={{marginLeft:"auto",background:T.red,color:"white",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{item.badge}</span>}
+              <div key={entry.id} style={{marginBottom:4}}>
+                <div onClick={() => setExpandedGroups(p => ({...p, [entry.id]: !isOpen}))}
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",borderRadius:10,cursor:"pointer",color:hasActiveChild?T.accent:T.muted,fontWeight:600,fontSize:11,letterSpacing:"0.06em",textTransform:"uppercase",transition:"background .15s",background:hasActiveChild?"rgba(59,91,139,0.04)":"transparent",marginTop:6,marginBottom:3}}
+                  onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.06)"}
+                  onMouseLeave={e=>e.currentTarget.style.background=hasActiveChild?"rgba(59,91,139,0.04)":"transparent"}>
+                  <span style={{fontSize:13,flexShrink:0}}>{entry.icon}</span>
+                  <span style={{flex:1,fontFamily:"'DM Sans','Sarabun',sans-serif"}}>{entry.label}</span>
+                  <span style={{fontSize:9,opacity:0.6,transition:"transform .2s",transform:isOpen?"rotate(0deg)":"rotate(-90deg)"}}>▼</span>
+                </div>
+                {isOpen && entry.children.map(c => {
+                  const active = activeTab === c.id;
+                  return (
+                    <div key={c.id} onClick={() => setActiveTab(c.id)}
+                      className={active?"nav-active-bar":""}
+                      style={{display:"flex",alignItems:"center",gap:10,padding:"8px 14px 8px 26px",borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontWeight:active?600:400,fontSize:12.5,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,position:"relative",boxShadow:active?"0 0 12px rgba(59,91,139,0.08)":"none"}}>
+                      <span style={{fontSize:14,flexShrink:0}}>{c.icon}</span>
+                      <span style={{fontFamily:"'DM Sans','Sarabun',sans-serif"}}>{c.label}</span>
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
@@ -1928,9 +2066,11 @@ export default function App() {
           {activeTab==="production"&&(
             <ProductionTab
               productionOrders={productionOrders||[]}
+              customOrders={customOrders||[]}
               boms={boms||[]}
               products={products}
               clothingItems={clothingItems}
+              customers={customers}
               companyInfo={companyInfo}
               user={user}
               role={role}
@@ -2513,10 +2653,10 @@ export default function App() {
             <Input label="จำนวน" type="number" placeholder="0" value={txForm.qty} onChange={e=>setTxForm(f=>({...f,qty:e.target.value}))}/>
             <Input label="หมายเหตุ" placeholder="ระบุหมายเหตุ (ถ้ามี)" value={txForm.note} onChange={e=>setTxForm(f=>({...f,note:e.target.value}))}/>
             <div style={{display:"flex",gap:10}}>
-              <BtnGhost onClick={()=>setShowTxModal(false)} style={{flex:1}}>ยกเลิก</BtnGhost>
+              <BtnGhost onClick={()=>setShowTxModal(false)} disabled={txSaving} style={{flex:1}}>ยกเลิก</BtnGhost>
               {txType==="รับ"
-                ?<BtnSuccess onClick={handleTx} disabled={!txForm.productId||!txForm.qty||Number(txForm.qty)<=0} style={{flex:1}}>ยืนยันรับสินค้า</BtnSuccess>
-                :<BtnDanger onClick={handleTx} disabled={!txForm.productId||!txForm.qty||Number(txForm.qty)<=0} style={{flex:1}}>ยืนยันจ่ายสินค้า</BtnDanger>
+                ?<BtnSuccess onClick={handleTx} disabled={txSaving||!txForm.productId||!txForm.qty||Number(txForm.qty)<=0} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":"ยืนยันรับสินค้า"}</BtnSuccess>
+                :<BtnDanger onClick={handleTx} disabled={txSaving||!txForm.productId||!txForm.qty||Number(txForm.qty)<=0} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":"ยืนยันจ่ายสินค้า"}</BtnDanger>
               }
             </div>
           </div>
@@ -2893,6 +3033,35 @@ export default function App() {
               </div>
             );
           })()}
+
+          {/* Step 2b: เพิ่มแถวอิสระ (free-text) — ใช้กรณีไม่มีในระบบ ไม่ตัดสต็อก */}
+          <div style={{marginBottom:14,padding:12,background:"rgba(217,119,6,0.04)",border:"1px dashed rgba(217,119,6,0.35)",borderRadius:10}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:8,letterSpacing:"0.04em"}}>✍️ เพิ่มแถวอิสระ (พิมพ์เอง — ไม่ตัดสต็อก)</div>
+            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 80px 80px",gap:6,alignItems:"end"}}>
+              <input value={freeItemForm.name} onChange={e=>setFreeItemForm(f=>({...f,name:e.target.value}))} placeholder="รุ่น / ชื่อสินค้า"
+                style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}/>
+              <input value={freeItemForm.colorName} onChange={e=>setFreeItemForm(f=>({...f,colorName:e.target.value}))} placeholder="สี"
+                style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}/>
+              <input value={freeItemForm.size} onChange={e=>setFreeItemForm(f=>({...f,size:e.target.value}))} placeholder="ไซส์ (เช่น XL, 12)"
+                style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none",fontWeight:600,textAlign:"center"}}/>
+              <input type="number" min="1" value={freeItemForm.qty} onChange={e=>setFreeItemForm(f=>({...f,qty:e.target.value}))} placeholder="จำนวน"
+                style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none",fontFamily:"monospace",textAlign:"center"}}/>
+              <button onClick={()=>{
+                const name=freeItemForm.name.trim(); const qty=Number(freeItemForm.qty)||0;
+                if(!name||qty<=0) return;
+                setOrderForm(f=>({...f,items:[...f.items,{
+                  freeText:true,
+                  clothingId:`free_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+                  clothingName:name,
+                  colorIdx:0, colorName:freeItemForm.colorName||"-", colorHex:"#94a3b8",
+                  size:freeItemForm.size||"-", qty
+                }]}));
+                setFreeItemForm({name:"",colorName:"",size:"",qty:""});
+              }} disabled={!freeItemForm.name.trim()||!Number(freeItemForm.qty)}
+                style={{padding:"7px 12px",borderRadius:7,border:"none",background:"#d97706",color:"white",fontSize:12,fontWeight:700,cursor:freeItemForm.name.trim()&&Number(freeItemForm.qty)?"pointer":"not-allowed",opacity:freeItemForm.name.trim()&&Number(freeItemForm.qty)?1:0.4,fontFamily:"inherit"}}>+ เพิ่ม</button>
+            </div>
+            <div style={{fontSize:10,color:"#92400e",marginTop:6,opacity:0.8}}>💡 ใช้กรณีรุ่น/สี/ไซส์ไม่มีในระบบ — แถวนี้จะไม่หักสต็อก</div>
+          </div>
 
           {/* Step 3: สรุปรายการ */}
           {orderForm.items.length>0&&(
@@ -3474,24 +3643,24 @@ export default function App() {
                       🔄 แปลงมาจาก {docTypeLabel(showPrintInvoice.convertedFrom.docType)} {showPrintInvoice.convertedFrom.invoiceNo}
                     </div>
                   )}
-                  <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                    <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
-                      <span style={{fontSize:13,color:"#64748b",fontWeight:500,minWidth:72,textAlign:"right"}}>เลขที่:</span>
-                      <span style={{fontSize:15,color:"#3b5b8b",fontFamily:"monospace",fontWeight:700}}>{showPrintInvoice.invoiceNo}</span>
+                  <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                    <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
+                      <span style={{fontSize:11,color:"#64748b",fontWeight:500,minWidth:58,textAlign:"right"}}>เลขที่:</span>
+                      <span style={{fontSize:12,color:"#3b5b8b",fontFamily:"monospace",fontWeight:700}}>{showPrintInvoice.invoiceNo}</span>
                     </div>
-                    <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
-                      <span style={{fontSize:13,color:"#64748b",fontWeight:500,minWidth:72,textAlign:"right"}}>วันที่ออก:</span>
-                      <span style={{fontSize:14,color:"#1e293b",fontWeight:600}}>{showPrintInvoice.date}</span>
+                    <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
+                      <span style={{fontSize:11,color:"#64748b",fontWeight:500,minWidth:58,textAlign:"right"}}>วันที่ออก:</span>
+                      <span style={{fontSize:11,color:"#1e293b",fontWeight:600}}>{showPrintInvoice.date}</span>
                     </div>
                     {showPrintInvoice.dueDate&&(
-                      <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
-                        <span style={{fontSize:13,color:"#64748b",fontWeight:500,minWidth:72,textAlign:"right"}}>ครบกำหนด:</span>
-                        <span style={{fontSize:14,color:"#ef4444",fontWeight:700}}>{showPrintInvoice.dueDate}</span>
+                      <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
+                        <span style={{fontSize:11,color:"#64748b",fontWeight:500,minWidth:58,textAlign:"right"}}>ครบกำหนด:</span>
+                        <span style={{fontSize:11,color:"#ef4444",fontWeight:700}}>{showPrintInvoice.dueDate}</span>
                       </div>
                     )}
                     {showPrintInvoice.useVat&&(
-                      <div style={{marginTop:4,textAlign:"right"}}>
-                        <span style={{padding:"2px 10px",background:"#dbeafe",borderRadius:10,fontSize:10,color:"#1d4ed8",fontWeight:700}}>มี VAT {showPrintInvoice.vatRate}%</span>
+                      <div style={{marginTop:3,textAlign:"right"}}>
+                        <span style={{padding:"1px 8px",background:"#dbeafe",borderRadius:8,fontSize:9,color:"#1d4ed8",fontWeight:700}}>มี VAT {showPrintInvoice.vatRate}%</span>
                       </div>
                     )}
                   </div>
@@ -3887,10 +4056,10 @@ export default function App() {
                 style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
             </div>
             <div style={{display:"flex",gap:10}}>
-              <BtnGhost onClick={()=>setClothingTxModal(null)} style={{flex:1}}>ยกเลิก</BtnGhost>
+              <BtnGhost onClick={()=>setClothingTxModal(null)} disabled={txSaving} style={{flex:1}}>ยกเลิก</BtnGhost>
               {clothingTxType==="รับ"
-                ?<BtnSuccess onClick={handleClothingTx} disabled={!clothingTxModal.size||!clothingTxQty||Number(clothingTxQty)<=0} style={{flex:1}}>✅ ยืนยันรับสินค้า</BtnSuccess>
-                :<BtnDanger onClick={handleClothingTx} disabled={!clothingTxModal.size||!clothingTxQty||Number(clothingTxQty)<=0} style={{flex:1}}>✅ ยืนยันจ่ายสินค้า</BtnDanger>
+                ?<BtnSuccess onClick={handleClothingTx} disabled={txSaving||!clothingTxModal.size||!clothingTxQty||Number(clothingTxQty)<=0} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":"✅ ยืนยันรับสินค้า"}</BtnSuccess>
+                :<BtnDanger onClick={handleClothingTx} disabled={txSaving||!clothingTxModal.size||!clothingTxQty||Number(clothingTxQty)<=0} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":"✅ ยืนยันจ่ายสินค้า"}</BtnDanger>
               }
             </div>
           </div>

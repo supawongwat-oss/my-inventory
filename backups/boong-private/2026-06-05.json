@@ -1,0 +1,2828 @@
+{
+  "metadata": {
+    "version": 1,
+    "projectId": "boong-private",
+    "exportedAt": "2026-06-05T12:29:02.515Z",
+    "exportedBy": "github-actions"
+  },
+  "collections": {
+    "users": [
+      {
+        "_id": "1",
+        "password": "Boong2537",
+        "id": "1",
+        "username": "Bboong",
+        "role": "admin",
+        "avatar": "👑",
+        "name": "Boong"
+      },
+      {
+        "_id": "1780566647488",
+        "id": "1780566647488",
+        "username": "Nongdream",
+        "avatar": "👑",
+        "role": "admin",
+        "name": "Mathavee Panbunchoo",
+        "password": "Ddream1818"
+      }
+    ],
+    "products": [],
+    "clothing": [
+      {
+        "_id": "Xw5rqIDISEG4JjvrPADH",
+        "model": "กางเกง",
+        "image": "",
+        "createdAt": {
+          "_seconds": 1780553271,
+          "_nanoseconds": 898000000
+        },
+        "colors": [
+          {
+            "colorName": "ดำ",
+            "costPrice": 0,
+            "salePrices": {
+              "kids": 40,
+              "reg": 40,
+              "2XL": 40,
+              "3XL": 40,
+              "4XL": 40,
+              "5XL": 40
+            },
+            "hex": "#1a1a1a",
+            "salePrice": 40,
+            "stock": {
+              "6": 0,
+              "8": 0,
+              "10": 0,
+              "12": 0,
+              "5XL": 0,
+              "L": 100,
+              "2XL": 0,
+              "4XL": 0,
+              "XL": 94,
+              "M": 0,
+              "S": 0,
+              "3XL": 0
+            }
+          }
+        ]
+      },
+      {
+        "_id": "YLGmtVce8u4Qw2tqcg4S",
+        "model": "K-12",
+        "image": "",
+        "createdAt": {
+          "_seconds": 1780553247,
+          "_nanoseconds": 53000000
+        },
+        "colors": [
+          {
+            "hex": "#a855f7",
+            "costPrice": 0,
+            "stock": {
+              "6": 0,
+              "8": 0,
+              "10": 0,
+              "12": 0,
+              "5XL": 0,
+              "L": 100,
+              "2XL": 0,
+              "4XL": 0,
+              "S": 0,
+              "M": 100,
+              "XL": 94,
+              "3XL": 0
+            },
+            "salePrice": 60,
+            "colorName": "ม่วง",
+            "salePrices": {
+              "kids": 55,
+              "reg": 60,
+              "2XL": 65,
+              "3XL": 70,
+              "4XL": 75,
+              "5XL": 80
+            }
+          }
+        ]
+      },
+      {
+        "_id": "ZIinn1ksSUCgRKItx7Vk",
+        "model": "CPU 125",
+        "image": "",
+        "createdAt": {
+          "_seconds": 1780559168,
+          "_nanoseconds": 993000000
+        },
+        "colors": [
+          {
+            "salePrices": {
+              "kids": 55,
+              "reg": 60,
+              "2XL": 65,
+              "3XL": 70,
+              "4XL": 75,
+              "5XL": 80
+            },
+            "colorName": "ดำ",
+            "hex": "#1a1a1a",
+            "costPrice": 0,
+            "stock": {
+              "6": 0,
+              "8": 0,
+              "10": 0,
+              "12": 100,
+              "3XL": 100,
+              "M": 100,
+              "4XL": 100,
+              "5XL": 50,
+              "XL": 100,
+              "2XL": 100,
+              "S": 100,
+              "L": 100
+            },
+            "salePrice": 60
+          },
+          {
+            "colorName": "แดง",
+            "hex": "#ef4444",
+            "stock": {
+              "6": 0,
+              "8": 0,
+              "10": 0,
+              "12": 100,
+              "S": 100,
+              "M": 100,
+              "L": 100,
+              "XL": 100,
+              "2XL": 100,
+              "3XL": 100,
+              "4XL": 100,
+              "5XL": 100
+            },
+            "costPrice": 0,
+            "salePrice": 60,
+            "salePrices": {
+              "kids": 55,
+              "reg": 60,
+              "2XL": 65,
+              "3XL": 70,
+              "4XL": 75,
+              "5XL": 80
+            }
+          },
+          {
+            "colorName": "ขาว",
+            "hex": "#f1f5f9",
+            "stock": {
+              "6": 0,
+              "8": 0,
+              "10": 0,
+              "12": 100,
+              "S": 100,
+              "M": 100,
+              "L": 100,
+              "XL": 99,
+              "2XL": 100,
+              "3XL": 100,
+              "4XL": 100,
+              "5XL": 100
+            },
+            "costPrice": 0,
+            "salePrice": 60,
+            "salePrices": {
+              "kids": 55,
+              "reg": 60,
+              "2XL": 65,
+              "3XL": 70,
+              "4XL": 75,
+              "5XL": 80
+            }
+          }
+        ]
+      },
+      {
+        "_id": "lmniCsIZwIkTbICoZSeq",
+        "model": "ถูก 8",
+        "image": "",
+        "createdAt": {
+          "_seconds": 1780557502,
+          "_nanoseconds": 1000000
+        },
+        "colors": [
+          {
+            "hex": "#1d4ed8",
+            "stock": {
+              "6": 0,
+              "8": 0,
+              "10": 0,
+              "12": 0,
+              "3XL": 49,
+              "5XL": 0,
+              "M": 100,
+              "L": 100,
+              "4XL": 0,
+              "XL": 100,
+              "2XL": 50,
+              "S": 0
+            },
+            "costPrice": 0,
+            "salePrice": 60,
+            "colorName": "น้ำเงิน",
+            "salePrices": {
+              "kids": 55,
+              "reg": 60,
+              "2XL": 65,
+              "3XL": 70,
+              "4XL": 75,
+              "5XL": 80
+            }
+          }
+        ]
+      }
+    ],
+    "transactions": [
+      {
+        "_id": "2JjT4wpMX06nUwIIEh5u",
+        "type": "จ่าย",
+        "code": "YLGmtVce8u4Qw2tqcg4S",
+        "name": "K-12 / ม่วง / M",
+        "qty": 6,
+        "by": "Boong",
+        "date": "04/06/2026 13:08",
+        "note": "ใบสั่งของ: ศุภวัฒน์",
+        "category": "เสื้อผ้า",
+        "createdAt": {
+          "_seconds": 1780553308,
+          "_nanoseconds": 479000000
+        }
+      },
+      {
+        "_id": "CECUxFgifDPAp7bHIs7L",
+        "type": "จ่าย",
+        "code": "lmniCsIZwIkTbICoZSeq",
+        "name": "ถูก 8 / น้ำเงิน / 3XL",
+        "qty": 1,
+        "by": "Boong",
+        "date": "04/06/2026 14:19",
+        "note": "ใบสั่งของ: ร้านพันชั่ง",
+        "category": "เสื้อผ้า",
+        "createdAt": {
+          "_seconds": 1780557561,
+          "_nanoseconds": 848000000
+        }
+      },
+      {
+        "_id": "KXPpnBJNNCkdIIt3svk5",
+        "type": "จ่าย",
+        "code": "lmniCsIZwIkTbICoZSeq",
+        "name": "ถูก 8 / น้ำเงิน / L",
+        "qty": 15,
+        "by": "Boong",
+        "date": "04/06/2026 14:19",
+        "note": "ใบสั่งของ: ร้านพันชั่ง",
+        "category": "เสื้อผ้า",
+        "createdAt": {
+          "_seconds": 1780557560,
+          "_nanoseconds": 965000000
+        }
+      },
+      {
+        "_id": "MG7rabEnYv0WvvyelBwN",
+        "type": "จ่าย",
+        "code": "lmniCsIZwIkTbICoZSeq",
+        "name": "ถูก 8 / น้ำเงิน / 2XL",
+        "qty": 2,
+        "by": "Boong",
+        "date": "04/06/2026 14:19",
+        "note": "ใบสั่งของ: ร้านพันชั่ง",
+        "category": "เสื้อผ้า",
+        "createdAt": {
+          "_seconds": 1780557561,
+          "_nanoseconds": 475000000
+        }
+      },
+      {
+        "_id": "SfowdhkRd0qckdwVqnF4",
+        "type": "จ่าย",
+        "code": "ZIinn1ksSUCgRKItx7Vk",
+        "name": "CPU 125 / ดำ / XL",
+        "qty": 2,
+        "by": "Boong",
+        "date": "05/06/2026 13:59",
+        "note": "ใบสั่งของ: ร้านฮักสกรีนเชียงราย",
+        "category": "เสื้อผ้า",
+        "createdAt": {
+          "_seconds": 1780642747,
+          "_nanoseconds": 605000000
+        }
+      },
+      {
+        "_id": "TQa3QfFxVymrwk5mA1gv",
+        "type": "จ่าย",
+        "code": "YLGmtVce8u4Qw2tqcg4S",
+        "name": "K-12 / ม่วง / XL",
+        "qty": 6,
+        "by": "Boong",
+        "date": "04/06/2026 13:08",
+        "note": "ใบสั่งของ: ศุภวัฒน์",
+        "category": "เสื้อผ้า",
+        "createdAt": {
+          "_seconds": 1780553308,
+          "_nanoseconds": 739000000
+        }
+      },
+      {
+        "_id": "W8uHvyAbtnufrxSJIZdw",
+        "type": "จ่าย",
+        "code": "ZIinn1ksSUCgRKItx7Vk",
+        "name": "CPU 125 / ดำ / L",
+        "qty": 4,
+        "by": "Boong",
+        "date": "05/06/2026 13:59",
+        "note": "ใบสั่งของ: ร้านฮักสกรีนเชียงราย",
+        "category": "เสื้อผ้า",
+        "createdAt": {
+          "_seconds": 1780642747,
+          "_nanoseconds": 433000000
+        }
+      },
+      {
+        "_id": "WzkIzzpbUnkf5gc5LqUE",
+        "type": "จ่าย",
+        "code": "YLGmtVce8u4Qw2tqcg4S",
+        "name": "K-12 / ม่วง / L",
+        "qty": 6,
+        "by": "Boong",
+        "date": "04/06/2026 13:08",
+        "note": "ใบสั่งของ: ศุภวัฒน์",
+        "category": "เสื้อผ้า",
+        "createdAt": {
+          "_seconds": 1780553308,
+          "_nanoseconds": 606000000
+        }
+      },
+      {
+        "_id": "bB6CCp7E7H0Z1Rk5cpkF",
+        "type": "จ่าย",
+        "code": "lmniCsIZwIkTbICoZSeq",
+        "name": "ถูก 8 / น้ำเงิน / XL",
+        "qty": 10,
+        "by": "Boong",
+        "date": "04/06/2026 14:19",
+        "note": "ใบสั่งของ: ร้านพันชั่ง",
+        "category": "เสื้อผ้า",
+        "createdAt": {
+          "_seconds": 1780557561,
+          "_nanoseconds": 156000000
+        }
+      },
+      {
+        "_id": "bxf2wZ01VMGXCkCj08u1",
+        "type": "จ่าย",
+        "code": "Xw5rqIDISEG4JjvrPADH",
+        "name": "กางเกง / ดำ / L",
+        "qty": 12,
+        "by": "Boong",
+        "date": "04/06/2026 13:08",
+        "note": "ใบสั่งของ: ศุภวัฒน์",
+        "category": "เสื้อผ้า",
+        "createdAt": {
+          "_seconds": 1780553308,
+          "_nanoseconds": 864000000
+        }
+      },
+      {
+        "_id": "eThJsjCXQjt1dX4JR6ap",
+        "type": "จ่าย",
+        "code": "lmniCsIZwIkTbICoZSeq",
+        "name": "ถูก 8 / น้ำเงิน / M",
+        "qty": 7,
+        "by": "Boong",
+        "date": "04/06/2026 14:19",
+        "note": "ใบสั่งของ: ร้านพันชั่ง",
+        "category": "เสื้อผ้า",
+        "createdAt": {
+          "_seconds": 1780557560,
+          "_nanoseconds": 766000000
+        }
+      },
+      {
+        "_id": "nXnnfCnq6VIDXbfTztQ9",
+        "type": "จ่าย",
+        "code": "Xw5rqIDISEG4JjvrPADH",
+        "name": "กางเกง / ดำ / XL",
+        "qty": 6,
+        "by": "Boong",
+        "date": "04/06/2026 13:08",
+        "note": "ใบสั่งของ: ศุภวัฒน์",
+        "category": "เสื้อผ้า",
+        "createdAt": {
+          "_seconds": 1780553309,
+          "_nanoseconds": 7000000
+        }
+      },
+      {
+        "_id": "s8cpCQZdMB957xlKzoxD",
+        "type": "จ่าย",
+        "code": "ZIinn1ksSUCgRKItx7Vk",
+        "name": "CPU 125 / ขาว / XL",
+        "qty": 1,
+        "by": "Boong",
+        "date": "05/06/2026 13:59",
+        "note": "ใบสั่งของ: ร้านฮักสกรีนเชียงราย",
+        "category": "เสื้อผ้า",
+        "createdAt": {
+          "_seconds": 1780642747,
+          "_nanoseconds": 755000000
+        }
+      }
+    ],
+    "customers": [
+      {
+        "_id": "0H4ym8g7z4tuAXgSnwoa",
+        "name": "นายธนเดช เนตรเกื้อกูล",
+        "phone": "0968562551",
+        "address": "5 ซ.ไพบูลย์นิมิตรสุข ถ.สุขุมวิท ต.เนินพระ อ.เมือง จ.ระยอง 21000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "1D1xoAiJWI2t0pJwqbch",
+        "name": "PW789",
+        "phone": "0979649666",
+        "address": "361/104 ม.3 ต.มาบายงพร อ.ปลวกแดง จ.ระยอง 21140",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "1MFuL8dNNFUrURiwbz9w",
+        "name": "โรงเรียนบ้านสระประดู่",
+        "phone": "0837758334",
+        "address": "24 หมู่  2 ตำบลสระประดู่ อ.วิเชียรบุรีจ.เพชรบูรณ์ 67130",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "1MLZGGBmpIoNXiio7HUi",
+        "name": "ณัฐวุฒิ",
+        "phone": "0944944591",
+        "address": "18/21-22 ถ.สันเหมืองหลวง ต.ในเวียง อ.เมือง จ.แพร่ 54000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "1gUnW56UN8BvCnem2f8I",
+        "name": "ร้านธาม สปอร์ต",
+        "phone": "0659965055",
+        "address": "นายธีรเดช แบ่งส่วน 46/83 หมู่บ้านมารวยวิลล่า หมู่ 10 ตำบลวัดไทร อ.เมือง จ.นครสวรรค์ 60000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "351xtshG1vIrJUJG1Ku4",
+        "name": "สมพงษ์ มะนาวหวาน",
+        "phone": "0867866698",
+        "address": "110/40 ม.16 เคหะบางพลี ถ.เทพารักษ์ ต.บางเสาธง อ.บางเสาธง จ.สมุทรปราการ 10570",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "36ZxyU0GHIP5X59lprqc",
+        "name": "สมพงษ์ จิตรเพิ่ม",
+        "phone": "0964172833",
+        "address": "โคกสูงการแว่น ข้างธกส อ.โคกสูง  ต.โคกสูง จ.สระแก้ว 27120",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "4liZ0qsAu0plNML035NY",
+        "name": "กาญจนาพร",
+        "phone": "0902122956",
+        "address": "193 ม.1 ต.ชัยนารายณ์ อ.ชัยบาดาล จ.ลพบุรี 15130",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "55GfdavlYoWWOD8sHhj8",
+        "name": "อัครวิชญ์",
+        "phone": "0936820331",
+        "address": "เอ็นสปร์ต (หน้าศาลากลาง) 700 ถ.ราชดำเนิน ต.ในเมือง อ.เมือง จ.นครศรีธรรมราช 80000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "56XiPcKu2GKyzJylMFmX",
+        "name": "ทองเอก การ์เมนท์",
+        "phone": "0897011651",
+        "address": "ทองเอก การ์เมนท์ 282 ม.5 ต.สันกลาง อ.พาน จ.เชียงราย 57120",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "5OX311imTJmsp8kzJduM",
+        "name": "คุณจิระวุฒิ นามแสง",
+        "phone": "0981788826",
+        "address": "328 หมู่ 2 ต.คำด้วง อ.บ้านผือ จ.อุดรธานี 41160",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "5Rk9e205AtDFTVETKxkL",
+        "name": "จตุชัย จำปาหอม",
+        "phone": "0853192463",
+        "address": "27/126 หมู่ที่ 3 ต.เสม็ด อ.เมืองชลบุรี จ.ชลบุรี 81180",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "5qf7vbqmDnWveftxk29w",
+        "name": "เอกสิทธิ์",
+        "phone": "0867585589",
+        "address": "บ้านรู้ใจเบญจมา 50/14 ถ.แผ่นดินทอง1 ต.ตลาด อ.เมือง จ.จันทบุรี 22000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "6G3VHyPy3HcML9XfRP2w",
+        "name": "นายณัฐภัทร  แลวงค์นิล",
+        "phone": "0855915481",
+        "address": "277 ม.10  ต.แม่สุก  อ.แม่ใจ  จ.พะเยา  56130",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        }
+      },
+      {
+        "_id": "6jkOqX0Eo8ExFspZdlNe",
+        "name": "Jeen Sukhom",
+        "phone": "0901766539",
+        "address": "8/6 ม.8 บ้านควนนิยม ต.สินปุน อ.พระแสง จ.สุราษร์ธานี 84210",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "7zJ5mSX142E6szBmYNl5",
+        "name": "คุณกนกพล (ร้านบ้านเค้ก)",
+        "phone": "0850507514",
+        "address": "32 ม.11 ต.ท่าชัย อ.ศรีสัชนาลัย จ.สุโขทัย 64190",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "8DKp3PgALvBtavGNZafR",
+        "name": "ไอทีไกด์",
+        "phone": "0954195189",
+        "address": "เลขที่ 6 ม .1 ถ.เพชรเกษม ต.คลองปาง อ.รัษฎา จ.ตรัง 92160",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "8hdHfrHwTdCfj45Wm5tX",
+        "name": "ฮาฟิต เอียนเด้น",
+        "phone": "0808692375",
+        "address": "5/9 ถ.จุฑามาตย์ กระบี่ใหญ่ อ.เมือง จ.กระบี่ 81000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "8pHXznOg9vn0bf8g78dA",
+        "name": "สไปรท์ สปอร์ต ลำพูน",
+        "phone": "0954489086",
+        "address": "388/2 ถ.เจริญราษฎร์ ต.ในเมือง อ.เมือง จ.ลำพูน 51000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "93jJuHAyG2HbFYS7B5nm",
+        "name": "Noparat Prasertsri",
+        "phone": "0899778182",
+        "address": "46 ถนนอารีฟมรรคา สุไหงโกลก นราธิวาส 96120 Thailand",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "9Je7gbzZ2K7cNyE0Fxwl",
+        "name": "KK SPORT",
+        "phone": "0917165827",
+        "address": "29/45 ม.2 ต.สุรศักดิ์ อ.ศรีราชา จ.ชลบุรี 20110",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "9XmSLr1BCK82WfHcUnH8",
+        "name": "ร้านฮักสกรีนเชียงราย",
+        "phone": "0875434027",
+        "address": "917/5 ถ.สถานพยาบาล ต.เวียง อ.เมือง จ.เชียงราย 57000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        }
+      },
+      {
+        "_id": "AYVpDjHAplFoyrbrLrzw",
+        "name": "NB สปอร์ต",
+        "phone": "0837249385",
+        "address": "156 ม.8 ต.บัวงาม อ.บุณฑริก จ.อุบลราชธานี34230",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "ApBtvQDjSVWtPB4Pv1Xa",
+        "name": "KT กันครังสกรีน",
+        "phone": "0659761291",
+        "address": "32/3 ม.2 ต.กันตังใต้ อ.กันตรัง จ.ตรัง",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "BsEkRDuubFXm0lnYdr5o",
+        "name": "ร้านโอเว่นสปอร์ต",
+        "phone": "0865891463",
+        "address": "22/3 ม.1 ต.พรหมพิราม อ.พรหมพิราม จ.พิษณุโลก 65150",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "DcrUVJozfCP5kG6Le8NX",
+        "name": "CPN sport",
+        "phone": "0624156737",
+        "address": "28 ม.4 บ้านหนองตะไก้ ต.หนองไผ่ อ.เมือง จ.อุดรธานี 41330",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "EBEm0EE900AbM6NoNdjH",
+        "name": "จำรัส เขียวงาม",
+        "phone": "0898986920",
+        "address": "จำรัส เขียวงาม 325 หมู่ 4 ต.บ้านถ้ำ อ.ดอกคำใต้ จ.พะเยา 56120",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "EFDEKk6HybsWX0hMSVqx",
+        "name": "ปฐมพงศ์",
+        "phone": "0910358713",
+        "address": "6 ม.11 ต.ควนเมา อ.รัษฎา จ.ตรัง 92160",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "ETwTUApr99iHrSG6UvlT",
+        "name": "ร้านคุงคิ้วพานิช",
+        "phone": "0824315251",
+        "address": "230/12 ต. ปะลุรู อ.สุไหงปาดี จ.นราธิวาส 96140",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "FZ2NBiGEOz5mx4p7iHos",
+        "name": "คุณชรินทร์ วงค์ทับ",
+        "phone": "0638317594",
+        "address": "55/5 ม.5 ต.สระแจง อ.บางระจัน จ.สิงห์บุรี 16130",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "GKfUCtgJFFKyDcLEp48t",
+        "name": "ศุภวัฒน์",
+        "phone": "0898645325",
+        "address": "โรงเรียนบ้านหนองจิก ต.ภูฟ้าย อ.ขุนหาญ จ.ศรีสะเกษ 33150",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "GLI4dGkbsKTUeh3l5lpb",
+        "name": "ร้านRD",
+        "phone": "0994054087",
+        "address": "ร้านRD 4/36 ม.1 ต.บานา อ.เมือง จ. ปัตตานี 94000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "JBjBhx65QySATXDX8kDj",
+        "name": "ครูวิภา  กองมะลี",
+        "phone": "0818779549",
+        "address": "รร.เกศเกล้าวิทยา 159  หมู่ 14 ต.เมืองคง อ.ราษีไศล จ.ศรีสะเกษ  33160",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "JSplNQsoUMhi8MpgciCm",
+        "name": "คุณ มนต์จันทร์",
+        "phone": "0864455478",
+        "address": "115 ม.11 บ้านหนองสองห้อง ต.ค่ายบกหวาน อ.เมือง จ.หนองคาย 43100",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "JdoNzvbmcbsbcAnI7Pc6",
+        "name": "พี่ป๊อป",
+        "phone": "0927235972",
+        "address": "-",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "LfczXkUuW9U2lw8vUSoq",
+        "name": "ร้านสลามสปอร์ต",
+        "phone": "0817980442",
+        "address": "208/1 ม.8 ถ.ยนตรการกำธร ต.ควนสตอ อ.ควนโดน จ.สตูน 91160",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "Lw653V1S3PijE4vWcPdA",
+        "name": "คุณ มาลินี ชุ่มชื่น",
+        "phone": "0831333112",
+        "address": "18/37 ซ.นวมินทร์ 111 แยก 8 ถนนนวมินทร์ แขวงนวมินทร์ เขตบึงกุ่ม กทม. 10240",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        }
+      },
+      {
+        "_id": "M9olqzi1pYPuD52Nq6tn",
+        "name": "รอชิดะห์",
+        "phone": "0816092027",
+        "address": "อ.สุไหงโกลก จ.นราธิวาส",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "MVe870piGuOXunzxvygA",
+        "name": "ธนาวุฒิ กลางสาทร",
+        "phone": "0816600904",
+        "address": "บ้านห้วยยาง  เลขที่152 หมู่4  ต.โคกสูง อ.เมือง จ.ชัยภูมิ 36000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "NPjGyS8fthPJJrNhvdEi",
+        "name": "ร้านเอกชัย",
+        "phone": "0964269165",
+        "address": "71/9 ม.8 ต.บางกะจะ อ.เมืองจันทบุรี จ.จันทบุรี 22000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        }
+      },
+      {
+        "_id": "NcFfJqtkM99RGpj39XkW",
+        "name": "hockmansport",
+        "phone": "0645566653",
+        "address": "89/9 ตรอกอมร 1 ถ.ท่าแฉลบ ต.ตลาด อ.เมือง จ.จันทบุรี 22000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "O1QcfR5NseoXyTtb3esr",
+        "name": "เพชรรัตน์  แก้วคุ้มภัย",
+        "phone": "0870086448",
+        "address": "107 ม.5 พีพี บานชื่นฟาร์ม, ท่าสะท้อน พุนพิน, สุราษฎร์ธานี 84130",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        }
+      },
+      {
+        "_id": "P3ePxEUI7tPepFwIGLMG",
+        "name": "กลุ่มหนองหล่มสามัคคี",
+        "phone": "0848044521",
+        "address": "นาท จันต๊ะวงค์ 93  หมู่ 1  ต.หนองหล่ม อ.ดอกคำใต้  จ.พะเยา  56120",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "Plh6125I4FaBAqN9Gyie",
+        "name": "ฐกลพัชร์ ศิริศักดิ์",
+        "phone": "0916542829",
+        "address": "เลขที่1 ม.5 บ้านนานิคม ต.บัวใหญ่ อ.บัวใหญ่ จ.นครราชสีมา 30120",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "QEbDtiuIomQ5b5lJKGri",
+        "name": "วิชชุพันธ์",
+        "phone": "0621949148",
+        "address": "วิชชุพันธ์ ชำนาญพล  74 ม.3 ต. หว้าทอง อ. ภูเวียง จ. ขอนแก่น 40150",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "Qcl96vnjmSLFV2WvraWx",
+        "name": "เสกสรรค์ พันตรา",
+        "phone": "0973498057",
+        "address": "ร้านเสกสตางค์ งานสกรีน  เลขที่ 342 ม.2  ต.นาคำ อ.ศรีเมืองใหม่  จ.อุบล​ราชธานี 34250",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "SFUmZNpbyMhC2xuq94ql",
+        "name": "ศิริพิมล อุปทุม(เอทูอา บ้านสกรีน)",
+        "phone": "0625868165",
+        "address": "13 ม.7 ต.ท่อก้อน อ.อากาศอำนวย จ.สกลนคร 47170",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "SzLp2V31HL9Lsdhit4U9",
+        "name": "คุณวงเดือน อ่อนสกุล",
+        "phone": "0624159697",
+        "address": "Mangaifuoco 45/34 ม.1ซ.ตาเอียด ต.ฉลอง อ.เมืองภูเก็ต จ.ภูเก็ต 83130",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "TbRuqqeCWMI1LMEyNZb4",
+        "name": "แวรีซา บือซา",
+        "phone": "0929622014",
+        "address": "84/1  ม.5   ต.กาวะ  อ.สุไหงปาดี   จ.นราธิวาส 96140",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "TcgZFUiK7dOzQLA4zFMT",
+        "name": "Charif",
+        "phone": "0629092562",
+        "address": "สภ.มะนัง   ม.1ต.ปาล์มพัฒนา อ.มะนัง สตูล 91130",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "U2O0Icq6LOdLJrOOpur6",
+        "name": "ร้านควิกสปอร์ตแอนด์สคูล",
+        "phone": "0878536860",
+        "address": "168 ม.3 ต.ร่องคำ อ.ร่องคำ จ.กาฬสินธุ์ 46210",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "UB7448yUdejkskG9jujB",
+        "name": "ทินกร เกิดแก้ว",
+        "phone": "0809194635",
+        "address": "98/5 มบ วิลล่าการ์เด้น 2 ถ.บางกรวย-ไทยน้อย ม.9 ต.บางเลน อ.บางใหญ่ นนทบุรี 11140",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "UeFFTUtErLcV777oTh9q",
+        "name": "อภิภู ศรีสิงห์",
+        "phone": "0882404276",
+        "address": "748 หมู่ 20 ต.สว่างแดนดิน อ.สว่างแดนดิน จ.สกลนคร 47110",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "Umuff4gLlLAr4v2VHdR8",
+        "name": "ร้านเด่นสปอร์ต",
+        "phone": "0803181810",
+        "address": "ชื่อ สุวิจักขณ์ อนันตพฤธ์  4/10 ถ.วัดคลองน้ำเจ็ด ต.ทับเที่ยง อ.เมือง จ.ตรัง 92000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "V14X3t4ifA8BsGJrsN5u",
+        "name": "แอลที สปอร์ต",
+        "phone": "0816084941",
+        "address": "300/6 ต.ท่าช้าง อ.บางกล่ำ จ.สงขลา 90110",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        }
+      },
+      {
+        "_id": "VGbRZD0omvZED20NC3v5",
+        "name": "พี เค สกรีน",
+        "phone": "0959266299",
+        "address": "16หมู่10 ต.เขาคีริส อ.พรานกระต่าย จ.กำแพงเพชร 62110",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "VcwtDBlSrThzJ6TpUoub",
+        "name": "บริษัท เอสพีเค การค้า 2022 จำกัด",
+        "phone": "",
+        "address": "152 หมู่ 1 บ้านค้าตากล้า ต.คำตากล้า อ.คำตากล้า จ.สกลนคร 47250",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        }
+      },
+      {
+        "_id": "WOp3YCNK6AcJUuC86vqC",
+        "name": "นันทวรรณ",
+        "phone": "0824755411",
+        "address": "282/18 ม.6 ต.บ่อวิน อ.ศรีราชา จ.ชลบุรี",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "WUJDJ7ivXSdrHO78erSP",
+        "name": "นางสาวภัทรวดี",
+        "phone": "0837219205",
+        "address": "นางสาวภัทรวดี  ประสงค์สุข 109 หมู่ 11 ต.ถนนหัก อ.นางรอง จ.บุรีรัมย์ 31110",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "WhduFmsmytJqm1O3r9ra",
+        "name": "นาย โผน ศรีหมุ่น",
+        "phone": "0894675222",
+        "address": "สุขใสบุรี รีสอร์ท 531 ม.2 ต.อ่าวนาง อ.เมือง จ.กระบี่ 81180",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "WzVIrONjhJYhc1sE29NC",
+        "name": "จิราพรจันทมาศ",
+        "phone": "0992262693",
+        "address": "อบต.ทรายมูลอ.ทรายมูล จ.ยโสธร 35170",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "XYTXStkzGLhDITFuXvGn",
+        "name": "ภาคินี​   มานะ​แท้",
+        "phone": "0910096636",
+        "address": "โรงเรียน​อนุบาล​ประจวบ​คีรี​ขันธ์\r\nเลขที่​ 4​  ถนน​สู้​ศึก​ ต​.​ประจวบ​ฯ​ อ.​เมือง​ฯ​ จ.​ประจวบ​คีรี​ขันธ์​ 77000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "XoBbd7R1Y5SIUVqcTjwZ",
+        "name": "กนิษฐา แดงขาว",
+        "phone": "0848405327",
+        "address": "213 ม.10 ค.พรุเตียว อ.เขาพนม จ.กระบี่ 81140",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "b8E6T0fNCrZIh5FCZepd",
+        "name": "ณรงค์ศักดิ์ คุ้มวงศ์",
+        "phone": "0642400390",
+        "address": "94  ม 9 ต.บางปลากด  อ.องครักษ์ จ.นครนายก 26120",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "bDI7wY6AvD6A3Aezvogb",
+        "name": "ร้าน พีทีช้อป ชุดกีฬาสันกำแพง",
+        "phone": "0950547287",
+        "address": "77/8 ม.10 บ้านสันไร่ ต.สันกำแพง อ.สันกำแพง จ.เชียงใหม่ 50130",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "bRQwGVkJNxRtVaCVyXlI",
+        "name": "สมุน",
+        "phone": "0814078888",
+        "address": "ยูพีดีมีนบุรี เลชที่ 54 ม.2 ถ.สุวินทวงศ์ แขวงมีนบุรี เขตมีนบุรี กทม 10510",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        }
+      },
+      {
+        "_id": "bvf3FFba1jlrFiLKBuyi",
+        "name": "MAWIN SPORT",
+        "phone": "0821962505",
+        "address": "1894/27 ม.6 ต.อู่ทอง อ.อู่ทอง จ.สุพรรณบุรี 72160",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        }
+      },
+      {
+        "_id": "c7nJYT4l7prej1edrXKY",
+        "name": "นายปรีชา เกตุเรน",
+        "phone": "0897288325",
+        "address": "177/48 ซ.กระบี่45 ต.ปากน้ำ อ.เมือง จ.กระบี่ 81000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "d6Q2iHY2EEvcBRICJCSx",
+        "name": "ดิฟเฟอร์เร้นท์",
+        "phone": "0904896170",
+        "address": "260 ม.3 ต.ไสไทย อ.เมือง จ.กระบี่ 81000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "dCPbKjW3JptOj8i4MHoO",
+        "name": "กิตติพงษ์",
+        "phone": "0895665808",
+        "address": "1/50 หมู่ 4 ต.แสนตอ อ.น้ำปาด จ.อุตรดิตถ์ 53110",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "dRoPcRMdzsfjg5TRboTU",
+        "name": "จเร โพธิ์ภิรมย์",
+        "phone": "0819236391",
+        "address": "096 ม.3 ซ.หมื่นจิตนรการ ต.เชียรเขา อ.เฉลิมพระเกียรติ จ.นครศรีธรรมราช",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "dYYuSI7OWow99GmmVPJl",
+        "name": "ศยามล บัวพุฒ",
+        "phone": "0850865536",
+        "address": "1/11 ซอย2 ถ.เทศบาลพัฒนา1  ต.เหมือง อ.เมือง จ.ชลบุรี 20130",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "dkEFIHOfyjxP7n38L21a",
+        "name": "นายชูเชิด โสมภีร์",
+        "phone": "0909789982",
+        "address": "3761/476 บ้านบุญปลูก ซ.อยู่ดี11 ถ.จันทร์ แขวงบางโคล่ เขตบางคอแหลม กรุงเทพ 10120",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        }
+      },
+      {
+        "_id": "dzOqtJ7TVFkROL1lI5se",
+        "name": "จิระวุฒิ",
+        "phone": "0981788826",
+        "address": "328 ม.2 ต.คำด้วง อ.บ้านผือ จ.อุดรธานี",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "eOZOzX4Mz99yY7h3n2Fo",
+        "name": "ปรีชา",
+        "phone": "0817532363",
+        "address": "68 หมู่ 1 ตำบลบางเสาธงอำเภอบางเสาธงจังหวัดสมุทรปราการ 10570",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "fQu1YICjKYLVO47ElY5d",
+        "name": "พลอย ไชยวุฒิ",
+        "phone": "0923290345",
+        "address": "27/17 ม.1  ต.เสาไห้ อ.เสาไห้  จ.สระบุรี 18160",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "fzdOK2TERWdihtQ96sR7",
+        "name": "หมอยาไทย101",
+        "phone": "0851626394",
+        "address": "18 หมู่ 16 ต.นิเวศน์ อ.ธวัชบุรี จ.ร้อยเอ็ด 45170",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "gAi9z7H8Z1afOrHfDgMV",
+        "name": "คุณ ธีระศักดิ์ แล๊ะตี",
+        "phone": "0816084941",
+        "address": "300/6 ต.ท่าช้าง อ.บางกล่ำ จ.สงขลา 90110",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        }
+      },
+      {
+        "_id": "gFe9lQc6PnRbYXeAID15",
+        "name": "สุพัตรา",
+        "phone": "0618100450",
+        "address": "835/3 ถ.ราชดำเนิน1 ต.ในเมือง อ.เมือง จ.กำแพงเพชร 62000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "gXAzXPY08EAhpFxuaty2",
+        "name": "ร้านเพชรสไมล์สปอร์ต",
+        "phone": "0972373212",
+        "address": "เลขที่2 หมู่8  ถ.พระลานซอย1  ต.แพรกศรีราชา อ.สรรคบุรี จ.ชัยนาท 17140",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "gqsCZrpFgL1n6iBJfhFF",
+        "name": "คุณ เพชรพลอย",
+        "phone": "0913099510",
+        "address": "36 ม.3 ต.ทรัพย์ทวี อ.บ้านนาเดิม จ.สุราษฎร์ธานี 84240",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "hkOAsIsh8JGTq4fTOEFY",
+        "name": "บริษัท ณฐกร คอนเซาท์ จำกัด",
+        "phone": "0899460451",
+        "address": "เลขที่ 5 ม.12 ต.ครบุรีใต้ อ.ครบุรี จ.นครราชสีมา",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "jWnrsRUsMURdlxTmnG6Y",
+        "name": "ศศิธร ศรีเขียว",
+        "phone": "0629691447",
+        "address": "63 ม.8 ต.บางด้วน อ.เมืองฯ จ.สมุทรปราการ 10270",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "jiikh5XJNv4vgqPCccgZ",
+        "name": "M-Warrior Sport",
+        "phone": "0830781244",
+        "address": "348 ถ.ประชาวิวัฒน ซ.4 อ.สุไหงโกลก จ.นราธิวาส",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "kdKFaJlio1jWux9nLb04",
+        "name": "ขวัญหทัย อรุณกิต",
+        "phone": "0928887935",
+        "address": "ที่อยู่ 95/2 หมู่ 5 ถ.สะพานปลา ต.บางริ้น อ.เมือง จ.ระนอง 85000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "kf9T3rPfgdtiX7Yx8bYK",
+        "name": "นิบงน้ำแข็งหลอด",
+        "phone": "0846890569",
+        "address": "ห้างหุ้นส่วนจำกัด นิยงน้ำแข็งหลอด 245/71 ม.4 ต.สะเตงนอก อ.เมือง จ.ยะลา 95000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "ktAyvEr38900zAaH5Tgu",
+        "name": "SIM VISAL",
+        "phone": "077777240",
+        "address": "8,STREET 152 , 7 MAKARA , PHNOM PEHNH",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "mvxTRO7S7kigEZWoAP7s",
+        "name": "คุณนันทิยา",
+        "phone": "0949264496",
+        "address": "ร้านขุนหาญเซ็นเตอร์ 160 ม.4 ต.สิ อ.ขุนหาญ จ.ศรีสะเกษ 33150",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "n54MEJ2pSwK6JFQmTaj9",
+        "name": "หจก. กัลชนก เทรดดิ้ง",
+        "phone": "0857411422",
+        "address": "310 ม.1 ต.เขาโร อ.ทุ่งสง จ.นครศรีธรรมราช",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "nhSEtegeYgilh8JODbua",
+        "name": "ประนอม เพชรน้อย",
+        "phone": "0848533047",
+        "address": "176 หมู่ 7 ต.เขาปู่ อ.ศรีบรรพต จ.พัทลุง 93190",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        }
+      },
+      {
+        "_id": "nlUIjVjCG8LpncaSW7iS",
+        "name": "ชนม์สิตา นิ่มกุล",
+        "phone": "0814245628",
+        "address": "องค์การบริหารส่วนจังหวัดอ่างทอง ถ.โพธิ์พระยา-ท่าเรือ ต.ป่างิ้วอ.เมือง จ.อ่างทอง 14000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "oqHowhFokVDqtn67JqCq",
+        "name": "บจก.ไซน์เนจ แอนด์ อาร์คิเทค",
+        "phone": "0639514299",
+        "address": "41/184 ถ.นิพัทธ์สงเคราะห์1 ต.หาดใหญ่ อ.หาดใหญ่ จ.สงขลา 90110",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "pqUiWdQrKinSFOxwiOZm",
+        "name": "คุณช่อทิพย์  ช่วยศรี",
+        "phone": "0653241330",
+        "address": "กังฟูพันธุ์ปาล์ม 271 ม.2 ต.ห้วยนาง อ.ห้วยยอด จ.ตรัง  92130",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "pwZqaAcXIS72yf7kaE2g",
+        "name": "ร้านพันชั่ง",
+        "phone": "0942622323",
+        "address": "ร้านพันชั่ง 7/9 ม. 7 ต.นิคม อ.สตึก จ.บุรีรัมย์ 31150",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "q675ATT8M7f66FK6zDKX",
+        "name": "ร้านเอ็นสปอร์ต(หน้าศาลากลาง)",
+        "phone": "0641424459",
+        "address": "700 ถ.ราชดำเนิน ต.ในเมือง อ.เมือง จ.นครศรีธรรมราช 80000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "qMBRUy0vG05lbB7jyhpZ",
+        "name": "ครูตูน",
+        "phone": "0814959171",
+        "address": "นาย ธีรวุฒิ พรมมี ( ครูตูน ) โรงเรียนบ้านนาคล้าย  10 ม.1 ต.นาบัว อ.นครไทย จ.พิษณุโลก 65120",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "refDjRbmHe6BK42vKNy7",
+        "name": "ร้านเอ.เจ ช๊อฟ",
+        "phone": "0860549164",
+        "address": "ณัฐจีตกาญชน์ ถาวรศาสตร์288/4  ม.7 มบ.กรีนเนอรี่พาร์ค ต.บึง อ.ศรีราชา จ.ชลบุรี 20230",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "rsupHlE3X3KadBWEfn1t",
+        "name": "อมรพรรณ ผิวหล่อ",
+        "phone": "0800147474",
+        "address": "290/97 ศรุตา2 ม.7 ต.บึง อ.ศรีราชา จ.ชลบุรี 20230",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "t2poPIMOmVJbgk7thLK5",
+        "name": "คุณ สายัณ เลลมาตย์",
+        "phone": "0840785125",
+        "address": "283 หมู่14 ต.หนองขาม อ.อาจสามารถ จ.ร้อยเอ็ด 45160",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "tTkmtgMzEAEcCfjYIoIg",
+        "name": "Rejan Redzemato Vic",
+        "phone": "31638240382",
+        "address": "Professor Doctor J.D. Van Der Waalsweg 23 ,Utrecht ,DeBilt , Netherlands , 3731KK",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        }
+      },
+      {
+        "_id": "uMZIYw557e010MIaw1MT",
+        "name": "นายอุดมพล ทาสุรินทร์",
+        "phone": "0824829162",
+        "address": "(ร้านTSCREENMAKER) 82 ม.3 ต.ทรายขาว อ.พาน  จ.เชียงราย 57120",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "uswc2T2eandZMckv41MG",
+        "name": "ร้านเอ.เจ ช๊อฟ",
+        "phone": "0860549164",
+        "address": "288/4  ม.7  มบ.กรีนเนอรี่พาร์ค ต.บึง อ.ศรีราชา จ.ชลบุรี 20230",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "uthEuXM7LBp9WQF7OxGw",
+        "name": "บริษัท บานาน่าปริ้นติ้ง จำกัด",
+        "phone": "0835114511",
+        "address": "1-1/1 ถ.ยะลา ต.บ่อยาง อ.เมืองสงขลา จ.สงขลา 90000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        }
+      },
+      {
+        "_id": "vMAXpYnccy8OAKDPw3E3",
+        "name": "เจษฎา เอ่งฉ้วน",
+        "phone": "0816141650",
+        "address": "4/542 ถ.เสรีไทย 57(แยก22) แขวงคลองกุ่ม  เขตบึงกุ่ม  กรุงเทพฯ 10240",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        }
+      },
+      {
+        "_id": "vXRqVhABxZmGXsH7ELrW",
+        "name": "นายสายชล​ พงศ์อุดม",
+        "phone": "0653462264",
+        "address": "663​ ม.1​ ต.หัว​ทะเล​ (ซอย​ข้างปั้ม​ pt.​ใหม่​)​ อ.เมือง​  นครราชสีมา​ 30000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "vapEzh34clLlYIHAIArJ",
+        "name": "ณัฐวุฒิ ข่อยแก้ว",
+        "phone": "0906941661",
+        "address": "111/109 โครงการหมู่บ้านทหารเสือ ซ.8 หมู่ 1 ต.คลองตำรุ อ.เมือง จ.ชลบุรี 20000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "wGnzDbxMGnqkpK489eOk",
+        "name": "จิราภรณ์ สกุลกล้า",
+        "phone": "089244292",
+        "address": "(ร้านแจ้สติ๊กเกอร์) 99/19 ม.1 ต.ทับไทร อ.โป่งน้ำร้อน จ.จันทบุรี 22140",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "wOf4NRYbNJNWSG2bFRCv",
+        "name": "คุณ อารีพร",
+        "phone": "0960109640",
+        "address": "31/55 ต.เกาะขวาง อ.เมืองจันทบุรี จ.จันทบุรี 22000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "wPHFRQdJI3wbvTz7xH4X",
+        "name": "อิทธินาถ โออินทร์",
+        "phone": "0855775729",
+        "address": "199/15 ม.10 ต.โคกหล่อ จ.ตรัง 92000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "wVIAKaX3wVce85nX0Ooc",
+        "name": "น.ส.ดวงกมล ขาวทอง",
+        "phone": "0629698692",
+        "address": "278/1 ม.5 ต.พ่วงพรมคร ต.พ่วงพรมคร อ.เคียนซา จ.สุราษฎร์ธานี 84210",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        }
+      },
+      {
+        "_id": "wlABR7pdgnaKc1rupTPE",
+        "name": "พรไพรสิงห์ บุญภักดี",
+        "phone": "0643588853",
+        "address": "ร้านทำป้าย 199 ม.4 ต.วังทอง อ.เมือง จ.กำแพงเพชร 62000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "xWS4X0OsN4Da4KSlDmBY",
+        "name": "จักรภัทร ภาษาสุข",
+        "phone": "0996277665",
+        "address": "โรงเรียนบ้านหนองยาง 282 หมู่ 8 ต.คู้ยายหมี อ.สนามชัยเขต จ.ฉะเชิงเทรา 24160",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "xmn0ewA2ZAtwNi6Loc8O",
+        "name": "วรรณา เมืองแก้ว",
+        "phone": "0802758036",
+        "address": "97 หมู่6 ต.บ้านพร้าว อ.ป่าพะยอม จ.พัทลุง 93210",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 950000000
+        }
+      },
+      {
+        "_id": "yTkaElLM9tEMj8Rw07Dd",
+        "name": "พงศ์ภัค",
+        "phone": "0814413508",
+        "address": "ที่อยู่ 219/264 โมทีฟคอนโด ถ.อินทรพิทักษ์ แขวงบางยี่เรือ เขตธนบุรี กทม. 10600",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "zLHrMLtK2Dsqs3wYr9jm",
+        "name": "สมหวัง  พัฒนา",
+        "phone": "0614850007",
+        "address": "112/1  ม.1 ต.ชะไว อ.ไชโย จ.อ่างทอง 14140",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "zZxzZ4wx79koJvLnX84J",
+        "name": "พิไลลักษณ์",
+        "phone": "0897544471",
+        "address": "2/77 (ร้านนิวคาร์แคร์) ถ.ศรีมาลา ต.ในเมือง อ.เมือง จ.พิจิตร 66000",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      },
+      {
+        "_id": "ztEFUzMBf1eGJxhKT3PB",
+        "name": "ร้านสารภีสปอร์ต",
+        "phone": "0861112234",
+        "address": "พงศ์พันธุ์ สัตพงศ์พันธุ์ ร้านสารภีสปอร์ต 154/12 ม.5 ต.หนองผึ้ง อ.สารภี จ.เชียงใหม่ 50140",
+        "email": "",
+        "taxId": "",
+        "createdBy": "Bboong",
+        "createdAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        },
+        "importedAt": {
+          "_seconds": 1780466075,
+          "_nanoseconds": 763000000
+        }
+      }
+    ],
+    "suppliers": [],
+    "orders": [
+      {
+        "_id": "FGZKzFDDXgQmilX39ZWr",
+        "orderNo": "ORD6906-0003",
+        "customerId": "9XmSLr1BCK82WfHcUnH8",
+        "customerName": "ร้านฮักสกรีนเชียงราย",
+        "customerPhone": "0875434027",
+        "customerAddress": "917/5 ถ.สถานพยาบาล ต.เวียง อ.เมือง จ.เชียงราย 57000",
+        "note": "",
+        "items": [
+          {
+            "clothingId": "ZIinn1ksSUCgRKItx7Vk",
+            "clothingName": "CPU 125",
+            "colorIdx": 0,
+            "colorName": "ดำ",
+            "colorHex": "#1a1a1a",
+            "size": "L",
+            "qty": 4,
+            "stock": 100
+          },
+          {
+            "clothingId": "ZIinn1ksSUCgRKItx7Vk",
+            "clothingName": "CPU 125",
+            "colorIdx": 0,
+            "colorName": "ดำ",
+            "colorHex": "#1a1a1a",
+            "size": "XL",
+            "qty": 2,
+            "stock": 100
+          },
+          {
+            "clothingId": "ZIinn1ksSUCgRKItx7Vk",
+            "clothingName": "CPU 125",
+            "colorIdx": 2,
+            "colorName": "ขาว",
+            "colorHex": "#f1f5f9",
+            "size": "XL",
+            "qty": 1,
+            "stock": 100
+          }
+        ],
+        "status": "สำเร็จ",
+        "by": "Boong",
+        "date": "05/06/2026 13:59",
+        "createdAt": {
+          "_seconds": 1780642747,
+          "_nanoseconds": 817000000
+        }
+      },
+      {
+        "_id": "aCwJrYZhvZJf0fPeNo6A",
+        "orderNo": "ORD6906-0001",
+        "customerId": "GKfUCtgJFFKyDcLEp48t",
+        "customerName": "ศุภวัฒน์",
+        "customerPhone": "0898645325",
+        "customerAddress": "โรงเรียนบ้านหนองจิก ต.ภูฟ้าย อ.ขุนหาญ จ.ศรีสะเกษ 33150",
+        "note": "",
+        "items": [
+          {
+            "clothingId": "YLGmtVce8u4Qw2tqcg4S",
+            "clothingName": "K-12",
+            "colorIdx": 0,
+            "colorName": "ม่วง",
+            "colorHex": "#a855f7",
+            "size": "M",
+            "qty": 6,
+            "stock": 100
+          },
+          {
+            "clothingId": "YLGmtVce8u4Qw2tqcg4S",
+            "clothingName": "K-12",
+            "colorIdx": 0,
+            "colorName": "ม่วง",
+            "colorHex": "#a855f7",
+            "size": "L",
+            "qty": 6,
+            "stock": 100
+          },
+          {
+            "clothingId": "YLGmtVce8u4Qw2tqcg4S",
+            "clothingName": "K-12",
+            "colorIdx": 0,
+            "colorName": "ม่วง",
+            "colorHex": "#a855f7",
+            "size": "XL",
+            "qty": 6,
+            "stock": 100
+          },
+          {
+            "clothingId": "Xw5rqIDISEG4JjvrPADH",
+            "clothingName": "กางเกง",
+            "colorIdx": 0,
+            "colorName": "ดำ",
+            "colorHex": "#1a1a1a",
+            "size": "L",
+            "qty": 12,
+            "stock": 100
+          },
+          {
+            "clothingId": "Xw5rqIDISEG4JjvrPADH",
+            "clothingName": "กางเกง",
+            "colorIdx": 0,
+            "colorName": "ดำ",
+            "colorHex": "#1a1a1a",
+            "size": "XL",
+            "qty": 6,
+            "stock": 100
+          }
+        ],
+        "status": "สำเร็จ",
+        "by": "Boong",
+        "date": "04/06/2026 13:08",
+        "createdAt": {
+          "_seconds": 1780553309,
+          "_nanoseconds": 68000000
+        }
+      },
+      {
+        "_id": "zCbGcv0c2bQPK8boUAbJ",
+        "orderNo": "ORD6906-0002",
+        "customerId": "pwZqaAcXIS72yf7kaE2g",
+        "customerName": "ร้านพันชั่ง",
+        "customerPhone": "0942622323",
+        "customerAddress": "ร้านพันชั่ง 7/9 ม. 7 ต.นิคม อ.สตึก จ.บุรีรัมย์ 31150",
+        "note": "",
+        "items": [
+          {
+            "clothingId": "lmniCsIZwIkTbICoZSeq",
+            "clothingName": "ถูก 8",
+            "colorIdx": 0,
+            "colorName": "น้ำเงิน",
+            "colorHex": "#1d4ed8",
+            "size": "M",
+            "qty": 7,
+            "stock": 100
+          },
+          {
+            "clothingId": "lmniCsIZwIkTbICoZSeq",
+            "clothingName": "ถูก 8",
+            "colorIdx": 0,
+            "colorName": "น้ำเงิน",
+            "colorHex": "#1d4ed8",
+            "size": "L",
+            "qty": 15,
+            "stock": 100
+          },
+          {
+            "clothingId": "lmniCsIZwIkTbICoZSeq",
+            "clothingName": "ถูก 8",
+            "colorIdx": 0,
+            "colorName": "น้ำเงิน",
+            "colorHex": "#1d4ed8",
+            "size": "XL",
+            "qty": 10,
+            "stock": 100
+          },
+          {
+            "clothingId": "lmniCsIZwIkTbICoZSeq",
+            "clothingName": "ถูก 8",
+            "colorIdx": 0,
+            "colorName": "น้ำเงิน",
+            "colorHex": "#1d4ed8",
+            "size": "2XL",
+            "qty": 2,
+            "stock": 50
+          },
+          {
+            "clothingId": "lmniCsIZwIkTbICoZSeq",
+            "clothingName": "ถูก 8",
+            "colorIdx": 0,
+            "colorName": "น้ำเงิน",
+            "colorHex": "#1d4ed8",
+            "size": "3XL",
+            "qty": 1,
+            "stock": 50
+          }
+        ],
+        "status": "สำเร็จ",
+        "by": "Boong",
+        "date": "04/06/2026 14:19",
+        "createdAt": {
+          "_seconds": 1780557562,
+          "_nanoseconds": 51000000
+        }
+      }
+    ],
+    "invoices": [
+      {
+        "_id": "4822Br6wbUXZEWt1kzDz",
+        "customerId": "pwZqaAcXIS72yf7kaE2g",
+        "customerName": "ร้านพันชั่ง",
+        "customerPhone": "0942622323",
+        "customerAddress": "ร้านพันชั่ง 7/9 ม. 7 ต.นิคม อ.สตึก จ.บุรีรัมย์ 31150",
+        "customerTaxId": "",
+        "items": [
+          {
+            "description": "ถูก 8 (น้ำเงิน) ไซส์ M",
+            "qty": 7,
+            "unitPrice": 60,
+            "unit": "ชิ้น",
+            "clothingId": "lmniCsIZwIkTbICoZSeq",
+            "clothingName": "ถูก 8",
+            "colorIdx": 0,
+            "colorName": "น้ำเงิน",
+            "colorHex": "#1d4ed8",
+            "size": "M"
+          },
+          {
+            "description": "ถูก 8 (น้ำเงิน) ไซส์ L",
+            "qty": 15,
+            "unitPrice": 60,
+            "unit": "ชิ้น",
+            "clothingId": "lmniCsIZwIkTbICoZSeq",
+            "clothingName": "ถูก 8",
+            "colorIdx": 0,
+            "colorName": "น้ำเงิน",
+            "colorHex": "#1d4ed8",
+            "size": "L"
+          },
+          {
+            "description": "ถูก 8 (น้ำเงิน) ไซส์ XL",
+            "qty": 10,
+            "unitPrice": 60,
+            "unit": "ชิ้น",
+            "clothingId": "lmniCsIZwIkTbICoZSeq",
+            "clothingName": "ถูก 8",
+            "colorIdx": 0,
+            "colorName": "น้ำเงิน",
+            "colorHex": "#1d4ed8",
+            "size": "XL"
+          },
+          {
+            "description": "ถูก 8 (น้ำเงิน) ไซส์ 2XL",
+            "qty": 2,
+            "unitPrice": 65,
+            "unit": "ชิ้น",
+            "clothingId": "lmniCsIZwIkTbICoZSeq",
+            "clothingName": "ถูก 8",
+            "colorIdx": 0,
+            "colorName": "น้ำเงิน",
+            "colorHex": "#1d4ed8",
+            "size": "2XL"
+          },
+          {
+            "description": "ถูก 8 (น้ำเงิน) ไซส์ 3XL",
+            "qty": 1,
+            "unitPrice": 70,
+            "unit": "ชิ้น",
+            "clothingId": "lmniCsIZwIkTbICoZSeq",
+            "clothingName": "ถูก 8",
+            "colorIdx": 0,
+            "colorName": "น้ำเงิน",
+            "colorHex": "#1d4ed8",
+            "size": "3XL"
+          }
+        ],
+        "note": "",
+        "dueDate": "",
+        "vatRate": 7,
+        "bankAccountIdx": 0,
+        "subtotal": 2120,
+        "vat": 0,
+        "total": 2120,
+        "invoiceNo": "INV6906-0002",
+        "docType": "receipt",
+        "useVat": false,
+        "bankAccount": {
+          "bankName": "กรุงศรี",
+          "accountName": "Supawong w.",
+          "label": "ส่วนบุคคล",
+          "accountNo": "4184105710"
+        },
+        "by": "Boong",
+        "date": "04/06/2026 14:39",
+        "createdAt": {
+          "_seconds": 1780558788,
+          "_nanoseconds": 905000000
+        },
+        "status": "รอชำระ"
+      },
+      {
+        "_id": "fm9PRAquRsXfZQNmTclZ",
+        "customerId": "GKfUCtgJFFKyDcLEp48t",
+        "customerName": "ศุภวัฒน์",
+        "customerPhone": "0898645325",
+        "customerAddress": "โรงเรียนบ้านหนองจิก ต.ภูฟ้าย อ.ขุนหาญ จ.ศรีสะเกษ 33150",
+        "customerTaxId": "",
+        "items": [
+          {
+            "description": "K-12 (ม่วง) ไซส์ M",
+            "qty": 6,
+            "unitPrice": 60,
+            "unit": "ชิ้น",
+            "clothingId": "YLGmtVce8u4Qw2tqcg4S",
+            "clothingName": "K-12",
+            "colorIdx": 0,
+            "colorName": "ม่วง",
+            "colorHex": "#a855f7",
+            "size": "M"
+          },
+          {
+            "description": "K-12 (ม่วง) ไซส์ L",
+            "qty": 6,
+            "unitPrice": 60,
+            "unit": "ชิ้น",
+            "clothingId": "YLGmtVce8u4Qw2tqcg4S",
+            "clothingName": "K-12",
+            "colorIdx": 0,
+            "colorName": "ม่วง",
+            "colorHex": "#a855f7",
+            "size": "L"
+          },
+          {
+            "description": "K-12 (ม่วง) ไซส์ XL",
+            "qty": 6,
+            "unitPrice": 60,
+            "unit": "ชิ้น",
+            "clothingId": "YLGmtVce8u4Qw2tqcg4S",
+            "clothingName": "K-12",
+            "colorIdx": 0,
+            "colorName": "ม่วง",
+            "colorHex": "#a855f7",
+            "size": "XL"
+          },
+          {
+            "description": "กางเกง (ดำ) ไซส์ L",
+            "qty": 12,
+            "unitPrice": 40,
+            "unit": "ชิ้น",
+            "clothingId": "Xw5rqIDISEG4JjvrPADH",
+            "clothingName": "กางเกง",
+            "colorIdx": 0,
+            "colorName": "ดำ",
+            "colorHex": "#1a1a1a",
+            "size": "L"
+          },
+          {
+            "description": "กางเกง (ดำ) ไซส์ XL",
+            "qty": 6,
+            "unitPrice": 40,
+            "unit": "ชิ้น",
+            "clothingId": "Xw5rqIDISEG4JjvrPADH",
+            "clothingName": "กางเกง",
+            "colorIdx": 0,
+            "colorName": "ดำ",
+            "colorHex": "#1a1a1a",
+            "size": "XL"
+          }
+        ],
+        "note": "",
+        "dueDate": "",
+        "vatRate": 7,
+        "bankAccountIdx": 0,
+        "subtotal": 1800,
+        "vat": 0,
+        "total": 1800,
+        "invoiceNo": "INV6906-0001",
+        "docType": "receipt",
+        "useVat": false,
+        "bankAccount": {
+          "label": "BOONG",
+          "bankName": "กรุงศรี",
+          "accountName": "Supawong w.",
+          "accountNo": "4184105710"
+        },
+        "by": "Boong",
+        "date": "04/06/2026 13:27",
+        "createdAt": {
+          "_seconds": 1780554461,
+          "_nanoseconds": 878000000
+        },
+        "status": "รอชำระ"
+      }
+    ],
+    "statements": [],
+    "settings": [
+      {
+        "_id": "company",
+        "name": "Boong",
+        "address": "",
+        "phone": "",
+        "email": "",
+        "taxId": "",
+        "logo": "",
+        "bankAccounts": [
+          {
+            "label": "ส่วนบุคคล",
+            "bankName": "กรุงศรี",
+            "accountName": "Supawong w.",
+            "accountNo": "4184105710"
+          }
+        ]
+      }
+    ]
+  }
+}
