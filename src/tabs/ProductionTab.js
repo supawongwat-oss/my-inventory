@@ -7,6 +7,7 @@ import NewProductionOrderModal from "../components/NewProductionOrderModal";
 import NewCustomOrderModal from "../components/NewCustomOrderModal";
 import ProductionStatusModal from "../components/ProductionStatusModal";
 import PrintProductionOrder from "../components/PrintProductionOrder";
+import KanbanBoard from "../components/KanbanBoard";
 
 const T = {
   card:"#ffffff", border:"#e3e8ef", text:"#1f2a44", sub:"#5b6b85", muted:"#8a9bb3",
@@ -34,7 +35,7 @@ function parseThaiDate(s) {
 }
 
 export default function ProductionTab({ productionOrders=[], customOrders=[], boms=[], products=[], clothingItems=[], customers=[], companyInfo={}, user, role, printElementById }) {
-  const [subTab, setSubTab] = useState("orders"); // orders | bom | custom
+  const [subTab, setSubTab] = useState("kanban"); // kanban | orders | custom | bom
   const [showNew, setShowNew] = useState(false);
   const [showNewCustom, setShowNewCustom] = useState(false);
   const [statusOrder, setStatusOrder] = useState(null);
@@ -81,8 +82,8 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
   return (
     <div style={{animation:"fadeUp 0.4s ease"}}>
       {/* Sub-tabs */}
-      <div style={{display:"flex",gap:6,marginBottom:18,borderBottom:`1px solid ${T.border}`}}>
-        {[{id:"orders",l:"📋 ใบสั่งผลิต"},{id:"custom",l:"🎨 Custom Order"},{id:"bom",l:"🧪 BOM (สูตรผลิต)"}].map(t => (
+      <div style={{display:"flex",gap:6,marginBottom:18,borderBottom:`1px solid ${T.border}`,flexWrap:"wrap"}}>
+        {[{id:"kanban",l:"📊 Kanban (สายงาน)"},{id:"orders",l:"📋 รายการใบสั่ง"},{id:"custom",l:"🎨 Custom"},{id:"bom",l:"🧪 BOM"}].map(t => (
           <button key={t.id} onClick={()=>setSubTab(t.id)}
             style={{padding:"8px 18px",borderRadius:"8px 8px 0 0",border:"none",background:subTab===t.id?"rgba(59,91,139,0.1)":"transparent",color:subTab===t.id?T.accent:T.sub,cursor:"pointer",fontSize:13,fontWeight:subTab===t.id?700:500,fontFamily:"'Sarabun',sans-serif",borderBottom:subTab===t.id?`2px solid ${T.accent}`:"2px solid transparent"}}>
             {t.l}
@@ -91,6 +92,24 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
       </div>
 
       {/* ── PRODUCTION ORDERS ── */}
+      {/* ── KANBAN (สายงาน) ── */}
+      {subTab === "kanban" && (
+        <>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
+            <div style={{fontSize:12,color:T.sub}}>มุมมองสายงาน — แต่ละ column เป็นขั้นตอนหนึ่ง · คลิก card เพื่อจัดการล็อต</div>
+            {role?.canProduction && (
+              <button onClick={()=>setShowNew(true)} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>+ สร้างใบสั่งผลิต</button>
+            )}
+          </div>
+          <KanbanBoard
+            orders={productionOrders}
+            collectionName="productionOrders"
+            user={user} role={role}
+            products={products} clothingItems={clothingItems}
+          />
+        </>
+      )}
+
       {subTab === "orders" && (
         <>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
