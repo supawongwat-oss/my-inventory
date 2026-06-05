@@ -233,12 +233,13 @@ export default function Catalog() {
                           <tbody>
                             {colors.map((c, ci) => {
                               const rowQty = Object.values((order.qtyMap||{})[ci] || {}).reduce((a,b) => a+b, 0);
+                              const colorLabel = c.name || `สี #${ci+1}`;
                               return (
                                 <tr key={ci} style={{ background: ci % 2 ? "#fafbfc" : "white" }}>
                                   <td style={{ padding: "6px 10px", borderBottom: `1px solid ${T.border}` }}>
                                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                                       <div style={{ width: 14, height: 14, borderRadius: 3, background: c.hex || "#ddd", border: "1px solid rgba(0,0,0,.2)" }} />
-                                      <span style={{ fontSize: 12, fontWeight: 600 }}>{c.name}</span>
+                                      <span style={{ fontSize: 12, fontWeight: 600 }}>{colorLabel}</span>
                                     </div>
                                   </td>
                                   {allSizes.map(sz => {
@@ -283,11 +284,13 @@ export default function Catalog() {
                     // flatten qtyMap → lines
                     const valid = [];
                     Object.entries(order.qtyMap || {}).forEach(([ci, row]) => {
-                      const col = (order.item?.colors || [])[ci];
+                      const idx = Number(ci);
+                      const col = (order.item?.colors || [])[idx];
                       if (!col) return;
                       Object.entries(row).forEach(([size, qty]) => {
                         if (qty > 0) valid.push({
-                          color: col.name || "(ไม่ระบุสี)",
+                          colorIdx: idx, // 🔑 ใช้ index ตรง ๆ — convert จะ lookup จาก index ไม่ใช่ชื่อ
+                          color: col.name || `สี #${idx+1}`,
                           colorHex: col.hex || "",
                           size: size || "",
                           qty: Number(qty) || 0,

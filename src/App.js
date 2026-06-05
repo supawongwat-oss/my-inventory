@@ -2574,15 +2574,18 @@ export default function App() {
                 for (const ln of (co.lines||[])) {
                   const ci = clothingItems.find(c => c.id === co.itemId);
                   if (!ci) continue;
-                  const colorIdx = (ci.colors||[]).findIndex(c => c.name === ln.color);
-                  if (colorIdx < 0) continue;
+                  // 🔑 ใช้ colorIdx ที่แนบมา (ใหม่) > fallback หาจากชื่อ (เก่า)
+                  let colorIdx = (typeof ln.colorIdx === "number" && ln.colorIdx >= 0)
+                    ? ln.colorIdx
+                    : (ci.colors||[]).findIndex(c => c.name === ln.color);
+                  if (colorIdx < 0 || colorIdx >= (ci.colors||[]).length) continue;
                   const colorData = ci.colors[colorIdx];
                   const unitPrice = getPriceForSize(colorData, ln.size) || 0;
                   items.push({
                     clothingId: ci.id,
-                    clothingName: ci.name,
+                    clothingName: ci.name || "(ไม่มีชื่อ)",
                     colorIdx,
-                    colorName: colorData.name,
+                    colorName: colorData.name || `สี #${colorIdx+1}`,
                     size: ln.size,
                     qty: Number(ln.qty)||0,
                     unitPrice,
