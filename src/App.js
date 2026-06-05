@@ -11,6 +11,8 @@ import SuppliersTab from "./tabs/SuppliersTab";
 import StatementTab from "./tabs/StatementTab";
 import AuditLogTab from "./tabs/AuditLogTab";
 import StocktakeTab from "./tabs/StocktakeTab";
+import EmployeeTab from "./tabs/EmployeeTab";
+import TaxDocsTab from "./tabs/TaxDocsTab";
 import BarcodePrintModal from "./components/BarcodePrintModal";
 import ImportCustomersModal from "./components/ImportCustomersModal";
 import BackupRestore, { shouldRemindBackup, getLastBackupDate } from "./components/BackupRestore";
@@ -29,7 +31,7 @@ export default function App() {
     authReady.then(() => setAuthChecked(true));
   }, []);
 
-  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms } = useFirestore();
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, employees, taxDocs } = useFirestore();
   // ใช้แทน ROLES[role].label เพื่อให้ admin เปลี่ยนชื่อบทบาทได้
   const rLabel = (key) => roleLabels[key] || ROLES[key]?.label || key;
 
@@ -1134,6 +1136,8 @@ export default function App() {
     { id:"alerts",       icon:"🔔", label:"แจ้งเตือน", badge: lowStock.length },
     { id:"reports",      icon:"📊", label:"รายงาน" },
     { id:"suppliers",    icon:"🏭", label:"ซัพพลายเออร์" },
+    { id:"employees",    icon:"👷", label:"บัตรลูกจ้าง" },
+    { id:"taxdocs",      icon:"🧾", label:"คลังเอกสารภาษี" },
   ];
   // admin เห็นทุก tab + จัดการผู้ใช้ + audit log — คนอื่น filter ตาม allowedTabs ที่ admin กำหนดไว้
   const navItems = user.role==="admin"
@@ -2357,6 +2361,16 @@ export default function App() {
           {/* ── STOCKTAKE — นับสต็อกจริง ── */}
           {activeTab==="stocktake"&&(
             <StocktakeTab products={products} clothingItems={clothingItems} user={user} role={role}/>
+          )}
+
+          {/* ── EMPLOYEES — บัตรลูกจ้าง ── */}
+          {activeTab==="employees"&&(
+            <EmployeeTab employees={employees} user={user} role={role}/>
+          )}
+
+          {/* ── TAX DOCS — คลังเอกสารภาษี ── */}
+          {activeTab==="taxdocs"&&(
+            <TaxDocsTab taxDocs={taxDocs} user={user} role={role}/>
           )}
 
           {/* ── STATEMENTS (ใบวางบิลรวมเดือน) ── */}

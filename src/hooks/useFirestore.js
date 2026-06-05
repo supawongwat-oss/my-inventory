@@ -17,6 +17,8 @@ export function useFirestore() {
   const [companyInfo, setCompanyInfo] = useState({ name:"CPU", address:"", phone:"", email:"", taxId:"", logo:"⚙️" });
   const [roleLabels, setRoleLabels] = useState({}); // {admin:"...", manager:"...", staff:"..."}
   const [auditLogs, setAuditLogs] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [taxDocs, setTaxDocs] = useState([]);
   const [productionOrders, setProductionOrders] = useState([]);
   const [boms, setBoms] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -124,6 +126,19 @@ export function useFirestore() {
     return () => unsub();
   }, []);
 
+  // Employees (พนักงาน + work permit)
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "employees"), snap => setEmployees(snap.docs.map(d => ({ ...d.data(), id: d.id }))), ()=>{});
+    return () => unsub();
+  }, []);
+
+  // Tax Docs
+  useEffect(() => {
+    const q = query(collection(db, "taxDocs"), orderBy("date","desc"));
+    const unsub = onSnapshot(q, snap => setTaxDocs(snap.docs.map(d => ({ ...d.data(), id: d.id }))), ()=>{});
+    return () => unsub();
+  }, []);
+
   // Production orders
   useEffect(() => {
     const q = query(collection(db, "productionOrders"), orderBy("createdAt","desc"));
@@ -153,6 +168,8 @@ export function useFirestore() {
     auditLogs,
     productionOrders,
     boms,
+    employees,
+    taxDocs,
     loading, setLoading,
   };
 }

@@ -5,6 +5,7 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey:            process.env.REACT_APP_FB_API_KEY            || "AIzaSyA6W7VGiYAjstNkmyKfvPccatH6LWRxtfQ",
@@ -25,6 +26,7 @@ if (process.env.NODE_ENV === "development") {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+export const storage = getStorage(app);
 
 // เปิด offline persistence — ข้อมูลยังใช้งานได้แม้เน็ตหลุด
 enableIndexedDbPersistence(db).catch((err) => {
