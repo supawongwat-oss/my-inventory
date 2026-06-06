@@ -52,7 +52,9 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                   <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap:8}}>
                     {imgs.map((im, i) => (
                       <div key={i} style={{textAlign:"center"}}>
-                        <img src={im.dataUrl} alt="" style={{width:"100%",height:n===1?180:150,objectFit:"cover",borderRadius:8,border:"1px solid #e2e8f0",display:"block"}}/>
+                        <div style={{width:"100%",height:n===1?260:220,background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+                          <img src={im.dataUrl} alt="" style={{maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",objectFit:"contain",display:"block"}}/>
+                        </div>
                         {im.label && <div style={{fontSize:11,color:"#1e293b",fontWeight:700,marginTop:4}}>{im.label}</div>}
                       </div>
                     ))}
