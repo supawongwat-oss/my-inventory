@@ -330,7 +330,11 @@ export default function App() {
   };
 
 
+  // 🏷️ Tab-level filter — รวมหลาย category เป็น 1 tab ได้ (เช่น sports = รองเท้า+อุปกรณ์กีฬา)
+  const TAB_CATEGORIES = { sports: ["รองเท้า","อุปกรณ์กีฬา"] };
   const filtered = products.filter(p => {
+    const tabCats = TAB_CATEGORIES[inventoryTab];
+    if (tabCats && !tabCats.includes(p.category)) return false;
     if (selectedCat !== "ทั้งหมด" && p.category !== selectedCat) return false;
     if (!search) return true;
     const q = search.toLowerCase().trim();
@@ -1477,20 +1481,21 @@ export default function App() {
                 {[
                   {id:"general",icon:"📦",label:"สินค้าทั่วไป"},
                   {id:"clothing",icon:"👕",label:"เสื้อผ้า"},
-                  {id:"shoes",icon:"👟",label:"รองเท้า",cat:"รองเท้า"},
-                  {id:"sports",icon:"⚽",label:"อุปกรณ์กีฬา",cat:"อุปกรณ์กีฬา"},
+                  {id:"sports",icon:"👟",label:"รองเท้า & อุปกรณ์กีฬา",cats:["รองเท้า","อุปกรณ์กีฬา"]},
                 ].map(t=>{
-                  // นับสินค้าในหมวด (สำหรับ shoes/sports)
-                  const count = t.cat ? products.filter(p=>p.category===t.cat).length
+                  // นับสินค้าในหมวด (รองรับหลาย cats)
+                  const count = t.cats ? products.filter(p=>t.cats.includes(p.category)).length
                     : t.id==="clothing" ? clothingItems.length : 0;
                   return (
                     <button key={t.id} onClick={async()=>{
                       setInventoryTab(t.id);
-                      // ถ้าเลือก tab หมวด → set filter + auto-create category ใน Firestore ถ้ายังไม่มี
-                      if (t.cat) {
-                        setSelectedCat(t.cat);
-                        if (!categories.includes(t.cat)) {
-                          try { await setDoc(doc(db,"settings","categories"),{list:[...categories,t.cat]}); }
+                      // ถ้าเลือก tab หมวด → set filter พิเศษ (จะ filter ที่ products list)
+                      if (t.cats) {
+                        setSelectedCat("ทั้งหมด"); // ไม่ใช้ chip filter — ใช้ tab filter แทน
+                        // auto-create categories ที่ยังไม่มี
+                        const missing = t.cats.filter(c => !categories.includes(c));
+                        if (missing.length > 0) {
+                          try { await setDoc(doc(db,"settings","categories"),{list:[...categories,...missing]}); }
                           catch(err){ console.warn("[cats] auto-create failed:", err); }
                         }
                       } else {
@@ -1504,8 +1509,8 @@ export default function App() {
                 })}
               </div>
 
-              {/* General products (รวมถึง shoes/sports — ใช้ view เดียวกัน filter ตาม category) */}
-              {(inventoryTab==="general"||inventoryTab==="shoes"||inventoryTab==="sports")&&<div>
+              {/* General products (รวมถึง sports — ใช้ view เดียวกัน filter ตาม category) */}
+              {(inventoryTab==="general"||inventoryTab==="sports")&&<div>
               <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
                 <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 ค้นหาชื่อ, รหัส, บาร์โค้ด..."
                   style={{width:260,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>

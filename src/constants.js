@@ -13,3 +13,4 @@ export const ROLES = {
 };
 
 export const INIT_CATS = ["วัตถุดิบ","สินค้าสำเร็จ","บรรจุภัณฑ์","รองเท้า","อุปกรณ์กีฬา"];
+// 🏷️ Tab → ใช้ filter categories หลายอันรวมเป็น tab เดียว (sync กับ App.js TAB_CATEGORIES)
