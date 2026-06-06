@@ -2066,6 +2066,39 @@ export default function App() {
               user={user}
               role={role}
               printElementById={printElementById}
+              onCreateInvoiceFromCustom={(orders)=>{
+                if (!orders?.length) return;
+                // pre-fill invoice form จาก custom orders ที่เลือก
+                const first = orders[0];
+                const items = [];
+                orders.forEach(o => {
+                  (o.items||[]).forEach(it => {
+                    items.push({
+                      description: `${o.clothingName} / ${it.colorName||"-"} / ${it.size||"-"}`,
+                      qty: Number(it.qty)||0,
+                      unitPrice: Number(o.costSnapshot?.totalCostPerPiece)||0,
+                      unit: "ตัว",
+                      colorHex: it.colorHex,
+                      colorName: it.colorName,
+                      _fromCustom: o.prodNo,
+                    });
+                  });
+                });
+                setInvoiceForm({
+                  customerId: first.customerId||"",
+                  customerName: first.customerName||"",
+                  customerPhone: first.customerPhone||"",
+                  customerAddress: first.customerAddress||"",
+                  customerTaxId: first.customerTaxId||"",
+                  items,
+                  note: `จาก Custom Order: ${orders.map(o=>o.prodNo).join(", ")}`,
+                  dueDate: "",
+                  vatRate: 7,
+                  discount: 0,
+                  discountType: "amount",
+                });
+                setActiveTab("invoice");
+              }}
             />
           )}
 

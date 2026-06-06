@@ -16,8 +16,10 @@ function nowStr() {
 }
 
 export default function NewCustomOrderModal({ customOrders = [], customers = [], user, onClose, onCreated }) {
+  const [customerId, setCustomerId] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [customerSearch, setCustomerSearch] = useState("");
   const [jobName, setJobName] = useState("");
   const [images, setImages] = useState([]); // [{dataUrl, label}]
   const [items, setItems] = useState([{ colorName:"", size:"", qty:"" }]);
@@ -71,6 +73,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
     const data = {
       prodNo,
       isCustom: true,
+      customerId: customerId || "",
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim(),
       clothingId: null,
@@ -127,11 +130,38 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
       <MHead title="🎨 สร้างใบสั่งผลิต Custom (เฉพาะแบบ)" sub="ใส่รูป + พิมพ์รุ่น/สี/ไซส์เอง — ไม่ตัดสต็อก" onClose={onClose}/>
       {saved && <Toast msg="สร้างใบสั่งผลิต custom สำเร็จ"/>}
 
-      {/* ลูกค้า */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-        <Input label="ชื่อลูกค้า (ถ้ามี)" value={customerName} onChange={e => setCustomerName(e.target.value)}/>
-        <Input label="เบอร์โทร" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)}/>
+      {/* ลูกค้า — search ลูกค้าเดิม หรือพิมพ์ชื่อใหม่ */}
+      <div style={{marginBottom:12,position:"relative"}}>
+        <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:4,fontWeight:600}}>ลูกค้า</label>
+        <input
+          value={customerId ? `✓ ${customerName}` : customerSearch}
+          onChange={e => { setCustomerSearch(e.target.value); setCustomerId(""); setCustomerName(e.target.value); setCustomerPhone(""); }}
+          placeholder="🔍 ค้นหาลูกค้าเดิม หรือพิมพ์ชื่อใหม่"
+          style={{width:"100%",background:T.input,border:`1px solid ${customerId?"#16a34a":T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 12px",fontFamily:"inherit",fontSize:13,outline:"none"}}/>
+        {customerSearch && !customerId && (
+          <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,zIndex:50,maxHeight:180,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.15)",marginTop:2}}>
+            {customers.filter(c => {
+              const q = customerSearch.toLowerCase().trim();
+              return (c.name||"").toLowerCase().includes(q) || (c.phone||"").toLowerCase().includes(q);
+            }).slice(0,5).map(c => (
+              <div key={c.id} onClick={() => { setCustomerId(c.id); setCustomerName(c.name||""); setCustomerPhone(c.phone||""); setCustomerSearch(""); }}
+                style={{padding:"8px 12px",cursor:"pointer",borderBottom:`1px solid ${T.border}`,fontSize:12}}
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(59,91,139,0.08)"}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                <div style={{fontWeight:600,color:T.text}}>{c.name}</div>
+                {c.phone && <div style={{fontSize:11,color:T.muted}}>📞 {c.phone}</div>}
+              </div>
+            ))}
+            {customers.filter(c => {
+              const q = customerSearch.toLowerCase().trim();
+              return (c.name||"").toLowerCase().includes(q) || (c.phone||"").toLowerCase().includes(q);
+            }).length === 0 && (
+              <div style={{padding:"8px 12px",fontSize:11,color:T.muted}}>ไม่พบในระบบ — จะใช้ชื่อนี้แบบใหม่</div>
+            )}
+          </div>
+        )}
       </div>
+      <Input label="เบอร์โทร" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} style={{marginBottom:10}}/>
 
       {/* ชื่องาน */}
       <div style={{marginBottom:10}}>

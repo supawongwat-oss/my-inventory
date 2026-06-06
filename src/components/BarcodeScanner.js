@@ -99,7 +99,14 @@ export default function BarcodeScanner({ onScan, onClose, title = "📸 สแ�
               beep();
               onScan?.(code);
               if (!continuous) {
+                // หยุดอ่าน + ปิด video stream + ปิด modal เพื่อกันกล้องค้าง
                 try { controls?.stop(); } catch {}
+                try {
+                  const stream = videoRef.current?.srcObject;
+                  stream?.getTracks().forEach(t => t.stop());
+                  if (videoRef.current) videoRef.current.srcObject = null;
+                } catch {}
+                setTimeout(() => onClose?.(), 100);
               }
             }
             // error คือ frame ที่อ่านไม่ออก — ignore
@@ -127,6 +134,12 @@ export default function BarcodeScanner({ onScan, onClose, title = "📸 สแ�
     return () => {
       mounted = false;
       try { controlsRef.current?.stop(); controlsRef.current = null; } catch {}
+      // ปิด video stream ให้สนิท (กันไฟกล้องค้าง)
+      try {
+        const stream = videoRef.current?.srcObject;
+        stream?.getTracks().forEach(t => t.stop());
+        if (videoRef.current) videoRef.current.srcObject = null;
+      } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCamId]);

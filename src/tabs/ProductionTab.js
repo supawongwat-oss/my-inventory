@@ -34,10 +34,11 @@ function parseThaiDate(s) {
   return new Date(`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`);
 }
 
-export default function ProductionTab({ productionOrders=[], customOrders=[], boms=[], products=[], clothingItems=[], customers=[], companyInfo={}, user, role, printElementById }) {
+export default function ProductionTab({ productionOrders=[], customOrders=[], boms=[], products=[], clothingItems=[], customers=[], companyInfo={}, user, role, printElementById, onCreateInvoiceFromCustom }) {
   const [subTab, setSubTab] = useState("kanban"); // kanban | orders | custom | bom
   const [showNew, setShowNew] = useState(false);
   const [showNewCustom, setShowNewCustom] = useState(false);
+  const [selectedCustom, setSelectedCustom] = useState(new Set()); // ids ของ custom orders ที่เลือกเพื่อออกบิลรวม
   const [statusOrder, setStatusOrder] = useState(null);
   const [statusCustom, setStatusCustom] = useState(null);
   const [printOrder, setPrintOrder] = useState(null);
@@ -229,11 +230,32 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
       {/* ── CUSTOM ORDERS ── */}
       {subTab === "custom" && (
         <>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div style={{fontSize:12,color:T.sub}}>Custom Order ทั้งหมด <b style={{color:T.accent}}>{customOrders.length} ใบ</b></div>
-            {role?.canProduction && (
-              <button onClick={()=>setShowNewCustom(true)} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#d97706,#d97706)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(217,119,6,0.3)"}}>+ สร้าง Custom Order</button>
-            )}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:10,flexWrap:"wrap"}}>
+            <div style={{fontSize:12,color:T.sub}}>
+              Custom Order ทั้งหมด <b style={{color:T.accent}}>{customOrders.length} ใบ</b>
+              {selectedCustom.size > 0 && <span style={{marginLeft:8,padding:"2px 8px",background:"rgba(22,163,74,0.12)",color:"#16a34a",borderRadius:10,fontSize:11,fontWeight:600}}>เลือก {selectedCustom.size} ใบ</span>}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              {selectedCustom.size > 0 && role?.canIssueInvoice && (
+                <button onClick={() => {
+                  const selected = customOrders.filter(o => selectedCustom.has(o.id));
+                  if (selected.length === 0) return;
+                  // ตรวจชื่อลูกค้าให้ตรงกัน (เตือน ถ้าหลายลูกค้า)
+                  const customerNames = [...new Set(selected.map(o => o.customerName).filter(Boolean))];
+                  if (customerNames.length > 1) {
+                    if (!window.confirm(`เลือก ${selected.length} ใบจาก ${customerNames.length} ลูกค้า:\n${customerNames.join(", ")}\n\nออกบิลรวมต่อ?`)) return;
+                  }
+                  onCreateInvoiceFromCustom?.(selected);
+                  setSelectedCustom(new Set());
+                }} style={{padding:"8px 14px",borderRadius:9,border:"none",cursor:"pointer",background:"#16a34a",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(22,163,74,0.3)"}}>🧾 ออกบิลรวม ({selectedCustom.size})</button>
+              )}
+              {selectedCustom.size > 0 && (
+                <button onClick={() => setSelectedCustom(new Set())} style={{padding:"8px 12px",borderRadius:9,border:`1px solid ${T.border}`,background:"white",color:T.sub,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>✕ ล้าง</button>
+              )}
+              {role?.canProduction && (
+                <button onClick={()=>setShowNewCustom(true)} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#d97706,#d97706)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(217,119,6,0.3)"}}>+ สร้าง Custom Order</button>
+              )}
+            </div>
           </div>
 
           {customOrders.length === 0 ? (
@@ -246,11 +268,19 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               {customOrders.map(o => {
                 const color = STATUS_COLORS[o.status] || "#6b7280";
+                const isSelected = selectedCustom.has(o.id);
                 return (
                   <div key={o.id} onClick={()=>setStatusCustom(o)}
-                    style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"14px 18px",cursor:"pointer",display:"grid",gridTemplateColumns:"60px 120px 1fr 130px 130px 80px",alignItems:"center",gap:14,transition:"background 0.15s"}}
-                    onMouseEnter={e=>e.currentTarget.style.background="rgba(217,119,6,0.04)"}
-                    onMouseLeave={e=>e.currentTarget.style.background="white"}>
+                    style={{background:isSelected?"rgba(22,163,74,0.06)":T.card,border:`1px solid ${isSelected?"#16a34a":T.border}`,borderRadius:14,padding:"14px 18px",cursor:"pointer",display:"grid",gridTemplateColumns:"22px 60px 120px 1fr 130px 130px 80px",alignItems:"center",gap:12,transition:"background 0.15s"}}
+                    onMouseEnter={e=>e.currentTarget.style.background=isSelected?"rgba(22,163,74,0.1)":"rgba(217,119,6,0.04)"}
+                    onMouseLeave={e=>e.currentTarget.style.background=isSelected?"rgba(22,163,74,0.06)":"white"}>
+                    <input type="checkbox" checked={isSelected} onClick={e=>e.stopPropagation()} onChange={() => {
+                      setSelectedCustom(prev => {
+                        const next = new Set(prev);
+                        if (next.has(o.id)) next.delete(o.id); else next.add(o.id);
+                        return next;
+                      });
+                    }} style={{width:16,height:16,cursor:"pointer",accentColor:"#16a34a"}}/>
                     {o.clothingImage ? <img src={o.clothingImage} alt="" style={{width:54,height:54,borderRadius:8,objectFit:"cover",border:`1px solid ${T.border}`}}/> : <div style={{width:54,height:54,borderRadius:8,background:"#f1f5f9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>🎨</div>}
                     <div>
                       <div style={{fontFamily:"monospace",fontSize:12,color:"#d97706",fontWeight:700}}>{o.prodNo}</div>
