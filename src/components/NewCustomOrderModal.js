@@ -19,7 +19,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [jobName, setJobName] = useState("");
-  const [image, setImage] = useState("");
+  const [images, setImages] = useState([]); // [{dataUrl, label}]
   const [items, setItems] = useState([{ colorName:"", size:"", qty:"" }]);
   const [costPerPiece, setCostPerPiece] = useState("");
   const [laborCostPerPiece, setLaborCostPerPiece] = useState("");
@@ -32,18 +32,27 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const setRow = (idx, patch) => setItems(prev => prev.map((r,i)=> i===idx ? {...r, ...patch} : r));
   const removeRow = (idx) => setItems(prev => prev.filter((_,i)=>i!==idx));
 
+  // อัปโหลดได้หลายรูปพร้อมกัน — แต่ละรูป compress ก่อน
   const handleImageUpload = async (e) => {
-    const f = e.target.files?.[0]; if (!f) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
     try {
-      // compress รูปก่อน (max 1200px, JPEG 80%) → ปกติ ~150-400 KB
-      // ป้องกัน doc เกิน 1MB limit ของ Firestore
-      const compressed = await compressImage(f, { maxDim: 1200, quality: 0.8 });
-      setImage(compressed);
+      const compressed = [];
+      for (const f of files) {
+        if (!f.type?.startsWith("image/")) continue;
+        const dataUrl = await compressImage(f, { maxDim: 1200, quality: 0.8 });
+        compressed.push({ dataUrl, label: "" });
+      }
+      setImages(prev => [...prev, ...compressed]);
     } catch (err) {
       console.error("[image] compress failed:", err);
       alert("โหลดรูปไม่สำเร็จ: " + (err.message || err));
+    } finally {
+      if (fileRef.current) fileRef.current.value = "";
     }
   };
+  const updateImageLabel = (idx, label) => setImages(prev => prev.map((im, i) => i === idx ? { ...im, label } : im));
+  const removeImage = (idx) => setImages(prev => prev.filter((_, i) => i !== idx));
 
   const validItems = items.filter(r => Number(r.qty) > 0);
   const totalQty = validItems.reduce((s,r) => s + (Number(r.qty)||0), 0);
@@ -66,7 +75,8 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
       customerPhone: customerPhone.trim(),
       clothingId: null,
       clothingName: jobName.trim(),
-      clothingImage: image || "",
+      clothingImage: images[0]?.dataUrl || "", // backward compat (รูปแรก)
+      clothingImages: images,                  // [{dataUrl, label}]
       items: validItems.map(r => ({
         colorIdx: 0,
         colorName: r.colorName.trim() || "-",
@@ -123,22 +133,36 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
         <Input label="เบอร์โทร" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)}/>
       </div>
 
-      {/* ชื่องาน + รูป */}
-      <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:14,padding:14,background:"#f8fafc",borderRadius:10,border:`1px solid ${T.border}`}}>
-        <div style={{flexShrink:0}}>
-          {image
-            ? <img src={image} alt="" style={{width:110,height:110,borderRadius:10,objectFit:"cover",border:`2px solid ${T.accent}`}}/>
-            : <div onClick={()=>fileRef.current?.click()} style={{width:110,height:110,borderRadius:10,background:T.input,display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,border:`2px dashed ${T.inputBorder}`,cursor:"pointer"}}>📷</div>}
-          <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleImageUpload}/>
-          {image && <div style={{fontSize:10,color:T.muted,textAlign:"center",marginTop:4}}>{dataUrlSizeKB(image)} KB</div>}
+      {/* ชื่องาน */}
+      <div style={{marginBottom:10}}>
+        <Input label="ชื่องาน / รุ่น *" value={jobName} onChange={e => setJobName(e.target.value)} placeholder="เช่น เสื้อคลาส ม.6/3 ปี 2569"/>
+      </div>
+
+      {/* รูปแบบ — หลายรูปได้, แต่ละรูปใส่ label สีกำกับได้ */}
+      <div style={{marginBottom:14,padding:12,background:"#f8fafc",borderRadius:10,border:`1px solid ${T.border}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:images.length>0?10:0}}>
+          <div style={{fontSize:12,fontWeight:600,color:T.text}}>🎨 รูปแบบงาน ({images.length} รูป)</div>
+          <BtnGhost onClick={()=>fileRef.current?.click()} style={{fontSize:11,padding:"5px 12px"}}>📁 + เพิ่มรูป</BtnGhost>
+          <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={handleImageUpload}/>
         </div>
-        <div style={{flex:1}}>
-          <Input label="ชื่องาน / รุ่น *" value={jobName} onChange={e => setJobName(e.target.value)} placeholder="เช่น เสื้อคลาส ม.6/3 ปี 2569"/>
-          <div style={{marginTop:8}}>
-            <BtnGhost onClick={()=>fileRef.current?.click()} style={{fontSize:12,padding:"6px 14px"}}>📁 {image ? "เปลี่ยน" : "อัปโหลด"}รูปแบบ</BtnGhost>
-            {image && <BtnGhost onClick={()=>setImage("")} style={{fontSize:12,padding:"6px 14px",marginLeft:6,color:T.red}}>✕ ลบ</BtnGhost>}
+        {images.length === 0 ? (
+          <div onClick={()=>fileRef.current?.click()} style={{padding:"18px 12px",textAlign:"center",border:`2px dashed ${T.inputBorder}`,borderRadius:8,cursor:"pointer",background:"white",color:T.muted,fontSize:12}}>
+            📷 คลิกเพื่ออัปโหลดรูป (เลือกได้หลายรูปพร้อมกัน)
           </div>
-        </div>
+        ) : (
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10}}>
+            {images.map((im, idx) => (
+              <div key={idx} style={{background:"white",border:`1px solid ${T.border}`,borderRadius:8,padding:6,position:"relative"}}>
+                <button onClick={()=>removeImage(idx)} style={{position:"absolute",top:4,right:4,width:22,height:22,borderRadius:"50%",border:"1px solid #fecaca",background:"white",cursor:"pointer",fontSize:12,color:T.red,padding:0,lineHeight:1,zIndex:2}}>✕</button>
+                <img src={im.dataUrl} alt="" style={{width:"100%",height:100,objectFit:"cover",borderRadius:6,marginBottom:6}}/>
+                <input value={im.label} onChange={e => updateImageLabel(idx, e.target.value)}
+                  placeholder="ชื่อ/สี (เช่น ดำ)"
+                  style={{width:"100%",padding:"4px 6px",border:`1px solid ${T.inputBorder}`,borderRadius:5,fontSize:11,fontFamily:"inherit",outline:"none",textAlign:"center"}}/>
+                <div style={{fontSize:9,color:T.muted,textAlign:"center",marginTop:3}}>{dataUrlSizeKB(im.dataUrl)} KB</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* รายการ */}

@@ -9,46 +9,58 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
     <div className="print-modal-overlay" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}}
       onMouseDown={e=>{if(e.target===e.currentTarget)onClose&&onClose();}}>
       <div className="print-modal-card" onMouseDown={e=>e.stopPropagation()} style={{background:"white",borderRadius:16,padding:0,width:760,maxHeight:"94vh",overflowY:"auto",boxShadow:"0 24px 60px rgba(0,0,0,0.6)"}}>
-        <div id="prod-print-area" style={{padding:"22px 32px",fontFamily:"'Sarabun',sans-serif",color:"#1e293b"}}>
-          {/* Header (เล็กลง) */}
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,paddingBottom:8,borderBottom:"2px solid #3b5b8b"}}>
-            <div style={{flex:1,display:"flex",alignItems:"center",gap:8}}>
-              <div style={{width:36,height:36,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden",background:"white"}}>
+        <div id="prod-print-area" style={{padding:"14px 24px",fontFamily:"'Sarabun',sans-serif",color:"#1e293b"}}>
+          {/* Header (เล็กลงอีก — 1 บรรทัด) */}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,paddingBottom:5,borderBottom:"2px solid #3b5b8b"}}>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <div style={{width:26,height:26,borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden",background:"white"}}>
                 <img src={`${process.env.PUBLIC_URL}/cpu-logo.png`} alt="CPU" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
               </div>
-              <div>
-                <div style={{fontSize:16,fontWeight:800,color:"#3b5b8b",letterSpacing:1}}>{companyInfo.name||"CPU"}</div>
-                {companyInfo.phone&&<div style={{fontSize:9,color:"#64748b"}}>โทร: {companyInfo.phone}</div>}
-              </div>
+              <span style={{fontSize:13,fontWeight:800,color:"#3b5b8b",letterSpacing:0.5}}>{companyInfo.name||"CPU"}</span>
+              {companyInfo.phone&&<span style={{fontSize:9,color:"#64748b",marginLeft:6}}>· โทร {companyInfo.phone}</span>}
             </div>
-            <div style={{textAlign:"right"}}>
-              <div style={{display:"inline-block",background:"#3b5b8b",color:"white",padding:"3px 14px",borderRadius:4,fontSize:12,fontWeight:800,marginBottom:4,letterSpacing:0.5}}>
-                ใบสั่งผลิต
-              </div>
-              <div style={{display:"flex",justifyContent:"flex-end",gap:6,fontSize:10,color:"#64748b"}}>
-                <span>เลขที่:</span>
-                <span style={{color:"#3b5b8b",fontFamily:"monospace",fontWeight:700}}>{order.prodNo}</span>
-              </div>
-              <div style={{display:"flex",justifyContent:"flex-end",gap:6,fontSize:10,color:"#64748b"}}>
-                <span>วันที่:</span>
-                <span style={{color:"#1e293b",fontWeight:600}}>{order.date}</span>
-              </div>
-              <div style={{display:"flex",justifyContent:"flex-end",gap:6,fontSize:10,color:"#64748b"}}>
-                <span>สถานะ:</span>
-                <span style={{color:"#16a34a",fontWeight:700}}>{order.status}</span>
-              </div>
+            <div style={{display:"flex",alignItems:"center",gap:8,fontSize:10}}>
+              <span style={{background:"#3b5b8b",color:"white",padding:"2px 10px",borderRadius:3,fontSize:11,fontWeight:800,letterSpacing:0.5}}>ใบสั่งผลิต</span>
+              <span style={{color:"#64748b"}}>เลขที่</span>
+              <span style={{color:"#3b5b8b",fontFamily:"monospace",fontWeight:700}}>{order.prodNo}</span>
+              <span style={{color:"#64748b"}}>·</span>
+              <span style={{color:"#1e293b",fontWeight:600}}>{order.date}</span>
+              <span style={{color:"#64748b"}}>·</span>
+              <span style={{color:"#16a34a",fontWeight:700}}>{order.status}</span>
             </div>
           </div>
 
-          {/* Clothing info (รูปขยาย 200%) */}
-          <div style={{padding:"12px 16px",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,marginBottom:14,display:"flex",alignItems:"center",gap:18}}>
-            {order.clothingImage && <img src={order.clothingImage} alt="" style={{width:160,height:160,borderRadius:10,objectFit:"cover",border:"1px solid #e2e8f0"}}/>}
-            <div style={{flex:1}}>
-              <div style={{fontSize:10,color:"#3b5b8b",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:4}}>รุ่นสินค้า</div>
-              <div style={{fontSize:20,fontWeight:700,color:"#1e293b"}}>{order.clothingName}</div>
-              <div style={{fontSize:13,color:"#475569",marginTop:4}}>รวมทั้งหมด <b style={{color:"#3b5b8b",fontSize:16}}>{fmtInt(order.totalQty)}</b> ตัว</div>
-            </div>
-          </div>
+          {/* Clothing info — รองรับรูปหลายใบ (grid) */}
+          {(() => {
+            // รวบรวมรูป: ใหม่ (clothingImages array) → fallback เก่า (clothingImage string)
+            const imgs = Array.isArray(order.clothingImages) && order.clothingImages.length > 0
+              ? order.clothingImages
+              : (order.clothingImage ? [{ dataUrl: order.clothingImage, label: "" }] : []);
+            const n = imgs.length;
+            // grid: 1 → 1col, 2 → 2cols, 3+ → 3cols
+            const cols = n <= 1 ? 1 : (n === 2 ? 2 : 3);
+            return (
+              <div style={{padding:"10px 14px",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,marginBottom:10}}>
+                <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:n>0?10:0}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:"#3b5b8b",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>รุ่นสินค้า</div>
+                    <div style={{fontSize:18,fontWeight:700,color:"#1e293b"}}>{order.clothingName}</div>
+                    <div style={{fontSize:12,color:"#475569",marginTop:2}}>รวมทั้งหมด <b style={{color:"#3b5b8b",fontSize:15}}>{fmtInt(order.totalQty)}</b> ตัว</div>
+                  </div>
+                </div>
+                {n > 0 && (
+                  <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap:8}}>
+                    {imgs.map((im, i) => (
+                      <div key={i} style={{textAlign:"center"}}>
+                        <img src={im.dataUrl} alt="" style={{width:"100%",height:n===1?180:150,objectFit:"cover",borderRadius:8,border:"1px solid #e2e8f0",display:"block"}}/>
+                        {im.label && <div style={{fontSize:11,color:"#1e293b",fontWeight:700,marginTop:4}}>{im.label}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Items table */}
           <table style={{width:"100%",borderCollapse:"collapse",marginBottom:18,fontSize:14}}>
