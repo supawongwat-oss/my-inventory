@@ -17,33 +17,54 @@ export default function KanbanBoard({
   const [columnOrder, setColumnOrder] = useState(PRODUCTION_STEPS);
   const canReorder = user?.role === "admin" || user?.role === "manager";
 
-  // โหลดลำดับ column ที่บันทึกไว้ (subscribe เพื่อ sync ทุกเครื่อง)
+  // โหลดสายงาน (steps + order รวมกัน — เก็บใน settings/kanbanSteps)
+  // เปลี่ยนจาก kanbanOrder เป็น kanbanSteps เพราะตอนนี้ขั้นเพิ่ม/ลบได้
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "settings", "kanbanOrder"), snap => {
+    const unsub = onSnapshot(doc(db, "settings", "kanbanSteps"), snap => {
       if (!snap.exists()) return;
       const stored = Array.isArray(snap.data().steps) ? snap.data().steps : [];
-      const filtered = stored.filter(s => PRODUCTION_STEPS.includes(s));
-      // เติมขั้นที่อาจเพิ่มมาภายหลัง (กัน PRODUCTION_STEPS เปลี่ยน)
-      const missing = PRODUCTION_STEPS.filter(s => !filtered.includes(s));
-      setColumnOrder([...filtered, ...missing]);
+      const cleaned = stored.filter(s => typeof s === "string" && s.trim());
+      if (cleaned.length > 0) setColumnOrder(cleaned);
     }, () => {});
     return () => unsub();
   }, []);
+
+  const saveSteps = async (steps) => {
+    setColumnOrder(steps);
+    try { await setDoc(doc(db, "settings", "kanbanSteps"), { steps }); }
+    catch(e) { console.warn("[kanbanSteps] save failed:", e); }
+  };
 
   const moveColumn = async (idx, dir) => {
     const ni = idx + dir;
     if (ni < 0 || ni >= columnOrder.length) return;
     const newOrder = [...columnOrder];
     [newOrder[idx], newOrder[ni]] = [newOrder[ni], newOrder[idx]];
-    setColumnOrder(newOrder);
-    try {
-      await setDoc(doc(db, "settings", "kanbanOrder"), { steps: newOrder });
-    } catch (e) { console.warn("[kanbanOrder] save failed:", e); }
+    await saveSteps(newOrder);
+  };
+
+  const addColumn = async () => {
+    const name = window.prompt("ชื่อสายงานใหม่ (เช่น สกรีน, รีดร้อน):");
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    if (columnOrder.includes(trimmed)) { alert("มีสายงานชื่อนี้อยู่แล้ว"); return; }
+    if (trimmed === "ยกเลิก") { alert("ใช้ชื่อนี้ไม่ได้ — สงวนสำหรับสถานะยกเลิก"); return; }
+    await saveSteps([...columnOrder, trimmed]);
+  };
+
+  const removeColumn = async (step) => {
+    const lotsInCol = allLots.filter(l => l.status === step);
+    if (lotsInCol.length > 0) {
+      alert(`ลบไม่ได้ — มี ${lotsInCol.length} ล็อตอยู่ในสายงาน "${step}" — กรุณาย้ายล็อตออกก่อน`);
+      return;
+    }
+    if (!window.confirm(`ลบสายงาน "${step}" ?`)) return;
+    await saveSteps(columnOrder.filter(s => s !== step));
   };
 
   const resetColumnOrder = async () => {
-    setColumnOrder(PRODUCTION_STEPS);
-    try { await setDoc(doc(db, "settings", "kanbanOrder"), { steps: PRODUCTION_STEPS }); } catch(e){}
+    if (!window.confirm("กลับเป็นลำดับเริ่มต้น (7 ขั้นมาตรฐาน)?")) return;
+    await saveSteps([...PRODUCTION_STEPS]);
   };
 
   // กรอง orders + ไม่เอาที่ทุก lot เป็น "เข้าคลัง" หรือ "ยกเลิก"
@@ -102,8 +123,12 @@ export default function KanbanBoard({
           {cancelledLots.length > 0 && <span style={{marginLeft:8,color:"#dc2626"}}>(ยกเลิก {cancelledLots.length})</span>}
         </div>
         {canReorder && (
-          <button onClick={resetColumnOrder} title="กลับเป็นลำดับเริ่มต้น"
-            style={{padding:"8px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"white",color:T.sub,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>↺ ลำดับเริ่มต้น</button>
+          <>
+            <button onClick={addColumn} title="เพิ่มสายงานใหม่"
+              style={{padding:"8px 14px",borderRadius:8,border:"1px solid rgba(16,185,129,0.35)",background:"rgba(16,185,129,0.08)",color:"#059669",cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>+ เพิ่มสายงาน</button>
+            <button onClick={resetColumnOrder} title="กลับเป็นลำดับเริ่มต้น"
+              style={{padding:"8px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"white",color:T.sub,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>↺ เริ่มต้น</button>
+          </>
         )}
       </div>
 
@@ -134,6 +159,11 @@ export default function KanbanBoard({
                       disabled={colIdx === columnOrder.length - 1}
                       title="ย้ายขวา"
                       style={{width:22,height:22,borderRadius:5,border:"none",background:colIdx===columnOrder.length-1?"transparent":"rgba(255,255,255,0.7)",color:colIdx===columnOrder.length-1?T.muted:color,cursor:colIdx===columnOrder.length-1?"not-allowed":"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit",padding:0,opacity:colIdx===columnOrder.length-1?0.3:1}}>▶</button>
+                  )}
+                  {canReorder && (
+                    <button onClick={(e) => { e.stopPropagation(); removeColumn(step); }}
+                      title={col.length > 0 ? `มี ${col.length} ล็อต — ย้ายออกก่อน` : "ลบสายงานนี้"}
+                      style={{width:22,height:22,borderRadius:5,border:"none",background:col.length>0?"transparent":"rgba(220,38,38,0.12)",color:col.length>0?T.muted:"#dc2626",cursor:col.length>0?"not-allowed":"pointer",fontSize:13,fontWeight:600,fontFamily:"inherit",padding:0,opacity:col.length>0?0.3:1}}>✕</button>
                   )}
                 </div>
               </div>
@@ -177,6 +207,7 @@ export default function KanbanBoard({
           clothingItems={clothingItems}
           collectionName={collectionName}
           isCustom={isCustom}
+          steps={columnOrder}
           onClose={() => setSelected(null)}
         />
       )}

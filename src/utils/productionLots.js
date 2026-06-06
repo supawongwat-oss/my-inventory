@@ -49,24 +49,29 @@ export function nextLotId(existing) {
   return `L${n}`;
 }
 
-// label ของขั้นถัดไป (null ถ้าเป็นขั้นสุดท้าย)
-export function nextStep(status) {
-  const idx = PRODUCTION_STEPS.indexOf(status);
-  if (idx < 0 || idx >= PRODUCTION_STEPS.length - 1) return null;
-  return PRODUCTION_STEPS[idx + 1];
+// label ของขั้นถัดไป (null ถ้าเป็นขั้นสุดท้าย) — รับ steps แบบ dynamic
+export function nextStep(status, steps = PRODUCTION_STEPS) {
+  const idx = steps.indexOf(status);
+  if (idx < 0 || idx >= steps.length - 1) return null;
+  return steps[idx + 1];
 }
 
 // label ขั้นก่อนหน้า
-export function prevStep(status) {
-  const idx = PRODUCTION_STEPS.indexOf(status);
+export function prevStep(status, steps = PRODUCTION_STEPS) {
+  const idx = steps.indexOf(status);
   if (idx <= 0) return null;
-  return PRODUCTION_STEPS[idx - 1];
+  return steps[idx - 1];
 }
 
 // ฟอร์แมตวันที่
 export function nowStr() {
   const d = new Date(); const p = n => String(n).padStart(2, "0");
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// ลบล็อต
+export function removeLot(lots, lotIdx) {
+  return lots.filter((_, i) => i !== lotIdx);
 }
 
 // แยกล็อตย่อย: คืน { newLots, splitOk }
@@ -131,10 +136,10 @@ export function addLotNote(lots, lotIdx, text, by = "", photoUrls = []) {
 }
 
 // staff ขยับไปข้างหน้าเท่านั้น
-export function canMoveTo(currentStatus, targetStatus, role) {
+export function canMoveTo(currentStatus, targetStatus, role, steps = PRODUCTION_STEPS) {
   if (!targetStatus) return false;
-  const ci = PRODUCTION_STEPS.indexOf(currentStatus);
-  const ti = PRODUCTION_STEPS.indexOf(targetStatus);
+  const ci = steps.indexOf(currentStatus);
+  const ti = steps.indexOf(targetStatus);
   if (ti < 0) return false;
   if (role === "admin" || role === "manager") return true;
   return ti > ci; // staff: forward only

@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Modal, MHead, BtnPrimary, BtnGhost, BtnDanger, Toast } from "./ui";
-import { collection, addDoc, updateDoc, doc, getDocs, query, where, documentId, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, documentId, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import {
   PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot,
-  moveLot, splitLot, addLotNote, nextStep, canMoveTo, nowStr,
+  moveLot, splitLot, addLotNote, nextStep, canMoveTo, removeLot, nowStr,
 } from "../utils/productionLots";
 import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
 
@@ -15,6 +15,7 @@ const fmtInt = (n) => Number(n || 0).toLocaleString("th-TH");
 export default function LotDetailModal({
   order, lotIdx, user, role, products = [], clothingItems = [],
   collectionName = "productionOrders", isCustom = false,
+  steps = PRODUCTION_STEPS,
   onClose,
 }) {
   const [busy, setBusy] = useState(false);
@@ -29,8 +30,8 @@ export default function LotDetailModal({
   const lots = getLots(order);
   const lot = lots[lotIdx];
   const lotTotal = lot ? totalQtyOfLot(lot) : 0;
-  const next = lot ? nextStep(lot.status) : null;
-  const isFinal = lot && lot.status === "เข้าคลัง";
+  const next = lot ? nextStep(lot.status, steps) : null;
+  const isFinal = lot && (lot.status === "เข้าคลัง" || lot.status === steps[steps.length - 1]);
   const userRole = user?.role || "staff";
 
   // โหลดรูปจาก sub-collection สำหรับ note ที่มี photoIds
@@ -136,7 +137,7 @@ export default function LotDetailModal({
   // ── move ──
   const moveTo = async (targetStatus) => {
     if (busy) return;
-    if (!canMoveTo(lot.status, targetStatus, userRole)) {
+    if (!canMoveTo(lot.status, targetStatus, userRole, steps)) {
       setToast("ไม่มีสิทธิ์ย้อนกลับ — staff เดินหน้าได้เท่านั้น");
       return;
     }
@@ -237,6 +238,36 @@ export default function LotDetailModal({
   // unused import suppression
   void addLotNote;
 
+  // ── delete lot (admin/manager) ──
+  const handleDeleteLot = async () => {
+    if (busy) return;
+    const willDeleteOrder = lots.length === 1;
+    const msg = willDeleteOrder
+      ? `ลบ "${order.prodNo}" ทั้งใบ?\n(เพราะมีล็อตเดียวที่เหลือ)\n\n⚠️ การลบนี้ย้อนคืนไม่ได้`
+      : `ลบล็อต ${lot.lotId} (${lotTotal} ตัว) ออกจาก ${order.prodNo}?\n\n⚠️ การลบนี้ย้อนคืนไม่ได้`;
+    if (!window.confirm(msg)) return;
+    setBusy(true);
+    try {
+      if (willDeleteOrder) {
+        await deleteDoc(doc(db, collectionName, order.id));
+      } else {
+        const newLots = removeLot(lots, lotIdx);
+        await persistLots(newLots);
+      }
+      logAudit(user, {
+        action: AUDIT_ACTIONS.DELETE,
+        collection: collectionName,
+        targetId: order.id,
+        targetLabel: `${order.prodNo} · ${lot.lotId}`,
+        note: willDeleteOrder ? "ลบใบสั่งผลิตทั้งใบ" : "ลบล็อตย่อย",
+      });
+      setToast(willDeleteOrder ? "ลบใบสั่งผลิตสำเร็จ" : "ลบล็อตสำเร็จ");
+      setTimeout(() => onClose && onClose(), 600);
+    } catch (e) {
+      console.error(e); setToast("ผิดพลาด: " + (e.message || e)); setBusy(false);
+    }
+  };
+
   // ── cancel lot ──
   const handleCancel = async () => {
     if (busy) return;
@@ -259,7 +290,7 @@ export default function LotDetailModal({
     }
   };
 
-  const currentIdx = PRODUCTION_STEPS.indexOf(lot.status);
+  const currentIdx = steps.indexOf(lot.status);
   const isCancelled = lot.status === "ยกเลิก";
 
   return (
@@ -288,7 +319,7 @@ export default function LotDetailModal({
 
       {/* Stepper */}
       <div style={{display:"flex",alignItems:"center",gap:3,marginBottom:14,flexWrap:"wrap"}}>
-        {PRODUCTION_STEPS.map((step, idx) => {
+        {steps.map((step, idx) => {
           const done = !isCancelled && idx <= currentIdx;
           const active = !isCancelled && idx === currentIdx;
           return (
@@ -299,8 +330,8 @@ export default function LotDetailModal({
                 color: isCancelled ? T.muted : (done ? "white" : T.muted),
                 fontWeight: active ? 700 : 500,
                 border: active ? "2px solid #1e3a5f" : "none",
-                cursor: active || isCancelled ? "default" : (canMoveTo(lot.status, step, userRole) ? "pointer" : "not-allowed"),
-                opacity: canMoveTo(lot.status, step, userRole) || done ? 1 : 0.5,
+                cursor: active || isCancelled ? "default" : (canMoveTo(lot.status, step, userRole, steps) ? "pointer" : "not-allowed"),
+                opacity: canMoveTo(lot.status, step, userRole, steps) || done ? 1 : 0.5,
               }}>
               {idx+1}.{step}
             </div>
@@ -333,6 +364,19 @@ export default function LotDetailModal({
           {(userRole === "admin" || userRole === "manager") && !isFinal && (
             <BtnDanger onClick={handleCancel} disabled={busy} style={{minWidth:90}}>🛑 ยกเลิก</BtnDanger>
           )}
+          {(userRole === "admin" || userRole === "manager") && (
+            <button onClick={handleDeleteLot} disabled={busy}
+              title={lots.length === 1 ? "ลบใบสั่งผลิตทั้งใบ" : "ลบล็อตนี้"}
+              style={{padding:"8px 14px",borderRadius:8,border:"1px solid rgba(127,29,29,0.4)",background:"rgba(127,29,29,0.08)",color:"#7f1d1d",fontSize:13,fontWeight:600,cursor:busy?"not-allowed":"pointer",fontFamily:"'Sarabun',sans-serif",opacity:busy?0.45:1,minWidth:90}}>🗑 ลบ</button>
+          )}
+        </div>
+      )}
+
+      {/* Cancelled lot ก็ลบได้ */}
+      {isCancelled && (userRole === "admin" || userRole === "manager") && (
+        <div style={{display:"flex",gap:8,marginBottom:14,justifyContent:"flex-end"}}>
+          <button onClick={handleDeleteLot} disabled={busy}
+            style={{padding:"8px 14px",borderRadius:8,border:"1px solid rgba(127,29,29,0.4)",background:"rgba(127,29,29,0.08)",color:"#7f1d1d",fontSize:13,fontWeight:600,cursor:busy?"not-allowed":"pointer",fontFamily:"'Sarabun',sans-serif"}}>🗑 ลบล็อตที่ยกเลิก</button>
         </div>
       )}
 
