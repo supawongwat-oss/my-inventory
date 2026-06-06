@@ -29,6 +29,10 @@ export const T = {
 };
 
 export const SIZES = ["6","8","10","12","S","M","L","XL","2XL","3XL","4XL","5XL"];
+// 👟 ไซส์รองเท้า / อุปกรณ์กีฬา
+export const SHOE_SIZES = ["36","37","38","39","40","41","42","43","44","45"];
+// helper: คืน array ของไซส์ที่เหมาะกับ item (ตาม sizeType)
+export const getSizesFor = (item) => (item && item.sizeType === "shoe") ? SHOE_SIZES : SIZES;
 
 // กลุ่มไซส์สำหรับตั้งราคา — แต่ละกลุ่มใช้ราคาเดียวกัน
 export const SIZE_GROUPS = [

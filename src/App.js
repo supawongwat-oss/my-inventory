@@ -1,7 +1,7 @@
 ﻿import { useState, useRef, useEffect } from "react";
 import { db, authReady } from "./firebase";
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, serverTimestamp, query, orderBy } from "firebase/firestore";
-import { T, SIZES, PRESET_COLORS, MASTER_KEY, SIZE_GROUPS, getPriceForSize, compareSizes, splitSizesIntoRows } from "./theme";
+import { T, SIZES, SHOE_SIZES, getSizesFor, PRESET_COLORS, MASTER_KEY, SIZE_GROUPS, getPriceForSize, compareSizes, splitSizesIntoRows } from "./theme";
 import { INIT_USERS, ROLES, INIT_CATS } from "./constants";
 import { BarcodeDisplay, Modal, MHead, Toast, Input, BtnPrimary, BtnSuccess, BtnDanger, BtnGhost, Badge, CardBox } from "./components/ui";
 import LoginPage, { CompanyEditor } from "./components/LoginPage";
@@ -587,7 +587,9 @@ export default function App() {
   // ── Clothing handlers ─────────────────────────────────────────
   const handleAddClothingItem = async () => {
     if (!newModel.trim()) return;
-    await addDoc(collection(db, "clothing"), { model: newModel.trim(), image: "", colors: [], createdAt: serverTimestamp() });
+    // 👟 ถ้าอยู่ tab sports → ใส่ sizeType="shoe" ให้รุ่นใหม่ใช้ไซส์ 36-45
+    const sizeType = inventoryTab === "sports" ? "shoe" : "apparel";
+    await addDoc(collection(db, "clothing"), { model: newModel.trim(), image: "", colors: [], sizeType, createdAt: serverTimestamp() });
     setNewModel(""); setShowAddClothing(false);
   };
 
@@ -1388,7 +1390,7 @@ export default function App() {
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             {activeTab==="inventory"&&inventoryTab==="general"&&role.canManageCats&&<BtnGhost onClick={()=>setShowCatModal(true)}>📦 หมวดหมู่</BtnGhost>}
             {activeTab==="inventory"&&inventoryTab==="general"&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddModal(true)}>️ เพิ่มสินค้า</BtnPrimary>}
-            {activeTab==="inventory"&&inventoryTab==="clothing"&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddClothing(true)}>️ เพิ่มรุ่นใหม่</BtnPrimary>}
+            {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddClothing(true)}>{inventoryTab==="sports"?"👟":"️"} เพิ่มรุ่นใหม่</BtnPrimary>}
             {activeTab==="inventory"&&inventoryTab==="general"&&<>
               <BtnSuccess onClick={()=>{setTxType("รับ");setShowTxModal(true);}}>⬇ รับสินค้า</BtnSuccess>
               <BtnDanger onClick={()=>{setTxType("จ่าย");setShowTxModal(true);}}>⬆ จ่ายสินค้า</BtnDanger>
@@ -1509,8 +1511,8 @@ export default function App() {
                 })}
               </div>
 
-              {/* General products (รวมถึง sports — ใช้ view เดียวกัน filter ตาม category) */}
-              {(inventoryTab==="general"||inventoryTab==="sports")&&<div>
+              {/* General products (สินค้าทั่วไปเท่านั้น — sports ใช้ view แบบ clothing แล้ว) */}
+              {inventoryTab==="general"&&<div>
               <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
                 <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 ค้นหาชื่อ, รหัส, บาร์โค้ด..."
                   style={{width:260,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
@@ -1578,16 +1580,23 @@ export default function App() {
               </div>} {/* end general tab */}
 
               {/* Clothing tab content */}
-              {inventoryTab==="clothing"&&<div style={{animation:"fadeUp 0.4s ease"}}>
+              {(inventoryTab==="clothing"||inventoryTab==="sports")&&(()=>{
+                // 👕 clothing tab → apparel + รุ่นเก่าที่ไม่มี sizeType
+                // 👟 sports tab → shoe items only
+                const tabItems = clothingItems.filter(it =>
+                  inventoryTab==="sports" ? it.sizeType==="shoe" : it.sizeType!=="shoe"
+                );
+                return (
+                <div style={{animation:"fadeUp 0.4s ease"}}>
                 <input ref={clothingImgRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleClothingImageUpload}/>
-                {clothingItems.length===0&&(
+                {tabItems.length===0&&(
                   <div style={{textAlign:"center",padding:60,background:T.card,borderRadius:16,border:`1px solid ${T.border}`}}>
-                    <div style={{fontSize:48,marginBottom:12,opacity:0.3}}>👕</div>
+                    <div style={{fontSize:48,marginBottom:12,opacity:0.3}}>{inventoryTab==="sports"?"👟":"👕"}</div>
                     <div style={{fontSize:14,fontWeight:600,color:T.accent,marginBottom:6}}>ยังไม่มีรุ่นสินค้า</div>
-                    <div style={{fontSize:11,color:T.muted}}>กด "️ เพิ่มรุ่นใหม่" เพื่อเริ่มต้น</div>
+                    <div style={{fontSize:11,color:T.muted}}>กด "{inventoryTab==="sports"?"👟":"️"} เพิ่มรุ่นใหม่" เพื่อเริ่มต้น</div>
                   </div>
                 )}
-                {clothingItems.map((item,idx)=>(
+                {tabItems.map((item,idx)=>(
                   <div key={item.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,marginBottom:16,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.3)"}}>
                     <div onClick={()=>toggleCollapse(item.id)} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 20px",borderBottom:collapsedItems[item.id]?"none":`1px solid ${T.border}`,cursor:"pointer",userSelect:"none",transition:"background 0.2s"}}
                       onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.04)"}
@@ -1638,7 +1647,7 @@ export default function App() {
                           <thead>
                             <tr style={{background:"rgba(241,243,246,0.8)"}}>
                               <th style={{padding:"10px 14px",textAlign:"left",color:T.sub,fontWeight:700,fontSize:12,textTransform:"uppercase",letterSpacing:"0.06em",width:120,borderRight:`1px solid ${T.border}`}}>สี</th>
-                              {SIZES.map(sz=>(
+                              {getSizesFor(item).map(sz=>(
                                 <th key={sz} style={{padding:"10px 4px",textAlign:"center",color:T.text,fontWeight:700,fontSize:13,borderRight:"1px solid rgba(203,210,217,0.4)",fontFamily:"monospace",minWidth:46}}>{sz}</th>
                               ))}
                               <th style={{padding:"10px 10px",textAlign:"center",color:T.sub,fontWeight:700,fontSize:12,minWidth:60}}>รวม</th>
@@ -1659,7 +1668,7 @@ export default function App() {
                                       <span style={{color:T.text,fontWeight:600,fontSize:14}}>{col.colorName}</span>
                                     </div>
                                   </td>
-                                  {SIZES.map(sz=>{
+                                  {getSizesFor(item).map(sz=>{
                                     const isEd=editingStock?.itemId===item.id&&editingStock?.ci===ci&&editingStock?.size===sz;
                                     const val=(col.stock||{})[sz]||0;
                                     return (
@@ -1727,7 +1736,7 @@ export default function App() {
                     )}
                   </div>
                 ))}
-              </div>}
+              </div>);})()}
             </div>
           )}
 
@@ -1858,7 +1867,7 @@ export default function App() {
                         <thead>
                           <tr style={{background:"rgba(241,243,246,0.8)"}}>
                             <th style={{padding:"8px 14px",textAlign:"left",color:T.muted,fontWeight:600,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",width:110,borderRight:`1px solid ${T.border}`}}>สี</th>
-                            {SIZES.map(sz=>(
+                            {getSizesFor(item).map(sz=>(
                               <th key={sz} style={{padding:"8px 5px",textAlign:"center",color:T.accent,fontWeight:700,fontSize:10,borderRight:`1px solid rgba(203,210,217,0.4)`,fontFamily:"'DM Mono',monospace",minWidth:40}}>{sz}</th>
                             ))}
                             <th style={{padding:"8px 10px",textAlign:"center",color:T.muted,fontWeight:600,fontSize:10,textTransform:"uppercase",minWidth:50}}>รวม</th>
@@ -1878,7 +1887,7 @@ export default function App() {
                                     <span style={{color:T.text,fontWeight:500,fontSize:11,fontFamily:"'DM Sans','Sarabun',sans-serif"}}>{col.colorName}</span>
                                   </div>
                                 </td>
-                                {SIZES.map(sz=>{
+                                {getSizesFor(item).map(sz=>{
                                   const isEd=editingStock?.itemId===item.id&&editingStock?.ci===ci&&editingStock?.size===sz;
                                   const val=(col.stock||{})[sz]||0;
                                   return (
