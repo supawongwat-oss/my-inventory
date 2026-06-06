@@ -52,7 +52,7 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                   <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap:8}}>
                     {imgs.map((im, i) => (
                       <div key={i} style={{textAlign:"center"}}>
-                        <div style={{width:"100%",height:n===1?260:220,background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+                        <div style={{width:"100%",height:n===1?208:176,background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
                           <img src={im.dataUrl} alt="" style={{maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",objectFit:"contain",display:"block"}}/>
                         </div>
                         {im.label && <div style={{fontSize:11,color:"#1e293b",fontWeight:700,marginTop:4}}>{im.label}</div>}
@@ -64,33 +64,33 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
             );
           })()}
 
-          {/* Items table */}
-          <table style={{width:"100%",borderCollapse:"collapse",marginBottom:18,fontSize:14}}>
+          {/* Items table — ย่อให้พอ 1 หน้า */}
+          <table style={{width:"100%",borderCollapse:"collapse",marginBottom:10,fontSize:11}}>
             <thead>
-              <tr style={{background:"#3b5b8b",color:"white"}}>
-                <th style={{padding:"9px 10px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:13}}>สี</th>
-                <th style={{padding:"9px 10px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",fontSize:13}}>ไซส์</th>
-                <th style={{padding:"9px 10px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",fontSize:13}}>จำนวน</th>
+              <tr style={{background:"#f1f5f9",color:"#000"}}>
+                <th style={{padding:"5px 8px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11}}>สี</th>
+                <th style={{padding:"5px 8px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:11}}>ไซส์</th>
+                <th style={{padding:"5px 8px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:11}}>จำนวน</th>
               </tr>
             </thead>
             <tbody>
               {(order.items||[]).map((it, i) => (
                 <tr key={i} style={{background:i%2===0?"white":"#f8fafc"}}>
-                  <td style={{padding:"9px 10px",border:"1px solid #e2e8f0",fontSize:14}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <div style={{width:14,height:14,borderRadius:3,background:it.colorHex||"#999",border:"1px solid rgba(0,0,0,0.15)"}}/>
+                  <td style={{padding:"4px 8px",border:"1px solid #000",fontSize:11,color:"#000"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <div style={{width:10,height:10,borderRadius:2,background:it.colorHex||"#999",border:"1px solid #000"}}/>
                       <span>{it.colorName}</span>
                     </div>
                   </td>
-                  <td style={{padding:"9px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#3b5b8b",border:"1px solid #e2e8f0",fontSize:14}}>{it.size}</td>
-                  <td style={{padding:"9px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:16,color:"#059669",border:"1px solid #e2e8f0"}}>{fmtInt(it.qty)}</td>
+                  <td style={{padding:"4px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:11}}>{it.size}</td>
+                  <td style={{padding:"4px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:12,color:"#000",border:"1px solid #000"}}>{fmtInt(it.qty)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr style={{background:"#f1f5f9",fontWeight:700}}>
-                <td colSpan={2} style={{padding:"11px 14px",textAlign:"right",color:"#475569",fontSize:14}}>รวมทั้งหมด</td>
-                <td style={{padding:"11px 14px",textAlign:"center",fontFamily:"monospace",fontSize:16,color:"#3b5b8b",border:"1px solid #e2e8f0"}}>{fmtInt(order.totalQty)} ตัว</td>
+                <td colSpan={2} style={{padding:"6px 10px",textAlign:"right",color:"#000",fontSize:12,border:"2px solid #000"}}>รวมทั้งหมด</td>
+                <td style={{padding:"6px 10px",textAlign:"center",fontFamily:"monospace",fontSize:13,color:"#000",border:"2px solid #000",fontWeight:800}}>{fmtInt(order.totalQty)} ตัว</td>
               </tr>
             </tfoot>
           </table>
