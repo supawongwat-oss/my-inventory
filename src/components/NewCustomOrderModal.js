@@ -227,12 +227,23 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
         </div>
       )}
 
+      {/* รวมรายชื่อสีที่กรอกแล้วในใบนี้ + PRESET_COLORS → ใช้เป็น suggestion */}
+      {(() => null)()}
+      <datalist id="custom-color-suggestions">
+        {[...new Set([
+          ...items.map(r => r.colorName).filter(Boolean),
+          ...PRESET_COLORS.map(c => c.name),
+        ])].map(name => <option key={name} value={name}/>)}
+      </datalist>
+
       <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:12,maxHeight:280,overflowY:"auto"}}>
         {items.map((r, idx) => (
           <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 32px",gap:6,alignItems:"end",padding:"6px 8px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:7}}>
             <div>
-              <label style={{fontSize:9,color:T.sub,display:"block",marginBottom:2}}>สี</label>
+              <label style={{fontSize:9,color:T.sub,display:"block",marginBottom:2}}>สี (เลือกจากที่ใช้แล้ว หรือพิมพ์ใหม่)</label>
               <input value={r.colorName} onChange={e => setRow(idx, { colorName: e.target.value })}
+                list="custom-color-suggestions"
+                placeholder="เช่น ส้ม / แดง / น้ำเงิน"
                 style={{width:"100%",background:"white",border:`1px solid ${T.inputBorder}`,borderRadius:6,padding:"5px 8px",fontFamily:"inherit",fontSize:12,outline:"none"}}/>
             </div>
             <div>
