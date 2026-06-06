@@ -8,7 +8,7 @@ const T = { card:"#ffffff", border:"#e3e8ef", text:"#1f2a44", sub:"#5b6b85", mut
 const fmtInt = (n) => Number(n || 0).toLocaleString("th-TH");
 
 export default function KanbanBoard({
-  orders = [], collectionName = "productionOrders", isCustom = false,
+  orders = [], collectionName: defaultCollection = "productionOrders", isCustom: defaultIsCustom = false,
   user, role, products = [], clothingItems = [],
 }) {
   const [search, setSearch] = useState("");
@@ -205,8 +205,8 @@ export default function KanbanBoard({
           role={role}
           products={products}
           clothingItems={clothingItems}
-          collectionName={collectionName}
-          isCustom={isCustom}
+          collectionName={selected.order.__collection || defaultCollection}
+          isCustom={selected.order.__isCustom ?? defaultIsCustom}
           steps={columnOrder}
           onClose={() => setSelected(null)}
         />
@@ -218,13 +218,18 @@ export default function KanbanBoard({
 function KanbanCard({ lot, onClick }) {
   const total = totalQtyOfLot(lot);
   const colors = Array.from(new Set((lot.items || []).map(it => it.colorName)));
+  const isCustom = lot.orderRef?.__isCustom;
+  const accentColor = isCustom ? "#d97706" : T.accent;
   return (
     <div onClick={onClick}
-      style={{padding:"10px 12px",background:"white",border:`1px solid ${T.border}`,borderRadius:8,cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",transition:"all 0.15s"}}
-      onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 4px 12px rgba(59,91,139,0.15)";e.currentTarget.style.borderColor="#3b5b8b";}}
-      onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.04)";e.currentTarget.style.borderColor=T.border;}}>
+      style={{padding:"10px 12px",background:"white",border:`1px solid ${T.border}`,borderRadius:8,cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",transition:"all 0.15s",borderLeft:`3px solid ${accentColor}`}}
+      onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 4px 12px ${accentColor}25`;e.currentTarget.style.borderColor=accentColor;e.currentTarget.style.borderLeftColor=accentColor;}}
+      onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.04)";e.currentTarget.style.borderColor=T.border;e.currentTarget.style.borderLeftColor=accentColor;}}>
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
-        <span style={{fontFamily:"monospace",fontSize:10,color:T.accent,fontWeight:700}}>{lot.prodNo}</span>
+        {isCustom && (
+          <span style={{padding:"1px 6px",fontSize:9,background:"rgba(217,119,6,0.12)",color:"#d97706",borderRadius:6,border:"1px solid rgba(217,119,6,0.3)",fontWeight:700,letterSpacing:0.3}}>🎨 Custom</span>
+        )}
+        <span style={{fontFamily:"monospace",fontSize:10,color:accentColor,fontWeight:700}}>{lot.prodNo}</span>
         <span style={{fontSize:10,color:T.muted}}>· {lot.lotId}</span>
         <span style={{marginLeft:"auto",fontFamily:"monospace",fontWeight:700,color:T.text,fontSize:13}}>{fmtInt(total)}</span>
       </div>

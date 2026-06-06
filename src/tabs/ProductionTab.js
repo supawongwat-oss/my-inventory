@@ -130,8 +130,10 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
             )}
           </div>
           <KanbanBoard
-            orders={productionOrders}
-            collectionName="productionOrders"
+            orders={[
+              ...productionOrders.map(o => ({ ...o, __collection: "productionOrders", __isCustom: false })),
+              ...customOrders.map(o => ({ ...o, __collection: "customOrders", __isCustom: true })),
+            ]}
             user={user} role={role}
             products={products} clothingItems={clothingItems}
           />
