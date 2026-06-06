@@ -578,33 +578,33 @@ function StatementPrintLayout({ statement, companyInfo }) {
         </div>
       </div>
 
-      {/* Items table */}
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12, fontSize: 11 }}>
+      {/* Items table — ย่อเล็กมาก */}
+      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 10, fontSize: 9 }}>
         <thead>
           <tr style={{ background: "#f1f5f9", color: "#000" }}>
-            <th style={{ padding: "8px 10px", textAlign: "left", fontWeight: 700, width: 130, border: "1px solid #000" }}>เลขที่บิล</th>
-            <th style={{ padding: "8px 10px", textAlign: "center", fontWeight: 700, width: 110, border: "1px solid #000" }}>วันที่</th>
-            <th style={{ padding: "8px 10px", textAlign: "left", fontWeight: 700, border: "1px solid #000" }}>ประเภท / สถานะ</th>
-            <th style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700, width: 130, border: "1px solid #000" }}>ยอดบิล (฿)</th>
+            <th style={{ padding: "4px 6px", textAlign: "left", fontWeight: 700, width: 95, border: "1px solid #000", fontSize: 9 }}>เลขที่บิล</th>
+            <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, width: 80, border: "1px solid #000", fontSize: 9 }}>วันที่</th>
+            <th style={{ padding: "4px 6px", textAlign: "left", fontWeight: 700, border: "1px solid #000", fontSize: 9 }}>ประเภท / สถานะ</th>
+            <th style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700, width: 100, border: "1px solid #000", fontSize: 9 }}>ยอดบิล (฿)</th>
           </tr>
         </thead>
         <tbody>
           {(statement.invoicesSnapshot || []).map((inv, i) => (
             <tr key={i} style={{ background: i % 2 === 0 ? "white" : "#f8fafc" }}>
-              <td style={{ padding: "8px 10px", fontFamily: "monospace", fontWeight: 700, color: "#000", border: "1px solid #cbd5e1" }}>{inv.invoiceNo}</td>
-              <td style={{ padding: "8px 10px", textAlign: "center", color: "#000", border: "1px solid #cbd5e1" }}>{(inv.date || "").split(" ")[0]}</td>
-              <td style={{ padding: "8px 10px", color: "#000", border: "1px solid #cbd5e1" }}>
+              <td style={{ padding: "4px 6px", fontFamily: "monospace", fontWeight: 700, color: "#000", border: "1px solid #cbd5e1", fontSize: 9 }}>{inv.invoiceNo}</td>
+              <td style={{ padding: "4px 6px", textAlign: "center", color: "#000", border: "1px solid #cbd5e1", fontSize: 9 }}>{(inv.date || "").split(" ")[0]}</td>
+              <td style={{ padding: "4px 6px", color: "#000", border: "1px solid #cbd5e1", fontSize: 9 }}>
                 {inv.docType === "tax" ? "ใบกำกับภาษี" : inv.docType === "quotation" ? "ใบวางบิล" : "ใบเสร็จ"}
-                <span style={{ marginLeft: 6, fontSize: 9, padding: "1px 6px", borderRadius: 6, background: inv.status === "ชำระแล้ว" ? "#dcfce7" : "#fef3c7", color: "#000", border: "1px solid #000" }}>{inv.status}</span>
+                <span style={{ marginLeft: 4, fontSize: 8, padding: "0px 4px", borderRadius: 4, background: inv.status === "ชำระแล้ว" ? "#dcfce7" : "#fef3c7", color: "#000", border: "1px solid #000" }}>{inv.status}</span>
               </td>
-              <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#000", border: "1px solid #cbd5e1" }}>{Number(inv.total).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
+              <td style={{ padding: "4px 6px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#000", border: "1px solid #cbd5e1", fontSize: 10 }}>{Number(inv.total).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
             </tr>
           ))}
         </tbody>
         <tfoot>
           <tr style={{ background: "#f1f5f9", fontWeight: 800 }}>
-            <td colSpan={3} style={{ padding: "10px", textAlign: "right", color: "#000", fontSize: 13, border: "2px solid #000" }}>รวมทั้งสิ้น</td>
-            <td style={{ padding: "10px", textAlign: "right", fontFamily: "monospace", fontSize: 15, color: "#000", border: "2px solid #000" }}>
+            <td colSpan={3} style={{ padding: "6px 8px", textAlign: "right", color: "#000", fontSize: 11, border: "2px solid #000" }}>รวมทั้งสิ้น</td>
+            <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 13, color: "#000", border: "2px solid #000" }}>
               ฿{Number(statement.totalAmount || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
             </td>
           </tr>
