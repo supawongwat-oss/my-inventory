@@ -4,6 +4,7 @@ import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { generateDocNo } from "../utils/docNumber";
+import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
 
 const T = { border:"#e3e8ef", sub:"#5b6b85", text:"#1f2a44", muted:"#8a9bb3", accent:"#3b5b8b", input:"#f6f8fb", inputBorder:"#d8dee9", red:"#dc2626" };
 const fmt = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -31,11 +32,17 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const setRow = (idx, patch) => setItems(prev => prev.map((r,i)=> i===idx ? {...r, ...patch} : r));
   const removeRow = (idx) => setItems(prev => prev.filter((_,i)=>i!==idx));
 
-  const handleImageUpload = (e) => {
+  const handleImageUpload = async (e) => {
     const f = e.target.files?.[0]; if (!f) return;
-    const reader = new FileReader();
-    reader.onload = () => setImage(reader.result);
-    reader.readAsDataURL(f);
+    try {
+      // compress รูปก่อน (max 1200px, JPEG 80%) → ปกติ ~150-400 KB
+      // ป้องกัน doc เกิน 1MB limit ของ Firestore
+      const compressed = await compressImage(f, { maxDim: 1200, quality: 0.8 });
+      setImage(compressed);
+    } catch (err) {
+      console.error("[image] compress failed:", err);
+      alert("โหลดรูปไม่สำเร็จ: " + (err.message || err));
+    }
   };
 
   const validItems = items.filter(r => Number(r.qty) > 0);
@@ -50,6 +57,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const handleSubmit = async () => {
     if (!canSubmit || saving) return;
     setSaving(true);
+    try {
     const prodNo = generateDocNo("CUS", customOrders, "prodNo");
     const data = {
       prodNo,
@@ -94,6 +102,14 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
     });
     setSaved(true);
     setTimeout(() => { setSaved(false); setSaving(false); onCreated && onCreated({ ...data, id: ref.id }); onClose && onClose(); }, 700);
+    } catch (err) {
+      console.error("[customOrder] save failed:", err);
+      setSaving(false);
+      const msg = err?.code === "invalid-argument" || /size|too large|exceeds/i.test(err?.message || "")
+        ? "บันทึกไม่สำเร็จ — เอกสารใหญ่เกินไป (ลองใช้รูปขนาดเล็กลง)"
+        : "บันทึกไม่สำเร็จ: " + (err?.message || err);
+      alert(msg);
+    }
   };
 
   return (
@@ -114,6 +130,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
             ? <img src={image} alt="" style={{width:110,height:110,borderRadius:10,objectFit:"cover",border:`2px solid ${T.accent}`}}/>
             : <div onClick={()=>fileRef.current?.click()} style={{width:110,height:110,borderRadius:10,background:T.input,display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,border:`2px dashed ${T.inputBorder}`,cursor:"pointer"}}>📷</div>}
           <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleImageUpload}/>
+          {image && <div style={{fontSize:10,color:T.muted,textAlign:"center",marginTop:4}}>{dataUrlSizeKB(image)} KB</div>}
         </div>
         <div style={{flex:1}}>
           <Input label="ชื่องาน / รุ่น *" value={jobName} onChange={e => setJobName(e.target.value)} placeholder="เช่น เสื้อคลาส ม.6/3 ปี 2569"/>
