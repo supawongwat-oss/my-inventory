@@ -296,6 +296,7 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
           productionOrders={productionOrders}
           user={user}
           onClose={()=>setShowNew(false)}
+          onCreated={(orderData) => { setShowNew(false); setPrintOrder(orderData); }}
         />
       )}
       {statusOrder && (
@@ -313,6 +314,7 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
           customers={customers}
           user={user}
           onClose={()=>setShowNewCustom(false)}
+          onCreated={(orderData) => { setShowNewCustom(false); setPrintOrder(orderData); }}
         />
       )}
       {statusCustom && (
