@@ -3231,7 +3231,7 @@ export default function App() {
             <div style={{background:"rgba(241,243,246,0.6)",borderRadius:10,border:`1px solid ${T.border}`,marginBottom:14,overflow:"hidden"}}>
               <div style={{padding:"8px 14px",background:"rgba(241,243,246,0.8)",borderBottom:`1px solid ${T.border}`,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>📋 สรุปรายการที่เลือก</div>
               {Object.entries(orderForm.items.reduce((acc,oi)=>{
-                const k=`${oi.clothingId}-${oi.colorIdx}`;
+                const k=`${oi.clothingId||oi.clothingName}-${oi.colorIdx??""}|${oi.colorName||""}`;
                 if(!acc[k]) acc[k]={clothingName:oi.clothingName,colorName:oi.colorName,colorHex:oi.colorHex,clothingId:oi.clothingId,colorIdx:oi.colorIdx,sizes:[]};
                 acc[k].sizes.push({size:oi.size,qty:oi.qty});
                 return acc;
@@ -3350,7 +3350,7 @@ export default function App() {
                 </thead>
                 <tbody>
                   {Object.values((showPrintOrder.items||[]).reduce((acc,oi)=>{
-                    const k=`${oi.clothingId}-${oi.colorIdx}`;
+                    const k=`${oi.clothingId||oi.clothingName}-${oi.colorIdx??""}|${oi.colorName||""}`;
                     if(!acc[k]) acc[k]={clothingName:oi.clothingName,colorName:oi.colorName,colorHex:oi.colorHex,clothingId:oi.clothingId,colorIdx:oi.colorIdx,items:[]};
                     acc[k].items.push(oi);
                     return acc;
@@ -3513,7 +3513,8 @@ export default function App() {
             const structured=indexed.filter(i=>i.clothingId||i.clothingName);
             const generic=indexed.filter(i=>!(i.clothingId||i.clothingName));
             const groups=Object.values(structured.reduce((acc,it)=>{
-              const k=`${it.clothingId||it.clothingName}-${it.colorIdx??it.colorName??""}`;
+              // 🔑 รวม colorName เข้าใน key — กัน legacy data ที่ colorIdx=0 ทุกแถว
+              const k=`${it.clothingId||it.clothingName}-${it.colorIdx??""}|${it.colorName||""}`;
               if(!acc[k]) acc[k]={clothingName:it.clothingName,colorName:it.colorName,colorHex:it.colorHex,items:[]};
               acc[k].items.push(it);
               return acc;
@@ -3885,7 +3886,7 @@ export default function App() {
                 const structured=(showPrintInvoice.items||[]).filter(i=>i.clothingId||i.clothingName);
                 const generic=(showPrintInvoice.items||[]).filter(i=>!(i.clothingId||i.clothingName));
                 const groups=Object.values(structured.reduce((acc,it)=>{
-                  const k=`${it.clothingId||it.clothingName}-${it.colorIdx??it.colorName??""}`;
+                  const k=`${it.clothingId||it.clothingName}-${it.colorIdx??""}|${it.colorName||""}`;
                   if(!acc[k]) acc[k]={clothingName:it.clothingName,colorName:it.colorName,colorHex:it.colorHex,items:[]};
                   acc[k].items.push(it);
                   return acc;
