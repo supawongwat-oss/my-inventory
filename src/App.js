@@ -1473,17 +1473,39 @@ export default function App() {
           {activeTab==="inventory"&&(
             <div>
               {/* Sub-tabs */}
-              <div style={{display:"flex",gap:6,marginBottom:20,padding:"4px",background:T.card,borderRadius:12,border:`1px solid ${T.border}`,width:"fit-content"}}>
-                {[{id:"general",icon:"📦",label:"สินค้าทั่วไป"},{id:"clothing",icon:"👕",label:"เสื้อผ้า"}].map(t=>(
-                  <button key={t.id} onClick={()=>setInventoryTab(t.id)} style={{padding:"8px 20px",borderRadius:9,border:"none",cursor:"pointer",background:inventoryTab===t.id?"linear-gradient(135deg,#3b5b8b,#3b5b8b)":"transparent",color:inventoryTab===t.id?"white":T.sub,fontSize:13,fontWeight:inventoryTab===t.id?700:500,fontFamily:"'Sarabun',sans-serif",transition:"all 0.2s",boxShadow:inventoryTab===t.id?"0 4px 14px rgba(59,91,139,0.3)":"none"}}>
-                    {t.icon} {t.label}
-                    {t.id==="clothing"&&clothingItems.length>0&&<span style={{marginLeft:6,background:"rgba(255,255,255,0.2)",borderRadius:10,padding:"1px 7px",fontSize:10}}>{clothingItems.length}</span>}
-                  </button>
-                ))}
+              <div style={{display:"flex",gap:6,marginBottom:20,padding:"4px",background:T.card,borderRadius:12,border:`1px solid ${T.border}`,width:"fit-content",flexWrap:"wrap"}}>
+                {[
+                  {id:"general",icon:"📦",label:"สินค้าทั่วไป"},
+                  {id:"clothing",icon:"👕",label:"เสื้อผ้า"},
+                  {id:"shoes",icon:"👟",label:"รองเท้า",cat:"รองเท้า"},
+                  {id:"sports",icon:"⚽",label:"อุปกรณ์กีฬา",cat:"อุปกรณ์กีฬา"},
+                ].map(t=>{
+                  // นับสินค้าในหมวด (สำหรับ shoes/sports)
+                  const count = t.cat ? products.filter(p=>p.category===t.cat).length
+                    : t.id==="clothing" ? clothingItems.length : 0;
+                  return (
+                    <button key={t.id} onClick={async()=>{
+                      setInventoryTab(t.id);
+                      // ถ้าเลือก tab หมวด → set filter + auto-create category ใน Firestore ถ้ายังไม่มี
+                      if (t.cat) {
+                        setSelectedCat(t.cat);
+                        if (!categories.includes(t.cat)) {
+                          try { await setDoc(doc(db,"settings","categories"),{list:[...categories,t.cat]}); }
+                          catch(err){ console.warn("[cats] auto-create failed:", err); }
+                        }
+                      } else {
+                        setSelectedCat("ทั้งหมด");
+                      }
+                    }} style={{padding:"8px 20px",borderRadius:9,border:"none",cursor:"pointer",background:inventoryTab===t.id?"linear-gradient(135deg,#3b5b8b,#3b5b8b)":"transparent",color:inventoryTab===t.id?"white":T.sub,fontSize:13,fontWeight:inventoryTab===t.id?700:500,fontFamily:"'Sarabun',sans-serif",transition:"all 0.2s",boxShadow:inventoryTab===t.id?"0 4px 14px rgba(59,91,139,0.3)":"none"}}>
+                      {t.icon} {t.label}
+                      {count>0&&<span style={{marginLeft:6,background:inventoryTab===t.id?"rgba(255,255,255,0.2)":"rgba(59,91,139,0.1)",borderRadius:10,padding:"1px 7px",fontSize:10}}>{count}</span>}
+                    </button>
+                  );
+                })}
               </div>
 
-              {/* General products */}
-              {inventoryTab==="general"&&<div>
+              {/* General products (รวมถึง shoes/sports — ใช้ view เดียวกัน filter ตาม category) */}
+              {(inventoryTab==="general"||inventoryTab==="shoes"||inventoryTab==="sports")&&<div>
               <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
                 <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 ค้นหาชื่อ, รหัส, บาร์โค้ด..."
                   style={{width:260,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>

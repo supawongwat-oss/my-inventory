@@ -12,4 +12,4 @@ export const ROLES = {
   staff:   { label:"พนักงาน",     color:T.green,  canDelete:false, canAdd:false, canClear:false, canManageUsers:false, canManageCats:false, canIssueInvoice:false, canCreateOrder:false, canProduction:true,  canManageBOM:false },
 };
 
-export const INIT_CATS = ["วัตถุดิบ","สินค้าสำเร็จ","บรรจุภัณฑ์"];
+export const INIT_CATS = ["วัตถุดิบ","สินค้าสำเร็จ","บรรจุภัณฑ์","รองเท้า","อุปกรณ์กีฬา"];
