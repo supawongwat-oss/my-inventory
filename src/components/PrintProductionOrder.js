@@ -64,36 +64,71 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
             );
           })()}
 
-          {/* Items table — ย่อให้พอ 1 หน้า */}
-          <table style={{width:"100%",borderCollapse:"collapse",marginBottom:10,fontSize:11}}>
-            <thead>
-              <tr style={{background:"#f1f5f9",color:"#000"}}>
-                <th style={{padding:"5px 8px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11}}>สี</th>
-                <th style={{padding:"5px 8px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:11}}>ไซส์</th>
-                <th style={{padding:"5px 8px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:11}}>จำนวน</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(order.items||[]).map((it, i) => (
-                <tr key={i} style={{background:i%2===0?"white":"#f8fafc"}}>
-                  <td style={{padding:"4px 8px",border:"1px solid #000",fontSize:11,color:"#000"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <div style={{width:10,height:10,borderRadius:2,background:it.colorHex||"#999",border:"1px solid #000"}}/>
-                      <span>{it.colorName}</span>
-                    </div>
-                  </td>
-                  <td style={{padding:"4px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:11}}>{it.size}</td>
-                  <td style={{padding:"4px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:12,color:"#000",border:"1px solid #000"}}>{fmtInt(it.qty)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr style={{background:"#f1f5f9",fontWeight:700}}>
-                <td colSpan={2} style={{padding:"6px 10px",textAlign:"right",color:"#000",fontSize:12,border:"2px solid #000"}}>รวมทั้งหมด</td>
-                <td style={{padding:"6px 10px",textAlign:"center",fontFamily:"monospace",fontSize:13,color:"#000",border:"2px solid #000",fontWeight:800}}>{fmtInt(order.totalQty)} ตัว</td>
-              </tr>
-            </tfoot>
-          </table>
+          {/* Items table — group by color, ไซส์ 4 ช่อง/แถว (เหมือนใบสั่งของ) */}
+          {(() => {
+            const groups = [];
+            const gmap = new Map();
+            (order.items||[]).forEach(it => {
+              const key = (it.colorName||"-") + "|" + (it.colorHex||"#999");
+              if (!gmap.has(key)) {
+                const g = { colorName: it.colorName||"-", colorHex: it.colorHex||"#999", sizes: [] };
+                gmap.set(key, g); groups.push(g);
+              }
+              gmap.get(key).sizes.push({ size: it.size||"-", qty: Number(it.qty)||0 });
+            });
+            const MAX = 4;
+            return (
+              <table style={{width:"100%",borderCollapse:"collapse",marginBottom:10,fontSize:11}}>
+                <thead>
+                  <tr style={{background:"#f1f5f9",color:"#000"}}>
+                    <th style={{padding:"5px 8px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,minWidth:80}}>รุ่น</th>
+                    <th style={{padding:"5px 8px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,minWidth:70}}>สี</th>
+                    {Array.from({length:MAX}).flatMap((_,i)=>([
+                      <th key={`s${i}`} style={{padding:"5px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:10,minWidth:34,background:"#e0f2fe"}}>SIZE</th>,
+                      <th key={`q${i}`} style={{padding:"5px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:10,minWidth:28}}></th>
+                    ]))}
+                    <th style={{padding:"5px 8px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:11,minWidth:50}}>จำนวน</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groups.flatMap((g, gi) => {
+                    const chunks = [];
+                    for (let i = 0; i < g.sizes.length; i += MAX) chunks.push(g.sizes.slice(i, i + MAX));
+                    if (chunks.length === 0) chunks.push([]);
+                    return chunks.map((chunk, ci) => {
+                      const rowQty = chunk.reduce((s,x)=>s+x.qty, 0);
+                      return (
+                        <tr key={`${gi}-${ci}`} style={{background: gi%2===0?"white":"#f8fafc"}}>
+                          <td style={{padding:"4px 8px",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:11,verticalAlign:"middle"}}>{ci===0 ? (order.clothingName || "-") : ""}</td>
+                          <td style={{padding:"4px 8px",color:"#000",border:"1px solid #000",fontSize:11,verticalAlign:"middle"}}>
+                            {ci===0 && (<div style={{display:"flex",alignItems:"center",gap:5}}>
+                              <div style={{width:10,height:10,borderRadius:2,background:g.colorHex,border:"1px solid #000",flexShrink:0}}/>
+                              <span>{g.colorName}</span>
+                            </div>)}
+                          </td>
+                          {chunk.flatMap((c,i)=>([
+                            <td key={`s-${i}`} style={{padding:"4px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#0c4a6e",border:"1px solid #000",background:"#f0f9ff",fontSize:11}}>{c.size}</td>,
+                            <td key={`q-${i}`} style={{padding:"4px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:11}}>{fmtInt(c.qty)}</td>
+                          ]))}
+                          {Array(MAX - chunk.length).fill(null).flatMap((_,i)=>([
+                            <td key={`e1-${i}`} style={{border:"1px solid #ccc",background:"#fafafa"}}/>,
+                            <td key={`e2-${i}`} style={{border:"1px solid #ccc"}}/>
+                          ]))}
+                          <td style={{padding:"4px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:800,fontSize:12,color:"#000",border:"1px solid #000",verticalAlign:"middle"}}>{fmtInt(rowQty)}</td>
+                        </tr>
+                      );
+                    });
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{background:"#f1f5f9",fontWeight:700}}>
+                    <td colSpan={2 + MAX*2} style={{padding:"6px 10px",textAlign:"right",color:"#000",fontSize:12,border:"2px solid #000"}}>รวมทั้งหมด</td>
+                    <td style={{padding:"6px 10px",textAlign:"center",fontFamily:"monospace",fontSize:13,color:"#000",border:"2px solid #000",fontWeight:800}}>{fmtInt(order.totalQty)} ตัว</td>
+                  </tr>
+                </tfoot>
+              </table>
+            );
+          })()}
 
           {/* Materials (ไม่มีคอลัมน์ราคา/มูลค่า — ใบสั่งผลิตให้ทีมผลิต) */}
           {order.costSnapshot?.materials?.length > 0 && (

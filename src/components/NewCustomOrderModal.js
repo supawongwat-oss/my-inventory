@@ -23,7 +23,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const [customerSearch, setCustomerSearch] = useState("");
   const [jobName, setJobName] = useState("");
   const [images, setImages] = useState([]); // [{dataUrl, label}]
-  const [items, setItems] = useState([{ colorName:"", size:"", qty:"" }]);
+  const [items, setItems] = useState([{ colorName:"", colorHex:"#94a3b8", size:"", qty:"" }]);
   const [costPerPiece, setCostPerPiece] = useState("");
   const [laborCostPerPiece, setLaborCostPerPiece] = useState("");
   const [note, setNote] = useState("");
@@ -31,9 +31,18 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const [saved, setSaved] = useState(false);
   const fileRef = useRef(null);
 
-  const addRow = () => setItems(prev => [...prev, { colorName:"", size:"", qty:"" }]);
+  const addRow = () => setItems(prev => {
+    // แถวใหม่ inherit สีจากแถวสุดท้าย (กดน้อยลง)
+    const last = prev[prev.length-1];
+    return [...prev, { colorName: last?.colorName || "", colorHex: last?.colorHex || "#94a3b8", size:"", qty:"" }];
+  });
   const setRow = (idx, patch) => setItems(prev => prev.map((r,i)=> i===idx ? {...r, ...patch} : r));
   const removeRow = (idx) => setItems(prev => prev.filter((_,i)=>i!==idx));
+  // ⬆️ คัดลอกสีจากแถวบน
+  const copyColorFromAbove = (idx) => {
+    if (idx === 0) return;
+    setItems(prev => prev.map((r,i) => i===idx ? { ...r, colorName: prev[i-1].colorName, colorHex: prev[i-1].colorHex || "#94a3b8" } : r));
+  };
 
   // อัปโหลดได้หลายรูปพร้อมกัน — แต่ละรูป compress ก่อน
   const handleImageUpload = async (e) => {
@@ -84,7 +93,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
       items: validItems.map(r => ({
         colorIdx: 0,
         colorName: r.colorName.trim() || "-",
-        colorHex: "#94a3b8",
+        colorHex: r.colorHex || "#94a3b8",
         size: r.size.trim() || "-",
         qty: Number(r.qty) || 0,
       })),
@@ -238,7 +247,21 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
 
       <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:12,maxHeight:280,overflowY:"auto"}}>
         {items.map((r, idx) => (
-          <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 32px",gap:6,alignItems:"end",padding:"6px 8px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:7}}>
+          <div key={idx} style={{display:"grid",gridTemplateColumns:"28px 24px 1fr 1fr 1fr 32px",gap:5,alignItems:"end",padding:"6px 8px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:7}}>
+            {/* 🎨 swatch — กดเปลี่ยนสี */}
+            <div>
+              <label style={{fontSize:9,color:T.sub,display:"block",marginBottom:2}}>&nbsp;</label>
+              <input type="color" value={r.colorHex || "#94a3b8"} onChange={e => setRow(idx, { colorHex: e.target.value })}
+                title="เลือกสี"
+                style={{width:28,height:28,padding:0,border:`1px solid ${T.inputBorder}`,borderRadius:6,cursor:"pointer",background:"transparent"}}/>
+            </div>
+            {/* ⬆️ copy color from row above */}
+            <div>
+              <label style={{fontSize:9,color:T.sub,display:"block",marginBottom:2}}>&nbsp;</label>
+              <button onClick={()=>copyColorFromAbove(idx)} disabled={idx === 0}
+                title={idx === 0 ? "ไม่มีแถวบน" : "ใช้สี+ชื่อสีเดียวกับแถวบน"}
+                style={{width:24,height:28,padding:0,background:idx===0?"#f1f5f9":"#dbeafe",border:`1px solid ${idx===0?T.inputBorder:"#bfdbfe"}`,borderRadius:6,cursor:idx===0?"not-allowed":"pointer",fontSize:13,color:idx===0?T.muted:T.accent,fontWeight:700,fontFamily:"inherit"}}>↑</button>
+            </div>
             <div>
               <label style={{fontSize:9,color:T.sub,display:"block",marginBottom:2}}>สี (เลือกจากที่ใช้แล้ว หรือพิมพ์ใหม่)</label>
               <input value={r.colorName} onChange={e => setRow(idx, { colorName: e.target.value })}
