@@ -540,107 +540,99 @@ export default function StatementTab({ statements, invoices, customers, companyI
   );
 }
 
-// === Print Layout ===
+// === Print Layout — รายละเอียดเล็กลง + หัวข้อสีดำ ===
 function StatementPrintLayout({ statement, companyInfo }) {
   return (
-    <div id="statement-print-area" style={{ padding: "32px 40px", fontFamily: "'Sarabun',sans-serif", color: "#1e293b", background: "white" }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, paddingBottom: 16, borderBottom: "3px solid #3b5b8b" }}>
+    <div id="statement-print-area" style={{ padding: "20px 28px", fontFamily: "'Sarabun',sans-serif", color: "#000", background: "white" }}>
+      {/* Header — เล็กลง */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, paddingBottom: 8, borderBottom: "2px solid #000" }}>
         <div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: "#3b5b8b", letterSpacing: 3, fontFamily: "monospace" }}>{companyInfo?.name || "CPU"}</div>
-          {companyInfo?.address && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{companyInfo.address}</div>}
-          {companyInfo?.phone && <div style={{ fontSize: 11, color: "#64748b" }}>📞 {companyInfo.phone}{companyInfo.email && `  ✉ ${companyInfo.email}`}</div>}
-          {companyInfo?.taxId && <div style={{ fontSize: 11, color: "#64748b" }}>เลขประจำตัวผู้เสียภาษี: {companyInfo.taxId}</div>}
+          <div style={{ fontSize: 18, fontWeight: 800, color: "#000", letterSpacing: 1.5 }}>{companyInfo?.name || "CPU"}</div>
+          {companyInfo?.address && <div style={{ fontSize: 10, color: "#000", marginTop: 2 }}>{companyInfo.address}</div>}
+          {companyInfo?.phone && <div style={{ fontSize: 10, color: "#000" }}>โทร: {companyInfo.phone}{companyInfo.email && `  ·  ${companyInfo.email}`}</div>}
+          {companyInfo?.taxId && <div style={{ fontSize: 10, color: "#000" }}>เลขประจำตัวผู้เสียภาษี: {companyInfo.taxId}</div>}
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "#1e293b" }}>ใบวางบิล</div>
-          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>Statement of Account</div>
-          <div style={{ fontSize: 14, color: "#3b5b8b", fontFamily: "monospace", fontWeight: 700 }}>{statement.statementNo}</div>
-          <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>ออกวันที่: {(statement.date || "").split(" ")[0]}</div>
-          {statement.dueDate && <div style={{ fontSize: 11, color: "#b94a48", fontWeight: 600 }}>ครบกำหนด: {statement.dueDate}</div>}
+          <div style={{ fontSize: 16, fontWeight: 800, color: "#000" }}>ใบวางบิล</div>
+          <div style={{ fontSize: 11, color: "#000", fontFamily: "monospace", fontWeight: 700, marginTop: 2 }}>{statement.statementNo}</div>
+          <div style={{ fontSize: 10, color: "#000", marginTop: 2 }}>ออกวันที่: {(statement.date || "").split(" ")[0]}</div>
+          {statement.dueDate && <div style={{ fontSize: 10, color: "#000", fontWeight: 700 }}>ครบกำหนด: {statement.dueDate}</div>}
         </div>
       </div>
 
-      {/* Customer + period */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20, padding: 14, background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+      {/* Customer + period — เล็กลง */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12, padding: 10, background: "#f1f5f9", borderRadius: 6, border: "1px solid #000" }}>
         <div>
-          <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>เรียน / Bill To</div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>{statement.customerName}</div>
-          {statement.customerPhone && <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>📞 {statement.customerPhone}</div>}
-          {statement.customerAddress && <div style={{ fontSize: 11, color: "#475569" }}>📍 {statement.customerAddress}</div>}
-          {statement.customerTaxId && <div style={{ fontSize: 11, color: "#475569" }}>เลขประจำตัว: {statement.customerTaxId}</div>}
+          <div style={{ fontSize: 9, color: "#000", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>เรียน / Bill To</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#000" }}>{statement.customerName}</div>
+          {statement.customerPhone && <div style={{ fontSize: 10, color: "#000" }}>โทร: {statement.customerPhone}</div>}
+          {statement.customerAddress && <div style={{ fontSize: 10, color: "#000" }}>{statement.customerAddress}</div>}
+          {statement.customerTaxId && <div style={{ fontSize: 10, color: "#000" }}>เลขประจำตัว: {statement.customerTaxId}</div>}
         </div>
         <div>
-          <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>ประจำงวด / Period</div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#3b5b8b" }}>{statement.periodStart} ถึง {statement.periodEnd}</div>
-          <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+          <div style={{ fontSize: 9, color: "#000", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>ประจำงวด / Period</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#000" }}>{statement.periodStart} ถึง {statement.periodEnd}</div>
+          <div style={{ fontSize: 10, color: "#000", marginTop: 2 }}>
             จำนวน {statement.invoiceCount} ใบ · {statement.filterMode === "unpaid" ? "เฉพาะที่ยังไม่ชำระ" : "ทุกบิล"}
           </div>
         </div>
       </div>
 
       {/* Items table */}
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 18, fontSize: 12 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12, fontSize: 11 }}>
         <thead>
-          <tr style={{ background: "#3b5b8b", color: "white" }}>
-            <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 600, width: 130 }}>เลขที่บิล</th>
-            <th style={{ padding: "10px 12px", textAlign: "center", fontWeight: 600, width: 110 }}>วันที่</th>
-            <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 600 }}>ประเภท / สถานะ</th>
-            <th style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, width: 130 }}>ยอดบิล (฿)</th>
+          <tr style={{ background: "#f1f5f9", color: "#000" }}>
+            <th style={{ padding: "8px 10px", textAlign: "left", fontWeight: 700, width: 130, border: "1px solid #000" }}>เลขที่บิล</th>
+            <th style={{ padding: "8px 10px", textAlign: "center", fontWeight: 700, width: 110, border: "1px solid #000" }}>วันที่</th>
+            <th style={{ padding: "8px 10px", textAlign: "left", fontWeight: 700, border: "1px solid #000" }}>ประเภท / สถานะ</th>
+            <th style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700, width: 130, border: "1px solid #000" }}>ยอดบิล (฿)</th>
           </tr>
         </thead>
         <tbody>
           {(statement.invoicesSnapshot || []).map((inv, i) => (
-            <tr key={i} style={{ borderBottom: "1px solid #e2e8f0", background: i % 2 === 0 ? "white" : "#f8fafc" }}>
-              <td style={{ padding: "10px 12px", fontFamily: "monospace", fontWeight: 700, color: "#3b5b8b" }}>{inv.invoiceNo}</td>
-              <td style={{ padding: "10px 12px", textAlign: "center", color: "#475569" }}>{(inv.date || "").split(" ")[0]}</td>
-              <td style={{ padding: "10px 12px", color: "#475569" }}>
+            <tr key={i} style={{ background: i % 2 === 0 ? "white" : "#f8fafc" }}>
+              <td style={{ padding: "8px 10px", fontFamily: "monospace", fontWeight: 700, color: "#000", border: "1px solid #cbd5e1" }}>{inv.invoiceNo}</td>
+              <td style={{ padding: "8px 10px", textAlign: "center", color: "#000", border: "1px solid #cbd5e1" }}>{(inv.date || "").split(" ")[0]}</td>
+              <td style={{ padding: "8px 10px", color: "#000", border: "1px solid #cbd5e1" }}>
                 {inv.docType === "tax" ? "ใบกำกับภาษี" : inv.docType === "quotation" ? "ใบวางบิล" : "ใบเสร็จ"}
-                <span style={{ marginLeft: 8, fontSize: 10, padding: "2px 8px", borderRadius: 8, background: inv.status === "ชำระแล้ว" ? "#dcfce7" : "#fef3c7", color: inv.status === "ชำระแล้ว" ? "#166534" : "#92400e" }}>{inv.status}</span>
+                <span style={{ marginLeft: 6, fontSize: 9, padding: "1px 6px", borderRadius: 6, background: inv.status === "ชำระแล้ว" ? "#dcfce7" : "#fef3c7", color: "#000", border: "1px solid #000" }}>{inv.status}</span>
               </td>
-              <td style={{ padding: "10px 12px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#1e293b" }}>{Number(inv.total).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
+              <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#000", border: "1px solid #cbd5e1" }}>{Number(inv.total).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
             </tr>
           ))}
         </tbody>
         <tfoot>
           <tr style={{ background: "#f1f5f9", fontWeight: 800 }}>
-            <td colSpan={3} style={{ padding: "12px 12px", textAlign: "right", color: "#1e293b", fontSize: 14 }}>รวมทั้งสิ้น</td>
-            <td style={{ padding: "12px 12px", textAlign: "right", fontFamily: "monospace", fontSize: 16, color: "#3a7a52" }}>
+            <td colSpan={3} style={{ padding: "10px", textAlign: "right", color: "#000", fontSize: 13, border: "2px solid #000" }}>รวมทั้งสิ้น</td>
+            <td style={{ padding: "10px", textAlign: "right", fontFamily: "monospace", fontSize: 15, color: "#000", border: "2px solid #000" }}>
               ฿{Number(statement.totalAmount || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
             </td>
           </tr>
         </tfoot>
       </table>
 
-      {/* Note + bank */}
+      {/* Note + bank — เล็กลง */}
       {statement.note && (
-        <div style={{ padding: 12, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, fontSize: 12, color: "#92400e", marginBottom: 16 }}>
-          📝 หมายเหตุ: {statement.note}
+        <div style={{ padding: 8, background: "#fffbeb", border: "1px solid #000", borderRadius: 6, fontSize: 11, color: "#000", marginBottom: 10 }}>
+          หมายเหตุ: {statement.note}
         </div>
       )}
       {statement.bankAccount && statement.bankAccount.accountNo && (
-        <div style={{ padding: 12, background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, fontSize: 12, color: "#075985", marginBottom: 16 }}>
-          🏦 ชำระผ่านบัญชี: {statement.bankAccount.bank} · {statement.bankAccount.accountNo} · {statement.bankAccount.accountName}
+        <div style={{ padding: 8, background: "#f0f9ff", border: "1px solid #000", borderRadius: 6, fontSize: 11, color: "#000", marginBottom: 10 }}>
+          🏦 ชำระผ่านบัญชี: <b>{statement.bankAccount.bank} · {statement.bankAccount.accountNo} · {statement.bankAccount.accountName}</b>
         </div>
       )}
 
-      {/* Signatures */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, marginTop: 40, paddingTop: 20 }}>
-        {[{ label: "ผู้รับวางบิล", sub: "(Authorized Receiver)" }, { label: "ผู้วางบิล", sub: "(Issued By)" }, { label: "ผู้รับเงิน", sub: "(Payment Received)" }].map((s, i) => (
+      {/* Signatures — เล็กลง */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginTop: 28, paddingTop: 12 }}>
+        {[{ label: "ผู้รับวางบิล" }, { label: "ผู้วางบิล" }, { label: "ผู้รับเงิน" }].map((s, i) => (
           <div key={i} style={{ textAlign: "center" }}>
-            <div style={{ borderTop: "1px solid #94a3b8", paddingTop: 6, marginTop: 30 }}>
-              <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>{s.label}</div>
-              <div style={{ fontSize: 9, color: "#94a3b8" }}>{s.sub}</div>
-              <div style={{ fontSize: 9, color: "#94a3b8", marginTop: 4 }}>วันที่ ........................</div>
+            <div style={{ borderTop: "1px solid #000", paddingTop: 4, marginTop: 24 }}>
+              <div style={{ fontSize: 10, color: "#000", fontWeight: 600 }}>{s.label}</div>
+              <div style={{ fontSize: 9, color: "#000", marginTop: 3 }}>วันที่ ........................</div>
             </div>
           </div>
         ))}
-      </div>
-
-      {/* Footer */}
-      <div style={{ marginTop: 20, paddingTop: 10, borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", fontSize: 9, color: "#cbd5e1" }}>
-        <div>เอกสารออกโดยระบบ CPU ERP · {statement.statementNo}</div>
-        <div>ผู้ออกเอกสาร: {statement.by} · {statement.date}</div>
       </div>
     </div>
   );
