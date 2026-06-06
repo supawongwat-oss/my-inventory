@@ -9,49 +9,44 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
     <div className="print-modal-overlay" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}}
       onMouseDown={e=>{if(e.target===e.currentTarget)onClose&&onClose();}}>
       <div className="print-modal-card" onMouseDown={e=>e.stopPropagation()} style={{background:"white",borderRadius:16,padding:0,width:760,maxHeight:"94vh",overflowY:"auto",boxShadow:"0 24px 60px rgba(0,0,0,0.6)"}}>
-        <div id="prod-print-area" style={{padding:"36px 44px",fontFamily:"'Sarabun',sans-serif",color:"#1e293b"}}>
-          {/* Header */}
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,paddingBottom:18,borderBottom:"3px solid #3b5b8b"}}>
-            <div style={{flex:1}}>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
-                <div style={{width:54,height:54,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden",background:"white"}}>
-                  <img src={`${process.env.PUBLIC_URL}/cpu-logo.png`} alt="CPU" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
-                </div>
-                <div>
-                  <div style={{fontSize:20,fontWeight:800,color:"#3b5b8b",letterSpacing:2}}>{companyInfo.name||"CPU"}</div>
-                </div>
+        <div id="prod-print-area" style={{padding:"22px 32px",fontFamily:"'Sarabun',sans-serif",color:"#1e293b"}}>
+          {/* Header (เล็กลง) */}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,paddingBottom:8,borderBottom:"2px solid #3b5b8b"}}>
+            <div style={{flex:1,display:"flex",alignItems:"center",gap:8}}>
+              <div style={{width:36,height:36,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden",background:"white"}}>
+                <img src={`${process.env.PUBLIC_URL}/cpu-logo.png`} alt="CPU" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
               </div>
-              {companyInfo.address&&<div style={{fontSize:11,color:"#475569",marginBottom:2,maxWidth:280,lineHeight:1.6}}>{companyInfo.address}</div>}
-              {companyInfo.phone&&<div style={{fontSize:11,color:"#475569"}}>โทร: {companyInfo.phone}</div>}
+              <div>
+                <div style={{fontSize:16,fontWeight:800,color:"#3b5b8b",letterSpacing:1}}>{companyInfo.name||"CPU"}</div>
+                {companyInfo.phone&&<div style={{fontSize:9,color:"#64748b"}}>โทร: {companyInfo.phone}</div>}
+              </div>
             </div>
-            <div style={{textAlign:"right",minWidth:220}}>
-              <div style={{display:"inline-block",background:"#3b5b8b",color:"white",padding:"6px 22px",borderRadius:6,fontSize:16,fontWeight:800,marginBottom:10,letterSpacing:1}}>
+            <div style={{textAlign:"right"}}>
+              <div style={{display:"inline-block",background:"#3b5b8b",color:"white",padding:"3px 14px",borderRadius:4,fontSize:12,fontWeight:800,marginBottom:4,letterSpacing:0.5}}>
                 ใบสั่งผลิต
               </div>
-              <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
-                  <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>เลขที่:</span>
-                  <span style={{fontSize:15,color:"#3b5b8b",fontFamily:"monospace",fontWeight:700}}>{order.prodNo}</span>
-                </div>
-                <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
-                  <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>วันที่:</span>
-                  <span style={{fontSize:14,color:"#1e293b",fontWeight:600}}>{order.date}</span>
-                </div>
-                <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
-                  <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>สถานะ:</span>
-                  <span style={{fontSize:14,color:"#16a34a",fontWeight:700}}>{order.status}</span>
-                </div>
+              <div style={{display:"flex",justifyContent:"flex-end",gap:6,fontSize:10,color:"#64748b"}}>
+                <span>เลขที่:</span>
+                <span style={{color:"#3b5b8b",fontFamily:"monospace",fontWeight:700}}>{order.prodNo}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"flex-end",gap:6,fontSize:10,color:"#64748b"}}>
+                <span>วันที่:</span>
+                <span style={{color:"#1e293b",fontWeight:600}}>{order.date}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"flex-end",gap:6,fontSize:10,color:"#64748b"}}>
+                <span>สถานะ:</span>
+                <span style={{color:"#16a34a",fontWeight:700}}>{order.status}</span>
               </div>
             </div>
           </div>
 
-          {/* Clothing info */}
-          <div style={{padding:"16px 20px",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
-            {order.clothingImage && <img src={order.clothingImage} alt="" style={{width:80,height:80,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0"}}/>}
+          {/* Clothing info (รูปขยาย 200%) */}
+          <div style={{padding:"12px 16px",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,marginBottom:14,display:"flex",alignItems:"center",gap:18}}>
+            {order.clothingImage && <img src={order.clothingImage} alt="" style={{width:160,height:160,borderRadius:10,objectFit:"cover",border:"1px solid #e2e8f0"}}/>}
             <div style={{flex:1}}>
-              <div style={{fontSize:11,color:"#3b5b8b",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>รุ่นสินค้า</div>
-              <div style={{fontSize:18,fontWeight:700,color:"#1e293b"}}>{order.clothingName}</div>
-              <div style={{fontSize:13,color:"#475569",marginTop:4}}>รวมทั้งหมด <b style={{color:"#3b5b8b"}}>{fmtInt(order.totalQty)}</b> ตัว</div>
+              <div style={{fontSize:10,color:"#3b5b8b",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:4}}>รุ่นสินค้า</div>
+              <div style={{fontSize:20,fontWeight:700,color:"#1e293b"}}>{order.clothingName}</div>
+              <div style={{fontSize:13,color:"#475569",marginTop:4}}>รวมทั้งหมด <b style={{color:"#3b5b8b",fontSize:16}}>{fmtInt(order.totalQty)}</b> ตัว</div>
             </div>
           </div>
 
@@ -110,28 +105,12 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
               </table>
             </div>
           )}
-          )}
 
           {order.note && (
-            <div style={{padding:"10px 14px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,fontSize:13,color:"#78350f",marginBottom:16}}>
+            <div style={{padding:"10px 14px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,fontSize:13,color:"#78350f",marginBottom:8}}>
               <b>หมายเหตุ:</b> {order.note}
             </div>
           )}
-
-          {/* signatures */}
-          <div style={{marginTop:32,paddingTop:16,borderTop:"1px solid #e2e8f0"}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24}}>
-              <div style={{textAlign:"center"}}>
-                <div style={{height:48,borderBottom:"1px dashed #cbd5e1",marginBottom:6}}/>
-                <div style={{fontSize:12,fontWeight:700,color:"#475569"}}>ผู้สั่งผลิต</div>
-                <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{order.by}</div>
-              </div>
-              <div style={{textAlign:"center"}}>
-                <div style={{height:48,borderBottom:"1px dashed #cbd5e1",marginBottom:6}}/>
-                <div style={{fontSize:12,fontWeight:700,color:"#475569"}}>ผู้รับงาน</div>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Action bar */}
