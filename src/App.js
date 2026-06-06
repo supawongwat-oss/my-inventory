@@ -2074,14 +2074,17 @@ export default function App() {
                 orders.forEach(o => {
                   (o.items||[]).forEach(it => {
                     items.push({
-                      // เก็บ description ให้สั้น (ชื่อรุ่นพอ) — สี/ไซส์/qty มี column ของตัวเอง
-                      description: o.clothingName || "",
-                      qty: Number(it.qty)||0,
-                      unitPrice: Number(o.costSnapshot?.totalCostPerPiece)||0,
-                      unit: "ตัว",
-                      colorHex: it.colorHex || "",
+                      // structured fields → render เป็นตารางรุ่น/สี/SIZE×4 แทน generic
+                      clothingId: `custom_${o.id}`,
+                      clothingName: o.clothingName || "",
+                      colorIdx: 0,
                       colorName: it.colorName || "",
+                      colorHex: it.colorHex || "#999999",
                       size: it.size || "",
+                      qty: Number(it.qty) || 0,
+                      unitPrice: Number(o.costSnapshot?.totalCostPerPiece) || 0,
+                      unit: "ตัว",
+                      description: o.clothingName || "",
                       _fromCustom: o.prodNo,
                     });
                   });
