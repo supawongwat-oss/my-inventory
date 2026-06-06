@@ -123,8 +123,8 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
           {clothingItems.map(c => <option key={c.id} value={c.id}>{c.model}</option>)}
         </select>
         {clothingId && !bom && (
-          <div style={{marginTop:8,padding:"8px 12px",background:"#fff7e6",border:"1px solid #ffd980",borderRadius:8,fontSize:12,color:"#92400e"}}>
-            ⚠️ รุ่นนี้ยังไม่มี BOM — สร้าง BOM ก่อนเพื่อให้คำนวณวัตถุดิบ/ต้นทุนได้ (สั่งผลิตได้แต่จะไม่มีต้นทุน)
+          <div style={{marginTop:6,padding:"4px 10px",background:"#fff7e6",border:"1px solid #ffd980",borderRadius:6,fontSize:10,color:"#92400e",lineHeight:1.3}}>
+            ⚠️ รุ่นนี้ไม่มี BOM — สั่งผลิตได้แต่ไม่คำนวณวัตถุดิบ/ต้นทุน
           </div>
         )}
       </div>
@@ -136,25 +136,29 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
             <button onClick={addRow} style={{padding:"6px 14px",background:"rgba(59,91,139,0.08)",color:T.accent,border:`1px solid ${T.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit"}}>+ เพิ่มแถว</button>
           </div>
 
-          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14,maxHeight:200,overflowY:"auto"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:12,maxHeight:240,overflowY:"auto"}}>
             {items.map((r, idx) => (
-              <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 40px",gap:8,alignItems:"end",padding:10,background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:10}}>
+              <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 32px",gap:6,alignItems:"end",padding:"6px 8px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:7}}>
                 <div>
-                  <label style={{fontSize:10,color:T.sub,display:"block",marginBottom:4}}>สี</label>
+                  <label style={{fontSize:9,color:T.sub,display:"block",marginBottom:2}}>สี</label>
                   <select value={r.colorIdx} onChange={e => pickColor(idx, Number(e.target.value))}
-                    style={{width:"100%",background:"white",border:`1px solid ${T.inputBorder}`,borderRadius:7,padding:"7px 10px",fontFamily:"inherit",fontSize:12,outline:"none"}}>
+                    style={{width:"100%",background:"white",border:`1px solid ${T.inputBorder}`,borderRadius:6,padding:"5px 8px",fontFamily:"inherit",fontSize:12,outline:"none"}}>
                     {(clothing?.colors || []).map((c,i) => <option key={i} value={i}>{c.colorName}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label style={{fontSize:10,color:T.sub,display:"block",marginBottom:4}}>ไซส์</label>
+                  <label style={{fontSize:9,color:T.sub,display:"block",marginBottom:2}}>ไซส์</label>
                   <select value={r.size} onChange={e => setRow(idx, { size: e.target.value })}
-                    style={{width:"100%",background:"white",border:`1px solid ${T.inputBorder}`,borderRadius:7,padding:"7px 10px",fontFamily:"inherit",fontSize:12,outline:"none"}}>
+                    style={{width:"100%",background:"white",border:`1px solid ${T.inputBorder}`,borderRadius:6,padding:"5px 8px",fontFamily:"inherit",fontSize:12,outline:"none"}}>
                     {SIZES_ALL.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
-                <Input label="จำนวน" type="number" value={r.qty} onChange={e => setRow(idx, { qty: e.target.value })}/>
-                <button onClick={() => removeRow(idx)} title="ลบ" style={{padding:"7px 8px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:7,color:T.red,cursor:"pointer",fontSize:12,height:34}}>✕</button>
+                <div>
+                  <label style={{fontSize:9,color:T.sub,display:"block",marginBottom:2}}>จำนวน</label>
+                  <input type="number" value={r.qty} onChange={e => setRow(idx, { qty: e.target.value })}
+                    style={{width:"100%",background:"white",border:`1px solid ${T.inputBorder}`,borderRadius:6,padding:"5px 8px",fontFamily:"inherit",fontSize:12,outline:"none"}}/>
+                </div>
+                <button onClick={() => removeRow(idx)} title="ลบ" style={{padding:"5px 6px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,color:T.red,cursor:"pointer",fontSize:11,height:28}}>✕</button>
               </div>
             ))}
           </div>

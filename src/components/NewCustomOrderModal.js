@@ -130,15 +130,27 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
         <button onClick={addRow} style={{padding:"6px 14px",background:"rgba(59,91,139,0.08)",color:T.accent,border:`1px solid ${T.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit"}}>+ เพิ่มแถว</button>
       </div>
 
-      <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14,maxHeight:240,overflowY:"auto"}}>
+      <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:12,maxHeight:280,overflowY:"auto"}}>
         {items.map((r, idx) => (
-          <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 40px",gap:8,alignItems:"end",padding:10,background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:10}}>
-            <Input label="สี" value={r.colorName} onChange={e => setRow(idx, { colorName: e.target.value })}/>
-            <Input label="ไซส์ (พิมพ์เอง)" value={r.size} onChange={e => setRow(idx, { size: e.target.value })}/>
-            <Input label="จำนวน" type="number" value={r.qty} onChange={e => setRow(idx, { qty: e.target.value })}/>
-            {items.length > 1 && (
-              <button onClick={() => removeRow(idx)} title="ลบ" style={{padding:"7px 8px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:7,color:T.red,cursor:"pointer",fontSize:12,height:34}}>✕</button>
-            )}
+          <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 32px",gap:6,alignItems:"end",padding:"6px 8px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:7}}>
+            <div>
+              <label style={{fontSize:9,color:T.sub,display:"block",marginBottom:2}}>สี</label>
+              <input value={r.colorName} onChange={e => setRow(idx, { colorName: e.target.value })}
+                style={{width:"100%",background:"white",border:`1px solid ${T.inputBorder}`,borderRadius:6,padding:"5px 8px",fontFamily:"inherit",fontSize:12,outline:"none"}}/>
+            </div>
+            <div>
+              <label style={{fontSize:9,color:T.sub,display:"block",marginBottom:2}}>ไซส์ (พิมพ์เอง)</label>
+              <input value={r.size} onChange={e => setRow(idx, { size: e.target.value })}
+                style={{width:"100%",background:"white",border:`1px solid ${T.inputBorder}`,borderRadius:6,padding:"5px 8px",fontFamily:"inherit",fontSize:12,outline:"none"}}/>
+            </div>
+            <div>
+              <label style={{fontSize:9,color:T.sub,display:"block",marginBottom:2}}>จำนวน</label>
+              <input type="number" value={r.qty} onChange={e => setRow(idx, { qty: e.target.value })}
+                style={{width:"100%",background:"white",border:`1px solid ${T.inputBorder}`,borderRadius:6,padding:"5px 8px",fontFamily:"inherit",fontSize:12,outline:"none"}}/>
+            </div>
+            {items.length > 1 ? (
+              <button onClick={() => removeRow(idx)} title="ลบ" style={{padding:"5px 6px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,color:T.red,cursor:"pointer",fontSize:11,height:28}}>✕</button>
+            ) : <div/>}
           </div>
         ))}
       </div>
