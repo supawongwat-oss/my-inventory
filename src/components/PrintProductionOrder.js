@@ -1,4 +1,5 @@
 import React from "react";
+import { splitSizesIntoRows } from "../theme";
 
 const fmt = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtInt = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -92,8 +93,8 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                 </thead>
                 <tbody>
                   {groups.flatMap((g, gi) => {
-                    const chunks = [];
-                    for (let i = 0; i < g.sizes.length; i += MAX) chunks.push(g.sizes.slice(i, i + MAX));
+                    // ✨ ใช้ splitSizesIntoRows: kids/regular → 4 ต่อแถว, plus → 1 ต่อแถว
+                    const chunks = splitSizesIntoRows(g.sizes, MAX);
                     if (chunks.length === 0) chunks.push([]);
                     return chunks.map((chunk, ci) => {
                       const rowQty = chunk.reduce((s,x)=>s+x.qty, 0);

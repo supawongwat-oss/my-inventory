@@ -90,13 +90,21 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
       clothingName: jobName.trim(),
       clothingImage: images[0]?.dataUrl || "", // backward compat (รูปแรก)
       clothingImages: images,                  // [{dataUrl, label}]
-      items: validItems.map(r => ({
-        colorIdx: 0,
-        colorName: r.colorName.trim() || "-",
-        colorHex: r.colorHex || "#94a3b8",
-        size: r.size.trim() || "-",
-        qty: Number(r.qty) || 0,
-      })),
+      items: (() => {
+        // 🔑 colorIdx ต้องไม่ซ้ำกันต่อสี — ไม่งั้น invoice form จะรวมทุกสีเป็นกลุ่มเดียว
+        const colorMap = new Map(); // colorName → index
+        return validItems.map(r => {
+          const key = (r.colorName.trim() || "-") + "|" + (r.colorHex || "#94a3b8");
+          if (!colorMap.has(key)) colorMap.set(key, colorMap.size);
+          return {
+            colorIdx: colorMap.get(key),
+            colorName: r.colorName.trim() || "-",
+            colorHex: r.colorHex || "#94a3b8",
+            size: r.size.trim() || "-",
+            qty: Number(r.qty) || 0,
+          };
+        });
+      })(),
       totalQty,
       status: "พิมพ์ลาย",
       statusHistory: [{ status:"สร้างใบสั่งผลิต (custom)", at:nowStr(), by:user?.name || "", note:note || "" }],

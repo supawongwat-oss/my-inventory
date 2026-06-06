@@ -1,7 +1,7 @@
 ﻿import { useState, useRef, useEffect } from "react";
 import { db, authReady } from "./firebase";
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, serverTimestamp, query, orderBy } from "firebase/firestore";
-import { T, SIZES, PRESET_COLORS, MASTER_KEY, SIZE_GROUPS, getPriceForSize } from "./theme";
+import { T, SIZES, PRESET_COLORS, MASTER_KEY, SIZE_GROUPS, getPriceForSize, compareSizes, splitSizesIntoRows } from "./theme";
 import { INIT_USERS, ROLES, INIT_CATS } from "./constants";
 import { BarcodeDisplay, Modal, MHead, Toast, Input, BtnPrimary, BtnSuccess, BtnDanger, BtnGhost, Badge, CardBox } from "./components/ui";
 import LoginPage, { CompanyEditor } from "./components/LoginPage";
@@ -3243,7 +3243,7 @@ export default function App() {
                     <span style={{fontSize:11,color:T.sub,marginLeft:8}}>{g.colorName}</span>
                   </div>
                   <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
-                    {g.sizes.sort((a,b)=>SIZES.indexOf(a.size)-SIZES.indexOf(b.size)).map(s=>(
+                    {g.sizes.slice().sort((a,b)=>compareSizes(a.size,b.size)).map(s=>(
                       <span key={s.size} style={{background:"rgba(59,91,139,0.1)",border:"1px solid rgba(59,91,139,0.2)",borderRadius:6,padding:"2px 8px",fontSize:11,fontFamily:"monospace",color:T.accent,fontWeight:700}}>
                         {s.size}×{s.qty}
                       </span>
@@ -3355,16 +3355,9 @@ export default function App() {
                     acc[k].items.push(oi);
                     return acc;
                   },{})).flatMap((group,gi)=>{
-                    const sorted=[...group.items].sort((a,b)=>SIZES.indexOf(a.size)-SIZES.indexOf(b.size));
-                    const isPlus=(sz)=>/^[2-9]XL$/.test(sz);
-                    const isKid=(sz)=>/^\d+$/.test(sz);
-                    const kids=sorted.filter(i=>isKid(i.size));
-                    const adults=sorted.filter(i=>i.size&&!isKid(i.size)&&!isPlus(i.size));
-                    const plus=sorted.filter(i=>isPlus(i.size));
-                    const rows=[];
-                    if(kids.length) rows.push(kids.slice(0,4));
-                    if(adults.length) rows.push(adults.slice(0,4));
-                    plus.forEach(p=>rows.push([p]));
+                    // ✨ sort + group ด้วย helper (รองรับ 2XL-9XL, 6XL/7XL)
+                    const withSize = group.items.filter(i => i.size);
+                    const rows = splitSizesIntoRows(withSize, 4);
                     if(rows.length===0) rows.push([]);
                     const totalQty=group.items.reduce((s,i)=>s+i.qty,0);
                     // คำนวณราคารวมของ group นี้ (qty × salePrice ตามไซส์)
@@ -3548,17 +3541,12 @@ export default function App() {
                   </thead>
                   <tbody>
                     {groups.flatMap((group,gi)=>{
-                      const sorted=[...group.items].sort((a,b)=>SIZES.indexOf(a.size)-SIZES.indexOf(b.size));
-                      const isKid=(sz)=>/^\d+$/.test(sz);
-                      const noSize=sorted.filter(i=>!i.size);
-                      const kids=sorted.filter(i=>i.size&&isKid(i.size));
-                      const adults=sorted.filter(i=>i.size&&!isKid(i.size)&&!isPlus(i.size));
-                      const plus=sorted.filter(i=>i.size&&isPlus(i.size));
-                      const rows=[];
-                      if(kids.length) rows.push(kids.slice(0,4));
-                      if(adults.length) rows.push(adults.slice(0,4));
-                      plus.forEach(p=>rows.push([p]));
-                      noSize.forEach(n=>rows.push([n]));
+                      // ✨ ใช้ splitSizesIntoRows — sort + split อัตโนมัติ
+                      // S/M/L/XL 4 ต่อแถว, 2XL+ และ 6XL/7XL/9XL ต่างๆ 1 ต่อแถว
+                      const withSize = group.items.filter(i => i.size);
+                      const noSize = group.items.filter(i => !i.size);
+                      const rows = splitSizesIntoRows(withSize, 4);
+                      noSize.forEach(n => rows.push([n]));
                       if(rows.length===0) rows.push([]);
                       const totalQty=group.items.reduce((s,i)=>s+i.qty,0);
                       const totalPrice=group.items.reduce((s,i)=>s+(Number(i.unitPrice)||0)*i.qty,0);
@@ -3919,18 +3907,11 @@ export default function App() {
                     </thead>
                     <tbody>
                       {groups.flatMap((group,gi)=>{
-                        const sorted=[...group.items].sort((a,b)=>SIZES.indexOf(a.size)-SIZES.indexOf(b.size));
-                        const isPlus=(sz)=>/^[2-9]XL$/.test(sz);
-                        const isKid=(sz)=>/^\d+$/.test(sz);
-                        const noSize=sorted.filter(i=>!i.size);
-                        const kids=sorted.filter(i=>i.size&&isKid(i.size));
-                        const adults=sorted.filter(i=>i.size&&!isKid(i.size)&&!isPlus(i.size));
-                        const plus=sorted.filter(i=>i.size&&isPlus(i.size));
-                        const rows=[];
-                        if(kids.length) rows.push(kids.slice(0,4));
-                        if(adults.length) rows.push(adults.slice(0,4));
-                        plus.forEach(p=>rows.push([p]));
-                        noSize.forEach(n=>rows.push([n]));
+                        // ✨ sort + group (รองรับ 2XL-9XL)
+                        const withSize = group.items.filter(i => i.size);
+                        const noSize = group.items.filter(i => !i.size);
+                        const rows = splitSizesIntoRows(withSize, 4);
+                        noSize.forEach(n => rows.push([n]));
                         if(rows.length===0) rows.push([]);
                         return rows.map((chunk,ci)=>{
                           const rowQty=chunk.reduce((s,i)=>s+i.qty,0);

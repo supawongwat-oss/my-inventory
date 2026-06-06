@@ -45,6 +45,55 @@ export const sizeGroupKey = (sz) => {
   return g ? g.key : null;
 };
 
+// 🔢 sizeRank — comparator-friendly. รองรับ 6,8,10,12 / S,M,L,XL / 2XL-9XL / และไซส์ custom
+// ตัวเลขล้วน (kids) → 100-149
+// S=200, M=210, L=220, XL=230
+// 2XL=232, 3XL=233, ..., 9XL=239 (อิงเลขต่อจาก XL=230)
+// ไซส์อื่นๆ ที่พิมพ์เองไม่ตรง pattern → 900 + alphabetical
+export const sizeRank = (sz) => {
+  if (!sz) return 999;
+  const s = String(sz).trim().toUpperCase();
+  // kids/numeric
+  if (/^\d+$/.test(s)) return 100 + Math.min(49, Number(s));
+  // standard adult
+  if (s === "S") return 200;
+  if (s === "M") return 210;
+  if (s === "L") return 220;
+  if (s === "XL") return 230;
+  // plus sizes: NXL where N >= 2
+  const m = /^(\d+)XL$/.exec(s);
+  if (m) return 230 + Number(m[1]);
+  // anything else — push to end alphabetically
+  return 900 + (s.charCodeAt(0) || 0);
+};
+export const compareSizes = (a, b) => sizeRank(a) - sizeRank(b);
+
+// 🧩 splitSizesIntoRows — แบ่ง sizes ออกเป็นแถว ตามกฎ:
+//  - kids (numeric) ทุกตัวรวมแถวเดียว (max 4)
+//  - regular S/M/L/XL รวมแถวเดียว (max 4)
+//  - plus sizes (2XL+) ตัวละ 1 แถว
+//  - ไซส์ custom string → ตัวละ 1 แถว
+// items = [{ size, ...rest }] รับ object อะไรก็ได้ ตราบใดที่มี .size
+export const splitSizesIntoRows = (items, maxPerRow = 4) => {
+  const sorted = [...items].sort((a, b) => compareSizes(a.size, b.size));
+  const isKid = (sz) => /^\d+$/.test(String(sz||""));
+  const isReg = (sz) => ["S","M","L","XL"].includes(String(sz||"").toUpperCase());
+  const isPlus = (sz) => /^\d+XL$/i.test(String(sz||"")) && !isReg(sz);
+  const kids = sorted.filter(i => isKid(i.size));
+  const regs = sorted.filter(i => isReg(i.size));
+  const plus = sorted.filter(i => isPlus(i.size));
+  const other = sorted.filter(i => !isKid(i.size) && !isReg(i.size) && !isPlus(i.size));
+  const rows = [];
+  // kids 4 ต่อแถว
+  for (let i = 0; i < kids.length; i += maxPerRow) rows.push(kids.slice(i, i + maxPerRow));
+  // regs 4 ต่อแถว
+  for (let i = 0; i < regs.length; i += maxPerRow) rows.push(regs.slice(i, i + maxPerRow));
+  // plus + other ตัวละแถว
+  plus.forEach(p => rows.push([p]));
+  other.forEach(o => rows.push([o]));
+  return rows;
+};
+
 export const getPriceForSize = (col, sz) => {
   if (!col) return 0;
   const k = sizeGroupKey(sz);
