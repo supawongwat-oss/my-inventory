@@ -302,36 +302,37 @@ export default function LotDetailModal({
       />
       {toast && <Toast msg={toast}/>}
 
-      {/* Items */}
-      <div style={{padding:12,background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:10,marginBottom:12}}>
-        <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.06em"}}>รายการในล็อตนี้</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+      {/* Items — ใหญ่ขึ้นเพื่อเห็นรายการชัดเจน */}
+      <div style={{padding:18,background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:12,marginBottom:14}}>
+        <div style={{fontSize:13,fontWeight:700,color:T.accent,marginBottom:12,textTransform:"uppercase",letterSpacing:"0.06em"}}>📦 รายการในล็อตนี้</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
           {(lot.items || []).map((it, i) => (
-            <span key={i} style={{padding:"4px 10px",background:"white",border:`1px solid ${T.border}`,borderRadius:14,fontSize:12,display:"inline-flex",alignItems:"center",gap:6}}>
-              <span style={{width:10,height:10,borderRadius:2,background:it.colorHex||"#999"}}/>
-              <b style={{color:T.text}}>{it.colorName}</b>
-              <span style={{color:T.sub}}>/ {it.size}</span>
-              <span style={{fontFamily:"monospace",fontWeight:700,color:T.accent}}>× {fmtInt(it.qty)}</span>
+            <span key={i} style={{padding:"10px 16px",background:"white",border:`1px solid ${T.border}`,borderRadius:10,fontSize:15,display:"inline-flex",alignItems:"center",gap:10,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+              <span style={{width:14,height:14,borderRadius:3,background:it.colorHex||"#999",border:"1px solid rgba(0,0,0,0.1)"}}/>
+              <b style={{color:T.text,fontSize:15}}>{it.colorName}</b>
+              <span style={{color:T.sub,fontSize:14}}>/ {it.size}</span>
+              <span style={{fontFamily:"monospace",fontWeight:800,color:T.accent,fontSize:16}}>× {fmtInt(it.qty)}</span>
             </span>
           ))}
         </div>
       </div>
 
-      {/* Stepper */}
-      <div style={{display:"flex",alignItems:"center",gap:3,marginBottom:14,flexWrap:"wrap"}}>
+      {/* Stepper — เล็กลงครึ่งหนึ่ง */}
+      <div style={{display:"flex",alignItems:"center",gap:2,marginBottom:10,flexWrap:"wrap"}}>
         {steps.map((step, idx) => {
           const done = !isCancelled && idx <= currentIdx;
           const active = !isCancelled && idx === currentIdx;
           return (
             <div key={step} onClick={() => !active && !isCancelled && moveTo(step)}
               style={{
-                padding:"5px 10px", borderRadius:14, fontSize:11,
+                padding:"2px 6px", borderRadius:10, fontSize:9,
                 background: isCancelled ? "#f1f5f9" : (done ? "#3b5b8b" : "#f1f5f9"),
                 color: isCancelled ? T.muted : (done ? "white" : T.muted),
                 fontWeight: active ? 700 : 500,
-                border: active ? "2px solid #1e3a5f" : "none",
+                border: active ? "1px solid #1e3a5f" : "none",
                 cursor: active || isCancelled ? "default" : (canMoveTo(lot.status, step, userRole, steps) ? "pointer" : "not-allowed"),
                 opacity: canMoveTo(lot.status, step, userRole, steps) || done ? 1 : 0.5,
+                lineHeight:1.2,
               }}>
               {idx+1}.{step}
             </div>
@@ -380,28 +381,28 @@ export default function LotDetailModal({
         </div>
       )}
 
-      {/* Notes */}
-      <div style={{padding:12,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,marginBottom:12}}>
-        <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:8,textTransform:"uppercase",letterSpacing:"0.06em"}}>📝 หมายเหตุล็อต ({(lot.notes||[]).length})</div>
-        <div style={{maxHeight:220,overflowY:"auto",marginBottom:8}}>
+      {/* Notes — ย่อเล็กลง */}
+      <div style={{padding:8,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,marginBottom:10}}>
+        <div style={{fontSize:10,fontWeight:700,color:"#92400e",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>📝 หมายเหตุล็อต ({(lot.notes||[]).length})</div>
+        <div style={{maxHeight:140,overflowY:"auto",marginBottom:6}}>
           {(lot.notes || []).length === 0 ? (
             <div style={{fontSize:12,color:T.muted,textAlign:"center",padding:14}}>— ยังไม่มี —</div>
           ) : [...(lot.notes||[])].reverse().map((n, i, arr) => (
-            <div key={i} style={{padding:"8px 12px",background:"white",borderRadius:7,marginBottom:i<arr.length-1?6:0,fontSize:12}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                <span style={{fontWeight:600,color:T.text}}>{n.by || "ไม่ระบุ"}</span>
-                <span style={{color:T.muted,fontSize:11}}>{n.at}</span>
+            <div key={i} style={{padding:"5px 8px",background:"white",borderRadius:5,marginBottom:i<arr.length-1?4:0,fontSize:11}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
+                <span style={{fontWeight:600,color:T.text,fontSize:11}}>{n.by || "ไม่ระบุ"}</span>
+                <span style={{color:T.muted,fontSize:10}}>{n.at}</span>
               </div>
-              {n.text && <div style={{color:T.sub,whiteSpace:"pre-wrap",marginBottom:n.photoIds?.length?6:0}}>{n.text}</div>}
+              {n.text && <div style={{color:T.sub,whiteSpace:"pre-wrap",marginBottom:n.photoIds?.length?4:0,fontSize:11}}>{n.text}</div>}
               {(n.photoIds || []).length > 0 && (
-                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
                   {n.photoIds.map((pid, j) => {
                     const url = photoCache[pid];
                     return url ? (
                       <img key={j} src={url} alt="" onClick={() => setLightbox(url)}
-                        style={{width:62,height:62,objectFit:"cover",borderRadius:6,border:`1px solid ${T.border}`,cursor:"zoom-in"}}/>
+                        style={{width:46,height:46,objectFit:"cover",borderRadius:4,border:`1px solid ${T.border}`,cursor:"zoom-in"}}/>
                     ) : (
-                      <div key={j} style={{width:62,height:62,borderRadius:6,background:"#f1f5f9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,color:T.muted}}>⏳</div>
+                      <div key={j} style={{width:46,height:46,borderRadius:4,background:"#f1f5f9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,color:T.muted}}>⏳</div>
                     );
                   })}
                 </div>
@@ -424,17 +425,17 @@ export default function LotDetailModal({
           </div>
         )}
 
-        <div style={{display:"flex",gap:6}}>
+        <div style={{display:"flex",gap:4}}>
           <input value={noteText} onChange={e => setNoteText(e.target.value)}
-            placeholder="พิมพ์ข้อความ หรือกด 📷 แนบรูป"
+            placeholder="พิมพ์ข้อความ หรือ 📷 แนบรูป"
             onKeyDown={e => e.key === "Enter" && handleAddNote()}
-            style={{flex:1,padding:"7px 12px",border:`1px solid ${T.border}`,borderRadius:7,fontSize:12,fontFamily:"'Sarabun',sans-serif",outline:"none",background:"white"}}/>
+            style={{flex:1,padding:"5px 10px",border:`1px solid ${T.border}`,borderRadius:5,fontSize:11,fontFamily:"'Sarabun',sans-serif",outline:"none",background:"white"}}/>
           <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}}
             onChange={e => handlePickFiles(Array.from(e.target.files || []))}/>
           <button onClick={() => fileRef.current?.click()} disabled={busy}
-            title="แนบรูป" style={{padding:"7px 12px",border:`1px solid #fde68a`,borderRadius:7,background:"white",color:"#92400e",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>📷</button>
+            title="แนบรูป" style={{padding:"5px 9px",border:`1px solid #fde68a`,borderRadius:5,background:"white",color:"#92400e",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>📷</button>
           <button onClick={handleAddNote} disabled={busy || (!noteText.trim() && pendingPhotos.length === 0)}
-            style={{padding:"7px 14px",border:"none",borderRadius:7,background:"#92400e",color:"white",fontSize:12,fontWeight:600,cursor:(noteText.trim()||pendingPhotos.length)?"pointer":"not-allowed",opacity:(noteText.trim()||pendingPhotos.length)?1:0.5,fontFamily:"inherit"}}>+ เพิ่ม</button>
+            style={{padding:"5px 10px",border:"none",borderRadius:5,background:"#92400e",color:"white",fontSize:11,fontWeight:600,cursor:(noteText.trim()||pendingPhotos.length)?"pointer":"not-allowed",opacity:(noteText.trim()||pendingPhotos.length)?1:0.5,fontFamily:"inherit"}}>+ เพิ่ม</button>
         </div>
       </div>
 
@@ -446,19 +447,19 @@ export default function LotDetailModal({
         </div>
       )}
 
-      {/* History */}
-      <div style={{padding:12,background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:10,marginBottom:12}}>
-        <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.06em"}}>📋 ประวัติสถานะ</div>
-        <div style={{maxHeight:120,overflowY:"auto"}}>
+      {/* History — เล็กมาก */}
+      <div style={{padding:6,background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:6,marginBottom:10}}>
+        <div style={{fontSize:9,fontWeight:700,color:T.muted,marginBottom:3,textTransform:"uppercase",letterSpacing:"0.05em"}}>📋 ประวัติสถานะ</div>
+        <div style={{maxHeight:80,overflowY:"auto"}}>
           {(lot.statusHistory || []).length === 0 ? (
-            <div style={{fontSize:12,color:T.muted,textAlign:"center",padding:8}}>— ยังไม่มีประวัติ —</div>
+            <div style={{fontSize:10,color:T.muted,textAlign:"center",padding:6}}>— ยังไม่มีประวัติ —</div>
           ) : [...(lot.statusHistory||[])].reverse().map((h, i) => (
-            <div key={i} style={{padding:"6px 0",fontSize:12,borderBottom:i < lot.statusHistory.length-1 ? `1px solid ${T.border}` : "none"}}>
+            <div key={i} style={{padding:"3px 0",fontSize:10,borderBottom:i < lot.statusHistory.length-1 ? `1px solid ${T.border}` : "none"}}>
               <div style={{display:"flex",justifyContent:"space-between"}}>
-                <span style={{fontWeight:600,color:STATUS_COLORS[h.status] || T.text}}>{h.status}</span>
-                <span style={{color:T.muted,fontSize:11}}>{h.at}</span>
+                <span style={{fontWeight:600,color:STATUS_COLORS[h.status] || T.text,fontSize:10}}>{h.status}</span>
+                <span style={{color:T.muted,fontSize:9}}>{h.at}</span>
               </div>
-              <div style={{color:T.sub,fontSize:11}}>{h.by}{h.note ? ` · ${h.note}` : ""}</div>
+              <div style={{color:T.sub,fontSize:9}}>{h.by}{h.note ? ` · ${h.note}` : ""}</div>
             </div>
           ))}
         </div>
