@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { deleteDoc, doc } from "firebase/firestore";
+import { deleteDoc, doc, collection, getDocs, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import BOMEditor from "../components/BOMEditor";
@@ -77,6 +77,34 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
     if (!window.confirm(`ลบ BOM สำหรับ "${b.clothingName}" ?`)) return;
     await deleteDoc(doc(db, "boms", b.id));
     logAudit(user, { action: AUDIT_ACTIONS.DELETE, collection:"boms", targetId:b.id, targetLabel:`BOM · ${b.clothingName}` });
+  };
+
+  // ลบใบสั่งผลิตทั้งใบ + sub-collection photos (สำหรับ custom + production)
+  const handleDeleteOrder = async (o, collectionName) => {
+    const msg = `ลบใบสั่งผลิต "${o.prodNo}" ทั้งใบ?\n\n⚠️ การลบนี้ย้อนคืนไม่ได้`;
+    if (!window.confirm(msg)) return;
+    try {
+      // ลบ photos ใน sub-collection ก่อน
+      try {
+        const photoSnap = await getDocs(collection(db, collectionName, o.id, "photos"));
+        if (!photoSnap.empty) {
+          const batch = writeBatch(db);
+          photoSnap.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        }
+      } catch (e) { console.warn("[deleteOrder] photo cleanup failed:", e); }
+      await deleteDoc(doc(db, collectionName, o.id));
+      logAudit(user, {
+        action: AUDIT_ACTIONS.DELETE,
+        collection: collectionName,
+        targetId: o.id,
+        targetLabel: `${o.prodNo} · ${o.clothingName || ""}`,
+        note: `ลบใบสั่งผลิต (${o.status || "-"})`,
+      });
+    } catch (e) {
+      console.error("[deleteOrder] failed:", e);
+      alert("ลบไม่สำเร็จ: " + (e.message || e));
+    }
   };
 
   return (
@@ -184,6 +212,9 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
                     <div style={{display:"flex",gap:6,justifyContent:"flex-end"}} onClick={e=>e.stopPropagation()}>
                       <button onClick={()=>setPrintOrder(o)} title="พิมพ์" style={{padding:"6px 10px",borderRadius:7,border:"1px solid rgba(59,91,139,0.25)",background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:12}}>🖨️</button>
                       <button onClick={()=>setStatusOrder(o)} title="สถานะ" style={{padding:"6px 10px",borderRadius:7,border:"1px solid rgba(16,185,129,0.25)",background:"rgba(16,185,129,0.08)",color:"#059669",cursor:"pointer",fontSize:12}}>⚙️</button>
+                      {(role?.canDelete || user?.role === "admin" || user?.role === "manager") && (
+                        <button onClick={()=>handleDeleteOrder(o, "productionOrders")} title="ลบใบนี้" style={{padding:"6px 10px",borderRadius:7,border:"1px solid rgba(248,113,113,0.3)",background:"rgba(248,113,113,0.08)",color:T.red,cursor:"pointer",fontSize:13,fontWeight:600}}>🗑</button>
+                      )}
                     </div>
                   </div>
                 );
@@ -236,6 +267,9 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
                     </div>
                     <div style={{display:"flex",gap:6,justifyContent:"flex-end"}} onClick={e=>e.stopPropagation()}>
                       <button onClick={()=>setPrintOrder(o)} title="พิมพ์" style={{padding:"6px 10px",borderRadius:7,border:"1px solid rgba(59,91,139,0.25)",background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:12}}>🖨️</button>
+                      {(role?.canDelete || user?.role === "admin" || user?.role === "manager") && (
+                        <button onClick={()=>handleDeleteOrder(o, "customOrders")} title="ลบใบนี้" style={{padding:"6px 10px",borderRadius:7,border:"1px solid rgba(248,113,113,0.3)",background:"rgba(248,113,113,0.08)",color:T.red,cursor:"pointer",fontSize:13,fontWeight:600}}>🗑</button>
+                      )}
                     </div>
                   </div>
                 );
