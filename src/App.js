@@ -247,7 +247,8 @@ export default function App() {
   const [invoiceForm, setInvoiceForm] = useState({
     customerId:"", customerName:"", customerPhone:"", customerAddress:"", customerTaxId:"",
     items:[], note:"", dueDate:"", vatRate:7,
-    discount:0, discountType:"amount" // ส่วนลดท้ายบิล (amount หรือ percent)
+    discount:0, discountType:"amount", // ส่วนลดท้ายบิล (amount หรือ percent)
+    showCompanyTaxId: true, // แสดงเลขผู้เสียภาษีของบริษัทในบิลหรือไม่
   });
   const [invoiceItemForm, setInvoiceItemForm] = useState({ description:"", qty:"", unitPrice:"", unit:"ชิ้น" });
   const [addItemCollapsed, setAddItemCollapsed] = useState(false); // พับฟอร์มเพิ่มรายการ
@@ -2068,7 +2069,6 @@ export default function App() {
               printElementById={printElementById}
               onCreateInvoiceFromCustom={(orders)=>{
                 if (!orders?.length) return;
-                // pre-fill invoice form จาก custom orders ที่เลือก
                 const first = orders[0];
                 const items = [];
                 orders.forEach(o => {
@@ -2084,20 +2084,28 @@ export default function App() {
                     });
                   });
                 });
-                setInvoiceForm({
-                  customerId: first.customerId||"",
-                  customerName: first.customerName||"",
-                  customerPhone: first.customerPhone||"",
-                  customerAddress: first.customerAddress||"",
-                  customerTaxId: first.customerTaxId||"",
-                  items,
-                  note: `จาก Custom Order: ${orders.map(o=>o.prodNo).join(", ")}`,
-                  dueDate: "",
-                  vatRate: 7,
-                  discount: 0,
-                  discountType: "amount",
-                });
+                // ลำดับสำคัญ: เปิด modal "ก่อน" จากนั้นค่อย set form
+                // (กัน user กดปุ่ม "+ ออกบิลใหม่" ที่ reset form)
+                setInvoiceDocType("receipt");
+                setInvoiceVat(false);
+                setShowNewInvoice(true);
                 setActiveTab("invoice");
+                // set form ใน next tick เพื่อให้ modal ติด
+                setTimeout(() => {
+                  setInvoiceForm({
+                    customerId: first.customerId||"",
+                    customerName: first.customerName||"",
+                    customerPhone: first.customerPhone||"",
+                    customerAddress: first.customerAddress||"",
+                    customerTaxId: first.customerTaxId||"",
+                    items,
+                    note: `จาก Custom Order: ${orders.map(o=>o.prodNo).join(", ")}`,
+                    dueDate: "",
+                    vatRate: 7,
+                    discount: 0,
+                    discountType: "amount",
+                  });
+                }, 50);
               }}
             />
           )}
@@ -3428,11 +3436,17 @@ export default function App() {
                 ))}
               </div>
             </div>
-            <div style={{display:"flex",alignItems:"flex-end",gap:10}}>
+            <div style={{display:"flex",alignItems:"flex-end",gap:10,flexWrap:"wrap"}}>
               <label style={{display:"flex",alignItems:"center",gap:8,cursor:invoiceDocType==="tax"?"not-allowed":"pointer",padding:"7px 14px",borderRadius:8,border:`1px solid ${invoiceVat?"#3b5b8b":T.border}`,background:invoiceVat?"rgba(59,91,139,0.15)":"transparent",opacity:invoiceDocType==="tax"?0.8:1}}
                 title={invoiceDocType==="tax"?"ใบกำกับภาษีต้องมี VAT 7% เสมอ":""}>
                 <input type="checkbox" checked={invoiceVat} disabled={invoiceDocType==="tax"} onChange={e=>setInvoiceVat(e.target.checked)} style={{cursor:invoiceDocType==="tax"?"not-allowed":"pointer"}}/>
                 <span style={{fontSize:12,color:invoiceVat?T.accent:T.sub,fontWeight:invoiceVat?700:400}}>VAT {invoiceForm.vatRate}% {invoiceDocType==="tax"&&<span style={{color:T.red,fontSize:10,marginLeft:4}}>🔒 บังคับ</span>}</span>
+              </label>
+              <label style={{display:"flex",alignItems:"center",gap:8,cursor:invoiceDocType==="tax"?"not-allowed":"pointer",padding:"7px 14px",borderRadius:8,border:`1px solid ${invoiceForm.showCompanyTaxId!==false?"#3b5b8b":T.border}`,background:invoiceForm.showCompanyTaxId!==false?"rgba(59,91,139,0.15)":"transparent",opacity:invoiceDocType==="tax"?0.8:1}}
+                title={invoiceDocType==="tax"?"ใบกำกับภาษีต้องแสดงเลขผู้เสียภาษีบริษัทเสมอ":"แสดง/ซ่อนเลขผู้เสียภาษีของบริษัทในบิล"}>
+                <input type="checkbox" checked={invoiceForm.showCompanyTaxId!==false} disabled={invoiceDocType==="tax"}
+                  onChange={e=>setInvoiceForm(f=>({...f,showCompanyTaxId:e.target.checked}))} style={{cursor:invoiceDocType==="tax"?"not-allowed":"pointer"}}/>
+                <span style={{fontSize:12,color:invoiceForm.showCompanyTaxId!==false?T.accent:T.sub,fontWeight:invoiceForm.showCompanyTaxId!==false?700:400}}>แสดงเลขผู้เสียภาษีบริษัท {invoiceDocType==="tax"&&<span style={{color:T.red,fontSize:10,marginLeft:4}}>🔒 บังคับ</span>}</span>
               </label>
             </div>
           </div>
@@ -3776,7 +3790,7 @@ export default function App() {
                     {companyInfo.phone&&<div style={{fontSize:10,color:"#000"}}>โทร: {companyInfo.phone}</div>}
                     {companyInfo.email&&<div style={{fontSize:10,color:"#000"}}>{companyInfo.email}</div>}
                   </div>
-                  {companyInfo.taxId&&<div style={{fontSize:10,color:"#000",marginTop:1}}>เลขผู้เสียภาษี: {companyInfo.taxId}</div>}
+                  {(showPrintInvoice.showCompanyTaxId!==false)&&companyInfo.taxId&&<div style={{fontSize:10,color:"#000",marginTop:1}}>เลขผู้เสียภาษี: {companyInfo.taxId}</div>}
                 </div>
 
                 {/* ประเภทเอกสาร + เลขที่ */}
@@ -3833,7 +3847,7 @@ export default function App() {
                   {companyInfo.phone&&<div style={{fontSize:11,color:"#000",marginBottom:1}}>โทร: {companyInfo.phone}</div>}
                   {companyInfo.email&&<div style={{fontSize:11,color:"#000",marginBottom:1}}>{companyInfo.email}</div>}
                   {companyInfo.address&&<div style={{fontSize:11,color:"#000",lineHeight:1.5,marginTop:2}}>{companyInfo.address}</div>}
-                  {companyInfo.taxId&&<div style={{fontSize:11,color:"#000",marginTop:1}}>เลขผู้เสียภาษี: {companyInfo.taxId}</div>}
+                  {(showPrintInvoice.showCompanyTaxId!==false)&&companyInfo.taxId&&<div style={{fontSize:11,color:"#000",marginTop:1}}>เลขผู้เสียภาษี: {companyInfo.taxId}</div>}
                 </div>
               </div>
 

@@ -25,6 +25,8 @@ export default function LotDetailModal({
   const [pendingPhotos, setPendingPhotos] = useState([]); // [{dataUrl, sizeKB}]
   const [photoCache, setPhotoCache] = useState({}); // {photoId: dataUrl}
   const [lightbox, setLightbox] = useState(null);    // dataUrl
+  const [editMode, setEditMode] = useState(false);
+  const [editItems, setEditItems] = useState([]);
   const fileRef = useRef(null);
 
   const lots = getLots(order);
@@ -238,6 +240,41 @@ export default function LotDetailModal({
   // unused import suppression
   void addLotNote;
 
+  // ── edit lot items (admin/manager) ──
+  const startEdit = () => {
+    setEditItems((lot.items || []).map(it => ({ ...it, qty: String(it.qty) })));
+    setEditMode(true);
+  };
+  const cancelEdit = () => { setEditMode(false); setEditItems([]); };
+  const saveEdit = async () => {
+    if (busy) return;
+    const cleaned = editItems
+      .map(it => ({ ...it, qty: Math.max(0, Number(it.qty) || 0) }))
+      .filter(it => it.qty > 0);
+    if (cleaned.length === 0) { setToast("ต้องมีอย่างน้อย 1 รายการ"); return; }
+    setBusy(true);
+    try {
+      const newLots = lots.map((l, i) => i === lotIdx ? { ...l, items: cleaned } : l);
+      await persistLots(newLots);
+      logAudit(user, {
+        action: AUDIT_ACTIONS.UPDATE,
+        collection: collectionName,
+        targetId: order.id,
+        targetLabel: `${order.prodNo} · ${lot.lotId}`,
+        note: `แก้ไขรายการล็อต (${cleaned.length} รายการ, ${cleaned.reduce((s,i)=>s+i.qty,0)} ตัว)`,
+      });
+      setToast("บันทึกรายการสำเร็จ");
+      setEditMode(false);
+    } catch (e) {
+      console.error(e); setToast("ผิดพลาด: " + (e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const updateEditItem = (idx, patch) => setEditItems(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it));
+  const removeEditItem = (idx) => setEditItems(prev => prev.filter((_, i) => i !== idx));
+  const addEditItem = () => setEditItems(prev => [...prev, { colorName: "", colorHex: "#999", colorIdx: 0, size: "", qty: "1" }]);
+
   // ── delete lot (admin/manager) ──
   const handleDeleteLot = async () => {
     if (busy) return;
@@ -304,17 +341,45 @@ export default function LotDetailModal({
 
       {/* Items — ใหญ่ขึ้นเพื่อเห็นรายการชัดเจน */}
       <div style={{padding:18,background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:12,marginBottom:14}}>
-        <div style={{fontSize:13,fontWeight:700,color:T.accent,marginBottom:12,textTransform:"uppercase",letterSpacing:"0.06em"}}>📦 รายการในล็อตนี้</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
-          {(lot.items || []).map((it, i) => (
-            <span key={i} style={{padding:"10px 16px",background:"white",border:`1px solid ${T.border}`,borderRadius:10,fontSize:15,display:"inline-flex",alignItems:"center",gap:10,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
-              <span style={{width:14,height:14,borderRadius:3,background:it.colorHex||"#999",border:"1px solid rgba(0,0,0,0.1)"}}/>
-              <b style={{color:T.text,fontSize:15}}>{it.colorName}</b>
-              <span style={{color:T.sub,fontSize:14}}>/ {it.size}</span>
-              <span style={{fontFamily:"monospace",fontWeight:800,color:T.accent,fontSize:16}}>× {fmtInt(it.qty)}</span>
-            </span>
-          ))}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+          <div style={{fontSize:13,fontWeight:700,color:T.accent,textTransform:"uppercase",letterSpacing:"0.06em"}}>📦 รายการในล็อตนี้</div>
+          {(userRole === "admin" || userRole === "manager") && !isCancelled && !editMode && (
+            <button onClick={startEdit} style={{padding:"5px 12px",borderRadius:7,border:"1px solid rgba(59,91,139,0.3)",background:"rgba(59,91,139,0.08)",color:T.accent,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>✏️ แก้ไข</button>
+          )}
         </div>
+        {editMode ? (
+          <>
+            <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
+              {editItems.map((it, idx) => (
+                <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr 1fr 80px 32px",gap:6,alignItems:"center",padding:6,background:"white",border:`1px solid ${T.border}`,borderRadius:7}}>
+                  <input value={it.colorName} onChange={e => updateEditItem(idx, { colorName: e.target.value })} placeholder="สี"
+                    style={{padding:"5px 8px",border:`1px solid ${T.border}`,borderRadius:5,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+                  <input value={it.size} onChange={e => updateEditItem(idx, { size: e.target.value })} placeholder="ไซส์"
+                    style={{padding:"5px 8px",border:`1px solid ${T.border}`,borderRadius:5,fontSize:12,outline:"none",fontFamily:"inherit",textAlign:"center"}}/>
+                  <input type="number" min="0" value={it.qty} onChange={e => updateEditItem(idx, { qty: e.target.value })} placeholder="จำนวน"
+                    style={{padding:"5px 8px",border:`1px solid ${T.border}`,borderRadius:5,fontSize:12,outline:"none",fontFamily:"monospace",textAlign:"center"}}/>
+                  <button onClick={() => removeEditItem(idx)} style={{padding:"4px 6px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:5,color:T.red,fontSize:11,cursor:"pointer"}}>✕</button>
+                </div>
+              ))}
+              <button onClick={addEditItem} style={{padding:"6px 12px",background:"rgba(22,163,74,0.08)",border:"1px solid rgba(22,163,74,0.3)",borderRadius:6,color:T.green,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>+ เพิ่มรายการ</button>
+            </div>
+            <div style={{display:"flex",gap:6}}>
+              <BtnGhost onClick={cancelEdit} disabled={busy} style={{flex:1,fontSize:12,padding:"6px"}}>ยกเลิก</BtnGhost>
+              <BtnPrimary onClick={saveEdit} disabled={busy} style={{flex:2,fontSize:12,padding:"6px"}}>{busy ? "กำลังบันทึก..." : "💾 บันทึก"}</BtnPrimary>
+            </div>
+          </>
+        ) : (
+          <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
+            {(lot.items || []).map((it, i) => (
+              <span key={i} style={{padding:"10px 16px",background:"white",border:`1px solid ${T.border}`,borderRadius:10,fontSize:15,display:"inline-flex",alignItems:"center",gap:10,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+                <span style={{width:14,height:14,borderRadius:3,background:it.colorHex||"#999",border:"1px solid rgba(0,0,0,0.1)"}}/>
+                <b style={{color:T.text,fontSize:15}}>{it.colorName}</b>
+                <span style={{color:T.sub,fontSize:14}}>/ {it.size}</span>
+                <span style={{fontFamily:"monospace",fontWeight:800,color:T.accent,fontSize:16}}>× {fmtInt(it.qty)}</span>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Stepper — เล็กลงครึ่งหนึ่ง */}
