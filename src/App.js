@@ -2074,12 +2074,14 @@ export default function App() {
                 orders.forEach(o => {
                   (o.items||[]).forEach(it => {
                     items.push({
-                      description: `${o.clothingName} / ${it.colorName||"-"} / ${it.size||"-"}`,
+                      // เก็บ description ให้สั้น (ชื่อรุ่นพอ) — สี/ไซส์/qty มี column ของตัวเอง
+                      description: o.clothingName || "",
                       qty: Number(it.qty)||0,
                       unitPrice: Number(o.costSnapshot?.totalCostPerPiece)||0,
                       unit: "ตัว",
-                      colorHex: it.colorHex,
-                      colorName: it.colorName,
+                      colorHex: it.colorHex || "",
+                      colorName: it.colorName || "",
+                      size: it.size || "",
                       _fromCustom: o.prodNo,
                     });
                   });
@@ -3603,13 +3605,48 @@ export default function App() {
                         );
                       });
                     })}
+                    {generic.length>1 && (
+                      <tr style={{background:"rgba(217,119,6,0.06)"}}>
+                        <td colSpan={13} style={{padding:"6px 10px",border:`1px solid ${T.border}`,fontSize:11}}>
+                          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                            <span style={{color:"#92400e",fontWeight:600}}>🎨 ใส่สีให้ทุกแถว ({generic.length} รายการ):</span>
+                            <select onChange={e => {
+                              const idx = e.target.value;
+                              if (idx === "") return;
+                              const p = PRESET_COLORS[idx];
+                              if (!p) return;
+                              const genericIds = generic.map(g => g.__i);
+                              setInvoiceForm(f => ({...f, items: f.items.map((x,j) => genericIds.includes(j) ? {...x, colorName:p.name, colorHex:p.hex} : x)}));
+                              e.target.value = "";
+                            }} style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:6,padding:"4px 8px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
+                              <option value="">เลือกสี...</option>
+                              {PRESET_COLORS.map((c,i) => <option key={i} value={i}>{c.name}</option>)}
+                            </select>
+                            <input type="color" onChange={e => {
+                              const hex = e.target.value;
+                              const genericIds = generic.map(g => g.__i);
+                              setInvoiceForm(f => ({...f, items: f.items.map((x,j) => genericIds.includes(j) ? {...x, colorHex:hex} : x)}));
+                            }} style={{width:32,height:24,border:`1px solid ${T.inputBorder}`,borderRadius:4,cursor:"pointer",padding:1}} title="เลือกสีกำหนดเอง"/>
+                            <input placeholder="หรือพิมพ์ชื่อสีเอง" onKeyDown={e => {
+                              if (e.key === "Enter" && e.target.value.trim()) {
+                                const name = e.target.value.trim();
+                                const genericIds = generic.map(g => g.__i);
+                                setInvoiceForm(f => ({...f, items: f.items.map((x,j) => genericIds.includes(j) ? {...x, colorName:name} : x)}));
+                                e.target.value = "";
+                              }
+                            }} style={{flex:"1 1 140px",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:6,padding:"4px 8px",fontSize:11,outline:"none",fontFamily:"inherit"}}/>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                     {generic.map(it=>(
                       <tr key={`g-${it.__i}`}>
                         <td colSpan={10} style={{padding:"6px 10px",fontWeight:500,border:`1px solid ${T.border}`}}>
-                          <div style={{display:"flex",alignItems:"center",gap:6}}>
-                            {it.colorHex&&<div style={{width:10,height:10,borderRadius:2,background:it.colorHex,border:"1px solid rgba(255,255,255,0.15)",flexShrink:0}}/>}
-                            <span>{it.description}</span>
-                            {it.colorName&&<span style={{color:T.sub,fontSize:10}}>· {it.colorName}</span>}
+                          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                            {it.colorHex&&<div style={{width:12,height:12,borderRadius:3,background:it.colorHex,border:"1px solid rgba(0,0,0,0.2)",flexShrink:0}}/>}
+                            <span style={{fontWeight:600}}>{it.description}</span>
+                            {it.colorName&&<span style={{padding:"1px 6px",background:"rgba(59,91,139,0.08)",color:T.accent,borderRadius:8,fontSize:10,fontWeight:600}}>{it.colorName}</span>}
+                            {it.size&&<span style={{padding:"1px 6px",background:"rgba(16,185,129,0.08)",color:T.green,borderRadius:8,fontSize:10,fontFamily:"monospace",fontWeight:700}}>{it.size}</span>}
                             {it.unit&&<span style={{color:T.muted,fontSize:10}}>· {it.unit}</span>}
                           </div>
                         </td>

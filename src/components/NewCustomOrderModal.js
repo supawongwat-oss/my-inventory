@@ -5,6 +5,7 @@ import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { generateDocNo } from "../utils/docNumber";
 import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
+import { PRESET_COLORS } from "../theme";
 
 const T = { border:"#e3e8ef", sub:"#5b6b85", text:"#1f2a44", muted:"#8a9bb3", accent:"#3b5b8b", input:"#f6f8fb", inputBorder:"#d8dee9", red:"#dc2626" };
 const fmt = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -196,10 +197,35 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
       </div>
 
       {/* รายการ */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
         <div style={{fontSize:13,fontWeight:600,color:T.text}}>📦 รายการผลิต ({validItems.length} แถว · รวม {fmtInt(totalQty)} ตัว)</div>
         <button onClick={addRow} style={{padding:"6px 14px",background:"rgba(59,91,139,0.08)",color:T.accent,border:`1px solid ${T.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit"}}>+ เพิ่มแถว</button>
       </div>
+
+      {/* ใส่สีเดียวกันให้ทุกแถว */}
+      {items.length > 1 && (
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"5px 10px",background:"rgba(217,119,6,0.06)",border:"1px solid rgba(217,119,6,0.2)",borderRadius:7,flexWrap:"wrap"}}>
+          <span style={{fontSize:11,color:"#92400e",fontWeight:600}}>🎨 ใส่สีเดียวกันให้ทุกแถว:</span>
+          <select onChange={e => {
+            const idx = e.target.value;
+            if (idx === "") return;
+            const p = PRESET_COLORS[idx];
+            if (!p) return;
+            setItems(prev => prev.map(r => ({ ...r, colorName: p.name })));
+            e.target.value = "";
+          }} style={{background:"white",border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:5,padding:"3px 6px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
+            <option value="">เลือก...</option>
+            {PRESET_COLORS.map((c,i) => <option key={i} value={i}>{c.name}</option>)}
+          </select>
+          <input placeholder="หรือพิมพ์ชื่อสี" onKeyDown={e => {
+            if (e.key === "Enter" && e.target.value.trim()) {
+              const name = e.target.value.trim();
+              setItems(prev => prev.map(r => ({ ...r, colorName: name })));
+              e.target.value = "";
+            }
+          }} style={{flex:"1 1 100px",background:"white",border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:5,padding:"3px 6px",fontSize:11,outline:"none",fontFamily:"inherit"}}/>
+        </div>
+      )}
 
       <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:12,maxHeight:280,overflowY:"auto"}}>
         {items.map((r, idx) => (
