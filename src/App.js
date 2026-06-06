@@ -3850,24 +3850,24 @@ export default function App() {
                           const rowSub=chunk.reduce((s,i)=>s+(Number(i.unitPrice)||0)*i.qty,0);
                           return (
                             <tr key={`${gi}-${ci}`} style={{background:gi%2===0?"white":"#f8fafc"}}>
-                              {ci===0&&(
-                                <td rowSpan={rows.length} style={{padding:"5px 7px",fontWeight:600,color:"#000",verticalAlign:"middle",border:"1px solid #000",fontSize:11,width:60,textAlign:"center"}}>{group.clothingName}</td>
-                              )}
-                              {ci===0&&(
-                                <td rowSpan={rows.length} style={{padding:"5px 7px",verticalAlign:"middle",border:"1px solid #000",fontSize:11,color:"#000",width:70}}>
+                              <td style={{padding:"5px 7px",fontWeight:600,color:"#000",verticalAlign:"middle",border:"1px solid #000",fontSize:11,width:60,textAlign:"center"}}>
+                                {ci===0 ? group.clothingName : " "}
+                              </td>
+                              <td style={{padding:"5px 7px",verticalAlign:"middle",border:"1px solid #000",fontSize:11,color:"#000",width:70}}>
+                                {ci===0 ? (
                                   <div style={{display:"flex",alignItems:"center",gap:4,justifyContent:"center"}}>
                                     <div style={{width:9,height:9,borderRadius:2,background:group.colorHex,border:"1px solid #000",flexShrink:0}}/>
                                     <span>{group.colorName}</span>
                                   </div>
-                                </td>
-                              )}
+                                ) : " "}
+                              </td>
                               {chunk.map(it=>[
                                 <td key={`s-${it.size}`} style={{padding:"6px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#000",border:"1px solid #000",background:"#f1f5f9",fontSize:13}}>{it.size}</td>,
                                 <td key={`q-${it.size}`} style={{padding:"6px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:13}}>{it.qty}</td>
                               ])}
                               {Array(4-chunk.length).fill(null).flatMap((_,i)=>[
-                                <td key={`e1-${ci}-${i}`} style={{border:"1px solid #cbd5e1",background:"#fafafa"}}/>,
-                                <td key={`e2-${ci}-${i}`} style={{border:"1px solid #cbd5e1"}}/>
+                                <td key={`e1-${ci}-${i}`} style={{border:"1px solid #000",background:"#f8fafc"}}/>,
+                                <td key={`e2-${ci}-${i}`} style={{border:"1px solid #000",background:"#f8fafc"}}/>
                               ])}
                               <td style={{padding:"7px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:14,color:"#000",verticalAlign:"middle",border:"1px solid #000"}}>{rowQty}</td>
                               {(()=>{
