@@ -663,14 +663,29 @@ export default function App() {
 
   const handleConfirmOrder = async () => {
     if (!orderForm.customerName || orderForm.items.length === 0) return;
-    // Cut stock for each item
+    // จัดกลุ่ม items ตาม clothingId เพื่อรวมการตัดสต๊อกใน updateDoc เดียว
+    // (กันบั๊กเดิม: loop เขียนทับ colors ทั้งก้อนจาก snapshot เดิม ทำให้รอบหลังลบล้างรอบก่อน)
+    const byClothing = new Map();
     for (const oi of orderForm.items) {
-      const item = clothingItems.find(i => i.id === oi.clothingId);
-      if (!item) continue;
-      const newColors = item.colors.map((c, i) =>
-        i === oi.colorIdx ? { ...c, stock: { ...c.stock, [oi.size]: Math.max(0, ((c.stock||{})[oi.size]||0) - oi.qty) } } : c
-      );
-      await updateDoc(doc(db, "clothing", oi.clothingId), { colors: newColors });
+      if (!clothingItems.find(i => i.id === oi.clothingId)) continue;
+      if (!byClothing.has(oi.clothingId)) byClothing.set(oi.clothingId, []);
+      byClothing.get(oi.clothingId).push(oi);
+    }
+    for (const [clothingId, ois] of byClothing) {
+      const item = clothingItems.find(i => i.id === clothingId);
+      const newColors = item.colors.map((c, i) => {
+        const cuts = ois.filter(oi => oi.colorIdx === i);
+        if (cuts.length === 0) return c;
+        const newStock = { ...(c.stock || {}) };
+        for (const oi of cuts) {
+          newStock[oi.size] = Math.max(0, (newStock[oi.size] || 0) - oi.qty);
+        }
+        return { ...c, stock: newStock };
+      });
+      await updateDoc(doc(db, "clothing", clothingId), { colors: newColors });
+    }
+    for (const oi of orderForm.items) {
+      if (!clothingItems.find(i => i.id === oi.clothingId)) continue;
       await addDoc(collection(db, "transactions"), {
         type: "จ่าย", code: oi.clothingId,
         name: `${oi.clothingName} / ${oi.colorName} / ${oi.size}`,
