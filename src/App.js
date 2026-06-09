@@ -3494,8 +3494,8 @@ export default function App() {
                           <td key={`q-${oi.size}`} style={{padding:"8px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#059669",border:"1px solid #e2e8f0",fontSize:14}}>{oi.qty}</td>
                         ])}
                         {Array(4-chunk.length).fill(null).flatMap((_,i)=>[
-                          <td key={`e1-${ci}-${i}`} style={{border:"1px solid #f1f5f9",background:"#fafafa"}}/>,
-                          <td key={`e2-${ci}-${i}`} style={{border:"1px solid #f1f5f9"}}/>
+                          <td key={`e1-${ci}-${i}`} style={{border:"1px solid #e2e8f0",background:"#fafafa"}}/>,
+                          <td key={`e2-${ci}-${i}`} style={{border:"1px solid #e2e8f0",background:"#fafafa"}}/>
                         ])}
                         <td style={{padding:"9px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:16,color:"#3b5b8b",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>{ci===lastIdx?totalQty:""}</td>
                       </tr>
@@ -3688,8 +3688,8 @@ export default function App() {
                               </td>
                             ])}
                             {Array(4-chunk.length).fill(null).flatMap((_,i)=>[
-                              <td key={`e1-${ci}-${i}`} style={{border:`1px solid ${T.border}`,background:"rgba(241,243,246,0.4)"}}/>,
-                              <td key={`e2-${ci}-${i}`} style={{border:`1px solid ${T.border}`,background:"rgba(241,243,246,0.4)"}}/>
+                              <td key={`e1-${ci}-${i}`} style={{border:`1px solid ${T.border}`,background:"#fafafa"}}/>,
+                              <td key={`e2-${ci}-${i}`} style={{border:`1px solid ${T.border}`,background:"#fafafa"}}/>
                             ])}
                             <td style={{padding:"6px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:T.accent,verticalAlign:"middle",border:`1px solid ${T.border}`}}>{rowQty}</td>
                             <td style={{padding:"4px 8px",textAlign:"right",verticalAlign:"middle",border:`1px solid ${T.border}`}}>

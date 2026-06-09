@@ -112,8 +112,8 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                             <td key={`q-${i}`} style={{padding:"4px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:11}}>{fmtInt(c.qty)}</td>
                           ]))}
                           {Array(MAX - chunk.length).fill(null).flatMap((_,i)=>([
-                            <td key={`e1-${i}`} style={{border:"1px solid #ccc",background:"#fafafa"}}/>,
-                            <td key={`e2-${i}`} style={{border:"1px solid #ccc"}}/>
+                            <td key={`e1-${i}`} style={{border:"1px solid #000",background:"#fafafa"}}/>,
+                            <td key={`e2-${i}`} style={{border:"1px solid #000",background:"#fafafa"}}/>
                           ]))}
                           <td style={{padding:"4px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:800,fontSize:12,color:"#000",border:"1px solid #000",verticalAlign:"middle"}}>{fmtInt(rowQty)}</td>
                         </tr>
