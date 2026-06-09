@@ -39,8 +39,54 @@ export default function Catalog() {
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState("");
   const [detail, setDetail] = useState(null);
-  const [order, setOrder] = useState(null); // {item, sizeQty, color, name, phone, address, note}
+  const [order, setOrder] = useState(null); // {item, qtyMap} — สร้างก่อน add to cart
+  const [cart, setCart] = useState([]); // [{itemId, itemName, itemCategory, lines:[{colorIdx,color,colorHex,size,qty}]}]
+  const [showCart, setShowCart] = useState(false);
+  const [checkout, setCheckout] = useState(null); // {name, phone, address, note}
   const [sent, setSent] = useState(false);
+
+  // 💾 persist cart in localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("cpu_cart");
+      if (saved) setCart(JSON.parse(saved));
+    } catch (e) {}
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem("cpu_cart", JSON.stringify(cart)); } catch (e) {}
+  }, [cart]);
+
+  const cartTotalQty = cart.reduce((s, it) => s + it.lines.reduce((a,l)=>a+(l.qty||0),0), 0);
+  const cartTotalItems = cart.length;
+
+  const addToCart = (entry) => {
+    setCart(prev => {
+      // ถ้ามี item เดิมอยู่แล้ว (itemId เดียวกัน) → merge lines เข้าด้วยกัน
+      const existIdx = prev.findIndex(c => c.itemId === entry.itemId);
+      if (existIdx < 0) return [...prev, entry];
+      const merged = [...prev];
+      // รวม lines: ถ้า colorIdx+size ตรง → บวกจำนวน, ไม่ตรง → push ใหม่
+      const existLines = [...merged[existIdx].lines];
+      entry.lines.forEach(newLn => {
+        const dup = existLines.findIndex(l => l.colorIdx === newLn.colorIdx && l.size === newLn.size);
+        if (dup >= 0) existLines[dup] = { ...existLines[dup], qty: existLines[dup].qty + newLn.qty };
+        else existLines.push(newLn);
+      });
+      merged[existIdx] = { ...merged[existIdx], lines: existLines };
+      return merged;
+    });
+  };
+  const removeFromCart = (idx) => setCart(prev => prev.filter((_, i) => i !== idx));
+  const removeLine = (entryIdx, lineIdx) => setCart(prev => prev.map((e, i) => {
+    if (i !== entryIdx) return e;
+    const lines = e.lines.filter((_, j) => j !== lineIdx);
+    return { ...e, lines };
+  }).filter(e => e.lines.length > 0));
+  const updateLineQty = (entryIdx, lineIdx, qty) => setCart(prev => prev.map((e, i) => {
+    if (i !== entryIdx) return e;
+    return { ...e, lines: e.lines.map((l, j) => j === lineIdx ? { ...l, qty: Math.max(1, Number(qty)||1) } : l) };
+  }));
+  const clearCart = () => setCart([]);
 
   useEffect(() => {
     const u1 = onSnapshot(collection(db, "clothing"), s =>
@@ -99,7 +145,17 @@ export default function Catalog() {
             <div style={{ fontSize: 22, fontWeight: 800, color: T.blue, letterSpacing: 1 }}>{company.name || "CPU"}</div>
             <div style={{ fontSize: 12, color: T.sub }}>แคตตาล็อกสินค้า • Catalog</div>
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {/* 🛒 Cart button */}
+            <button onClick={()=>setShowCart(true)}
+              style={{ position: "relative", background: cartTotalQty > 0 ? T.green : "white", color: cartTotalQty > 0 ? "white" : T.sub, border: `1px solid ${cartTotalQty > 0 ? T.green : T.border}`, padding: "10px 16px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontFamily: "inherit" }}>
+              🛒 ตะกร้า
+              {cartTotalQty > 0 && (
+                <span style={{ background: "white", color: T.green, borderRadius: 12, padding: "1px 9px", fontSize: 12, fontWeight: 800, minWidth: 22, textAlign: "center" }}>
+                  {cartTotalQty}
+                </span>
+              )}
+            </button>
             {lineHref && (
               <a href={lineHref} target="_blank" rel="noreferrer" style={{ background: T.line, color: "white", padding: "10px 16px", borderRadius: 8, fontSize: 13, fontWeight: 700, textDecoration: "none", display: "flex", alignItems: "center", gap: 6 }}>
                 💬 LINE {company.lineId || ""}
@@ -237,35 +293,23 @@ export default function Catalog() {
               {lineHref && (
                 <a href={lineHref} target="_blank" rel="noreferrer" style={{ flex: 1, background: T.line, color: "white", padding: "12px", textAlign: "center", borderRadius: 8, textDecoration: "none", fontWeight: 700, fontSize: 13 }}>💬 ติดต่อ LINE</a>
               )}
-              <button onClick={() => { setOrder({ item: detail, name: "", phone: "", address: "", note: "", qtyMap: {} }); setDetail(null); }}
-                style={{ flex: 1, background: T.blue, color: "white", padding: "12px", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>🛒 สั่งซื้อ</button>
+              <button onClick={() => { setOrder({ item: detail, qtyMap: {} }); setDetail(null); }}
+                style={{ flex: 1, background: T.blue, color: "white", padding: "12px", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>➕ เพิ่มลงตะกร้า</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ORDER FORM */}
+      {/* ORDER FORM — เลือกขนาด/สี แล้วใส่ตะกร้า */}
       {order && (
-        <div onClick={() => !sent && setOrder(null)} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 110, padding: 12 }}>
+        <div onClick={() => setOrder(null)} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 110, padding: 12 }}>
           <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: 14, maxWidth: 720, width: "100%", maxHeight: "92vh", overflowY: "auto" }}>
-            {sent ? (
-              <div style={{ padding: 36, textAlign: "center" }}>
-                <div style={{ fontSize: 56 }}>✅</div>
-                <div style={{ fontSize: 18, fontWeight: 700, marginTop: 10, color: T.green }}>ส่งคำสั่งซื้อเรียบร้อย!</div>
-                <div style={{ fontSize: 13, color: T.sub, marginTop: 6 }}>ทีมงานจะติดต่อกลับโดยเร็ว</div>
-                <button onClick={() => { setOrder(null); setSent(false); }} style={{ marginTop: 18, background: T.blue, color: "white", padding: "10px 26px", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700 }}>ปิด</button>
-              </div>
-            ) : (
               <>
                 <div style={{ padding: 16, borderBottom: `1px solid ${T.border}` }}>
-                  <div style={{ fontSize: 16, fontWeight: 800 }}>🛒 สั่งซื้อ: {order.item.model || order.item.name}</div>
-                  <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>กรอกข้อมูล → ทีมงานจะติดต่อกลับเพื่อยืนยันยอด</div>
+                  <div style={{ fontSize: 16, fontWeight: 800 }}>➕ เลือกขนาด: {order.item.model || order.item.name}</div>
+                  <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>กรอกจำนวนในช่องไซส์ที่ต้องการ → เพิ่มลงตะกร้า</div>
                 </div>
                 <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-                  <Field label="ชื่อ / ร้านค้า *" value={order.name} onChange={v => setOrder({ ...order, name: v })} />
-                  <Field label="เบอร์โทร *" value={order.phone} onChange={v => setOrder({ ...order, phone: v })} />
-                  <Field label="ที่อยู่จัดส่ง" value={order.address} onChange={v => setOrder({ ...order, address: v })} textarea />
-
                   <div style={{ fontSize: 12, color: T.sub, fontWeight: 600, marginTop: 6 }}>รายการสั่งซื้อ (กรอกจำนวนในช่องไซส์ที่ต้องการ)</div>
                   {(() => {
                     const colors = order.item.colors || [];
@@ -345,12 +389,10 @@ export default function Catalog() {
                     );
                   })()}
 
-                  <Field label="หมายเหตุ (ถ้ามี)" value={order.note} onChange={v => setOrder({ ...order, note: v })} textarea />
                 </div>
                 <div style={{ padding: 14, borderTop: `1px solid ${T.border}`, display: "flex", gap: 8, background: "#f8fafc", borderRadius: "0 0 14px 14px" }}>
                   <button onClick={() => setOrder(null)} style={{ flex: 1, background: "white", border: `1px solid ${T.border}`, padding: 12, borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>ยกเลิก</button>
-                  <button onClick={async () => {
-                    if (!order.name.trim() || !order.phone.trim()) { alert("กรุณากรอกชื่อและเบอร์โทร"); return; }
+                  <button onClick={() => {
                     // flatten qtyMap → lines
                     const valid = [];
                     Object.entries(order.qtyMap || {}).forEach(([ci, row]) => {
@@ -359,7 +401,7 @@ export default function Catalog() {
                       if (!col) return;
                       Object.entries(row).forEach(([size, qty]) => {
                         if (qty > 0) valid.push({
-                          colorIdx: idx, // 🔑 ใช้ index ตรง ๆ — convert จะ lookup จาก index ไม่ใช่ชื่อ
+                          colorIdx: idx,
                           color: col.name || guessColorName(col.hex, idx),
                           colorHex: col.hex || "",
                           size: size || "",
@@ -368,26 +410,142 @@ export default function Catalog() {
                       });
                     });
                     if (valid.length === 0) { alert("กรุณากรอกจำนวนอย่างน้อย 1 ช่อง"); return; }
+                    addToCart({
+                      itemId: order.item?.id || "",
+                      itemName: order.item?.model || order.item?.name || "(ไม่ระบุชื่อสินค้า)",
+                      itemCategory: order.item?.category || "",
+                      lines: valid,
+                    });
+                    setOrder(null);
+                    setShowCart(true); // เปิดตะกร้าเลย — เห็นสิ่งที่เพิ่งใส่
+                  }} style={{ flex: 2, background: T.green, color: "white", padding: 12, border: "none", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontWeight: 700 }}>➕ เพิ่มลงตะกร้า</button>
+                </div>
+              </>
+          </div>
+        </div>
+      )}
+
+      {/* 🛒 CART DRAWER */}
+      {showCart && (
+        <div onClick={()=>setShowCart(false)} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.65)", display: "flex", alignItems: "stretch", justifyContent: "flex-end", zIndex: 120 }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background: "white", width: "100%", maxWidth: 540, height: "100%", overflowY: "auto", display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: 16, borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: T.text }}>🛒 ตะกร้าสินค้า</div>
+                <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{cartTotalItems} รุ่น · {cartTotalQty} ชิ้น</div>
+              </div>
+              <button onClick={()=>setShowCart(false)} style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 8, padding: "6px 12px", cursor: "pointer", color: T.sub }}>✕</button>
+            </div>
+
+            <div style={{ flex: 1, padding: 16, overflowY: "auto" }}>
+              {cart.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 60, color: T.muted }}>
+                  <div style={{ fontSize: 56 }}>🛒</div>
+                  <div style={{ marginTop: 12, fontSize: 14 }}>ตะกร้าว่าง</div>
+                  <div style={{ fontSize: 12, marginTop: 6 }}>เลือกสินค้าจากแคตตาล็อกได้เลย</div>
+                  <button onClick={()=>setShowCart(false)} style={{ marginTop: 16, background: T.blue, color: "white", padding: "10px 20px", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>← เลือกสินค้า</button>
+                </div>
+              ) : cart.map((entry, ei) => {
+                const entryQty = entry.lines.reduce((s,l)=>s+(l.qty||0),0);
+                return (
+                  <div key={ei} style={{ background: "#f8fafc", borderRadius: 10, padding: 12, marginBottom: 10, border: `1px solid ${T.border}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>📦 {entry.itemName}</div>
+                        <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>รวม {entryQty} ชิ้น</div>
+                      </div>
+                      <button onClick={()=>removeFromCart(ei)} title="ลบทั้งรุ่น" style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>🗑 ลบ</button>
+                    </div>
+                    {entry.lines.map((ln, li) => (
+                      <div key={li} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", background: "white", borderRadius: 6, marginBottom: 4 }}>
+                        <div style={{ width: 14, height: 14, borderRadius: 3, background: ln.colorHex || "#ddd", border: "1px solid rgba(0,0,0,.15)" }} />
+                        <span style={{ fontSize: 12, fontWeight: 600, minWidth: 90 }}>{ln.color}</span>
+                        <span style={{ fontSize: 12, color: T.sub, minWidth: 50 }}>ไซส์ <b>{ln.size}</b></span>
+                        <input type="number" min="1" value={ln.qty} onChange={e=>updateLineQty(ei, li, e.target.value)} onFocus={e=>e.target.select()}
+                          style={{ width: 60, padding: "4px 6px", borderRadius: 5, border: `1px solid ${T.border}`, fontSize: 12, textAlign: "center", fontFamily: "inherit" }} />
+                        <button onClick={()=>removeLine(ei, li)} style={{ background: "#fee2e2", color: "#991b1b", border: "none", borderRadius: 4, padding: "3px 7px", cursor: "pointer", fontSize: 11 }}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+
+            {cart.length > 0 && (
+              <div style={{ padding: 14, borderTop: `1px solid ${T.border}`, background: "#f8fafc" }}>
+                <button onClick={clearCart} style={{ width: "100%", background: "white", color: T.red, border: `1px solid #fecaca`, padding: 10, borderRadius: 8, marginBottom: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600 }}>🗑 ล้างตะกร้า</button>
+                <button onClick={()=>{ setCheckout({ name: "", phone: "", address: "", note: "" }); }}
+                  style={{ width: "100%", background: T.green, color: "white", border: "none", padding: 14, borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: 14 }}>
+                  💳 ดำเนินการสั่งซื้อ ({cartTotalQty} ชิ้น)
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 💳 CHECKOUT MODAL */}
+      {checkout && (
+        <div onClick={()=>!sent && setCheckout(null)} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 130, padding: 12 }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background: "white", borderRadius: 14, maxWidth: 480, width: "100%", maxHeight: "92vh", overflowY: "auto" }}>
+            {sent ? (
+              <div style={{ padding: 36, textAlign: "center" }}>
+                <div style={{ fontSize: 56 }}>✅</div>
+                <div style={{ fontSize: 18, fontWeight: 700, marginTop: 10, color: T.green }}>ส่งคำสั่งซื้อเรียบร้อย!</div>
+                <div style={{ fontSize: 13, color: T.sub, marginTop: 6 }}>ทีมงานจะติดต่อกลับโดยเร็ว</div>
+                <button onClick={()=>{ setCheckout(null); setShowCart(false); setSent(false); clearCart(); }} style={{ marginTop: 18, background: T.blue, color: "white", padding: "10px 26px", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>ปิด</button>
+              </div>
+            ) : (
+              <>
+                <div style={{ padding: 16, borderBottom: `1px solid ${T.border}` }}>
+                  <div style={{ fontSize: 16, fontWeight: 800 }}>💳 ข้อมูลการสั่งซื้อ</div>
+                  <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>{cartTotalItems} รุ่น · {cartTotalQty} ชิ้น · ทีมงานจะติดต่อยืนยันยอด</div>
+                </div>
+                <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+                  <Field label="ชื่อ / ร้านค้า *" value={checkout.name} onChange={v=>setCheckout({...checkout, name: v})} />
+                  <Field label="เบอร์โทร *" value={checkout.phone} onChange={v=>setCheckout({...checkout, phone: v})} />
+                  <Field label="ที่อยู่จัดส่ง" value={checkout.address} onChange={v=>setCheckout({...checkout, address: v})} textarea />
+                  <Field label="หมายเหตุ (ถ้ามี)" value={checkout.note} onChange={v=>setCheckout({...checkout, note: v})} textarea />
+                </div>
+                <div style={{ padding: 14, borderTop: `1px solid ${T.border}`, display: "flex", gap: 8, background: "#f8fafc", borderRadius: "0 0 14px 14px" }}>
+                  <button onClick={()=>setCheckout(null)} style={{ flex: 1, background: "white", border: `1px solid ${T.border}`, padding: 12, borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>← กลับ</button>
+                  <button onClick={async()=>{
+                    if (!checkout.name.trim() || !checkout.phone.trim()) { alert("กรุณากรอกชื่อและเบอร์โทร"); return; }
                     try {
-                      // build payload + ลบ undefined ออกทั้งหมด (Firestore ไม่รับ undefined)
+                      // 🛒 multi-item payload
                       const payload = {
-                        customerName: (order.name || "").trim(),
-                        phone: (order.phone || "").trim(),
-                        address: (order.address || "").trim(),
-                        note: (order.note || "").trim(),
-                        itemId: (order.item && order.item.id) || "",
-                        itemName: (order.item && (order.item.model || order.item.name)) || "(ไม่ระบุชื่อสินค้า)",
-                        itemCategory: (order.item && order.item.category) || "",
-                        lines: valid,
-                        totalQty: valid.reduce((s, l) => s + (Number(l.qty) || 0), 0),
+                        customerName: (checkout.name||"").trim(),
+                        phone: (checkout.phone||"").trim(),
+                        address: (checkout.address||"").trim(),
+                        note: (checkout.note||"").trim(),
+                        items: cart.map(e => ({
+                          itemId: e.itemId || "",
+                          itemName: e.itemName || "",
+                          itemCategory: e.itemCategory || "",
+                          lines: e.lines.map(l => ({
+                            colorIdx: typeof l.colorIdx === "number" ? l.colorIdx : 0,
+                            color: l.color || "",
+                            colorHex: l.colorHex || "",
+                            size: l.size || "",
+                            qty: Number(l.qty) || 0,
+                          })),
+                        })),
+                        // backward-compat: ส่งของรุ่นแรกเป็น top-level fields ด้วย (Inbox/Convert เก่าจะอ่านได้)
+                        itemId: cart[0]?.itemId || "",
+                        itemName: cart[0]?.itemName || "(หลายรุ่น)",
+                        itemCategory: cart[0]?.itemCategory || "",
+                        lines: cart.flatMap(e => e.lines.map(l => ({
+                          ...l,
+                          itemId: e.itemId, itemName: e.itemName,
+                        }))),
+                        totalQty: cartTotalQty,
                         status: "new",
                         source: "catalog",
                         createdAt: serverTimestamp(),
                       };
-                      // strip undefined recursively
-                      const clean = JSON.parse(JSON.stringify(payload, (k, v) => v === undefined ? null : v));
-                      clean.createdAt = serverTimestamp(); // serverTimestamp ผ่าน JSON ไม่ได้ → ใส่กลับ
-                      await addDoc(collection(db, "catalogOrders"), clean);
+                      const clean = JSON.parse(JSON.stringify(payload, (k,v) => v === undefined ? null : v));
+                      clean.createdAt = serverTimestamp();
+                      await addDoc(collection(db,"catalogOrders"), clean);
                       setSent(true);
                     } catch (e) {
                       alert("เกิดข้อผิดพลาด: " + e.message);

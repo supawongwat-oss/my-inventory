@@ -2726,27 +2726,31 @@ export default function App() {
                   customerId = cref.id;
                 }
                 // mode === "none" → customerId = "" (one-time)
-                // 2) แปลง lines → items (lookup clothing + color + price)
+                // 2) แปลง entries → items (รองรับ multi-item cart + single-item เก่า)
                 const items = [];
-                for (const ln of (co.lines||[])) {
-                  const ci = clothingItems.find(c => c.id === co.itemId);
+                const cartEntries = (co.items && co.items.length > 0)
+                  ? co.items
+                  : [{ itemId: co.itemId, itemName: co.itemName, lines: co.lines || [] }];
+                for (const entry of cartEntries) {
+                  const ci = clothingItems.find(c => c.id === entry.itemId);
                   if (!ci) continue;
-                  // 🔑 ใช้ colorIdx ที่แนบมา (ใหม่) > fallback หาจากชื่อ (เก่า)
-                  let colorIdx = (typeof ln.colorIdx === "number" && ln.colorIdx >= 0)
-                    ? ln.colorIdx
-                    : (ci.colors||[]).findIndex(c => c.name === ln.color);
-                  if (colorIdx < 0 || colorIdx >= (ci.colors||[]).length) continue;
-                  const colorData = ci.colors[colorIdx];
-                  const unitPrice = getPriceForSize(colorData, ln.size) || 0;
-                  items.push({
-                    clothingId: ci.id,
-                    clothingName: ci.model || ci.name || `สินค้า ${ci.id.slice(0,6)}`,
-                    colorIdx,
-                    colorName: colorData.name || ln.color || `สี #${colorIdx+1}`,
-                    size: ln.size,
-                    qty: Number(ln.qty)||0,
-                    unitPrice,
-                  });
+                  for (const ln of (entry.lines||[])) {
+                    let colorIdx = (typeof ln.colorIdx === "number" && ln.colorIdx >= 0)
+                      ? ln.colorIdx
+                      : (ci.colors||[]).findIndex(c => c.name === ln.color);
+                    if (colorIdx < 0 || colorIdx >= (ci.colors||[]).length) continue;
+                    const colorData = ci.colors[colorIdx];
+                    const unitPrice = getPriceForSize(colorData, ln.size) || 0;
+                    items.push({
+                      clothingId: ci.id,
+                      clothingName: ci.model || ci.name || `สินค้า ${ci.id.slice(0,6)}`,
+                      colorIdx,
+                      colorName: colorData.name || ln.color || `สี #${colorIdx+1}`,
+                      size: ln.size,
+                      qty: Number(ln.qty)||0,
+                      unitPrice,
+                    });
+                  }
                 }
                 if (items.length === 0) {
                   alert("⚠️ ไม่สามารถแปลงได้ — ไม่พบสินค้า/สี/ไซส์ ที่ตรงกับในระบบ\n(สินค้าอาจถูกลบไปแล้ว)");

@@ -81,38 +81,46 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
                 </div>
 
                 {(() => {
-                  // 🔄 lookup ชื่อสด จาก clothingItems (กันกรณีตอนสั่งยังไม่ได้กรอกชื่อ)
-                  const liveItem = clothingItems.find(c => c.id === o.itemId);
-                  const itemName = (liveItem && (liveItem.model || liveItem.name)) || o.itemName || "(ไม่ระบุชื่อสินค้า)";
-                  const itemMissing = !liveItem && o.itemId;
-                  return (
-                    <div style={{ background:"#f8fafc", borderRadius: 8, padding: 10, marginBottom: 8 }}>
-                      <div style={{ fontSize: 12, color: T.sub, fontWeight: 600, marginBottom: 6, display:"flex", alignItems:"center", gap:6 }}>
-                        📦 {itemName}
-                        {itemMissing && <span style={{ fontSize: 10, color: "#b94a48", background: "#fee2e2", padding: "1px 6px", borderRadius: 4 }}>⚠️ สินค้าถูกลบจาก ERP</span>}
-                        {!o.itemId && <span style={{ fontSize: 10, color: "#b94a48", background: "#fee2e2", padding: "1px 6px", borderRadius: 4 }}>⚠️ ไม่มี itemId</span>}
-                        {o.itemId && <span style={{ fontSize: 9, color: T.muted, fontFamily: "monospace" }}>id: {String(o.itemId).slice(0,8)}…</span>}
+                  // 🛒 รองรับ 2 format:
+                  //  - ใหม่: o.items = [{itemId, itemName, lines:[...]}, ...] — multi-item cart
+                  //  - เก่า: o.itemId/itemName + o.lines (single item)
+                  const entries = (o.items && o.items.length > 0)
+                    ? o.items
+                    : [{ itemId: o.itemId, itemName: o.itemName, lines: o.lines || [] }];
+                  return entries.map((entry, ei) => {
+                    const liveItem = clothingItems.find(c => c.id === entry.itemId);
+                    const itemName = (liveItem && (liveItem.model || liveItem.name)) || entry.itemName || "(ไม่ระบุชื่อสินค้า)";
+                    const itemMissing = !liveItem && entry.itemId;
+                    const entryQty = (entry.lines||[]).reduce((s,l)=>s+(Number(l.qty)||0),0);
+                    return (
+                      <div key={ei} style={{ background:"#f8fafc", borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                        <div style={{ fontSize: 12, color: T.sub, fontWeight: 600, marginBottom: 6, display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+                          📦 {itemName}
+                          <span style={{ fontSize: 10, color: T.blue, background: "#dbeafe", padding: "1px 6px", borderRadius: 4 }}>{entryQty} ชิ้น</span>
+                          {itemMissing && <span style={{ fontSize: 10, color: "#b94a48", background: "#fee2e2", padding: "1px 6px", borderRadius: 4 }}>⚠️ สินค้าถูกลบจาก ERP</span>}
+                          {!entry.itemId && <span style={{ fontSize: 10, color: "#b94a48", background: "#fee2e2", padding: "1px 6px", borderRadius: 4 }}>⚠️ ไม่มี itemId</span>}
+                          {entry.itemId && <span style={{ fontSize: 9, color: T.muted, fontFamily: "monospace" }}>id: {String(entry.itemId).slice(0,8)}…</span>}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {(entry.lines||[]).map((ln, i) => {
+                            const liveCol = (liveItem && typeof ln.colorIdx === "number") ? (liveItem.colors||[])[ln.colorIdx] : null;
+                            const colorHex = (liveCol && liveCol.hex) || ln.colorHex || "#ddd";
+                            const colorName = (liveCol && liveCol.name) || ln.color || guessColor(colorHex) || "(ไม่ระบุสี)";
+                            return (
+                              <div key={i} style={{ fontSize: 12, color: T.text, display: "flex", gap: 8, alignItems: "center" }}>
+                                <span style={{ minWidth: 110, display: "flex", alignItems: "center", gap: 5 }}>
+                                  <span style={{ width: 12, height: 12, borderRadius: 3, background: colorHex, border: "1px solid rgba(0,0,0,.2)", display: "inline-block" }} />
+                                  สี: <b>{colorName}</b>
+                                </span>
+                                <span style={{ minWidth: 80 }}>ไซส์: <b>{ln.size}</b></span>
+                                <span>จำนวน: <b style={{ color: T.blue }}>{ln.qty}</b></span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                        {(o.lines||[]).map((ln, i) => {
-                          // lookup สีสดจาก color index ใน clothing item ปัจจุบัน
-                          const liveCol = (liveItem && typeof ln.colorIdx === "number") ? (liveItem.colors||[])[ln.colorIdx] : null;
-                          const colorHex = (liveCol && liveCol.hex) || ln.colorHex || "#ddd";
-                          const colorName = (liveCol && liveCol.name) || ln.color || guessColor(colorHex) || "(ไม่ระบุสี)";
-                          return (
-                            <div key={i} style={{ fontSize: 12, color: T.text, display: "flex", gap: 8, alignItems: "center" }}>
-                              <span style={{ minWidth: 110, display: "flex", alignItems: "center", gap: 5 }}>
-                                <span style={{ width: 12, height: 12, borderRadius: 3, background: colorHex, border: "1px solid rgba(0,0,0,.2)", display: "inline-block" }} />
-                                สี: <b>{colorName}</b>
-                              </span>
-                              <span style={{ minWidth: 80 }}>ไซส์: <b>{ln.size}</b></span>
-                              <span>จำนวน: <b style={{ color: T.blue }}>{ln.qty}</b></span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
+                    );
+                  });
                 })()}
 
                 {o.address && <div style={{ fontSize: 12, color: T.sub, marginBottom: 4 }}>📍 {o.address}</div>}
