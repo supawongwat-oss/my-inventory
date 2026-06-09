@@ -1080,10 +1080,36 @@ export default function App() {
     doc.close();
     // มือถือต้อง delay มากกว่า desktop
     const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
-    const trigger = () => {
+    // 🩹 Android/iOS Chrome: iframe.contentWindow.print() บน iframe 0×0 จะไป print parent แทน
+    //    → ใช้ @media print CSS ซ่อนทุกอย่างยกเว้น print area แล้วเรียก window.print() ตรง ๆ
+    const triggerMobile = () => {
+      iframe.remove();
+      document.title = prevTitle;
+      const styleId = "__print_only_style__";
+      const prev = document.getElementById(styleId);
+      if (prev) prev.remove();
+      const style = document.createElement("style");
+      style.id = styleId;
+      style.textContent = `
+        @page { size: ${pageSize}; margin: ${pageMargin}; }
+        @media print {
+          body * { visibility: hidden !important; }
+          #${id}, #${id} * { visibility: visible !important; }
+          #${id} { position: fixed !important; left: 0; top: 0; width: 100%; background: white; z-index: 2147483647; }
+          .no-print, [data-no-print="true"] { display: none !important; }
+        }
+      `;
+      document.head.appendChild(style);
+      setTimeout(() => {
+        try { window.print(); } catch(e){}
+        setTimeout(() => { style.remove(); }, 1500);
+      }, 100);
+    };
+    const triggerDesktop = () => {
       try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e){}
       setTimeout(() => { iframe.remove(); document.title = prevTitle; }, 2000);
     };
+    const trigger = isMobile ? triggerMobile : triggerDesktop;
     if (doc.fonts && doc.fonts.ready) {
       doc.fonts.ready.then(() => setTimeout(trigger, isMobile ? 600 : 200));
     } else {
