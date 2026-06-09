@@ -3664,9 +3664,6 @@ export default function App() {
                       const rows = splitSizesIntoRows(withSize, 4);
                       noSize.forEach(n => rows.push([n]));
                       if(rows.length===0) rows.push([]);
-                      const totalQty=group.items.reduce((s,i)=>s+i.qty,0);
-                      const totalPrice=group.items.reduce((s,i)=>s+(Number(i.unitPrice)||0)*i.qty,0);
-                      const lastIdx=rows.length-1;
                       return rows.map((chunk,ci)=>{
                         const rowUnit=chunk[0]?.unitPrice||0;
                         const rowQty=chunk.reduce((s,i)=>s+i.qty,0);
@@ -3703,9 +3700,7 @@ export default function App() {
                                 style={{width:72,textAlign:"right",background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.3)",borderRadius:5,color:"#34d399",fontFamily:"monospace",fontSize:11,fontWeight:600,padding:"4px 6px",outline:"none"}}/>
                             </td>
                             <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#34d399",verticalAlign:"middle",border:`1px solid ${T.border}`}}>
-                              {ci===lastIdx&&rows.length>1
-                                ? <div><div style={{fontSize:10,color:T.muted,fontWeight:400}}>แถว ฿{rowSub.toLocaleString("th-TH",{minimumFractionDigits:2})}</div><div>฿{totalPrice.toLocaleString("th-TH",{minimumFractionDigits:2})}</div></div>
-                                : `฿${rowSub.toLocaleString("th-TH",{minimumFractionDigits:2})}`}
+                              ฿{rowSub.toLocaleString("th-TH",{minimumFractionDigits:2})}
                             </td>
                             <td style={{textAlign:"center",border:`1px solid ${T.border}`}}>{ci===0&&<button onClick={()=>removeGroup(group.items)} style={{background:"none",border:"none",color:"#f87171",cursor:"pointer",fontSize:13}}>✕</button>}</td>
                           </tr>
