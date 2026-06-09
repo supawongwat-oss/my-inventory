@@ -1085,40 +1085,59 @@ export default function App() {
     const triggerMobile = () => {
       iframe.remove();
       document.title = prevTitle;
+      // ใช้ฟอนต์ระบบ (ไม่ดึง web font CDN) — กัน Samsung print framework timeout
+      // มีปุ่ม "พิมพ์" ในหน้าใหม่ไว้กดเองด้วย เผื่อ auto-print ไม่ติด
       const html = `<!doctype html><html><head><meta charset="utf-8"/>
-        <title></title>
+        <title>พิมพ์เอกสาร</title>
         <link rel="icon" href="data:,">
-        <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
         <style>
           @page { size: ${pageSize}; margin: ${pageMargin}; }
-          html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun', sans-serif; }
+          html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun', 'Sukhumvit Set', 'Noto Sans Thai', sans-serif; }
           table { border-collapse: collapse; width: 100%; }
           tr, td, th { page-break-inside: avoid; }
           thead { display: table-header-group; }
           tfoot { display: table-footer-group; }
           img { max-width: 100%; }
           .no-print, [data-no-print="true"] { display: none !important; }
+          #__print_btn { position: fixed; top: 12px; right: 12px; padding: 10px 18px; background: #3b5b8b; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.2); z-index: 9999; }
+          @media print { #__print_btn { display: none !important; } }
           ${extraThermal}
-        </style></head><body>${el.outerHTML}</body></html>`;
-      const w = window.open("", "_blank");
+        </style></head><body>
+        <button id="__print_btn" onclick="window.print()">🖨️ พิมพ์</button>
+        ${el.outerHTML}
+        </body></html>`;
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const w = window.open(url, "_blank");
       if (!w) {
+        URL.revokeObjectURL(url);
         alert("เบราว์เซอร์บล็อก popup — กรุณาอนุญาต popup สำหรับหน้านี้แล้วลองใหม่");
         return;
       }
-      w.document.open();
-      w.document.write(html);
-      w.document.close();
-      const doPrint = () => {
-        try { w.focus(); w.print(); } catch(e){}
-        // ปิด tab อัตโนมัติหลัง print (ผู้ใช้ยกเลิกก็ปิด)
-        setTimeout(() => { try { w.close(); } catch(e){} }, 1500);
+      // รอ window load + ทุกรูปโหลดเสร็จ แล้วค่อย print (ไม่ปิด tab อัตโนมัติ — ปล่อยผู้ใช้ปิดเอง)
+      const tryPrint = () => {
+        try {
+          const imgs = Array.from(w.document.images || []);
+          const allReady = imgs.every(im => im.complete && im.naturalWidth > 0);
+          if (!allReady) { setTimeout(tryPrint, 300); return; }
+          w.focus();
+          w.print();
+        } catch (e) {
+          console.warn("[print] auto-print failed; ผู้ใช้กดปุ่ม 'พิมพ์' ใน tab ใหม่ได้:", e);
+        } finally {
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+        }
       };
-      // รอ font + รูปโหลด
-      if (w.document.fonts && w.document.fonts.ready) {
-        w.document.fonts.ready.then(() => setTimeout(doPrint, 600));
-      } else {
-        setTimeout(doPrint, 1200);
-      }
+      // window.open กับ blob: บางทีไม่ trigger 'load' event ใน parent — ใช้ polling
+      const start = Date.now();
+      const waitLoad = () => {
+        if (w.closed) return;
+        const ready = w.document && w.document.readyState === "complete";
+        if (ready) { setTimeout(tryPrint, 500); return; }
+        if (Date.now() - start > 10000) { tryPrint(); return; } // กัน hang
+        setTimeout(waitLoad, 200);
+      };
+      setTimeout(waitLoad, 300);
     };
     const triggerDesktop = () => {
       try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e){}
