@@ -53,11 +53,27 @@ export default function Catalog() {
     return () => { u1(); u2(); };
   }, []);
 
-  const cats = useMemo(() => [...new Set(items.map(i => i.category).filter(Boolean))], [items]);
+  // 🏷️ Categories: predefined (เสื้อผ้า/รองเท้า ตาม sizeType) + custom (item.category)
+  const customCats = useMemo(() => [...new Set(items.map(i => i.category).filter(Boolean))], [items]);
+  const TAB_ALL = "__all__";
+  const TAB_APPAREL = "__apparel__";
+  const TAB_SHOE = "__shoe__";
+  const tabs = useMemo(() => {
+    const list = [
+      { key: TAB_ALL, label: "ทั้งหมด", icon: "📦", count: items.length },
+      { key: TAB_APPAREL, label: "เสื้อผ้า", icon: "👕", count: items.filter(i => i.sizeType !== "shoe").length },
+      { key: TAB_SHOE, label: "รองเท้า & กีฬา", icon: "👟", count: items.filter(i => i.sizeType === "shoe").length },
+    ];
+    customCats.forEach(c => list.push({ key: c, label: c, icon: "🏷️", count: items.filter(i => i.category === c).length }));
+    return list.filter(t => t.count > 0 || t.key === TAB_ALL);
+  }, [items, customCats]);
+
   const filtered = useMemo(() => items.filter(i => {
-    if (filterCat && i.category !== filterCat) return false;
+    // tab filter
+    if (filterCat === TAB_APPAREL && i.sizeType === "shoe") return false;
+    if (filterCat === TAB_SHOE && i.sizeType !== "shoe") return false;
+    if (filterCat && filterCat !== TAB_ALL && filterCat !== TAB_APPAREL && filterCat !== TAB_SHOE && i.category !== filterCat) return false;
     if (search) {
-      // normalize: lowercase + ลบ space — "CPU125" จะ match "CPU 125"
       const norm = (s) => String(s||"").toLowerCase().replace(/\s+/g, "");
       const q = norm(search);
       const text = norm(`${i.model||i.name||""} ${i.category||""} ${(i.colors||[]).map(c=>c.name).join(" ")}`);
@@ -98,18 +114,48 @@ export default function Catalog() {
         </div>
       </div>
 
-      {/* SEARCH + FILTER */}
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 20px", display: "flex", gap: 10, flexWrap: "wrap" }}>
+      {/* SEARCH */}
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 20px 8px", display: "flex", gap: 10, flexWrap: "wrap" }}>
         <input
           placeholder="🔍 ค้นหารุ่น / สี / หมวด..."
           value={search} onChange={e => setSearch(e.target.value)}
           style={{ flex: 1, minWidth: 200, padding: "10px 14px", borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 14, fontFamily: "inherit" }}
         />
+        {/* legacy dropdown kept as hidden — replaced by chip tabs below */}
         <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
-          style={{ padding: "10px 14px", borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 14, fontFamily: "inherit", background: "white" }}>
+          style={{ display: "none" }}>
           <option value="">ทุกหมวด</option>
-          {cats.map(c => <option key={c} value={c}>{c}</option>)}
+          {customCats.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
+      </div>
+
+      {/* CATEGORY TABS */}
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 20px 14px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {tabs.map(t => {
+          const active = (filterCat || TAB_ALL) === t.key;
+          return (
+            <button key={t.key} onClick={() => setFilterCat(t.key === TAB_ALL ? "" : t.key)}
+              style={{
+                padding: "8px 16px", borderRadius: 20,
+                border: active ? `2px solid ${T.blue}` : `1px solid ${T.border}`,
+                background: active ? T.blue : "white",
+                color: active ? "white" : T.sub,
+                fontSize: 13, fontWeight: active ? 700 : 500,
+                cursor: "pointer", fontFamily: "inherit",
+                display: "flex", alignItems: "center", gap: 6,
+                transition: "all 0.15s",
+                boxShadow: active ? "0 4px 12px rgba(59,91,139,0.25)" : "none",
+              }}>
+              <span>{t.icon}</span>
+              <span>{t.label}</span>
+              <span style={{
+                background: active ? "rgba(255,255,255,0.25)" : "rgba(59,91,139,0.08)",
+                color: active ? "white" : T.blue,
+                padding: "1px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700,
+              }}>{t.count}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* GRID */}
