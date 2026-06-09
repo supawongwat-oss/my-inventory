@@ -67,8 +67,14 @@ export default function LotDetailModal({
 
   // ── persist helper ──
   const persistLots = async (newLots, extras = {}) => {
+    // sync order.totalQty จากผลรวมทุก lot (ทุก item) เพื่อให้ list view แสดงยอดที่ถูกต้อง
+    const newTotalQty = (newLots || []).reduce(
+      (s, l) => s + (l.items || []).reduce((a, it) => a + (Number(it.qty) || 0), 0),
+      0
+    );
     await updateDoc(doc(db, collectionName, order.id), {
       lots: newLots,
+      totalQty: newTotalQty,
       ...extras,
       lastLotUpdate: serverTimestamp(),
     });
