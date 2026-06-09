@@ -1080,30 +1080,45 @@ export default function App() {
     doc.close();
     // มือถือต้อง delay มากกว่า desktop
     const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
-    // 🩹 Android/iOS Chrome: iframe.contentWindow.print() บน iframe 0×0 จะไป print parent แทน
-    //    → ใช้ @media print CSS ซ่อนทุกอย่างยกเว้น print area แล้วเรียก window.print() ตรง ๆ
+    // 🩹 Android/Samsung Tab: iframe และ @media print CSS ไม่น่าเชื่อถือ
+    //    → เปิด tab ใหม่แล้ว print ใน window นั้นโดยตรง (วิธีที่เสถียรสุดบนมือถือ)
     const triggerMobile = () => {
       iframe.remove();
       document.title = prevTitle;
-      const styleId = "__print_only_style__";
-      const prev = document.getElementById(styleId);
-      if (prev) prev.remove();
-      const style = document.createElement("style");
-      style.id = styleId;
-      style.textContent = `
-        @page { size: ${pageSize}; margin: ${pageMargin}; }
-        @media print {
-          body * { visibility: hidden !important; }
-          #${id}, #${id} * { visibility: visible !important; }
-          #${id} { position: fixed !important; left: 0; top: 0; width: 100%; background: white; z-index: 2147483647; }
+      const html = `<!doctype html><html><head><meta charset="utf-8"/>
+        <title></title>
+        <link rel="icon" href="data:,">
+        <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+        <style>
+          @page { size: ${pageSize}; margin: ${pageMargin}; }
+          html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun', sans-serif; }
+          table { border-collapse: collapse; width: 100%; }
+          tr, td, th { page-break-inside: avoid; }
+          thead { display: table-header-group; }
+          tfoot { display: table-footer-group; }
+          img { max-width: 100%; }
           .no-print, [data-no-print="true"] { display: none !important; }
-        }
-      `;
-      document.head.appendChild(style);
-      setTimeout(() => {
-        try { window.print(); } catch(e){}
-        setTimeout(() => { style.remove(); }, 1500);
-      }, 100);
+          ${extraThermal}
+        </style></head><body>${el.outerHTML}</body></html>`;
+      const w = window.open("", "_blank");
+      if (!w) {
+        alert("เบราว์เซอร์บล็อก popup — กรุณาอนุญาต popup สำหรับหน้านี้แล้วลองใหม่");
+        return;
+      }
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+      const doPrint = () => {
+        try { w.focus(); w.print(); } catch(e){}
+        // ปิด tab อัตโนมัติหลัง print (ผู้ใช้ยกเลิกก็ปิด)
+        setTimeout(() => { try { w.close(); } catch(e){} }, 1500);
+      };
+      // รอ font + รูปโหลด
+      if (w.document.fonts && w.document.fonts.ready) {
+        w.document.fonts.ready.then(() => setTimeout(doPrint, 600));
+      } else {
+        setTimeout(doPrint, 1200);
+      }
     };
     const triggerDesktop = () => {
       try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e){}
