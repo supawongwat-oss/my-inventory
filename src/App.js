@@ -2426,8 +2426,16 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
             const filtered = enriched.filter(c => {
               if (customerRegion !== "ทั้งหมด" && c._region !== customerRegion) return false;
               if (customerSearch) {
-                const q = customerSearch.toLowerCase().trim();
-                return (c.name||"").toLowerCase().includes(q)||(c.phone||"").toLowerCase().includes(q)||(c.address||"").toLowerCase().includes(q)||(c.email||"").toLowerCase().includes(q)||(c._province||"").toLowerCase().includes(q);
+                // 🔍 normalize — รองรับ Thai vowel/tone marks ที่อาจ encode ต่างกัน + เคาะวรรค
+                const norm = (s) => String(s||"").normalize("NFC").toLowerCase().replace(/\s+/g," ").trim();
+                const q = norm(customerSearch);
+                return norm(c.name).includes(q)
+                  || norm(c.phone).includes(q)
+                  || norm(c.address).includes(q)
+                  || norm(c.email).includes(q)
+                  || norm(c._province).includes(q)
+                  || norm(c.taxId).includes(q)
+                  || norm(c.note).includes(q);
               }
               return true;
             });
@@ -3255,9 +3263,25 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                   value={orderForm.customerId ? `✓ ${orderForm.customerName}` : customerSearch}
                   onChange={e=>{setCustomerSearch(e.target.value);setOrderForm(f=>({...f,customerId:"",customerName:e.target.value,customerPhone:"",customerAddress:""}));}}
                   style={{width:"100%",background:T.input,border:`1px solid ${orderForm.customerId?"#34d399":T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
-                {customerSearch&&!orderForm.customerId&&(
-                  <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#ffffff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:50,maxHeight:180,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.4)"}}>
-                    {customers.filter(c=>{const q=customerSearch.toLowerCase().trim();return (c.name||"").toLowerCase().includes(q)||(c.phone||"").toLowerCase().includes(q);}).slice(0,5).map(c=>(
+                {customerSearch&&!orderForm.customerId&&(()=>{
+                  // 🔍 ค้นหาแบบ normalize — NFC unicode + lower + ลบช่องว่าง — รองรับ Thai vowel marks
+                  const norm = (s) => String(s||"").normalize("NFC").toLowerCase().replace(/\s+/g," ").trim();
+                  const q = norm(customerSearch);
+                  const matches = customers.filter(c => {
+                    if (!q) return true;
+                    return norm(c.name).includes(q)
+                      || norm(c.phone).includes(q)
+                      || norm(c.address).includes(q)
+                      || norm(c.taxId).includes(q);
+                  });
+                  return (
+                  <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#ffffff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:50,maxHeight:280,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.4)"}}>
+                    {matches.length > 0 && (
+                      <div style={{padding:"6px 14px",background:"#eff6ff",fontSize:10,color:T.blue,fontWeight:700,borderBottom:`1px solid ${T.border}`,position:"sticky",top:0}}>
+                        เจอ {matches.length} ราย {matches.length > 30 && "(แสดง 30 รายแรก — พิมพ์เพิ่มเพื่อกรอง)"}
+                      </div>
+                    )}
+                    {matches.slice(0,30).map(c=>(
                       <div key={c.id} onClick={()=>handleSelectCustomer(c)} style={{padding:"10px 14px",cursor:"pointer",borderBottom:`1px solid ${T.border}`,transition:"background 0.15s"}}
                         onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.1)"}
                         onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -3265,11 +3289,12 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                         <div style={{fontSize:11,color:T.muted}}>📞 {c.phone} · 📍 {c.address}</div>
                       </div>
                     ))}
-                    {customers.filter(c=>{const q=customerSearch.toLowerCase().trim();return (c.name||"").toLowerCase().includes(q)||(c.phone||"").toLowerCase().includes(q);}).length===0&&(
+                    {matches.length===0&&(
                       <div style={{padding:"10px 14px",fontSize:12,color:T.muted}}>ไม่พบลูกค้า — จะสร้างใหม่อัตโนมัติ</div>
                     )}
                   </div>
-                )}
+                  );
+                })()}
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 {[{k:"customerPhone",l:"เบอร์โทรศัพท์",ph:"0812345678"},{k:"customerAddress",l:"ที่อยู่จัดส่ง",ph:"บ้านเลขที่ ซอย ถนน..."}].map(f=>(
