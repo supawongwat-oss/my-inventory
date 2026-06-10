@@ -685,12 +685,16 @@ export default function App() {
       await updateDoc(doc(db, "clothing", clothingId), { colors: newColors });
     }
     for (const oi of orderForm.items) {
-      if (!clothingItems.find(i => i.id === oi.clothingId)) continue;
+      const isLinked = !!clothingItems.find(i => i.id === oi.clothingId);
+      const isFree = typeof oi.clothingId === "string" && oi.clothingId.startsWith("free_");
+      const isCustom = typeof oi.clothingId === "string" && oi.clothingId.startsWith("custom_");
+      const noteSuffix = isFree ? " (รายการอิสระ — ไม่ตัดสต๊อก)" : isCustom ? " (custom order — ไม่ตัดสต๊อก)" : "";
       await addDoc(collection(db, "transactions"), {
         type: "จ่าย", code: oi.clothingId,
         name: `${oi.clothingName} / ${oi.colorName} / ${oi.size}`,
         qty: oi.qty, by: user.name, date: now(),
-        note: `ใบสั่งของ: ${orderForm.customerName}`,
+        note: `ใบสั่งของ: ${orderForm.customerName}${noteSuffix}`,
+        stockAffected: isLinked,
         createdAt: serverTimestamp(), category: "เสื้อผ้า"
       });
     }
@@ -741,14 +745,18 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
       });
       await updateDoc(doc(db, "clothing", clothingId), { colors: newColors });
     }
-    // บันทึก transaction "รับ" ทีละ item
+    // บันทึก transaction "รับ" ทีละ item (รวม free_/custom_ — note ว่า no-stock)
     for (const oi of (o.items || [])) {
-      if (!clothingItems.find(i => i.id === oi.clothingId)) continue;
+      const isLinked = !!clothingItems.find(i => i.id === oi.clothingId);
+      const isFree = typeof oi.clothingId === "string" && oi.clothingId.startsWith("free_");
+      const isCustom = typeof oi.clothingId === "string" && oi.clothingId.startsWith("custom_");
+      const noteSuffix = isFree ? " (รายการอิสระ — ไม่คืนสต๊อก)" : isCustom ? " (custom order — ไม่คืนสต๊อก)" : "";
       await addDoc(collection(db, "transactions"), {
         type: "รับ", code: oi.clothingId,
         name: `${oi.clothingName} / ${oi.colorName} / ${oi.size}`,
         qty: Number(oi.qty) || 0, by: user.name, date: now(),
-        note: `ยกเลิกใบสั่งของ: ${o.orderNo} · ${o.customerName}`,
+        note: `ยกเลิกใบสั่งของ: ${o.orderNo} · ${o.customerName}${noteSuffix}`,
+        stockAffected: isLinked,
         createdAt: serverTimestamp(), category: "เสื้อผ้า"
       });
     }
