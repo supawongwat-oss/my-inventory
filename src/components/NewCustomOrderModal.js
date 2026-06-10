@@ -183,8 +183,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
             )}
           </div>
           );
-        })()
-        )}
+        })()}
       </div>
       <Input label="เบอร์โทร" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} style={{marginBottom:10}}/>
 
