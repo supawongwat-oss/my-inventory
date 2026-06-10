@@ -711,6 +711,57 @@ export default function App() {
     setShowNewOrder(false);
   };
 
+  // ยกเลิก/ลบใบสั่งของ — คืนสต๊อกกลับ clothing ก่อนลบ
+  const handleDeleteOrder = async (o) => {
+    if (!o) return;
+    const totalQty = (o.items || []).reduce((s,i) => s + (Number(i.qty)||0), 0);
+    if (!window.confirm(`ยกเลิกใบสั่งของ ${o.orderNo}?
+ลูกค้า: ${o.customerName}
+${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
+
+⚠️ สินค้าจะถูกคืนกลับสต๊อก`)) return;
+
+    // จัดกลุ่ม items ตาม clothingId เพื่อ updateDoc ครั้งเดียวต่อเสื้อ
+    const byClothing = new Map();
+    for (const oi of (o.items || [])) {
+      if (!clothingItems.find(i => i.id === oi.clothingId)) continue; // ข้าม free_/custom_
+      if (!byClothing.has(oi.clothingId)) byClothing.set(oi.clothingId, []);
+      byClothing.get(oi.clothingId).push(oi);
+    }
+    for (const [clothingId, ois] of byClothing) {
+      const item = clothingItems.find(i => i.id === clothingId);
+      const newColors = item.colors.map((c, i) => {
+        const adds = ois.filter(oi => oi.colorIdx === i);
+        if (adds.length === 0) return c;
+        const newStock = { ...(c.stock || {}) };
+        for (const oi of adds) {
+          newStock[oi.size] = (newStock[oi.size] || 0) + (Number(oi.qty) || 0);
+        }
+        return { ...c, stock: newStock };
+      });
+      await updateDoc(doc(db, "clothing", clothingId), { colors: newColors });
+    }
+    // บันทึก transaction "รับ" ทีละ item
+    for (const oi of (o.items || [])) {
+      if (!clothingItems.find(i => i.id === oi.clothingId)) continue;
+      await addDoc(collection(db, "transactions"), {
+        type: "รับ", code: oi.clothingId,
+        name: `${oi.clothingName} / ${oi.colorName} / ${oi.size}`,
+        qty: Number(oi.qty) || 0, by: user.name, date: now(),
+        note: `ยกเลิกใบสั่งของ: ${o.orderNo} · ${o.customerName}`,
+        createdAt: serverTimestamp(), category: "เสื้อผ้า"
+      });
+    }
+    await deleteDoc(doc(db, "orders", o.id));
+    logAudit(user, {
+      action: AUDIT_ACTIONS.DELETE,
+      collection: "orders",
+      targetId: o.id,
+      targetLabel: `${o.orderNo} · ${o.customerName}`,
+      note: `ยกเลิก + คืนสต๊อก (${(o.items||[]).length} รายการ · ${totalQty} ชิ้น)`,
+    });
+  };
+
   const handleClothingTx = async () => {
     if (txSaving) return; // กัน double-submit (ใช้ flag เดียวกัน)
     if (!clothingTxModal || !clothingTxQty || Number(clothingTxQty) <= 0) return;
@@ -2340,10 +2391,7 @@ export default function App() {
                               <div><span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:600,background:"rgba(52,211,153,0.1)",color:"#34d399",border:"1px solid rgba(52,211,153,0.2)"}}>{o.status}</span></div>
                               <div style={{display:"flex",gap:6,justifyContent:"center"}} onClick={e=>e.stopPropagation()}>
                                 <button onClick={()=>setShowPrintOrder(o)} style={{padding:"5px 10px",borderRadius:7,border:`1px solid rgba(59,91,139,0.25)`,background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:11,fontFamily:"'Sarabun',sans-serif"}}>🖨️ ปริ้น</button>
-                                {role.canDelete&&<button onClick={async()=>{
-                                  await deleteDoc(doc(db,"orders",o.id));
-                                  logAudit(user,{action:AUDIT_ACTIONS.DELETE,collection:"orders",targetId:o.id,targetLabel:`${o.orderNo} · ${o.customerName}`,note:`${(o.items||[]).length} รายการ`});
-                                }} style={{padding:"5px 8px",borderRadius:7,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:11}}>✕</button>}
+                                {role.canDelete&&<button onClick={()=>handleDeleteOrder(o)} title="ยกเลิก + คืนสต๊อก" style={{padding:"5px 8px",borderRadius:7,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:11}}>✕</button>}
                               </div>
                             </div>
                           ))}
