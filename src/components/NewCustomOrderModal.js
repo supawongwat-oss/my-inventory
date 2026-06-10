@@ -23,7 +23,10 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const [customerSearch, setCustomerSearch] = useState("");
   const [jobName, setJobName] = useState("");
   const [images, setImages] = useState([]); // [{dataUrl, label}]
-  const [items, setItems] = useState([{ colorName:"", colorHex:"#94a3b8", size:"", qty:"" }]);
+  const [items, setItems] = useState([{ colorName:"", colorHex:"#94a3b8", size:"", qty:"", variant:"" }]);
+
+  // 🎽 รูปแบบเสื้อยอดนิยม — กดชิปเพื่อใส่ในแถวที่เลือก
+  const VARIANT_PRESETS = ["แขนสั้น", "แขนยาว", "แขนกุด", "คอกลม", "คอวี", "โปโล", "ฮู้ด"];
   const [costPerPiece, setCostPerPiece] = useState("");
   const [laborCostPerPiece, setLaborCostPerPiece] = useState("");
   const [note, setNote] = useState("");
@@ -32,9 +35,9 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const fileRef = useRef(null);
 
   const addRow = () => setItems(prev => {
-    // แถวใหม่ inherit สีจากแถวสุดท้าย (กดน้อยลง)
+    // แถวใหม่ inherit สี + variant จากแถวสุดท้าย (กดน้อยลง)
     const last = prev[prev.length-1];
-    return [...prev, { colorName: last?.colorName || "", colorHex: last?.colorHex || "#94a3b8", size:"", qty:"" }];
+    return [...prev, { colorName: last?.colorName || "", colorHex: last?.colorHex || "#94a3b8", size:"", qty:"", variant: last?.variant || "" }];
   });
   const setRow = (idx, patch) => setItems(prev => prev.map((r,i)=> i===idx ? {...r, ...patch} : r));
   const removeRow = (idx) => setItems(prev => prev.filter((_,i)=>i!==idx));
@@ -102,6 +105,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
             colorHex: r.colorHex || "#94a3b8",
             size: r.size.trim() || "-",
             qty: Number(r.qty) || 0,
+            variant: (r.variant || "").trim() || "",
           };
         });
       })(),
@@ -259,9 +263,10 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
         ])].map(name => <option key={name} value={name}/>)}
       </datalist>
 
-      <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:12,maxHeight:280,overflowY:"auto"}}>
+      <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:12,maxHeight:340,overflowY:"auto"}}>
         {items.map((r, idx) => (
-          <div key={idx} style={{display:"grid",gridTemplateColumns:"28px 24px 1fr 1fr 1fr 32px",gap:5,alignItems:"end",padding:"6px 8px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:7}}>
+          <div key={idx} style={{padding:"6px 8px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:7}}>
+          <div style={{display:"grid",gridTemplateColumns:"28px 24px 1fr 1fr 1fr 32px",gap:5,alignItems:"end"}}>
             {/* 🎨 swatch — กดเปลี่ยนสี */}
             <div>
               <label style={{fontSize:9,color:T.sub,display:"block",marginBottom:2}}>&nbsp;</label>
@@ -296,6 +301,22 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
             {items.length > 1 ? (
               <button onClick={() => removeRow(idx)} title="ลบ" style={{padding:"5px 6px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,color:T.red,cursor:"pointer",fontSize:11,height:28}}>✕</button>
             ) : <div/>}
+          </div>
+          {/* 🎽 ลักษณะ (แขนสั้น/ยาว/กุด หรือพิมพ์เอง) */}
+          <div style={{display:"flex",alignItems:"center",gap:5,marginTop:4,flexWrap:"wrap"}}>
+            <label style={{fontSize:9,color:T.sub,fontWeight:600,minWidth:55}}>🎽 ลักษณะ:</label>
+            <input value={r.variant||""} onChange={e => setRow(idx, { variant: e.target.value })}
+              list={`variant-suggestions-${idx}`}
+              placeholder="เช่น แขนสั้น, แขนยาว, แขนกุด, คอวี... (ไม่บังคับ)"
+              style={{flex:"1 1 180px",background:"white",border:`1px solid ${T.inputBorder}`,borderRadius:6,padding:"4px 8px",fontFamily:"inherit",fontSize:11,outline:"none"}}/>
+            <datalist id={`variant-suggestions-${idx}`}>
+              {VARIANT_PRESETS.map(v => <option key={v} value={v}/>)}
+            </datalist>
+            {VARIANT_PRESETS.slice(0,3).map(v => (
+              <button key={v} onClick={()=>setRow(idx, { variant: v })}
+                style={{padding:"3px 8px",background:r.variant===v?"#3b5b8b":"white",color:r.variant===v?"white":T.accent,border:`1px solid ${r.variant===v?"#3b5b8b":T.inputBorder}`,borderRadius:12,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{v}</button>
+            ))}
+          </div>
           </div>
         ))}
       </div>

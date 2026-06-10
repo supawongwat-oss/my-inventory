@@ -70,9 +70,10 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
             const groups = [];
             const gmap = new Map();
             (order.items||[]).forEach(it => {
-              const key = (it.colorName||"-") + "|" + (it.colorHex||"#999");
+              // 🔑 group key รวม variant ด้วย — แขนสั้นสีดำ vs แขนยาวสีดำ = คนละกลุ่ม
+              const key = (it.colorName||"-") + "|" + (it.colorHex||"#999") + "|" + (it.variant||"");
               if (!gmap.has(key)) {
-                const g = { colorName: it.colorName||"-", colorHex: it.colorHex||"#999", sizes: [] };
+                const g = { colorName: it.colorName||"-", colorHex: it.colorHex||"#999", variant: it.variant||"", sizes: [] };
                 gmap.set(key, g); groups.push(g);
               }
               gmap.get(key).sizes.push({ size: it.size||"-", qty: Number(it.qty)||0 });
@@ -102,9 +103,12 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                         <tr key={`${gi}-${ci}`} style={{background: gi%2===0?"white":"#f8fafc"}}>
                           <td style={{padding:"4px 8px",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:11,verticalAlign:"middle"}}>{ci===0 ? (order.clothingName || "-") : ""}</td>
                           <td style={{padding:"4px 8px",color:"#000",border:"1px solid #000",fontSize:11,verticalAlign:"middle"}}>
-                            {ci===0 && (<div style={{display:"flex",alignItems:"center",gap:5}}>
-                              <div style={{width:10,height:10,borderRadius:2,background:g.colorHex,border:"1px solid #000",flexShrink:0}}/>
-                              <span>{g.colorName}</span>
+                            {ci===0 && (<div>
+                              <div style={{display:"flex",alignItems:"center",gap:5}}>
+                                <div style={{width:10,height:10,borderRadius:2,background:g.colorHex,border:"1px solid #000",flexShrink:0}}/>
+                                <span>{g.colorName}</span>
+                              </div>
+                              {g.variant && <div style={{fontSize:9,color:"#475569",marginTop:2,fontStyle:"italic"}}>🎽 {g.variant}</div>}
                             </div>)}
                           </td>
                           {chunk.flatMap((c,i)=>([
