@@ -156,12 +156,20 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
           onChange={e => { setCustomerSearch(e.target.value); setCustomerId(""); setCustomerName(e.target.value); setCustomerPhone(""); }}
           placeholder="🔍 ค้นหาลูกค้าเดิม หรือพิมพ์ชื่อใหม่"
           style={{width:"100%",background:T.input,border:`1px solid ${customerId?"#16a34a":T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 12px",fontFamily:"inherit",fontSize:13,outline:"none"}}/>
-        {customerSearch && !customerId && (
-          <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,zIndex:50,maxHeight:180,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.15)",marginTop:2}}>
-            {customers.filter(c => {
-              const q = customerSearch.toLowerCase().trim();
-              return (c.name||"").toLowerCase().includes(q) || (c.phone||"").toLowerCase().includes(q);
-            }).slice(0,5).map(c => (
+        {customerSearch && !customerId && (() => {
+          const norm = (s) => String(s||"").normalize("NFC").toLowerCase().replace(/\s+/g," ").trim();
+          const q = norm(customerSearch);
+          const matches = customers.filter(c =>
+            norm(c.name).includes(q) || norm(c.phone).includes(q) || norm(c.address).includes(q)
+          );
+          return (
+          <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,zIndex:50,maxHeight:280,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.15)",marginTop:2}}>
+            {matches.length > 0 && (
+              <div style={{padding:"5px 12px",background:"#eff6ff",fontSize:10,color:T.accent,fontWeight:700,borderBottom:`1px solid ${T.border}`,position:"sticky",top:0}}>
+                เจอ {matches.length} ราย {matches.length > 30 && "(แสดง 30 รายแรก — พิมพ์เพิ่มเพื่อกรอง)"}
+              </div>
+            )}
+            {matches.slice(0,30).map(c => (
               <div key={c.id} onClick={() => { setCustomerId(c.id); setCustomerName(c.name||""); setCustomerPhone(c.phone||""); setCustomerSearch(""); }}
                 style={{padding:"8px 12px",cursor:"pointer",borderBottom:`1px solid ${T.border}`,fontSize:12}}
                 onMouseEnter={e => e.currentTarget.style.background = "rgba(59,91,139,0.08)"}
@@ -170,13 +178,12 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
                 {c.phone && <div style={{fontSize:11,color:T.muted}}>📞 {c.phone}</div>}
               </div>
             ))}
-            {customers.filter(c => {
-              const q = customerSearch.toLowerCase().trim();
-              return (c.name||"").toLowerCase().includes(q) || (c.phone||"").toLowerCase().includes(q);
-            }).length === 0 && (
+            {matches.length === 0 && (
               <div style={{padding:"8px 12px",fontSize:11,color:T.muted}}>ไม่พบในระบบ — จะใช้ชื่อนี้แบบใหม่</div>
             )}
           </div>
+          );
+        })()
         )}
       </div>
       <Input label="เบอร์โทร" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} style={{marginBottom:10}}/>
