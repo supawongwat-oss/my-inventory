@@ -192,6 +192,7 @@ export default function App() {
 
   const [showNewOrder, setShowNewOrder] = useState(false);
   const [freeItemForm, setFreeItemForm] = useState({ name:"", colorName:"", size:"", qty:"" });
+  const [freeItemCutStock, setFreeItemCutStock] = useState(true);
   const [collapsedOrderDates, setCollapsedOrderDates] = useState({});
   const [collapsedInvoiceDates, setCollapsedInvoiceDates] = useState({});
   const [showNewCustomer, setShowNewCustomer] = useState(false);
@@ -3368,34 +3369,81 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
             );
           })()}
 
-          {/* Step 2b: เพิ่มแถวอิสระ (free-text) — ใช้กรณีไม่มีในระบบ ไม่ตัดสต็อก */}
-          <div style={{marginBottom:14,padding:12,background:"rgba(217,119,6,0.04)",border:"1px dashed rgba(217,119,6,0.35)",borderRadius:10}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:8,letterSpacing:"0.04em"}}>✍️ เพิ่มแถวอิสระ (พิมพ์เอง — ไม่ตัดสต็อก)</div>
-            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 80px 80px",gap:6,alignItems:"end"}}>
-              <input value={freeItemForm.name} onChange={e=>setFreeItemForm(f=>({...f,name:e.target.value}))} placeholder="รุ่น / ชื่อสินค้า"
-                style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}/>
-              <input value={freeItemForm.colorName} onChange={e=>setFreeItemForm(f=>({...f,colorName:e.target.value}))} placeholder="สี"
-                style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}/>
-              <input value={freeItemForm.size} onChange={e=>setFreeItemForm(f=>({...f,size:e.target.value}))} placeholder="ไซส์ (เช่น XL, 12)"
-                style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none",fontWeight:600,textAlign:"center"}}/>
-              <input type="number" min="1" value={freeItemForm.qty} onChange={e=>setFreeItemForm(f=>({...f,qty:e.target.value}))} placeholder="จำนวน"
-                style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none",fontFamily:"monospace",textAlign:"center"}}/>
-              <button onClick={()=>{
-                const name=freeItemForm.name.trim(); const qty=Number(freeItemForm.qty)||0;
-                if(!name||qty<=0) return;
-                setOrderForm(f=>({...f,items:[...f.items,{
-                  freeText:true,
-                  clothingId:`free_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
-                  clothingName:name,
-                  colorIdx:0, colorName:freeItemForm.colorName||"-", colorHex:"#94a3b8",
-                  size:freeItemForm.size||"-", qty
-                }]}));
-                setFreeItemForm({name:"",colorName:"",size:"",qty:""});
-              }} disabled={!freeItemForm.name.trim()||!Number(freeItemForm.qty)}
-                style={{padding:"7px 12px",borderRadius:7,border:"none",background:"#d97706",color:"white",fontSize:12,fontWeight:700,cursor:freeItemForm.name.trim()&&Number(freeItemForm.qty)?"pointer":"not-allowed",opacity:freeItemForm.name.trim()&&Number(freeItemForm.qty)?1:0.4,fontFamily:"inherit"}}>+ เพิ่ม</button>
+          {/* Step 2b: เพิ่มแถวอิสระ — auto-match clothing + checkbox ตัดสต๊อก */}
+          {(() => {
+            const fname = freeItemForm.name.trim().toLowerCase();
+            const fcolor = freeItemForm.colorName.trim().toLowerCase();
+            const fsize = freeItemForm.size.trim();
+            const fqty = Number(freeItemForm.qty) || 0;
+            let matched = null;
+            if (fname && fcolor && fsize) {
+              for (const it of clothingItems) {
+                if ((it.model||"").trim().toLowerCase() !== fname) continue;
+                const ci = (it.colors||[]).findIndex(c => (c.colorName||"").trim().toLowerCase() === fcolor);
+                if (ci < 0) continue;
+                const stock = Number((it.colors[ci].stock||{})[fsize]) || 0;
+                matched = { item: it, colorIdx: ci, color: it.colors[ci], stock };
+                break;
+              }
+            }
+            const willLink = matched && freeItemCutStock;
+            const stockShort = willLink && matched.stock < fqty;
+            return (
+            <div style={{marginBottom:14,padding:12,background:"rgba(217,119,6,0.04)",border:"1px dashed rgba(217,119,6,0.35)",borderRadius:10}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:8,letterSpacing:"0.04em"}}>✍️ เพิ่มแถวอิสระ (พิมพ์เอง)</div>
+              <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 80px 80px",gap:6,alignItems:"end"}}>
+                <input value={freeItemForm.name} onChange={e=>setFreeItemForm(f=>({...f,name:e.target.value}))} placeholder="รุ่น / ชื่อสินค้า"
+                  style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}/>
+                <input value={freeItemForm.colorName} onChange={e=>setFreeItemForm(f=>({...f,colorName:e.target.value}))} placeholder="สี"
+                  style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}/>
+                <input value={freeItemForm.size} onChange={e=>setFreeItemForm(f=>({...f,size:e.target.value}))} placeholder="ไซส์ (เช่น XL, 12)"
+                  style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none",fontWeight:600,textAlign:"center"}}/>
+                <input type="number" min="1" value={freeItemForm.qty} onChange={e=>setFreeItemForm(f=>({...f,qty:e.target.value}))} placeholder="จำนวน"
+                  style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none",fontFamily:"monospace",textAlign:"center"}}/>
+                <button onClick={()=>{
+                  const name=freeItemForm.name.trim(); const qty=Number(freeItemForm.qty)||0;
+                  if(!name||qty<=0) return;
+                  if (willLink) {
+                    setOrderForm(f=>({...f,items:[...f.items,{
+                      clothingId: matched.item.id,
+                      clothingName: matched.item.model,
+                      colorIdx: matched.colorIdx,
+                      colorName: matched.color.colorName,
+                      colorHex: matched.color.hex || "#94a3b8",
+                      size: fsize, qty,
+                      stock: matched.stock
+                    }]}));
+                  } else {
+                    setOrderForm(f=>({...f,items:[...f.items,{
+                      freeText:true,
+                      clothingId:`free_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+                      clothingName:name,
+                      colorIdx:0, colorName:freeItemForm.colorName||"-", colorHex:"#94a3b8",
+                      size:freeItemForm.size||"-", qty
+                    }]}));
+                  }
+                  setFreeItemForm({name:"",colorName:"",size:"",qty:""});
+                  setFreeItemCutStock(true);
+                }} disabled={!freeItemForm.name.trim()||!Number(freeItemForm.qty)}
+                  style={{padding:"7px 12px",borderRadius:7,border:"none",background:willLink?"#16a34a":"#d97706",color:"white",fontSize:12,fontWeight:700,cursor:freeItemForm.name.trim()&&Number(freeItemForm.qty)?"pointer":"not-allowed",opacity:freeItemForm.name.trim()&&Number(freeItemForm.qty)?1:0.4,fontFamily:"inherit"}}>{willLink?"+ ตัดสต๊อก":"+ เพิ่ม"}</button>
+              </div>
+              {matched ? (
+                <div style={{marginTop:8,padding:"8px 10px",background:"rgba(22,163,74,0.08)",border:"1px solid rgba(22,163,74,0.25)",borderRadius:7,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                  <span style={{fontSize:11,color:"#15803d",fontWeight:700}}>✓ พบในระบบ:</span>
+                  <span style={{fontSize:11,color:"#1e293b"}}>{matched.item.model} / {matched.color.colorName} / {fsize}</span>
+                  <span style={{fontSize:11,color:matched.stock>0?"#15803d":"#dc2626",fontFamily:"monospace",fontWeight:700}}>คงเหลือ {matched.stock} ตัว</span>
+                  <label style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:11,color:"#15803d",fontWeight:700}}>
+                    <input type="checkbox" checked={freeItemCutStock} onChange={e=>setFreeItemCutStock(e.target.checked)} style={{cursor:"pointer"}}/>
+                    ตัดสต๊อก
+                  </label>
+                  {stockShort && <div style={{flex:"1 0 100%",fontSize:10,color:"#dc2626",fontWeight:700}}>⚠️ สต๊อกไม่พอ (มี {matched.stock}, สั่ง {fqty}) — จะตัดเหลือ 0</div>}
+                </div>
+              ) : (
+                <div style={{fontSize:10,color:"#92400e",marginTop:6,opacity:0.8}}>💡 กรอกครบ (รุ่น/สี/ไซส์) ระบบจะค้นในคลังให้อัตโนมัติ — ถ้าไม่เจอจะเป็นรายการอิสระ (ไม่ตัดสต๊อก)</div>
+              )}
             </div>
-            <div style={{fontSize:10,color:"#92400e",marginTop:6,opacity:0.8}}>💡 ใช้กรณีรุ่น/สี/ไซส์ไม่มีในระบบ — แถวนี้จะไม่หักสต็อก</div>
-          </div>
+            );
+          })()}
 
           {/* Step 3: สรุปรายการ */}
           {orderForm.items.length>0&&(
