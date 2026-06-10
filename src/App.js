@@ -1670,14 +1670,15 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 <div style={{marginLeft:"auto",fontSize:12,color:T.muted}}>พบ {filtered.length} รายการ</div>
               </div>
               <CardBox style={{padding:0,overflow:"hidden"}}>
+                <div className="table-scroll">
                 {/* Table header */}
-                <div style={{display:"grid",gridTemplateColumns:"44px 90px 1fr 110px 70px 70px 70px 100px 100px",alignItems:"center",padding:"10px 16px",background:"#f8f9fb",borderBottom:`1px solid ${T.border}`,color:T.muted,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>
+                <div style={{display:"grid",gridTemplateColumns:"44px 90px minmax(180px,1fr) 110px 70px 70px 70px 100px 100px",minWidth:1100,alignItems:"center",padding:"10px 16px",background:"#f8f9fb",borderBottom:`1px solid ${T.border}`,color:T.muted,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>
                   <div>รูป</div><div>รหัส</div><div>ชื่อสินค้า</div><div>หมวดหมู่</div><div style={{textAlign:"right"}}>จำนวน</div><div style={{textAlign:"right"}}>ขั้นต่ำ</div><div>สถานะ</div><div>ที่เก็บ</div><div style={{textAlign:"center"}}>จัดการ</div>
                 </div>
                 {filtered.length===0?(
                   <div style={{padding:40,textAlign:"center",color:T.muted,fontSize:13}}>ยังไม่มีสินค้า — กด "️ เพิ่มสินค้า" เพื่อเริ่มต้น</div>
                 ):filtered.map((p,i)=>(
-                  <div key={p.id} style={{display:"grid",gridTemplateColumns:"44px 90px 1fr 110px 70px 70px 70px 100px 100px",alignItems:"center",padding:"11px 16px",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",transition:"background .15s"}}
+                  <div key={p.id} style={{display:"grid",gridTemplateColumns:"44px 90px minmax(180px,1fr) 110px 70px 70px 70px 100px 100px",minWidth:1100,alignItems:"center",padding:"11px 16px",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",transition:"background .15s"}}
                     onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.05)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                     <div style={{position:"relative"}}>
                       {p.image
@@ -1711,6 +1712,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                     </div>
                   </div>
                 ))}
+                </div>
               </CardBox>
               </div>} {/* end general tab */}
 

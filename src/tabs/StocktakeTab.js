@@ -273,9 +273,10 @@ export default function StocktakeTab({ products, clothingItems, user, role }) {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table — iOS เลื่อนซ้ายขวาได้ */}
       <CardBox style={{ padding: 0, overflow: "hidden", marginBottom: 14 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "60px 90px 1fr 100px 100px 100px", padding: "10px 16px", background: "#f8f9fb", fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: `1px solid ${T.border}` }}>
+        <div className="table-scroll">
+        <div style={{ display: "grid", gridTemplateColumns: "50px 90px minmax(180px,1fr) 100px 110px 100px", minWidth: 700, padding: "10px 16px", background: "#f8f9fb", fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: `1px solid ${T.border}` }}>
           <div></div><div>รหัส</div><div>ชื่อสินค้า</div><div style={{textAlign:"right"}}>ระบบ</div><div style={{textAlign:"center"}}>นับจริง</div><div style={{textAlign:"right"}}>ส่วนต่าง</div>
         </div>
         {filteredProducts.length === 0 ? (
@@ -286,7 +287,7 @@ export default function StocktakeTab({ products, clothingItems, user, role }) {
           const diff = counted ? actual - Number(p.qty||0) : null;
           const diffColor = diff === null ? T.muted : diff === 0 ? T.green : diff > 0 ? T.accent : T.red;
           return (
-            <div key={p.id} data-stocktake-id={p.id} style={{ display: "grid", gridTemplateColumns: "60px 90px 1fr 100px 100px 100px", alignItems: "center", padding: "9px 16px", borderBottom: i<filteredProducts.length-1?`1px solid ${T.border}`:"none", fontSize: 12, background: counted ? (diff===0?"rgba(58,122,82,0.04)":"rgba(184,134,0,0.04)") : "transparent" }}>
+            <div key={p.id} data-stocktake-id={p.id} style={{ display: "grid", gridTemplateColumns: "50px 90px minmax(180px,1fr) 100px 110px 100px", minWidth: 700, alignItems: "center", padding: "9px 16px", borderBottom: i<filteredProducts.length-1?`1px solid ${T.border}`:"none", fontSize: 12, background: counted ? (diff===0?"rgba(58,122,82,0.04)":"rgba(184,134,0,0.04)") : "transparent" }}>
               <div style={{ fontSize: 10, color: T.muted }}>
                 {counted ? (diff===0 ? "✅" : "⚠️") : ""}
               </div>
@@ -308,6 +309,7 @@ export default function StocktakeTab({ products, clothingItems, user, role }) {
             </div>
           );
         })}
+        </div>
       </CardBox>
 
       {/* Finalize button */}

@@ -11,3 +11,26 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* 📱 iOS Safari — table horizontal scroll fix
+   ใช้ class="table-scroll" wrap ตารางที่ยาวเกินจอ → swipe ซ้ายขวาได้บน iPhone */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  /* hint: เห็นเส้นด้านขวาเล็กๆ บอกว่ามีของให้เลื่อนต่อ */
+  background-image: linear-gradient(to right, transparent 95%, rgba(59,91,139,0.08));
+}
+.table-scroll::-webkit-scrollbar { height: 6px; }
+.table-scroll::-webkit-scrollbar-thumb { background: rgba(59,91,139,0.3); border-radius: 3px; }
+
+/* ตารางใน .table-scroll ต้องไม่ shrink — บังคับ min-width ให้ overflow */
+.table-scroll > table { min-width: 600px; }
+
+/* รองรับ iOS — ป้องกัน rubber-band ตอน scroll table */
+@media (max-width: 768px) {
+  .pad-main { -webkit-overflow-scrolling: touch; }
+  /* ทุกตารางบนมือถือ → ให้ scroll x ได้อัตโนมัติถ้ายาวเกิน */
+  table { max-width: 100%; }
+}

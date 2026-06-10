@@ -229,9 +229,10 @@ export default function EmployeeTab({ employees = [], user, role }) {
         </div>
       </div>
 
-      {/* List */}
+      {/* List — wrap ใน .table-scroll → iOS เลื่อนซ้ายขวาได้ */}
       <CardBox style={{ padding: 0, overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 120px 120px 120px 120px 90px", padding: "10px 16px", background: "#f8f9fb", fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: `1px solid ${T.border}` }}>
+        <div className="table-scroll" style={{ minWidth: 0 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(180px,1fr) 100px 120px 120px 120px 120px 90px", minWidth: 850, padding: "10px 16px", background: "#f8f9fb", fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: `1px solid ${T.border}` }}>
           <div>พนักงาน / แผนก</div>
           <div>สัญชาติ</div>
           <div>Work Permit</div>
@@ -245,7 +246,7 @@ export default function EmployeeTab({ employees = [], user, role }) {
             {employees.length === 0 ? "ยังไม่มีพนักงาน — กด '+ เพิ่มพนักงาน' เพื่อเริ่ม" : "ไม่พบพนักงานตามเงื่อนไข"}
           </div>
         ) : filtered.map((e, i) => (
-          <div key={e.id} style={{ display: "grid", gridTemplateColumns: "1fr 100px 120px 120px 120px 120px 90px", alignItems: "center", padding: "12px 16px", borderBottom: i<filtered.length-1?`1px solid ${T.border}`:"none", fontSize: 12, background: e._topUrgency === "expired" ? "rgba(185,74,72,0.04)" : e._topUrgency === "critical" ? "rgba(185,74,72,0.02)" : "transparent" }}>
+          <div key={e.id} style={{ display: "grid", gridTemplateColumns: "minmax(180px,1fr) 100px 120px 120px 120px 120px 90px", minWidth: 850, alignItems: "center", padding: "12px 16px", borderBottom: i<filtered.length-1?`1px solid ${T.border}`:"none", fontSize: 12, background: e._topUrgency === "expired" ? "rgba(185,74,72,0.04)" : e._topUrgency === "critical" ? "rgba(185,74,72,0.02)" : "transparent" }}>
             <div>
               <div style={{ fontWeight: 600, color: T.text, fontSize: 13 }}>{e.name}</div>
               <div style={{ fontSize: 10, color: T.muted }}>
@@ -274,6 +275,7 @@ export default function EmployeeTab({ employees = [], user, role }) {
             </div>
           </div>
         ))}
+        </div>
       </CardBox>
 
       {/* ── Form Modal ── */}
