@@ -298,7 +298,8 @@ export default function LotDetailModal({
   };
   const updateEditItem = (idx, patch) => setEditItems(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it));
   const removeEditItem = (idx) => setEditItems(prev => prev.filter((_, i) => i !== idx));
-  const addEditItem = () => setEditItems(prev => [...prev, { colorName: "", colorHex: "#999", colorIdx: 0, size: "", qty: "1" }]);
+  const addEditItem = () => setEditItems(prev => [...prev, { colorName: "", colorHex: "#999", colorIdx: 0, size: "", variant: "", qty: "1" }]);
+  const VARIANT_PRESETS = ["แขนสั้น", "แขนยาว", "แขนกุด", "คอกลม", "คอวี", "โปโล", "ฮู้ด"];
 
   // ── delete lot (admin/manager) ──
   const handleDeleteLot = async () => {
@@ -376,9 +377,15 @@ export default function LotDetailModal({
           <>
             <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
               {editItems.map((it, idx) => (
-                <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr 1fr 80px 32px",gap:6,alignItems:"center",padding:6,background:"white",border:`1px solid ${T.border}`,borderRadius:7}}>
+                <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 80px 32px",gap:6,alignItems:"center",padding:6,background:"white",border:`1px solid ${T.border}`,borderRadius:7}}>
                   <input value={it.colorName} onChange={e => updateEditItem(idx, { colorName: e.target.value })} placeholder="สี"
                     style={{padding:"5px 8px",border:`1px solid ${T.border}`,borderRadius:5,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+                  <input value={it.variant || ""} onChange={e => updateEditItem(idx, { variant: e.target.value })} placeholder="ลักษณะ (แขนสั้น/ยาว/...)"
+                    list={`lot-variant-suggestions-${idx}`}
+                    style={{padding:"5px 8px",border:`1px solid ${T.border}`,borderRadius:5,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+                  <datalist id={`lot-variant-suggestions-${idx}`}>
+                    {VARIANT_PRESETS.map(v => <option key={v} value={v}/>)}
+                  </datalist>
                   <input value={it.size} onChange={e => updateEditItem(idx, { size: e.target.value })} placeholder="ไซส์"
                     style={{padding:"5px 8px",border:`1px solid ${T.border}`,borderRadius:5,fontSize:12,outline:"none",fontFamily:"inherit",textAlign:"center"}}/>
                   <input type="number" min="0" value={it.qty} onChange={e => updateEditItem(idx, { qty: e.target.value })} placeholder="จำนวน"
@@ -399,6 +406,7 @@ export default function LotDetailModal({
               <span key={i} style={{padding:"10px 16px",background:"white",border:`1px solid ${T.border}`,borderRadius:10,fontSize:15,display:"inline-flex",alignItems:"center",gap:10,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
                 <span style={{width:14,height:14,borderRadius:3,background:it.colorHex||"#999",border:"1px solid rgba(0,0,0,0.1)"}}/>
                 <b style={{color:T.text,fontSize:15}}>{it.colorName}</b>
+                {it.variant && <span style={{color:T.sub,fontSize:13,padding:"2px 8px",background:"rgba(59,91,139,0.08)",borderRadius:10}}>{it.variant}</span>}
                 <span style={{color:T.sub,fontSize:14}}>/ {it.size}</span>
                 <span style={{fontFamily:"monospace",fontWeight:800,color:T.accent,fontSize:16}}>× {fmtInt(it.qty)}</span>
               </span>
