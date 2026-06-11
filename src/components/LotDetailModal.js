@@ -69,18 +69,19 @@ export default function LotDetailModal({
   const persistLots = async (newLots, extras = {}) => {
     // sync order.items + order.totalQty จาก lots ทุกครั้ง
     // (ใบพิมพ์/รายละเอียดอ่านจาก order.items, ลิสต์อ่านจาก order.totalQty — ต้อง sync ทั้งคู่)
-    const merged = new Map(); // key = colorIdx|colorName|colorHex|size
+    const merged = new Map(); // key = colorIdx|colorName|colorHex|size|variant
     (newLots || []).forEach(l => {
       (l.items || []).forEach(it => {
         const q = Number(it.qty) || 0;
         if (q <= 0) return;
-        const key = [it.colorIdx ?? "", it.colorName ?? "", it.colorHex ?? "", it.size ?? ""].join("|");
+        const key = [it.colorIdx ?? "", it.colorName ?? "", it.colorHex ?? "", it.size ?? "", it.variant ?? ""].join("|");
         if (!merged.has(key)) {
           merged.set(key, {
             colorIdx: it.colorIdx ?? 0,
             colorName: it.colorName ?? "",
             colorHex: it.colorHex ?? "",
             size: it.size ?? "",
+            variant: it.variant ?? "",
             qty: 0,
           });
         }
