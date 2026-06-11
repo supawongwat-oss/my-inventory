@@ -106,6 +106,33 @@ export default function App() {
     }
   }, [user]);
 
+  // Auto-reload เมื่อมี deploy ใหม่ — เช็คตอน tab กลับมา visible
+  // เทียบ hash ของ main JS จาก /asset-manifest.json
+  useEffect(() => {
+    let initialHash = null;
+    const fetchHash = async () => {
+      try {
+        const res = await fetch("/asset-manifest.json?t=" + Date.now(), { cache: "no-store" });
+        if (!res.ok) return null;
+        const j = await res.json();
+        return (j.files && (j.files["main.js"] || j.files["main.css"])) || null;
+      } catch (e) { return null; }
+    };
+    fetchHash().then(h => { initialHash = h; });
+
+    const onVisible = async () => {
+      if (document.visibilityState !== "visible") return;
+      if (!initialHash) { initialHash = await fetchHash(); return; }
+      const current = await fetchHash();
+      if (current && current !== initialHash) {
+        // มีเวอร์ชันใหม่ — reload (ผู้ใช้กำลังกลับมาที่ tab พอดี ไม่เสียงานกลางคัน)
+        try { window.location.reload(); } catch (e) {}
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+
   // Activity tracking — อัพเดท last_activity ทุกครั้งที่มี user interaction
   useEffect(() => {
     if (!user) return;
