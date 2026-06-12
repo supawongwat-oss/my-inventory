@@ -22,6 +22,7 @@ import InstallPWA from "./components/InstallPWA";
 import CustomerProfile from "./components/CustomerProfile";
 import ProductionTab from "./tabs/ProductionTab";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
+import { compressImage } from "./utils/imageCompress";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiRegion";
 import { generateDocNo } from "./utils/docNumber";
 import html2pdf from "html2pdf.js";
@@ -374,9 +375,17 @@ export default function App() {
   const statusColor = p => Number(p.qty) < Number(p.minQty) ? T.red : Number(p.qty) < Number(p.minQty) * 1.5 ? T.amber : T.green;
   const statusLabel = p => Number(p.qty) < Number(p.minQty) ? "ต่ำกว่าขั้นต่ำ" : Number(p.qty) < Number(p.minQty) * 1.5 ? "ใกล้หมด" : "ปกติ";
 
-  const handleImageUpload = e => {
+  const handleImageUpload = async e => {
     const file = e.target.files[0]; if (!file) return;
-    const r = new FileReader(); r.onload = ev => setNewProduct(p => ({...p, image: ev.target.result})); r.readAsDataURL(file);
+    try {
+      const dataUrl = await compressImage(file, { maxDim: 1000, quality: 0.75 });
+      setNewProduct(p => ({...p, image: dataUrl}));
+    } catch (err) {
+      console.error("[handleImageUpload] compress failed:", err);
+      alert("โหลดรูปไม่สำเร็จ: " + (err?.message || err));
+    } finally {
+      if (e.target) e.target.value = "";
+    }
   };
 
   const [addProductSaving, setAddProductSaving] = useState(false);
@@ -3021,7 +3030,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
               <div style={{fontSize:12,color:T.sub,marginBottom:8,fontWeight:500}}>📸 รูปสินค้า</div>
               <BtnGhost onClick={()=>{
                 const inp=document.createElement("input");inp.type="file";inp.accept="image/*";
-                inp.onchange=(e)=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>setEditingProduct(p=>({...p,image:r.result}));r.readAsDataURL(f);};
+                inp.onchange=async (e)=>{const f=e.target.files?.[0];if(!f)return;try{const dataUrl=await compressImage(f,{maxDim:1000,quality:0.75});setEditingProduct(p=>({...p,image:dataUrl}));}catch(err){alert("โหลดรูปไม่สำเร็จ: "+(err?.message||err));}};
                 inp.click();
               }} style={{fontSize:12,padding:"6px 14px"}}>📁 เปลี่ยนรูป</BtnGhost>
               {editingProduct.image&&<BtnGhost onClick={()=>setEditingProduct(p=>({...p,image:""}))} style={{fontSize:12,padding:"6px 14px",marginLeft:6,color:T.red}}>✕ ลบรูป</BtnGhost>}
@@ -3161,13 +3170,15 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
           {/* ปุ่มจัดการรูป */}
           <input ref={imgModalUploadRef} type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{
             const file=e.target.files[0]; if(!file) return;
-            const r=new FileReader();
-            r.onload=async ev=>{
-              await updateDoc(doc(db,"products",showImgModal.id),{image:ev.target.result,lastUpdate:now()});
-              setShowImgModal(p=>({...p,image:ev.target.result}));
-            };
-            r.readAsDataURL(file);
-            e.target.value="";
+            try {
+              const dataUrl = await compressImage(file, { maxDim: 1000, quality: 0.75 });
+              await updateDoc(doc(db,"products",showImgModal.id),{image:dataUrl,lastUpdate:now()});
+              setShowImgModal(p=>({...p,image:dataUrl}));
+            } catch (err) {
+              alert("อัปโหลดรูปไม่สำเร็จ: " + (err?.message || err));
+            } finally {
+              e.target.value="";
+            }
           }}/>
 
           <div style={{display:"flex",gap:10,marginBottom:10}}>
