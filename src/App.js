@@ -618,7 +618,14 @@ export default function App() {
     if (!newModel.trim()) return;
     // 👟 ถ้าอยู่ tab sports → ใส่ sizeType="shoe" ให้รุ่นใหม่ใช้ไซส์ 36-45
     const sizeType = inventoryTab === "sports" ? "shoe" : "apparel";
-    await addDoc(collection(db, "clothing"), { model: newModel.trim(), image: "", colors: [], sizeType, createdAt: serverTimestamp() });
+    const ref = await addDoc(collection(db, "clothing"), { model: newModel.trim(), image: "", colors: [], sizeType, createdAt: serverTimestamp() });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.CREATE,
+      collection: "clothing",
+      targetId: ref.id,
+      targetLabel: newModel.trim(),
+      note: `เพิ่มรุ่นใหม่ (${sizeType==="shoe"?"รองเท้า":"เสื้อผ้า"})`,
+    });
     setNewModel(""); setShowAddClothing(false);
   };
 
@@ -628,6 +635,13 @@ export default function App() {
     const initStock = {}; SIZES.forEach(s => initStock[s] = 0);
     const newColors = [...(item.colors||[]), { ...colorObj, stock: initStock, costPrice: colorObj.costPrice||0, salePrice: colorObj.salePrice||0 }];
     await updateDoc(doc(db, "clothing", itemId), { colors: newColors });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.UPDATE,
+      collection: "clothing",
+      targetId: itemId,
+      targetLabel: `${item.model} · เพิ่มสี ${colorObj.colorName||""}`,
+      note: `+ สี ${colorObj.colorName||"-"} (${colorObj.hex||""})`,
+    });
     setShowAddColor(null); setCustomColorName(""); setNewColorHex("#ffffff");
     setNewColorCost(""); setNewColorSale("");
   };
@@ -635,8 +649,20 @@ export default function App() {
   const handleUpdateClothingStock = async (itemId, colorIdx, size, val) => {
     const item = clothingItems.find(i => i.id === itemId);
     if (!item) return;
-    const newColors = item.colors.map((c,i) => i===colorIdx ? {...c, stock:{...c.stock,[size]:Math.max(0,Number(val)||0)}} : c);
+    const col = item.colors?.[colorIdx];
+    const oldQty = Number((col?.stock||{})[size]) || 0;
+    const newQty = Math.max(0, Number(val)||0);
+    const newColors = item.colors.map((c,i) => i===colorIdx ? {...c, stock:{...c.stock,[size]:newQty}} : c);
     await updateDoc(doc(db, "clothing", itemId), { colors: newColors });
+    if (oldQty !== newQty) {
+      logAudit(user, {
+        action: AUDIT_ACTIONS.STOCK,
+        collection: "clothing",
+        targetId: itemId,
+        targetLabel: `${item.model} / ${col?.colorName||"-"} / ${size}`,
+        note: `แก้สต๊อก ${oldQty}→${newQty}`,
+      });
+    }
     setEditingStock(null);
   };
 
