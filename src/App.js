@@ -1199,7 +1199,14 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
     doc.body.appendChild(doc.importNode(finalEl, true));
     doc.close();
     // มือถือต้อง delay มากกว่า desktop
-    const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+    // 🩹 detect mobile/tablet ให้คลุมเครื่องที่ UA หลุด regex เดิม:
+    //    - iPadOS 13+ รายงาน "Macintosh" → ใช้ maxTouchPoints
+    //    - Samsung tablet บางตัว UA มี "Mobi"/"Tablet"/"Silk" แต่ไม่มี "Android"
+    //    - touch-only + no fine pointer → ถือว่ามือถือ
+    const isMobile = /Android|iPhone|iPad|iPod|Mobi|Tablet|Silk|webOS|Kindle|PlayBook|BB10/i.test(navigator.userAgent)
+      || (typeof navigator !== "undefined" && navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent))
+      || (typeof navigator !== "undefined" && navigator.userAgentData && navigator.userAgentData.mobile)
+      || (typeof window !== "undefined" && window.matchMedia && window.matchMedia("(hover: none) and (pointer: coarse)").matches);
     // 🩹 Android/Samsung Tab: iframe และ @media print CSS ไม่น่าเชื่อถือ
     //    → เปิด tab ใหม่แล้ว print ใน window นั้นโดยตรง (วิธีที่เสถียรสุดบนมือถือ)
     const triggerMobile = () => {
