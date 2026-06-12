@@ -379,20 +379,37 @@ export default function App() {
     const r = new FileReader(); r.onload = ev => setNewProduct(p => ({...p, image: ev.target.result})); r.readAsDataURL(file);
   };
 
+  const [addProductSaving, setAddProductSaving] = useState(false);
   const handleAddProduct = async () => {
+    if (addProductSaving) return; // กัน double-submit
     if (!newProduct.code || !newProduct.name || newProduct.qty === "" || !newProduct.unit) return;
-    const bc = newProduct.barcode || `CPU${Date.now().toString().slice(-8)}`;
-    const cat = newProduct.category || categories[0] || "ทั่วไป";
-    const data = {
-      ...newProduct,
-      qty: Number(newProduct.qty),
-      minQty: newProduct.minQty === "" ? 0 : Number(newProduct.minQty),
-      barcode: bc, category: cat, lastUpdate: now(),
-      history: [{ action:"เพิ่มสินค้าใหม่", by: user.name, date: now(), note:`จำนวนเริ่มต้น: ${newProduct.qty} ${newProduct.unit}` }]
-    };
-    await addDoc(collection(db, "products"), data);
-    setAddSuccess(true);
-    setTimeout(() => { setAddSuccess(false); setShowAddModal(false); setNewProduct({code:"",name:"",category:"",qty:"",unit:"",minQty:"",location:"",barcode:"",image:""}); }, 1000);
+    setAddProductSaving(true);
+    try {
+      const bc = newProduct.barcode || `CPU${Date.now().toString().slice(-8)}`;
+      const cat = newProduct.category || categories[0] || "ทั่วไป";
+      const data = {
+        ...newProduct,
+        qty: Number(newProduct.qty),
+        minQty: newProduct.minQty === "" ? 0 : Number(newProduct.minQty),
+        barcode: bc, category: cat, lastUpdate: now(),
+        history: [{ action:"เพิ่มสินค้าใหม่", by: user.name, date: now(), note:`จำนวนเริ่มต้น: ${newProduct.qty} ${newProduct.unit}` }]
+      };
+      const ref = await addDoc(collection(db, "products"), data);
+      logAudit(user, {
+        action: AUDIT_ACTIONS.CREATE,
+        collection: "products",
+        targetId: ref.id,
+        targetLabel: `${newProduct.code} · ${newProduct.name}`,
+        note: `qty:${newProduct.qty} ${newProduct.unit}`,
+      });
+      setAddSuccess(true);
+      setTimeout(() => { setAddSuccess(false); setShowAddModal(false); setNewProduct({code:"",name:"",category:"",qty:"",unit:"",minQty:"",location:"",barcode:"",image:"",costPrice:"",salePrice:""}); }, 1000);
+    } catch (e) {
+      console.error("[handleAddProduct] failed:", e);
+      alert("บันทึกไม่สำเร็จ: " + (e?.message || e));
+    } finally {
+      setAddProductSaving(false);
+    }
   };
 
   const handleSaveEditProduct = async () => {
@@ -2985,7 +3002,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
           </div>
           <div style={{display:"flex",gap:10,marginTop:20}}>
             <BtnGhost onClick={()=>setShowAddModal(false)} style={{flex:1}}>ยกเลิก</BtnGhost>
-            <BtnPrimary onClick={handleAddProduct} disabled={!newProduct.code||!newProduct.name||newProduct.qty===""||!newProduct.unit} style={{flex:1}}>✅ บันทึกสินค้า</BtnPrimary>
+            <BtnPrimary onClick={handleAddProduct} disabled={addProductSaving||!newProduct.code||!newProduct.name||newProduct.qty===""||!newProduct.unit} style={{flex:1}}>{addProductSaving?"⏳ กำลังบันทึก...":"✅ บันทึกสินค้า"}</BtnPrimary>
           </div>
         </Modal>
       )}
