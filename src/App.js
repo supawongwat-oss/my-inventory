@@ -2829,7 +2829,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 : userRoleFilter.startsWith("pos:") ? users.filter(u=>u.position===userRoleFilter.slice(4))
                 : users.filter(u=>u.role===userRoleFilter);
               return (
-              <CardBox style={{padding:0,overflow:"hidden"}}>
+              <CardBox style={{padding:0,overflowX:"auto",overflowY:"visible",WebkitOverflowScrolling:"touch"}}>
+                <div style={{minWidth:820}}>
                 <div style={{display:"grid",gridTemplateColumns:"40px 1fr 140px 140px 130px 130px 80px 60px",alignItems:"center",padding:"10px 16px",background:"#f8f9fb",borderBottom:`1px solid ${T.border}`,color:T.muted,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>
                   <div></div><div>ชื่อ / ผู้ใช้</div><div>ตำแหน่ง</div><div>รหัสผ่าน</div><div>บทบาท</div><div>สิทธิ์</div><div style={{textAlign:"center"}}>เมนู</div><div style={{textAlign:"center"}}>ลบ</div>
                 </div>
@@ -2930,6 +2931,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                     </div>
                   </div>
                 ))}
+                </div>
               </CardBox>
               );})()}
               <div style={{marginTop:14,padding:12,background:"rgba(59,91,139,0.08)",border:"1px solid rgba(59,91,139,0.2)",borderRadius:10,fontSize:12,color:"#3b5b8b"}}>
