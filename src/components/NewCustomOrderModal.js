@@ -5,7 +5,7 @@ import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { generateDocNo } from "../utils/docNumber";
 import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
-import { PRESET_COLORS } from "../theme";
+import { PRESET_COLORS, getProductionSize, isProductionSizeCapped } from "../theme";
 
 const T = { border:"#e3e8ef", sub:"#5b6b85", text:"#1f2a44", muted:"#8a9bb3", accent:"#3b5b8b", input:"#f6f8fb", inputBorder:"#d8dee9", red:"#dc2626" };
 const fmt = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -25,8 +25,9 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const [fabricType, setFabricType] = useState("");
   const [collarType, setCollarType] = useState("");
   const [jobDescription, setJobDescription] = useState("");
+  const [shrinkOffset, setShrinkOffset] = useState(0); // 🪡 เผื่อหด: +0 / +1 / +2 / +3
   const [images, setImages] = useState([]); // [{dataUrl, label}]
-  const [items, setItems] = useState([{ colorName:"", colorHex:"#94a3b8", size:"", qty:"", variant:"" }]);
+  const [items, setItems] = useState([{ colorName:"", colorHex:"#94a3b8", size:"", qty:"", variant:"", productionSize:"" }]);
 
   // 🎽 รูปแบบเสื้อยอดนิยม — กดชิปเพื่อใส่ในแถวที่เลือก
   const VARIANT_PRESETS = ["แขนสั้น", "แขนยาว", "แขนกุด", "คอกลม", "คอวี", "โปโล", "ฮู้ด"];
@@ -42,7 +43,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const addRow = () => setItems(prev => {
     // แถวใหม่ inherit สี + variant จากแถวสุดท้าย (กดน้อยลง)
     const last = prev[prev.length-1];
-    return [...prev, { colorName: last?.colorName || "", colorHex: last?.colorHex || "#94a3b8", size:"", qty:"", variant: last?.variant || "" }];
+    return [...prev, { colorName: last?.colorName || "", colorHex: last?.colorHex || "#94a3b8", size:"", qty:"", variant: last?.variant || "", productionSize:"" }];
   });
   const setRow = (idx, patch) => setItems(prev => prev.map((r,i)=> i===idx ? {...r, ...patch} : r));
   const removeRow = (idx) => setItems(prev => prev.filter((_,i)=>i!==idx));
@@ -99,6 +100,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
       fabricType: (fabricType||"").trim(),
       collarType: (collarType||"").trim(),
       jobDescription: (jobDescription||"").trim(),
+      shrinkOffset: Number(shrinkOffset) || 0,
       clothingImage: images[0]?.dataUrl || "", // backward compat (รูปแรก)
       clothingImages: images,                  // [{dataUrl, label}]
       items: (() => {
@@ -107,11 +109,14 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
         return validItems.map(r => {
           const key = (r.colorName.trim() || "-") + "|" + (r.colorHex || "#94a3b8");
           if (!colorMap.has(key)) colorMap.set(key, colorMap.size);
+          const cSize = r.size.trim() || "-";
+          const pSize = (r.productionSize||"").trim() || getProductionSize(cSize, shrinkOffset);
           return {
             colorIdx: colorMap.get(key),
             colorName: r.colorName.trim() || "-",
             colorHex: r.colorHex || "#94a3b8",
-            size: r.size.trim() || "-",
+            size: cSize,
+            productionSize: pSize,
             qty: Number(r.qty) || 0,
             variant: (r.variant || "").trim() || "",
           };
@@ -295,6 +300,21 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
         </div>
       )}
 
+      {/* 🪡 เผื่อหด (Global offset ทั้งใบ — auto-calc ไซส์ผลิตให้ทุกแถว) */}
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,padding:"8px 12px",background:"rgba(217,119,6,0.06)",border:"1px solid rgba(217,119,6,0.25)",borderRadius:8}}>
+        <span style={{fontSize:12,fontWeight:700,color:"#92400e"}}>🪡 เผื่อหด ตัดผ้าใหญ่ขึ้น:</span>
+        <select value={shrinkOffset} onChange={e=>setShrinkOffset(Number(e.target.value))}
+          style={{background:"white",border:"1px solid rgba(217,119,6,0.4)",borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:700,color:"#92400e",cursor:"pointer",fontFamily:"inherit",outline:"none"}}>
+          <option value={0}>ไม่เผื่อ</option>
+          <option value={1}>+1 ไซส์</option>
+          <option value={2}>+2 ไซส์</option>
+          <option value={3}>+3 ไซส์</option>
+        </select>
+        <span style={{fontSize:10,color:"#92400e",opacity:0.8}}>
+          {shrinkOffset>0 ? `ไซส์ผลิตจะเลื่อนใหญ่ขึ้น ${shrinkOffset} ไซส์อัตโนมัติ — แต่ละแถว override ได้` : "ไซส์ผลิต = ไซส์ลูกค้า"}
+        </span>
+      </div>
+
       {/* รวมรายชื่อสีที่กรอกแล้วในใบนี้ + PRESET_COLORS → ใช้เป็น suggestion */}
       {(() => null)()}
       <datalist id="custom-color-suggestions">
@@ -358,6 +378,27 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
                 style={{padding:"3px 8px",background:r.variant===v?"#3b5b8b":"white",color:r.variant===v?"white":T.accent,border:`1px solid ${r.variant===v?"#3b5b8b":T.inputBorder}`,borderRadius:12,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{v}</button>
             ))}
           </div>
+          {/* 🪡 ไซส์ผลิต (auto จาก size + shrinkOffset, override ได้) */}
+          {(shrinkOffset>0 || r.productionSize) && (()=>{
+            const autoPSize = getProductionSize(r.size||"", shrinkOffset);
+            const capped = isProductionSizeCapped(r.size||"", shrinkOffset);
+            const effective = (r.productionSize||"").trim() || autoPSize;
+            const isOverride = !!(r.productionSize||"").trim();
+            return (
+            <div style={{display:"flex",alignItems:"center",gap:5,marginTop:4,flexWrap:"wrap",padding:"4px 6px",background:"rgba(217,119,6,0.06)",border:"1px dashed rgba(217,119,6,0.3)",borderRadius:6}}>
+              <label style={{fontSize:9,color:"#92400e",fontWeight:700,minWidth:75}}>🪡 ไซส์ผลิต:</label>
+              <input value={r.productionSize||""} onChange={e=>setRow(idx,{productionSize:e.target.value})}
+                placeholder={autoPSize ? `auto: ${autoPSize}` : "(ปล่อยว่าง = ใช้ไซส์ลูกค้า)"}
+                style={{flex:"0 1 100px",background:"white",border:`1px solid ${T.inputBorder}`,borderRadius:6,padding:"4px 8px",fontFamily:"inherit",fontSize:11,fontWeight:700,textAlign:"center",outline:"none",color:isOverride?T.accent:"#92400e"}}/>
+              <span style={{fontSize:10,color:"#92400e",fontWeight:600}}>
+                = ตัดผ้าจริง <b style={{color:T.accent}}>{effective || "-"}</b>
+                {r.size && effective && r.size !== effective && <span style={{color:T.muted,fontWeight:500,marginLeft:4}}>(ลูกค้า: {r.size})</span>}
+              </span>
+              {capped && !isOverride && <span style={{fontSize:9,color:T.red,fontWeight:700,padding:"2px 6px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10}}>⚠️ ชน 12XL (เกิน max)</span>}
+              {isOverride && <button onClick={()=>setRow(idx,{productionSize:""})} title="ใช้ auto" style={{padding:"2px 8px",background:"white",border:`1px solid ${T.inputBorder}`,borderRadius:10,fontSize:9,color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>↺ auto</button>}
+            </div>
+            );
+          })()}
           </div>
         ))}
       </div>
