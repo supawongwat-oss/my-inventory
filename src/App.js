@@ -2447,13 +2447,13 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 orders.forEach(o => {
                   (o.items||[]).forEach(it => {
                     items.push({
-                      // structured fields → render เป็นตารางรุ่น/สี/SIZE×4 แทน generic
                       clothingId: `custom_${o.id}`,
                       clothingName: o.clothingName || "",
                       colorIdx: 0,
                       colorName: it.colorName || "",
                       colorHex: it.colorHex || "#999999",
                       size: it.size || "",
+                      variant: it.variant || "",
                       qty: Number(it.qty) || 0,
                       unitPrice: Number(o.costSnapshot?.totalCostPerPiece) || 0,
                       unit: "ตัว",
@@ -2462,13 +2462,25 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                     });
                   });
                 });
-                // ลำดับสำคัญ: เปิด modal "ก่อน" จากนั้นค่อย set form
-                // (กัน user กดปุ่ม "+ ออกบิลใหม่" ที่ reset form)
+                // รวบรวม customDetails จากทุก custom order ที่เลือก
+                const customDetails = {
+                  prodNos: orders.map(o=>o.prodNo).filter(Boolean),
+                  jobs: orders.map(o => ({
+                    prodNo: o.prodNo || "",
+                    clothingName: o.clothingName || "",
+                    fabricType: o.fabricType || "",
+                    collarType: o.collarType || "",
+                    jobDescription: o.jobDescription || "",
+                    note: o.note || "",
+                    images: Array.isArray(o.clothingImages) && o.clothingImages.length>0
+                      ? o.clothingImages
+                      : (o.clothingImage ? [{ dataUrl: o.clothingImage, label: "" }] : []),
+                  })),
+                };
                 setInvoiceDocType("receipt");
                 setInvoiceVat(false);
                 setShowNewInvoice(true);
                 setActiveTab("invoice");
-                // set form ใน next tick เพื่อให้ modal ติด
                 setTimeout(() => {
                   setInvoiceForm({
                     customerId: first.customerId||"",
@@ -2482,6 +2494,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                     vatRate: 7,
                     discount: 0,
                     discountType: "amount",
+                    useShipping: false, shippingFee: 0,
+                    customDetails,
                   });
                 }, 50);
               }}
@@ -4454,6 +4468,45 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                   {(showPrintInvoice.showCompanyTaxId!==false)&&companyInfo.taxId&&<div style={{fontSize:11,color:"#000",marginTop:1}}>เลขผู้เสียภาษี: {companyInfo.taxId}</div>}
                 </div>
               </div>
+
+              {/* ── รายละเอียดงาน Custom (รูป + ชนิดผ้า + ปก + ลักษณะงาน) ── */}
+              {showPrintInvoice.customDetails&&(showPrintInvoice.customDetails.jobs||[]).length>0&&(
+                <div style={{marginBottom:10,padding:"10px 12px",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8}}>
+                  <div style={{fontSize:10,color:"#3b5b8b",fontWeight:800,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>📋 รายละเอียดงาน</div>
+                  {(showPrintInvoice.customDetails.jobs||[]).map((j,ji)=>{
+                    const imgs=j.images||[];
+                    const cols=imgs.length<=1?1:(imgs.length===2?2:3);
+                    return (
+                      <div key={ji} style={{marginBottom:ji<(showPrintInvoice.customDetails.jobs.length-1)?10:0,paddingBottom:ji<(showPrintInvoice.customDetails.jobs.length-1)?10:0,borderBottom:ji<(showPrintInvoice.customDetails.jobs.length-1)?"1px dashed #cbd5e1":"none"}}>
+                        <div style={{display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap",marginBottom:6}}>
+                          {j.prodNo&&<span style={{fontSize:10,fontFamily:"monospace",color:"#3b5b8b",fontWeight:700,padding:"2px 7px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:4}}>{j.prodNo}</span>}
+                          <span style={{fontSize:13,fontWeight:700,color:"#000"}}>{j.clothingName||"-"}</span>
+                        </div>
+                        {(j.fabricType||j.collarType||j.jobDescription)&&(
+                          <div style={{display:"flex",flexWrap:"wrap",gap:6,fontSize:11,marginBottom:imgs.length>0?8:0}}>
+                            {j.fabricType&&<span style={{padding:"2px 8px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,fontWeight:600,color:"#1e40af"}}>🧵 {j.fabricType}</span>}
+                            {j.collarType&&<span style={{padding:"2px 8px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,fontWeight:600,color:"#15803d"}}>👔 {j.collarType}</span>}
+                            {j.jobDescription&&<span style={{padding:"2px 8px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,fontWeight:600,color:"#78350f"}}>📋 {j.jobDescription}</span>}
+                          </div>
+                        )}
+                        {j.note&&<div style={{fontSize:10,color:"#475569",marginBottom:imgs.length>0?8:0,fontStyle:"italic"}}>💬 {j.note}</div>}
+                        {imgs.length>0&&(
+                          <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap:6}}>
+                            {imgs.map((im,i)=>(
+                              <div key={i} style={{textAlign:"center"}}>
+                                <div style={{width:"100%",height:imgs.length===1?180:140,background:"#fff",border:"1px solid #e2e8f0",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+                                  <img src={im.dataUrl} alt="" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/>
+                                </div>
+                                {im.label&&<div style={{fontSize:10,color:"#1e293b",fontWeight:700,marginTop:3}}>{im.label}</div>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* ── ตารางรายการ (รุ่น | สี | SIZE×4 | จำนวน | ราคา) ── */}
               {(()=>{
