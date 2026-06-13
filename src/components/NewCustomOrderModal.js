@@ -22,11 +22,16 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [jobName, setJobName] = useState("");
+  const [fabricType, setFabricType] = useState("");
+  const [collarType, setCollarType] = useState("");
+  const [jobDescription, setJobDescription] = useState("");
   const [images, setImages] = useState([]); // [{dataUrl, label}]
   const [items, setItems] = useState([{ colorName:"", colorHex:"#94a3b8", size:"", qty:"", variant:"" }]);
 
   // 🎽 รูปแบบเสื้อยอดนิยม — กดชิปเพื่อใส่ในแถวที่เลือก
   const VARIANT_PRESETS = ["แขนสั้น", "แขนยาว", "แขนกุด", "คอกลม", "คอวี", "โปโล", "ฮู้ด"];
+  const FABRIC_PRESETS = ["TK", "TC", "Cotton 100%", "Polyester", "Microfiber", "Lacoste/PK", "Dry-tech", "ผ้าโทรี่"];
+  const COLLAR_PRESETS = ["คอกลม", "คอวี", "คอปก (โปโล)", "คอจีน", "คอฮู้ด"];
   const [costPerPiece, setCostPerPiece] = useState("");
   const [laborCostPerPiece, setLaborCostPerPiece] = useState("");
   const [note, setNote] = useState("");
@@ -91,6 +96,9 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
       customerPhone: customerPhone.trim(),
       clothingId: null,
       clothingName: jobName.trim(),
+      fabricType: (fabricType||"").trim(),
+      collarType: (collarType||"").trim(),
+      jobDescription: (jobDescription||"").trim(),
       clothingImage: images[0]?.dataUrl || "", // backward compat (รูปแรก)
       clothingImages: images,                  // [{dataUrl, label}]
       items: (() => {
@@ -194,6 +202,39 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
       {/* ชื่องาน */}
       <div style={{marginBottom:10}}>
         <Input label="ชื่องาน / รุ่น *" value={jobName} onChange={e => setJobName(e.target.value)} placeholder="เช่น เสื้อคลาส ม.6/3 ปี 2569"/>
+      </div>
+
+      {/* ชนิดผ้า + ปกเสื้อ */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+        <div>
+          <Input label="🧵 ชนิดผ้า" value={fabricType} onChange={e => setFabricType(e.target.value)} placeholder="เช่น TK, Cotton 100%" list="fabric-presets"/>
+          <datalist id="fabric-presets">
+            {FABRIC_PRESETS.map(v => <option key={v} value={v}/>)}
+          </datalist>
+          <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:5}}>
+            {FABRIC_PRESETS.slice(0,4).map(v => (
+              <button key={v} onClick={()=>setFabricType(v)}
+                style={{padding:"3px 8px",background:fabricType===v?"#3b5b8b":"white",color:fabricType===v?"white":T.accent,border:`1px solid ${fabricType===v?"#3b5b8b":T.inputBorder}`,borderRadius:12,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{v}</button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <Input label="👔 ปกเสื้อ / คอเสื้อ" value={collarType} onChange={e => setCollarType(e.target.value)} placeholder="เช่น คอกลม, คอวี" list="collar-presets"/>
+          <datalist id="collar-presets">
+            {COLLAR_PRESETS.map(v => <option key={v} value={v}/>)}
+          </datalist>
+          <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:5}}>
+            {COLLAR_PRESETS.slice(0,4).map(v => (
+              <button key={v} onClick={()=>setCollarType(v)}
+                style={{padding:"3px 8px",background:collarType===v?"#3b5b8b":"white",color:collarType===v?"white":T.accent,border:`1px solid ${collarType===v?"#3b5b8b":T.inputBorder}`,borderRadius:12,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{v}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* รายละเอียดงาน */}
+      <div style={{marginBottom:10}}>
+        <Input label="📋 รายละเอียดงาน" value={jobDescription} onChange={e => setJobDescription(e.target.value)} placeholder="เช่น สกรีนหน้า-หลัง, ปักโลโก้, เคลือบ..."/>
       </div>
 
       {/* รูปแบบ — หลายรูปได้, แต่ละรูปใส่ label สีกำกับได้ */}
