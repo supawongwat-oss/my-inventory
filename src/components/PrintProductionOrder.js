@@ -47,11 +47,12 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                     <div style={{fontSize:10,color:"#3b5b8b",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>รุ่นสินค้า</div>
                     <div style={{fontSize:18,fontWeight:700,color:"#1e293b"}}>{order.clothingName}</div>
                     <div style={{fontSize:12,color:"#475569",marginTop:2}}>รวมทั้งหมด <b style={{color:"#3b5b8b",fontSize:15}}>{fmtInt(order.totalQty)}</b> ตัว</div>
-                    {(order.fabricType||order.collarType||order.jobDescription) && (
+                    {(order.fabricType||order.collarType||order.jobDescription||order.shrinkOffset>0) && (
                       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:6,fontSize:11,color:"#475569"}}>
                         {order.fabricType && <span style={{padding:"3px 8px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,fontWeight:600}}>🧵 {order.fabricType}</span>}
                         {order.collarType && <span style={{padding:"3px 8px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,fontWeight:600}}>👔 {order.collarType}</span>}
                         {order.jobDescription && <span style={{padding:"3px 8px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,fontWeight:600}}>📋 {order.jobDescription}</span>}
+                        {order.shrinkOffset>0 && <span style={{padding:"3px 8px",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:10,fontWeight:700,color:"#92400e"}}>🪡 เผื่อหด ตัดผ้าใหญ่ขึ้น +{order.shrinkOffset} ไซส์</span>}
                       </div>
                     )}
                   </div>
@@ -83,7 +84,8 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                 const g = { colorName: it.colorName||"-", colorHex: it.colorHex||"#999", variant: it.variant||"", sizes: [] };
                 gmap.set(key, g); groups.push(g);
               }
-              gmap.get(key).sizes.push({ size: it.size||"-", qty: Number(it.qty)||0 });
+              const pSize = it.productionSize || it.size || "-";
+              gmap.get(key).sizes.push({ size: pSize, customerSize: it.size||"-", qty: Number(it.qty)||0 });
             });
             const MAX = 4;
             return (
@@ -119,7 +121,12 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                             </div>)}
                           </td>
                           {chunk.flatMap((c,i)=>([
-                            <td key={`s-${i}`} style={{padding:"4px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#0c4a6e",border:"1px solid #000",background:"#f0f9ff",fontSize:11}}>{c.size}</td>,
+                            <td key={`s-${i}`} style={{padding:"4px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#0c4a6e",border:"1px solid #000",background:"#f0f9ff",fontSize:11}}>
+                              {c.size}
+                              {c.customerSize && c.customerSize !== c.size && (
+                                <div style={{fontSize:8,color:"#475569",fontWeight:500,marginTop:1,fontFamily:"inherit"}}>(ลูกค้า: {c.customerSize})</div>
+                              )}
+                            </td>,
                             <td key={`q-${i}`} style={{padding:"4px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:11}}>{fmtInt(c.qty)}</td>
                           ]))}
                           {Array(MAX - chunk.length).fill(null).flatMap((_,i)=>([
