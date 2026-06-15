@@ -49,12 +49,22 @@ export default function PayrollTab({ employees = [], attendance = [], payrollRun
       updatedBy: user?.name || "",
     };
     delete payload.id;
-    await setDoc(doc(db, "attendance", docId), payload);
+    try {
+      await setDoc(doc(db, "attendance", docId), payload);
+    } catch (e) {
+      console.error("[attendance] save failed:", e);
+      if (String(e.message||"").includes("permission") || String(e.code||"").includes("permission")) {
+        alert("⚠️ Firestore Rules ยังไม่อนุญาตให้เขียนใน 'attendance'\n\nวิธีแก้:\n1. ไป Firebase Console → Firestore → Rules\n2. เพิ่มบรรทัด: match /attendance/{doc} { allow read, write: if request.auth != null; }\n3. กด Publish\n4. กลับมาคลิกใหม่");
+      } else {
+        alert("บันทึกไม่สำเร็จ: " + (e.message||e));
+      }
+    }
   };
 
   const clearDay = async (employeeId, dateStr) => {
     const docId = `${employeeId}_${dateStr}`;
-    try { await deleteDoc(doc(db, "attendance", docId)); } catch (e) {}
+    try { await deleteDoc(doc(db, "attendance", docId)); }
+    catch (e) { console.error("[attendance] clear failed:", e); }
   };
 
   // 💰 Run payroll — สร้าง pay slips ทั้งหมดในเดือน
