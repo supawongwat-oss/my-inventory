@@ -1,5 +1,17 @@
 {
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/((?!service-worker\\.js|manifest\\.json|favicon\\.ico|cpu-logo\\.png|static/.*|.*\\.js|.*\\.css|.*\\.json|.*\\.png|.*\\.jpg|.*\\.svg|.*\\.woff2?).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/service-worker.js",
+      "headers": [
+        { "key": "Content-Type", "value": "application/javascript; charset=utf-8" },
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    }
   ]
 }
