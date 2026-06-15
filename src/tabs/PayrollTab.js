@@ -72,13 +72,31 @@ export default function PayrollTab({ employees = [], attendance = [], payrollRun
   const [adjustments, setAdjustments] = useState({}); // {empId: {bonus,advance,penalty,...}}
   const [saving, setSaving] = useState(false);
 
+  // 💡 default present mode — ถ้า on, นับวันทำงาน (จ-ศ) ที่ไม่มี record = "มา" auto
+  const [usDefaultPresent, setUsDefaultPresent] = useState(true);
+
   const generatePayslips = () => {
     const slips = employees.map(emp => {
       const summary = summarizeAttendance(monthAttendance, emp.id);
+      // 💡 เติมวันมาที่ "นับ default" ให้ — สำหรับวันทำงาน(จ-ศ) ที่ผ่านมาแล้วและไม่มี record
+      if (usDefaultPresent) {
+        let extraPresent = 0;
+        const today = new Date();
+        for (let d = 1; d <= new Date(year, month, 0).getDate(); d++) {
+          const dt = new Date(year, month-1, d);
+          if (dt > today) continue;
+          const dow = dt.getDay();
+          if (dow === 0 || dow === 6) continue;
+          const ds = `${year}-${String(month).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+          const hasRec = monthAttendance.some(r => r.employeeId === emp.id && r.date === ds);
+          if (!hasRec) extraPresent++;
+        }
+        summary.daysPresent += extraPresent;
+      }
       const adj = adjustments[emp.id] || {};
       const slip = calculatePaySlip(emp, { ...summary, workDaysInMonth: wdInMonth }, adj);
       return { employee: emp, slip };
-    }).filter(r => r.slip.earnings.gross > 0); // กรองคนที่ไม่มีรายได้
+    }).filter(r => r.slip.earnings.gross > 0);
     setRunResult(slips);
   };
 
@@ -169,6 +187,7 @@ export default function PayrollTab({ employees = [], attendance = [], payrollRun
           monthKey={monthKey}
           onSet={setAttendance}
           onClear={clearDay}
+          user={user}
         />
       )}
 
@@ -187,6 +206,8 @@ export default function PayrollTab({ employees = [], attendance = [], payrollRun
           saving={saving}
           month={month} year={year}
           printElementById={printElementById}
+          usDefaultPresent={usDefaultPresent}
+          setUsDefaultPresent={setUsDefaultPresent}
         />
       )}
 
@@ -202,10 +223,20 @@ export default function PayrollTab({ employees = [], attendance = [], payrollRun
 }
 
 // ── ATTENDANCE GRID ────────────────────────────────────────────
-function AttendanceGrid({ employees, monthAttendance, year, month, daysInMonth, monthKey, onSet, onClear }) {
+function AttendanceGrid({ employees, monthAttendance, year, month, daysInMonth, monthKey, onSet, onClear, user }) {
   const [filter, setFilter] = useState("");
+  const [filterDept, setFilterDept] = useState("");
+  const [filterType, setFilterType] = useState("all"); // all | monthly | daily | piecework
+  // 💡 Default Present mode — แสดงเป็น "มา" auto สำหรับวันทำงานที่ไม่มี record
+  // → admin คลิกแค่คนที่ขาด/สาย (อิงตามนโยบายโรงงาน)
+  const [defaultPresent, setDefaultPresent] = useState(true);
+  const [pieceMode, setPieceMode] = useState(false); // toggle: show piece count input
+
+  const departments = [...new Set(employees.map(e => e.department).filter(Boolean))].sort();
 
   const filteredEmps = employees.filter(e => {
+    if (filterType !== "all" && (e.salaryType || "monthly") !== filterType) return false;
+    if (filterDept && e.department !== filterDept) return false;
     if (!filter) return true;
     const q = filter.toLowerCase();
     return (e.name||"").toLowerCase().includes(q) || (e.department||"").toLowerCase().includes(q);
@@ -213,25 +244,90 @@ function AttendanceGrid({ employees, monthAttendance, year, month, daysInMonth, 
 
   const getRecord = (empId, dateStr) => monthAttendance.find(r => r.employeeId === empId && r.date === dateStr);
   const dateStr = (d) => `${monthKey}-${String(d).padStart(2,"0")}`;
+  const isWeekend = (d) => {
+    const dow = new Date(year, month-1, d).getDay();
+    return dow === 0 || dow === 6;
+  };
+  const isPast = (d) => new Date(year, month-1, d) <= new Date();
 
-  // 🎯 Bulk: mark all "present" for a single day
+  // 🎯 Bulk: mark all "present" for a single day (filtered)
   const markAllPresent = async (d) => {
     const ds = dateStr(d);
-    if (!window.confirm(`Mark "มา" ทุกคนสำหรับวันที่ ${d}/${month}/${year}?`)) return;
-    for (const emp of employees) {
+    if (!window.confirm(`Mark "มา" ${filteredEmps.length} คนสำหรับวันที่ ${d}/${month}/${year}?`)) return;
+    for (const emp of filteredEmps) {
       if (!getRecord(emp.id, ds)) await onSet(emp.id, ds, { status: "present" });
     }
   };
 
+  // 🎯 Bulk: mark entire row (employee) for all weekdays as present
+  const markRowPresent = async (emp) => {
+    if (!window.confirm(`Mark "มา" ทุกวันทำงาน (จ-ศ) สำหรับ ${emp.name}?`)) return;
+    for (let d = 1; d <= daysInMonth; d++) {
+      if (isWeekend(d)) continue;
+      if (!isPast(d)) continue;
+      const ds = dateStr(d);
+      if (!getRecord(emp.id, ds)) await onSet(emp.id, ds, { status: "present" });
+    }
+  };
+
+  // 🚀 Bulk: mark ALL filtered employees ALL weekdays as present
+  const markAllMonth = async () => {
+    if (!window.confirm(`Mark "มา" ทุกวันทำงาน (จ-ศ) ทั้งเดือนสำหรับ ${filteredEmps.length} คน?\n\nคนที่มี record อยู่แล้วจะไม่ถูกเปลี่ยน — เฉพาะช่องว่าง`)) return;
+    let count = 0;
+    for (const emp of filteredEmps) {
+      for (let d = 1; d <= daysInMonth; d++) {
+        if (isWeekend(d) || !isPast(d)) continue;
+        const ds = dateStr(d);
+        if (!getRecord(emp.id, ds)) { await onSet(emp.id, ds, { status: "present" }); count++; }
+      }
+    }
+    alert(`✅ Mark "มา" สำเร็จ ${count} record`);
+  };
+
   return (
     <div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
+      {/* Toolbar */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
         <input value={filter} onChange={e=>setFilter(e.target.value)}
           placeholder="🔍 ค้นชื่อ/แผนก..."
-          style={{ flex: "1 1 200px", padding: "8px 12px", borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, fontFamily: "inherit" }}/>
-        <div style={{ fontSize: 11, color: T.muted }}>
-          คลิกช่อง → cycle ผ่าน: <b style={{color:STATUS_LABELS.present.color}}>มา</b> → <b style={{color:STATUS_LABELS.absent.color}}>ขาด</b> → <b style={{color:STATUS_LABELS.late.color}}>สาย</b> → <b style={{color:STATUS_LABELS.halfday.color}}>ครึ่ง</b> → ว่าง
-        </div>
+          style={{ flex: "1 1 180px", padding: "8px 12px", borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, fontFamily: "inherit" }}/>
+        {departments.length > 0 && (
+          <select value={filterDept} onChange={e=>setFilterDept(e.target.value)}
+            style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, fontFamily: "inherit" }}>
+            <option value="">ทุกแผนก</option>
+            {departments.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+        )}
+        <select value={filterType} onChange={e=>setFilterType(e.target.value)}
+          style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, fontFamily: "inherit" }}>
+          <option value="all">ทุกประเภท</option>
+          <option value="monthly">📆 รายเดือน</option>
+          <option value="daily">📅 รายวัน</option>
+          <option value="piecework">📊 รายชิ้น</option>
+        </select>
+      </div>
+
+      {/* Bulk action bar */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, padding: 10, background: "#eff6ff", border: `1px solid #bfdbfe`, borderRadius: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, color: T.blue, fontWeight: 700 }}>⚡ Quick Actions:</span>
+        <button onClick={markAllMonth}
+          style={{ background: T.green, color: "white", border: "none", padding: "7px 14px", borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+          ✓ Mark "มา" ทั้งเดือน ({filteredEmps.length} คน)
+        </button>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: T.sub, cursor: "pointer" }}>
+          <input type="checkbox" checked={defaultPresent} onChange={e=>setDefaultPresent(e.target.checked)}/>
+          💡 ช่องว่าง = "มา" auto (admin คลิกเฉพาะคนขาด)
+        </label>
+        {filterType === "piecework" && (
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#7c3aed", cursor: "pointer", fontWeight: 700 }}>
+            <input type="checkbox" checked={pieceMode} onChange={e=>setPieceMode(e.target.checked)}/>
+            📊 โหมดใส่จำนวนชิ้น
+          </label>
+        )}
+      </div>
+
+      <div style={{ fontSize: 11, color: T.muted, marginBottom: 8 }}>
+        💡 คลิกช่อง → cycle: <b style={{color:STATUS_LABELS.present.color}}>มา</b> → <b style={{color:STATUS_LABELS.absent.color}}>ขาด</b> → <b style={{color:STATUS_LABELS.late.color}}>สาย</b> → <b style={{color:STATUS_LABELS.halfday.color}}>ครึ่ง</b> → ว่าง · คลิกหัวคอลัมน์ = mark วันนั้นทุกคน · คลิกชื่อพนักงาน = mark ทั้งเดือนคนนั้น
       </div>
 
       <div className="table-scroll">
@@ -259,12 +355,30 @@ function AttendanceGrid({ employees, monthAttendance, year, month, daysInMonth, 
               {employees.length === 0 ? "ยังไม่มีพนักงาน — เพิ่มที่ tab 👷 บัตรลูกจ้าง" : "ไม่พบพนักงานตามเงื่อนไข"}
             </div>
           ) : filteredEmps.map((emp, ei) => {
-            const presentCount = monthAttendance.filter(r => r.employeeId === emp.id && (r.status === "present" || r.status === "late")).length;
+            const isPiecework = (emp.salaryType || "monthly") === "piecework";
+            const showPieceInput = pieceMode && isPiecework;
+            // นับ "มา" รวม manual + default (สำหรับ weekdays past ที่ defaultPresent on)
+            const explicitPresent = monthAttendance.filter(r => r.employeeId === emp.id && (r.status === "present" || r.status === "late")).length;
+            const explicitAbsent = monthAttendance.filter(r => r.employeeId === emp.id && (r.status === "absent" || r.status === "leave")).length;
+            let displayPresent = explicitPresent;
+            if (defaultPresent) {
+              for (let d = 1; d <= daysInMonth; d++) {
+                if (isWeekend(d) || !isPast(d)) continue;
+                const rec = getRecord(emp.id, dateStr(d));
+                if (!rec) displayPresent++;
+              }
+            }
+            const totalPieces = monthAttendance.filter(r => r.employeeId === emp.id).reduce((s,r) => s+(Number(r.piecesProduced)||0), 0);
             return (
               <div key={emp.id} style={{ display: "flex", borderBottom: ei < filteredEmps.length - 1 ? `1px solid ${T.border}` : "none" }}>
-                <div style={{ width: 200, padding: "8px 10px", fontSize: 12, fontWeight: 600, color: T.text, borderRight: `1px solid ${T.border}`, position: "sticky", left: 0, background: "white", zIndex: 3 }}>
+                <div onClick={()=>markRowPresent(emp)} title="คลิก → mark 'มา' ทั้งเดือน"
+                  style={{ width: 200, padding: "8px 10px", fontSize: 12, fontWeight: 600, color: T.text, borderRight: `1px solid ${T.border}`, position: "sticky", left: 0, background: "white", zIndex: 3, cursor: "pointer" }}
+                  onMouseEnter={e=>e.currentTarget.style.background="#eff6ff"}
+                  onMouseLeave={e=>e.currentTarget.style.background="white"}>
                   {emp.name}
-                  {emp.department && <div style={{ fontSize: 10, color: T.muted }}>{emp.department}</div>}
+                  <div style={{ fontSize: 10, color: T.muted }}>
+                    {emp.department || "—"} · <span style={{color:isPiecework?"#7c3aed":T.muted}}>{isPiecework?"📊 รายชิ้น":(emp.salaryType==="daily"?"📅 รายวัน":"📆 รายเดือน")}</span>
+                  </div>
                 </div>
                 {Array.from({length: daysInMonth}).map((_,i) => {
                   const d = i + 1;
@@ -273,23 +387,42 @@ function AttendanceGrid({ employees, monthAttendance, year, month, daysInMonth, 
                   const status = rec?.status;
                   const meta = status ? STATUS_LABELS[status] : null;
                   const isFuture = new Date(year, month-1, d) > new Date();
+                  const wkend = isWeekend(d);
+                  // 💡 Default present: ถ้าวันทำงาน(จ-ศ) ผ่านมาแล้ว ไม่มี record + defaultPresent on → แสดง ✓ จาง
+                  const showDefaultPresent = defaultPresent && !meta && !isFuture && !wkend;
+
+                  // 📊 Piece input mode สำหรับ pieceworker
+                  if (showPieceInput && !isFuture) {
+                    return (
+                      <div key={d} style={{ width: 36, padding: 2, borderRight: `1px solid ${T.border}`, background: wkend ? "#f8fafc" : "white" }}>
+                        <input type="number" defaultValue={rec?.piecesProduced || ""} placeholder="—"
+                          onFocus={e=>e.target.select()}
+                          onBlur={e=>{
+                            const v = Number(e.target.value)||0;
+                            if (v > 0) onSet(emp.id, ds, { piecesProduced: v, status: status || "present" });
+                            else if (rec && !status) onClear(emp.id, ds);
+                          }}
+                          style={{ width: "100%", padding: "4px 2px", border: "none", background: "transparent", textAlign: "center", fontSize: 11, fontFamily: "monospace", color: "#7c3aed", fontWeight: 700, outline: "none" }}/>
+                      </div>
+                    );
+                  }
+
                   return (
                     <div key={d} onClick={()=>{
                       if (isFuture) return;
-                      // cycle: undefined → present → absent → late → halfday → undefined
                       const order = [undefined, "present", "absent", "late", "halfday"];
                       const ix = order.indexOf(status);
                       const next = order[(ix + 1) % order.length];
                       if (next === undefined) onClear(emp.id, ds);
                       else onSet(emp.id, ds, { status: next });
                     }}
-                      style={{ width: 36, padding: "8px 0", textAlign: "center", borderRight: `1px solid ${T.border}`, cursor: isFuture ? "not-allowed" : "pointer", background: meta?.bg || (isFuture ? "#f1f5f9" : "white"), opacity: isFuture ? 0.4 : 1, fontSize: 14, fontWeight: 700, color: meta?.color || T.muted, transition: "background .1s" }}>
-                      {meta?.short || ""}
+                      style={{ width: 36, padding: "8px 0", textAlign: "center", borderRight: `1px solid ${T.border}`, cursor: isFuture ? "not-allowed" : "pointer", background: meta?.bg || (isFuture ? "#f1f5f9" : wkend ? "#f8fafc" : "white"), opacity: isFuture ? 0.4 : 1, fontSize: 14, fontWeight: 700, color: meta?.color || (showDefaultPresent ? "#10b98155" : T.muted), transition: "background .1s" }}>
+                      {meta?.short || (showDefaultPresent ? "✓" : "")}
                     </div>
                   );
                 })}
                 <div style={{ width: 50, padding: "8px 6px", textAlign: "center", fontSize: 13, fontWeight: 700, color: T.green }}>
-                  {presentCount}
+                  {showPieceInput ? <span style={{color:"#7c3aed",fontSize:11}}>{totalPieces}<div style={{fontSize:8,color:T.muted,fontWeight:400}}>ชิ้น</div></span> : displayPresent}
                 </div>
               </div>
             );
@@ -301,7 +434,7 @@ function AttendanceGrid({ employees, monthAttendance, year, month, daysInMonth, 
 }
 
 // ── RUN PAYROLL ────────────────────────────────────────────────
-function RunPayroll({ employees, monthAttendance, wdInMonth, runResult, setRunResult, adjustments, setAdjustments, generatePayslips, saveRun, saving, month, year, printElementById }) {
+function RunPayroll({ employees, monthAttendance, wdInMonth, runResult, setRunResult, adjustments, setAdjustments, generatePayslips, saveRun, saving, month, year, printElementById, usDefaultPresent, setUsDefaultPresent }) {
   if (!runResult) {
     return (
       <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20, textAlign: "center" }}>
@@ -310,10 +443,16 @@ function RunPayroll({ employees, monthAttendance, wdInMonth, runResult, setRunRe
           ระบบจะคำนวณเงินเดือนของพนักงาน {employees.length} คน สำหรับเดือน {month}/{year}<br/>
           <span style={{ fontSize: 11, color: T.muted }}>ต้องบันทึกเวลาในแท็บ "📅 บันทึกเวลา" ก่อน</span>
         </div>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: T.sub, marginBottom: 14, padding: "8px 14px", background: "#eff6ff", borderRadius: 7, cursor: "pointer" }}>
+          <input type="checkbox" checked={usDefaultPresent} onChange={e=>setUsDefaultPresent(e.target.checked)}/>
+          💡 นับวันว่าง (จ-ศ) เป็น "มา" auto
+        </label>
+        <div>
         <button onClick={generatePayslips} disabled={employees.length === 0}
           style={{ background: T.blue, color: "white", border: "none", padding: "12px 24px", borderRadius: 9, fontSize: 14, fontWeight: 700, cursor: employees.length===0?"not-allowed":"pointer", fontFamily: "inherit", opacity: employees.length===0?0.5:1 }}>
           📊 คำนวณเงินเดือน
         </button>
+        </div>
       </div>
     );
   }
