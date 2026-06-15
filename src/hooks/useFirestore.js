@@ -23,6 +23,8 @@ export function useFirestore() {
   const [boms, setBoms] = useState([]);
   const [customOrders, setCustomOrders] = useState([]);
   const [catalogOrders, setCatalogOrders] = useState([]);
+  const [attendance, setAttendance] = useState([]);
+  const [payrollRuns, setPayrollRuns] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -168,6 +170,21 @@ export function useFirestore() {
     return () => unsub();
   }, []);
 
+  // 📅 Attendance — บันทึกเวลาเข้างานพนักงาน (per day)
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "attendance"),
+      snap => setAttendance(snap.docs.map(d => ({...d.data(), id:d.id}))),
+      ()=>{});
+    return () => unsub();
+  }, []);
+
+  // 💰 Payroll runs — รอบจ่ายเงินเดือน
+  useEffect(() => {
+    const q = query(collection(db, "payrollRuns"), orderBy("createdAt","desc"));
+    const unsub = onSnapshot(q, snap => setPayrollRuns(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
+    return () => unsub();
+  }, []);
+
   return {
     users, setUsers,
     suppliers,
@@ -186,6 +203,8 @@ export function useFirestore() {
     boms,
     customOrders,
     catalogOrders,
+    attendance,
+    payrollRuns,
     employees,
     taxDocs,
     loading, setLoading,

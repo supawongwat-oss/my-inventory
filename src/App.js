@@ -14,6 +14,7 @@ import StocktakeTab from "./tabs/StocktakeTab";
 import EmployeeTab from "./tabs/EmployeeTab";
 import TaxDocsTab from "./tabs/TaxDocsTab";
 import CatalogInboxTab from "./tabs/CatalogInboxTab";
+import PayrollTab from "./tabs/PayrollTab";
 import BarcodePrintModal from "./components/BarcodePrintModal";
 import ImportCustomersModal from "./components/ImportCustomersModal";
 import BackupRestore, { shouldRemindBackup, getLastBackupDate } from "./components/BackupRestore";
@@ -34,7 +35,7 @@ export default function App() {
     authReady.then(() => setAuthChecked(true));
   }, []);
 
-  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs, catalogOrders } = useFirestore();
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs, catalogOrders, attendance, payrollRuns } = useFirestore();
   // ใช้แทน ROLES[role].label เพื่อให้ admin เปลี่ยนชื่อบทบาทได้
   const rLabel = (key) => roleLabels[key] || ROLES[key]?.label || key;
 
@@ -1525,6 +1526,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
     { type:"item",  id:"catalogInbox", icon:"📥", label:"Inbox (Catalog)", badge: (catalogOrders||[]).filter(o=>!o.status||o.status==="new").length },
     { type:"group", id:"hrdocs", icon:"📂", label:"เอกสาร & บุคลากร", children:[
       { id:"employees", icon:"👷", label:"บัตรลูกจ้าง" },
+      { id:"payroll",   icon:"💰", label:"เงินเดือน" },
       { id:"taxdocs",   icon:"🧾", label:"คลังเอกสารภาษี" },
     ]},
     { type:"group", id:"adminhub", icon:"⚙️", label:"รายงาน & ผู้ดูแล", children:[
@@ -2977,6 +2979,18 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
           {/* ── EMPLOYEES — บัตรลูกจ้าง ── */}
           {activeTab==="employees"&&(
             <EmployeeTab employees={employees} user={user} role={role}/>
+          )}
+
+          {/* ── PAYROLL — เงินเดือน ── */}
+          {activeTab==="payroll"&&(
+            <PayrollTab
+              employees={employees}
+              attendance={attendance}
+              payrollRuns={payrollRuns}
+              user={user}
+              role={role}
+              printElementById={printElementById}
+            />
           )}
 
           {/* ── TAX DOCS — คลังเอกสารภาษี ── */}

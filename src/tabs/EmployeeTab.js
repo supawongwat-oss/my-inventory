@@ -39,6 +39,15 @@ const EMPTY_FORM = {
   lastReport90: "", // last 90-day report date
   startDate: "", phone: "", note: "",
   attachments: [], // [{url, path, name, size, type, label}]
+  // 💰 Payroll fields
+  salaryType: "monthly", // monthly | daily | piecework
+  baseSalary: 0,         // เงินเดือน (รายเดือน) หรือ ค่าจ้าง/วัน (รายวัน)
+  pieceRate: 0,          // ค่าจ้าง/ชิ้น (piecework only)
+  otRate: 0,             // ค่า OT/ชม.
+  hasSSO: true,          // หักประกันสังคม
+  bankName: "",          // ธนาคารสำหรับโอนเงินเดือน
+  bankAccount: "",       // เลขบัญชี
+  extraDeductionAnnual: 0, // ค่าลดหย่อนเพิ่ม/ปี (ลูก ประกัน) — สำหรับคำนวณภาษี
 };
 
 export default function EmployeeTab({ employees = [], user, role }) {
@@ -342,6 +351,59 @@ export default function EmployeeTab({ employees = [], user, role }) {
               {uploading ? "⏳ กำลังอัพโหลด..." : "📤 เพิ่มไฟล์ (PDF / รูป)"}
               <input type="file" accept="image/*,application/pdf" disabled={uploading} style={{ display: "none" }}
                 onChange={e => { const f = e.target.files[0]; if (f) handleUpload(f); e.target.value=""; }}/>
+            </label>
+          </Section>
+
+          {/* 💰 Salary */}
+          <Section title="💰 เงินเดือน & ค่าจ้าง">
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+              <div>
+                <label style={{ fontSize: 11, color: T.sub, fontWeight: 600, display: "block", marginBottom: 4 }}>ประเภทค่าจ้าง</label>
+                <select value={form.salaryType||"monthly"} onChange={e=>setForm(f=>({...f, salaryType: e.target.value}))}
+                  style={{ width: "100%", background: T.input, border: `1px solid ${T.inputBorder}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, fontFamily: "inherit" }}>
+                  <option value="monthly">📆 รายเดือน</option>
+                  <option value="daily">📅 รายวัน</option>
+                  <option value="piecework">📊 รายชิ้น</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: T.sub, fontWeight: 600, display: "block", marginBottom: 4 }}>
+                  {form.salaryType === "daily" ? "ค่าจ้าง/วัน (฿)" : form.salaryType === "piecework" ? "ฐานเงินเดือน (ถ้ามี, ฿)" : "เงินเดือน (฿)"}
+                </label>
+                <input type="number" value={form.baseSalary||""} onChange={e=>setForm(f=>({...f, baseSalary: Number(e.target.value)||0}))} onFocus={e=>e.target.select()} placeholder="0"
+                  style={{ width: "100%", background: T.input, border: `1px solid ${T.inputBorder}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, fontFamily: "monospace" }}/>
+              </div>
+              {form.salaryType === "piecework" && (
+                <div>
+                  <label style={{ fontSize: 11, color: T.sub, fontWeight: 600, display: "block", marginBottom: 4 }}>ค่าจ้าง/ชิ้น (฿)</label>
+                  <input type="number" value={form.pieceRate||""} onChange={e=>setForm(f=>({...f, pieceRate: Number(e.target.value)||0}))} onFocus={e=>e.target.select()} placeholder="0"
+                    style={{ width: "100%", background: T.input, border: `1px solid ${T.inputBorder}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, fontFamily: "monospace" }}/>
+                </div>
+              )}
+              <div>
+                <label style={{ fontSize: 11, color: T.sub, fontWeight: 600, display: "block", marginBottom: 4 }}>ค่า OT/ชม. (฿)</label>
+                <input type="number" value={form.otRate||""} onChange={e=>setForm(f=>({...f, otRate: Number(e.target.value)||0}))} onFocus={e=>e.target.select()} placeholder="0"
+                  style={{ width: "100%", background: T.input, border: `1px solid ${T.inputBorder}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, fontFamily: "monospace" }}/>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: T.sub, fontWeight: 600, display: "block", marginBottom: 4 }}>ธนาคาร</label>
+                <input value={form.bankName||""} onChange={e=>setForm(f=>({...f, bankName: e.target.value}))} placeholder="เช่น กสิกรไทย"
+                  style={{ width: "100%", background: T.input, border: `1px solid ${T.inputBorder}`, borderRadius: 8, padding: "8px 12px", fontSize: 13 }}/>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: T.sub, fontWeight: 600, display: "block", marginBottom: 4 }}>เลขบัญชี (สำหรับโอนเงินเดือน)</label>
+                <input value={form.bankAccount||""} onChange={e=>setForm(f=>({...f, bankAccount: e.target.value}))} placeholder="xxx-x-xxxxx-x"
+                  style={{ width: "100%", background: T.input, border: `1px solid ${T.inputBorder}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, fontFamily: "monospace" }}/>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: T.sub, fontWeight: 600, display: "block", marginBottom: 4 }}>ค่าลดหย่อนเพิ่ม/ปี (฿)</label>
+                <input type="number" value={form.extraDeductionAnnual||""} onChange={e=>setForm(f=>({...f, extraDeductionAnnual: Number(e.target.value)||0}))} onFocus={e=>e.target.select()} placeholder="0"
+                  style={{ width: "100%", background: T.input, border: `1px solid ${T.inputBorder}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, fontFamily: "monospace" }}/>
+              </div>
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+              <input type="checkbox" checked={form.hasSSO !== false} onChange={e=>setForm(f=>({...f, hasSSO: e.target.checked}))}/>
+              หักประกันสังคม 5% (สูงสุด ฿750/เดือน)
             </label>
           </Section>
 
