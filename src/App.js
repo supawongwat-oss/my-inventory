@@ -1526,7 +1526,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
     { type:"item",  id:"catalogInbox", icon:"📥", label:"Inbox (Catalog)", badge: (catalogOrders||[]).filter(o=>!o.status||o.status==="new").length },
     { type:"group", id:"hrdocs", icon:"📂", label:"เอกสาร & บุคลากร", children:[
       { id:"employees", icon:"👷", label:"บัตรลูกจ้าง" },
-      { id:"payroll",   icon:"💰", label:"เงินเดือน" },
+      { id:"payroll",   icon:"💰", label:"เงินเดือน NEW" },
       { id:"taxdocs",   icon:"🧾", label:"คลังเอกสารภาษี" },
     ]},
     { type:"group", id:"adminhub", icon:"⚙️", label:"รายงาน & ผู้ดูแล", children:[
