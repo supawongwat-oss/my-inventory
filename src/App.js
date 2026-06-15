@@ -1526,7 +1526,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
     { type:"item",  id:"catalogInbox", icon:"📥", label:"Inbox (Catalog)", badge: (catalogOrders||[]).filter(o=>!o.status||o.status==="new").length },
     { type:"group", id:"hrdocs", icon:"📂", label:"เอกสาร & บุคลากร", children:[
       { id:"employees", icon:"👷", label:"บัตรลูกจ้าง" },
-      { id:"payroll",   icon:"💰", label:"เงินเดือน NEW" },
+      { id:"payroll",   icon:"💰", label:"เงินเดือน", adminOnly:true },
       { id:"taxdocs",   icon:"🧾", label:"คลังเอกสารภาษี" },
     ]},
     { type:"group", id:"adminhub", icon:"⚙️", label:"รายงาน & ผู้ดูแล", children:[
@@ -2981,8 +2981,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
             <EmployeeTab employees={employees} user={user} role={role}/>
           )}
 
-          {/* ── PAYROLL — เงินเดือน ── */}
-          {activeTab==="payroll"&&(
+          {/* ── PAYROLL — เงินเดือน (admin เท่านั้น) ── */}
+          {activeTab==="payroll"&&user.role==="admin"&&(
             <PayrollTab
               employees={employees}
               attendance={attendance}
@@ -2991,6 +2991,13 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
               role={role}
               printElementById={printElementById}
             />
+          )}
+          {activeTab==="payroll"&&user.role!=="admin"&&(
+            <div style={{textAlign:"center",padding:60,background:T.card,borderRadius:14,border:`1px solid ${T.border}`}}>
+              <div style={{fontSize:48,marginBottom:12}}>🔒</div>
+              <div style={{fontSize:16,fontWeight:700,color:T.red,marginBottom:6}}>เข้าถึงไม่ได้</div>
+              <div style={{fontSize:12,color:T.muted}}>ระบบเงินเดือนเข้าถึงได้เฉพาะผู้ดูแลระบบ (admin)</div>
+            </div>
           )}
 
           {/* ── TAX DOCS — คลังเอกสารภาษี ── */}

@@ -354,7 +354,8 @@ export default function EmployeeTab({ employees = [], user, role }) {
             </label>
           </Section>
 
-          {/* 💰 Salary */}
+          {/* 💰 Salary — admin เท่านั้น */}
+          {user?.role === "admin" && (
           <Section title="💰 เงินเดือน & ค่าจ้าง">
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
               <div>
@@ -406,6 +407,7 @@ export default function EmployeeTab({ employees = [], user, role }) {
               หักประกันสังคม 5% (สูงสุด ฿750/เดือน)
             </label>
           </Section>
+          )}
 
           {/* Note */}
           <Section title="📝 หมายเหตุ">
