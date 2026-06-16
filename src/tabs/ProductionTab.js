@@ -39,6 +39,7 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
   const [showNew, setShowNew] = useState(false);
   const [showNewCustom, setShowNewCustom] = useState(false);
   const [selectedCustom, setSelectedCustom] = useState(new Set()); // ids ของ custom orders ที่เลือกเพื่อออกบิลรวม
+  const [customSubTab, setCustomSubTab] = useState("active"); // active | done | all
   const [statusOrder, setStatusOrder] = useState(null);
   const [statusCustom, setStatusCustom] = useState(null);
   const [printOrder, setPrintOrder] = useState(null);
@@ -228,11 +229,32 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
       )}
 
       {/* ── CUSTOM ORDERS ── */}
-      {subTab === "custom" && (
+      {subTab === "custom" && (() => {
+        const activeOrders = customOrders.filter(o => (o.status||"") !== "เข้าคลัง");
+        const doneOrders = customOrders.filter(o => (o.status||"") === "เข้าคลัง");
+        const filteredCustom = customSubTab==="active" ? activeOrders : customSubTab==="done" ? doneOrders : customOrders;
+        return (
         <>
+          {/* sub-tabs: active / done / all */}
+          <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+            {[
+              {k:"active",l:"🎨 กำลังผลิต",c:"#d97706",n:activeOrders.length},
+              {k:"done",l:"✅ เสร็จแล้ว",c:"#16a34a",n:doneOrders.length},
+              {k:"all",l:"📋 ทั้งหมด",c:T.accent,n:customOrders.length},
+            ].map(t => {
+              const sel = customSubTab === t.k;
+              return (
+                <button key={t.k} onClick={()=>{setCustomSubTab(t.k);setSelectedCustom(new Set());}}
+                  style={{padding:"7px 14px",borderRadius:9,border:`1px solid ${sel?t.c:T.border}`,background:sel?`${t.c}18`:"transparent",color:sel?t.c:T.sub,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:sel?700:500,transition:"all 0.15s"}}>
+                  {t.l} <span style={{fontSize:10,opacity:0.75,marginLeft:4}}>({t.n})</span>
+                </button>
+              );
+            })}
+          </div>
+
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:10,flexWrap:"wrap"}}>
             <div style={{fontSize:12,color:T.sub}}>
-              Custom Order ทั้งหมด <b style={{color:T.accent}}>{customOrders.length} ใบ</b>
+              {customSubTab==="active" ? "กำลังผลิต" : customSubTab==="done" ? "งานที่เสร็จแล้ว" : "Custom Order ทั้งหมด"} <b style={{color:T.accent}}>{filteredCustom.length} ใบ</b>
               {selectedCustom.size > 0 && <span style={{marginLeft:8,padding:"2px 8px",background:"rgba(22,163,74,0.12)",color:"#16a34a",borderRadius:10,fontSize:11,fontWeight:600}}>เลือก {selectedCustom.size} ใบ</span>}
             </div>
             <div style={{display:"flex",gap:8}}>
@@ -258,15 +280,17 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
             </div>
           </div>
 
-          {customOrders.length === 0 ? (
+          {filteredCustom.length === 0 ? (
             <div style={{textAlign:"center",padding:60,background:T.card,borderRadius:16,border:`1px solid ${T.border}`}}>
-              <div style={{fontSize:48,marginBottom:12,opacity:0.3}}>🎨</div>
-              <div style={{fontSize:14,fontWeight:600,color:T.accent,marginBottom:6}}>ยังไม่มี Custom Order</div>
-              {role?.canProduction && <div style={{fontSize:11,color:T.muted}}>สั่งผลิตเฉพาะแบบ — ใส่รูป + พิมพ์ไซส์เอง</div>}
+              <div style={{fontSize:48,marginBottom:12,opacity:0.3}}>{customSubTab==="done"?"✅":"🎨"}</div>
+              <div style={{fontSize:14,fontWeight:600,color:T.accent,marginBottom:6}}>
+                {customSubTab==="active" ? "ไม่มีงานที่กำลังผลิตอยู่" : customSubTab==="done" ? "ยังไม่มีงานที่เสร็จ" : "ยังไม่มี Custom Order"}
+              </div>
+              {customSubTab!=="done" && role?.canProduction && <div style={{fontSize:11,color:T.muted}}>สั่งผลิตเฉพาะแบบ — ใส่รูป + พิมพ์ไซส์เอง</div>}
             </div>
           ) : (
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {customOrders.map(o => {
+              {filteredCustom.map(o => {
                 const color = STATUS_COLORS[o.status] || "#6b7280";
                 const isSelected = selectedCustom.has(o.id);
                 return (
@@ -309,7 +333,8 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
             </div>
           )}
         </>
-      )}
+        );
+      })()}
 
       {/* ── BOM ── */}
       {subTab === "bom" && (
