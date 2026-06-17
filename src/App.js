@@ -1500,7 +1500,22 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
   );
 
     const handleRegisterUser = async (newU) => {
-    await setDoc(doc(db, "users", String(newU.id)), newU);
+    // 🔒 ผู้สมัครใหม่ — ไม่เห็นอะไรเลยจนกว่า Admin จะตั้งสิทธิ์ให้
+    const lockedNewU = {
+      ...newU,
+      role: "staff",                  // บังคับเป็น staff (admin ตั้งให้ทีหลัง)
+      allowedTabs: [],                // ไม่เห็นเมนูใด ๆ
+      permissions: {                  // ไม่มีสิทธิ์ใด ๆ
+        canAdd: false,
+        canDelete: false,
+        canClear: false,
+        canCreateOrder: false,
+        canIssueInvoice: false,
+      },
+      pendingApproval: true,          // flag ให้ admin เห็นว่าเพิ่ง register
+      registeredAt: now(),
+    };
+    await setDoc(doc(db, "users", String(newU.id)), lockedNewU);
   };
 
   if (!user) return <LoginPage users={users} onLogin={(u, rememberMe) => handleLogin(u, rememberMe)} onResetPassword={handleResetPassword} onRegister={handleRegisterUser}/>;
@@ -1552,6 +1567,29 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
     })
     .filter(Boolean);
 
+  // 🔒 ผู้ใช้ที่ยังไม่ได้รับสิทธิ์ใด ๆ — แสดงหน้า "รออนุมัติ" แทน
+  if (user.role !== "admin" && navItems.length === 0) {
+    return (
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:"'Sarabun',sans-serif",background:T.bg,padding:20}}>
+        <div style={{maxWidth:480,width:"100%",background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:"36px 28px",textAlign:"center",boxShadow:"0 8px 32px rgba(0,0,0,0.08)"}}>
+          <div style={{fontSize:56,marginBottom:14}}>⏳</div>
+          <div style={{fontSize:18,fontWeight:700,color:T.text,marginBottom:8}}>รออนุมัติสิทธิ์เข้าใช้งาน</div>
+          <div style={{fontSize:13,color:T.sub,lineHeight:1.6,marginBottom:18}}>
+            สวัสดีคุณ <b style={{color:T.accent}}>{user.name}</b> 👋<br/>
+            บัญชีของคุณ <code style={{background:"rgba(0,0,0,0.05)",padding:"1px 6px",borderRadius:4,fontFamily:"monospace"}}>@{user.username}</code> สมัครเข้าระบบเรียบร้อยแล้ว<br/>
+            กรุณารอผู้ดูแลระบบ (Admin) ตั้งสิทธิ์เมนูให้ก่อนใช้งาน
+          </div>
+          <div style={{padding:"10px 14px",background:"rgba(217,119,6,0.06)",border:"1px solid rgba(217,119,6,0.25)",borderRadius:10,fontSize:11,color:"#92400e",marginBottom:18}}>
+            📩 แจ้ง Admin ให้เปิดสิทธิ์เมนูในหน้า "👥 จัดการผู้ใช้"
+          </div>
+          <button onClick={() => { clearSession(); setUser(null); }}
+            style={{padding:"10px 24px",borderRadius:9,border:`1px solid ${T.border}`,background:"white",color:T.sub,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>
+            ออกจากระบบ
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{display:"flex",height:"100vh",fontFamily:"'Sarabun',sans-serif",background:T.bg,color:T.text,overflow:"hidden"}}>
@@ -2856,7 +2894,12 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                     onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.05)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                     <div style={{fontSize:22}}>{u.avatar}</div>
                     <div>
-                      <div style={{fontWeight:600,color:T.text,fontSize:13}}>{u.name}</div>
+                      <div style={{fontWeight:600,color:T.text,fontSize:13,display:"flex",alignItems:"center",gap:6}}>
+                        {u.name}
+                        {u.pendingApproval && (!u.allowedTabs || u.allowedTabs.length===0) && (
+                          <span style={{padding:"2px 8px",background:"rgba(217,119,6,0.12)",color:"#d97706",border:"1px solid rgba(217,119,6,0.3)",borderRadius:10,fontSize:9,fontWeight:700,letterSpacing:"0.05em"}} title={`สมัครเข้ามาเมื่อ ${u.registeredAt||"-"} — รออนุมัติสิทธิ์`}>⏳ รออนุมัติ</span>
+                        )}
+                      </div>
                       <div style={{fontSize:11,color:T.muted}}>@{u.username}</div>
                     </div>
                     <div>
