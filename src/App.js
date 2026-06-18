@@ -15,6 +15,7 @@ import EmployeeTab from "./tabs/EmployeeTab";
 import TaxDocsTab from "./tabs/TaxDocsTab";
 import CatalogInboxTab from "./tabs/CatalogInboxTab";
 import PayrollTab from "./tabs/PayrollTab";
+import ProductionHistoryTab from "./tabs/ProductionHistoryTab";
 import BarcodePrintModal from "./components/BarcodePrintModal";
 import ImportCustomersModal from "./components/ImportCustomersModal";
 import BackupRestore, { shouldRemindBackup, getLastBackupDate } from "./components/BackupRestore";
@@ -1527,6 +1528,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
       { id:"inventory", icon:"📦", label:"สินค้าคงคลัง" },
       { id:"stocktake", icon:"🧮", label:"นับสต็อก" },
       { id:"production",icon:"🏭", label:"การผลิต" },
+      { id:"productionHistory",icon:"📜", label:"ประวัติการผลิต" },
     ]},
     { type:"item",  id:"transactions", icon:"🔄", label:"รับ/จ่ายสินค้า" },
     { type:"item",  id:"barcode",      icon:"▦",  label:"สแกนบาร์โค้ด" },
@@ -3022,6 +3024,16 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
           {/* ── EMPLOYEES — บัตรลูกจ้าง ── */}
           {activeTab==="employees"&&(
             <EmployeeTab employees={employees} user={user} role={role}/>
+          )}
+
+          {/* ── PRODUCTION HISTORY — งานที่ archived จาก Kanban ── */}
+          {activeTab==="productionHistory"&&(
+            <ProductionHistoryTab
+              productionOrders={productionOrders}
+              customOrders={customOrders}
+              user={user}
+              role={role}
+            />
           )}
 
           {/* ── PAYROLL — เงินเดือน (admin เท่านั้น) ── */}

@@ -21,54 +21,57 @@ export default function KanbanBoard({
   const [draggingLot, setDraggingLot] = useState(null); // {orderId, lotIdx, fromStatus, orderRef, collection}
   const [dragOverStatus, setDragOverStatus] = useState(null);
 
-  // 🗑 ล้างทั้งคอลัมน์ — admin only
-  const isAdmin = user?.role === "admin";
-  const clearColumn = async (step) => {
+  // 📦 เก็บเข้าประวัติ — admin/manager
+  const canArchive = user?.role === "admin" || user?.role === "manager";
+  const archiveColumn = async (step) => {
     const lotsInCol = (byStatus[step] || []);
     if (lotsInCol.length === 0) { alert("ช่องนี้ว่างอยู่"); return; }
-    // จัด lot ตาม order — เพื่อหาว่า order ไหนต้องลบทั้งหมด vs แค่บาง lot
-    const ordersMap = new Map(); // orderId → { orderRef, collection, allLotIdxsInThisStep[] }
+    // เก็บได้เฉพาะ order ที่ "ทุกล็อต" อยู่ใน step นี้ — กันงานที่ยังไม่จบหายไป
+    const ordersMap = new Map();
     lotsInCol.forEach(l => {
       const orderRef = l.orderRef;
       if (!orderRef) return;
       const key = `${orderRef.__collection||defaultCollection}/${orderRef.id}`;
       if (!ordersMap.has(key)) {
-        ordersMap.set(key, {
-          orderRef,
-          collection: orderRef.__collection || defaultCollection,
-          lotIdxs: [],
-        });
+        ordersMap.set(key, { orderRef, collection: orderRef.__collection || defaultCollection, lotIdxsInStep: [] });
       }
-      ordersMap.get(key).lotIdxs.push(l.lotIdx);
+      ordersMap.get(key).lotIdxsInStep.push(l.lotIdx);
     });
-    const totalQty = lotsInCol.reduce((s,l) => s + totalQtyOfLot(l), 0);
+    // กรองเฉพาะ order ที่ทุก lot อยู่ในนี้
+    const archivable = [];
+    const partial = [];
+    for (const [, info] of ordersMap) {
+      const totalLots = (info.orderRef.lots || []).length;
+      if (totalLots === info.lotIdxsInStep.length) archivable.push(info);
+      else partial.push(info);
+    }
+    if (archivable.length === 0) {
+      alert(`ไม่มีใบสั่งผลิตที่เก็บได้\n\nใบในช่องนี้ยังมี lot อื่นในขั้นอื่นอยู่ (${partial.length} ใบ)\nต้องให้ทุก lot ของใบเข้าช่องนี้ก่อนถึงจะเก็บได้`);
+      return;
+    }
+    const totalQty = archivable.reduce((s,a) => s + (a.orderRef.totalQty||0), 0);
     if (!window.confirm(
-      `⚠️ ล้างคอลัมน์ "${step}" ทั้งหมด?\n\n`+
-      `จะลบ ${lotsInCol.length} ล็อต · รวม ${fmtInt(totalQty)} ตัว\n`+
-      `จาก ${ordersMap.size} ใบสั่งผลิต\n\n`+
-      `⚠️ การลบนี้ย้อนกลับไม่ได้ — ใช้สำหรับเก็บกวาดงานเก่าที่เข้าคลังแล้ว`
+      `📦 เก็บเข้าประวัติการผลิต?\n\n`+
+      `✅ จะเก็บ ${archivable.length} ใบสั่งผลิต · ${fmtInt(totalQty)} ตัว\n`+
+      (partial.length > 0 ? `⏸ ข้าม ${partial.length} ใบ (มี lot ในขั้นอื่นยังไม่เสร็จ)\n` : "")+
+      `\n💡 ใบที่เก็บจะไม่หายไป — ดูได้ที่ tab "📜 ประวัติการผลิต" + restore กลับได้ตลอด`
     )) return;
 
-    let deletedOrders = 0;
-    let prunedLots = 0;
-    for (const [, info] of ordersMap) {
+    let archivedCount = 0;
+    for (const info of archivable) {
       try {
-        const orderLots = info.orderRef.lots || [];
-        const remaining = orderLots.filter((_, idx) => !info.lotIdxs.includes(idx));
-        if (remaining.length === 0) {
-          // ลบทั้ง order
-          await deleteDoc(doc(db, info.collection, info.orderRef.id));
-          deletedOrders++;
-        } else {
-          // ลบเฉพาะ lot นั้น ๆ
-          await updateDoc(doc(db, info.collection, info.orderRef.id), { lots: remaining });
-          prunedLots += info.lotIdxs.length;
-        }
+        await updateDoc(doc(db, info.collection, info.orderRef.id), {
+          archived: true,
+          archivedAt: new Date().toISOString(),
+          archivedBy: user?.name || "",
+          archivedFromStep: step,
+        });
+        archivedCount++;
       } catch (e) {
-        console.error("[kanban] clear failed for order", info.orderRef.id, e);
+        console.error("[kanban] archive failed for order", info.orderRef.id, e);
       }
     }
-    alert(`✅ ล้างเรียบร้อย — ลบ ${deletedOrders} ใบสั่งผลิต · ตัด ${prunedLots} ล็อตจากใบที่ยังเหลือล็อตอื่น`);
+    alert(`✅ เก็บเรียบร้อย ${archivedCount} ใบสั่งผลิต — ดูที่ tab "📜 ประวัติการผลิต"`);
   };
 
   // ย้าย lot ไปสถานะใหม่ (อิสระ — ไม่บังคับลำดับ)
@@ -142,10 +145,11 @@ export default function KanbanBoard({
     await saveSteps([...PRODUCTION_STEPS]);
   };
 
-  // กรอง orders + ไม่เอาที่ทุก lot เป็น "เข้าคลัง" หรือ "ยกเลิก"
+  // กรอง orders — ซ่อนที่ archived (เก็บเข้าประวัติแล้ว)
   const visibleOrders = useMemo(() => {
     const q = search.toLowerCase().trim();
     return orders.filter(o => {
+      if (o.archived) return false; // 📦 ซ่อน archived
       if (q) {
         const hit = (o.prodNo||"").toLowerCase().includes(q) || (o.clothingName||"").toLowerCase().includes(q);
         if (!hit) return false;
@@ -252,10 +256,10 @@ export default function KanbanBoard({
                       title="ย้ายขวา"
                       style={{width:22,height:22,borderRadius:5,border:"none",background:colIdx===columnOrder.length-1?"transparent":"rgba(255,255,255,0.7)",color:colIdx===columnOrder.length-1?T.muted:color,cursor:colIdx===columnOrder.length-1?"not-allowed":"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit",padding:0,opacity:colIdx===columnOrder.length-1?0.3:1}}>▶</button>
                   )}
-                  {isAdmin && col.length > 0 && (
-                    <button onClick={(e) => { e.stopPropagation(); clearColumn(step); }}
-                      title={`🗑 ล้าง ${col.length} ล็อตในช่องนี้ทั้งหมด (admin only)`}
-                      style={{width:22,height:22,borderRadius:5,border:"none",background:"rgba(220,38,38,0.12)",color:"#dc2626",cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit",padding:0}}>🗑</button>
+                  {canArchive && col.length > 0 && (
+                    <button onClick={(e) => { e.stopPropagation(); archiveColumn(step); }}
+                      title={`📦 เก็บ ${col.length} ใบในช่องนี้เข้าประวัติ`}
+                      style={{width:22,height:22,borderRadius:5,border:"none",background:"rgba(16,185,129,0.12)",color:"#059669",cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit",padding:0}}>📦</button>
                   )}
                   {canReorder && (
                     <button onClick={(e) => { e.stopPropagation(); removeColumn(step); }}
