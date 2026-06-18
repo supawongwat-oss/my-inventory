@@ -300,18 +300,18 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
         </div>
       )}
 
-      {/* 🪡 เผื่อหด (Global offset ทั้งใบ — auto-calc ไซส์ผลิตให้ทุกแถว) */}
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,padding:"8px 12px",background:"rgba(217,119,6,0.06)",border:"1px solid rgba(217,119,6,0.25)",borderRadius:8}}>
-        <span style={{fontSize:12,fontWeight:700,color:"#92400e"}}>🪡 เผื่อหด ตัดผ้าใหญ่ขึ้น:</span>
+      {/* 🪡 เผื่อหด (Global offset — auto-calc ไซส์ผลิตให้ทุกแถว) */}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,padding:"5px 10px",background:"rgba(217,119,6,0.06)",border:"1px solid rgba(217,119,6,0.25)",borderRadius:7}}>
+        <span style={{fontSize:11,fontWeight:700,color:"#92400e"}}>🪡 เผื่อหด:</span>
         <select value={shrinkOffset} onChange={e=>setShrinkOffset(Number(e.target.value))}
-          style={{background:"white",border:"1px solid rgba(217,119,6,0.4)",borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:700,color:"#92400e",cursor:"pointer",fontFamily:"inherit",outline:"none"}}>
+          style={{background:"white",border:"1px solid rgba(217,119,6,0.4)",borderRadius:5,padding:"3px 8px",fontSize:11,fontWeight:700,color:"#92400e",cursor:"pointer",fontFamily:"inherit",outline:"none"}}>
           <option value={0}>ไม่เผื่อ</option>
-          <option value={1}>+1 ไซส์</option>
-          <option value={2}>+2 ไซส์</option>
-          <option value={3}>+3 ไซส์</option>
+          <option value={1}>+1</option>
+          <option value={2}>+2</option>
+          <option value={3}>+3</option>
         </select>
-        <span style={{fontSize:10,color:"#92400e",opacity:0.8}}>
-          {shrinkOffset>0 ? `ไซส์ผลิตจะเลื่อนใหญ่ขึ้น ${shrinkOffset} ไซส์อัตโนมัติ — แต่ละแถว override ได้` : "ไซส์ผลิต = ไซส์ลูกค้า"}
+        <span style={{fontSize:9,color:"#92400e",opacity:0.75}}>
+          {shrinkOffset>0 ? `ตัดใหญ่ขึ้น ${shrinkOffset} ไซส์อัตโนมัติ (แถวที่ต้องการ override ได้)` : "ไซส์ผลิต = ไซส์ลูกค้า"}
         </span>
       </div>
 
@@ -403,13 +403,27 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
         ))}
       </div>
 
-      {/* ต้นทุน */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-        <Input label="ต้นทุนวัตถุดิบ/ตัว (฿)" type="number" value={costPerPiece} onChange={e => setCostPerPiece(e.target.value)}/>
-        <Input label="ค่าแรง/ตัว (฿)" type="number" value={laborCostPerPiece} onChange={e => setLaborCostPerPiece(e.target.value)}/>
+      {/* ต้นทุน + ค่าแรง + หมายเหตุ — ขนาดเล็ก ประหยัดพื้นที่ */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 2fr",gap:8,marginBottom:10}}>
+        <div>
+          <label style={{fontSize:10,color:T.muted,display:"block",marginBottom:2,fontWeight:600}}>ต้นทุนวัตถุดิบ/ตัว (฿)</label>
+          <input type="number" value={costPerPiece} onChange={e => setCostPerPiece(e.target.value)}
+            placeholder="0"
+            style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:6,padding:"5px 8px",fontFamily:"monospace",fontSize:11,outline:"none"}}/>
+        </div>
+        <div>
+          <label style={{fontSize:10,color:T.muted,display:"block",marginBottom:2,fontWeight:600}}>ค่าแรง/ตัว (฿)</label>
+          <input type="number" value={laborCostPerPiece} onChange={e => setLaborCostPerPiece(e.target.value)}
+            placeholder="0"
+            style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:6,padding:"5px 8px",fontFamily:"monospace",fontSize:11,outline:"none"}}/>
+        </div>
+        <div>
+          <label style={{fontSize:10,color:T.muted,display:"block",marginBottom:2,fontWeight:600}}>หมายเหตุ</label>
+          <input value={note} onChange={e => setNote(e.target.value)}
+            placeholder="เช่น ส่งภายใน 7 วัน"
+            style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:6,padding:"5px 8px",fontFamily:"inherit",fontSize:11,outline:"none"}}/>
+        </div>
       </div>
-
-      <Input label="หมายเหตุ" value={note} onChange={e => setNote(e.target.value)} style={{marginBottom:12}}/>
 
       {totalQty > 0 && (
         <div style={{padding:14,background:"linear-gradient(135deg,rgba(59,91,139,0.06),rgba(16,185,129,0.06))",border:`1px solid ${T.border}`,borderRadius:10,marginBottom:14}}>
