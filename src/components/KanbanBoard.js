@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { doc, setDoc, updateDoc, onSnapshot } from "firebase/firestore";
+import { doc, setDoc, updateDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import { PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot, moveLot } from "../utils/productionLots";
 import LotDetailModal from "./LotDetailModal";
@@ -20,6 +20,56 @@ export default function KanbanBoard({
   // 🖱️ Drag & drop state
   const [draggingLot, setDraggingLot] = useState(null); // {orderId, lotIdx, fromStatus, orderRef, collection}
   const [dragOverStatus, setDragOverStatus] = useState(null);
+
+  // 🗑 ล้างทั้งคอลัมน์ — admin only
+  const isAdmin = user?.role === "admin";
+  const clearColumn = async (step) => {
+    const lotsInCol = (byStatus[step] || []);
+    if (lotsInCol.length === 0) { alert("ช่องนี้ว่างอยู่"); return; }
+    // จัด lot ตาม order — เพื่อหาว่า order ไหนต้องลบทั้งหมด vs แค่บาง lot
+    const ordersMap = new Map(); // orderId → { orderRef, collection, allLotIdxsInThisStep[] }
+    lotsInCol.forEach(l => {
+      const orderRef = l.orderRef;
+      if (!orderRef) return;
+      const key = `${orderRef.__collection||defaultCollection}/${orderRef.id}`;
+      if (!ordersMap.has(key)) {
+        ordersMap.set(key, {
+          orderRef,
+          collection: orderRef.__collection || defaultCollection,
+          lotIdxs: [],
+        });
+      }
+      ordersMap.get(key).lotIdxs.push(l.lotIdx);
+    });
+    const totalQty = lotsInCol.reduce((s,l) => s + totalQtyOfLot(l), 0);
+    if (!window.confirm(
+      `⚠️ ล้างคอลัมน์ "${step}" ทั้งหมด?\n\n`+
+      `จะลบ ${lotsInCol.length} ล็อต · รวม ${fmtInt(totalQty)} ตัว\n`+
+      `จาก ${ordersMap.size} ใบสั่งผลิต\n\n`+
+      `⚠️ การลบนี้ย้อนกลับไม่ได้ — ใช้สำหรับเก็บกวาดงานเก่าที่เข้าคลังแล้ว`
+    )) return;
+
+    let deletedOrders = 0;
+    let prunedLots = 0;
+    for (const [, info] of ordersMap) {
+      try {
+        const orderLots = info.orderRef.lots || [];
+        const remaining = orderLots.filter((_, idx) => !info.lotIdxs.includes(idx));
+        if (remaining.length === 0) {
+          // ลบทั้ง order
+          await deleteDoc(doc(db, info.collection, info.orderRef.id));
+          deletedOrders++;
+        } else {
+          // ลบเฉพาะ lot นั้น ๆ
+          await updateDoc(doc(db, info.collection, info.orderRef.id), { lots: remaining });
+          prunedLots += info.lotIdxs.length;
+        }
+      } catch (e) {
+        console.error("[kanban] clear failed for order", info.orderRef.id, e);
+      }
+    }
+    alert(`✅ ล้างเรียบร้อย — ลบ ${deletedOrders} ใบสั่งผลิต · ตัด ${prunedLots} ล็อตจากใบที่ยังเหลือล็อตอื่น`);
+  };
 
   // ย้าย lot ไปสถานะใหม่ (อิสระ — ไม่บังคับลำดับ)
   const moveLotToStatus = async (lot, targetStatus) => {
@@ -201,6 +251,11 @@ export default function KanbanBoard({
                       disabled={colIdx === columnOrder.length - 1}
                       title="ย้ายขวา"
                       style={{width:22,height:22,borderRadius:5,border:"none",background:colIdx===columnOrder.length-1?"transparent":"rgba(255,255,255,0.7)",color:colIdx===columnOrder.length-1?T.muted:color,cursor:colIdx===columnOrder.length-1?"not-allowed":"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit",padding:0,opacity:colIdx===columnOrder.length-1?0.3:1}}>▶</button>
+                  )}
+                  {isAdmin && col.length > 0 && (
+                    <button onClick={(e) => { e.stopPropagation(); clearColumn(step); }}
+                      title={`🗑 ล้าง ${col.length} ล็อตในช่องนี้ทั้งหมด (admin only)`}
+                      style={{width:22,height:22,borderRadius:5,border:"none",background:"rgba(220,38,38,0.12)",color:"#dc2626",cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit",padding:0}}>🗑</button>
                   )}
                   {canReorder && (
                     <button onClick={(e) => { e.stopPropagation(); removeColumn(step); }}
