@@ -35,11 +35,18 @@ export const SHOE_SIZES = ["36","37","38","39","40","41","42","43","44","45"];
 // 🪡 ลำดับไซส์เสื้อผ้าครบ (สำหรับ offset เผื่อหด: เด็ก → ผู้ใหญ่ → XL ใหญ่สุด 12XL)
 export const SIZES_FOR_OFFSET = ["6","8","10","12","S","M","L","XL","2XL","3XL","4XL","5XL","6XL","7XL","8XL","9XL","10XL","11XL","12XL"];
 
+// helper: หา index ของไซส์โดยไม่สนตัวพิมพ์เล็กใหญ่ ("m" / "M" / " m " → idx ของ "M")
+function findSizeIdx(s) {
+  const norm = String(s || "").trim().toUpperCase();
+  if (!norm) return -1;
+  return SIZES_FOR_OFFSET.findIndex(x => x.toUpperCase() === norm);
+}
+
 // คำนวณ "ไซส์ผลิต" จากไซส์ลูกค้า + offset เผื่อหด (+1 = ใหญ่ขึ้น 1 ไซส์)
 export function getProductionSize(customerSize, offset) {
   const off = Number(offset) || 0;
   if (off === 0) return customerSize;
-  const idx = SIZES_FOR_OFFSET.indexOf(String(customerSize || "").trim());
+  const idx = findSizeIdx(customerSize);
   if (idx < 0) return customerSize;
   const targetIdx = Math.min(SIZES_FOR_OFFSET.length - 1, Math.max(0, idx + off));
   return SIZES_FOR_OFFSET[targetIdx];
@@ -49,7 +56,7 @@ export function getProductionSize(customerSize, offset) {
 export function isProductionSizeCapped(customerSize, offset) {
   const off = Number(offset) || 0;
   if (off <= 0) return false;
-  const idx = SIZES_FOR_OFFSET.indexOf(String(customerSize || "").trim());
+  const idx = findSizeIdx(customerSize);
   if (idx < 0) return false;
   return idx + off > SIZES_FOR_OFFSET.length - 1;
 }
