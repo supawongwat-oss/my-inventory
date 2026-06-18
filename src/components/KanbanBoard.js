@@ -268,6 +268,12 @@ function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag 
   const colors = Array.from(new Set((lot.items || []).map(it => it.colorName)));
   const isCustom = lot.orderRef?.__isCustom;
   const accentColor = isCustom ? "#d97706" : T.accent;
+  // 🖼️ thumbnail — รูปแรกจาก clothingImages (ใหม่) หรือ clothingImage (เก่า)
+  const ord = lot.orderRef || {};
+  const thumb = (Array.isArray(ord.clothingImages) && ord.clothingImages[0]?.dataUrl)
+    || ord.clothingImage
+    || (Array.isArray(ord.images) && ord.images[0]?.dataUrl)
+    || "";
   return (
     <div onClick={onClick}
       draggable={canDrag}
@@ -284,15 +290,26 @@ function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag 
         <span style={{fontSize:10,color:T.muted}}>· {lot.lotId}</span>
         <span style={{marginLeft:"auto",fontFamily:"monospace",fontWeight:700,color:T.text,fontSize:13}}>{fmtInt(total)}</span>
       </div>
-      <div style={{fontSize:12,fontWeight:600,color:T.text,marginBottom:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lot.clothingName}</div>
-      <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
-        {colors.slice(0,4).map((c,i) => (
-          <span key={i} style={{padding:"2px 6px",fontSize:10,background:"rgba(59,91,139,0.08)",color:T.accent,borderRadius:8,border:"1px solid rgba(59,91,139,0.15)"}}>{c}</span>
-        ))}
-        {colors.length > 4 && <span style={{fontSize:10,color:T.muted}}>+{colors.length-4}</span>}
+      {/* 🖼️ Thumbnail + ชื่อรุ่น */}
+      <div style={{display:"flex",gap:8,marginBottom:6,alignItems:"flex-start"}}>
+        {thumb ? (
+          <img src={thumb} alt="" draggable={false}
+            style={{width:42,height:42,borderRadius:6,objectFit:"cover",border:`1px solid ${T.border}`,flexShrink:0,background:"#f8fafc"}}/>
+        ) : (
+          <div style={{width:42,height:42,borderRadius:6,border:`1px dashed ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,color:T.muted,flexShrink:0,background:"#f8fafc"}}>{isCustom?"🎨":"👕"}</div>
+        )}
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:12,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lot.clothingName}</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:3}}>
+            {colors.slice(0,4).map((c,i) => (
+              <span key={i} style={{padding:"1px 6px",fontSize:10,background:"rgba(59,91,139,0.08)",color:T.accent,borderRadius:8,border:"1px solid rgba(59,91,139,0.15)"}}>{c}</span>
+            ))}
+            {colors.length > 4 && <span style={{fontSize:10,color:T.muted}}>+{colors.length-4}</span>}
+          </div>
+        </div>
       </div>
       {(lot.notes || []).length > 0 && (
-        <div style={{marginTop:6,padding:"4px 8px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:5,fontSize:10,color:"#92400e"}}>
+        <div style={{padding:"4px 8px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:5,fontSize:10,color:"#92400e"}}>
           📝 {lot.notes.length} หมายเหตุ
         </div>
       )}
