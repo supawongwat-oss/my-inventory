@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { doc, setDoc, onSnapshot } from "firebase/firestore";
+import { doc, setDoc, updateDoc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
-import { PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot } from "../utils/productionLots";
+import { PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot, moveLot } from "../utils/productionLots";
 import LotDetailModal from "./LotDetailModal";
 
 const T = { card:"#ffffff", border:"#e3e8ef", text:"#1f2a44", sub:"#5b6b85", muted:"#8a9bb3", accent:"#3b5b8b" };
@@ -16,6 +16,30 @@ export default function KanbanBoard({
   const [collapsed, setCollapsed] = useState({});
   const [columnOrder, setColumnOrder] = useState(PRODUCTION_STEPS);
   const canReorder = user?.role === "admin" || user?.role === "manager";
+  // 🖱️ Drag & drop state
+  const [draggingLot, setDraggingLot] = useState(null); // {orderId, lotIdx, fromStatus, orderRef, collection}
+  const [dragOverStatus, setDragOverStatus] = useState(null);
+
+  // ย้าย lot ไปสถานะใหม่ (อิสระ — ไม่บังคับลำดับ)
+  const moveLotToStatus = async (lot, targetStatus) => {
+    if (lot.status === targetStatus) return;
+    const orderRef = lot.orderRef;
+    if (!orderRef) return;
+    const collectionName = orderRef.__collection || defaultCollection;
+    try {
+      const lots = orderRef.lots || [];
+      // ถ้า order ไม่มี lots structure (legacy) → update status ของ order
+      if (lots.length === 0 || lot.lotIdx === undefined || lot.lotIdx < 0) {
+        await updateDoc(doc(db, collectionName, orderRef.id), { status: targetStatus });
+      } else {
+        const newLots = moveLot(lots, lot.lotIdx, targetStatus, user?.name || "", `drag → ${targetStatus}`);
+        await updateDoc(doc(db, collectionName, orderRef.id), { lots: newLots });
+      }
+    } catch (e) {
+      console.error("[kanban] move failed:", e);
+      alert("ย้ายไม่สำเร็จ: " + e.message);
+    }
+  };
 
   // โหลดสายงาน (steps + order รวมกัน — เก็บใน settings/kanbanSteps)
   // เปลี่ยนจาก kanbanOrder เป็น kanbanSteps เพราะตอนนี้ขั้นเพิ่ม/ลบได้
@@ -122,6 +146,11 @@ export default function KanbanBoard({
           ทั้งหมด <b style={{color:T.accent}}>{allLots.length}</b> ล็อต
           {cancelledLots.length > 0 && <span style={{marginLeft:8,color:"#dc2626"}}>(ยกเลิก {cancelledLots.length})</span>}
         </div>
+        {canReorder && allLots.length > 0 && (
+          <div style={{padding:"8px 14px",background:"rgba(16,185,129,0.08)",border:"1px solid rgba(16,185,129,0.25)",borderRadius:8,fontSize:11,color:"#047857"}}>
+            🖱️ ลากการ์ด → วางในคอลัมน์ที่ต้องการได้อิสระ
+          </div>
+        )}
         {canReorder && (
           <>
             <button onClick={addColumn} title="เพิ่มสายงานใหม่"
@@ -139,8 +168,20 @@ export default function KanbanBoard({
           const color = STATUS_COLORS[step] || T.accent;
           const colTotal = col.reduce((s, l) => s + totalQtyOfLot(l), 0);
           const isCollapsed = collapsed[step];
+          const isDragOver = dragOverStatus === step;
           return (
-            <div key={step} style={{flex:"0 0 240px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:12,padding:8,display:"flex",flexDirection:"column",maxHeight:"calc(100vh - 280px)"}}>
+            <div key={step}
+              onDragOver={e=>{ e.preventDefault(); if (draggingLot && draggingLot.status !== step) setDragOverStatus(step); }}
+              onDragLeave={()=>setDragOverStatus(null)}
+              onDrop={async e=>{
+                e.preventDefault();
+                if (draggingLot && draggingLot.status !== step) {
+                  await moveLotToStatus(draggingLot, step);
+                }
+                setDraggingLot(null);
+                setDragOverStatus(null);
+              }}
+              style={{flex:"0 0 240px",background:isDragOver?"#dbeafe":"#f8fafc",border:isDragOver?`2px dashed ${T.accent}`:`1px solid ${T.border}`,borderRadius:12,padding:8,display:"flex",flexDirection:"column",maxHeight:"calc(100vh - 280px)",transition:"background .15s, border-color .15s"}}>
               {/* Column header */}
               <div style={{padding:"8px 10px",borderRadius:8,background:color+"15",border:`1px solid ${color}30`,marginBottom:8,userSelect:"none"}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -173,7 +214,13 @@ export default function KanbanBoard({
                   {col.length === 0 ? (
                     <div style={{padding:20,textAlign:"center",fontSize:11,color:T.muted,fontStyle:"italic"}}>— ว่าง —</div>
                   ) : col.map(lot => (
-                    <KanbanCard key={`${lot.orderId}-${lot.lotId}`} lot={lot} onClick={() => setSelected({ order: lot.orderRef, lotIdx: lot.lotIdx })}/>
+                    <KanbanCard key={`${lot.orderId}-${lot.lotId}`} lot={lot}
+                      onClick={() => setSelected({ order: lot.orderRef, lotIdx: lot.lotIdx })}
+                      onDragStart={()=>setDraggingLot(lot)}
+                      onDragEnd={()=>{ setDraggingLot(null); setDragOverStatus(null); }}
+                      isDragging={draggingLot && draggingLot.orderId === lot.orderId && draggingLot.lotId === lot.lotId}
+                      canDrag={canReorder}
+                    />
                   ))}
                 </div>
               )}
@@ -215,16 +262,19 @@ export default function KanbanBoard({
   );
 }
 
-function KanbanCard({ lot, onClick }) {
+function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag = true }) {
   const total = totalQtyOfLot(lot);
   const colors = Array.from(new Set((lot.items || []).map(it => it.colorName)));
   const isCustom = lot.orderRef?.__isCustom;
   const accentColor = isCustom ? "#d97706" : T.accent;
   return (
     <div onClick={onClick}
-      style={{padding:"10px 12px",background:"white",border:`1px solid ${T.border}`,borderRadius:8,cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",transition:"all 0.15s",borderLeft:`3px solid ${accentColor}`}}
+      draggable={canDrag}
+      onDragStart={e=>{ if (!canDrag) return; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", lot.lotId); onDragStart && onDragStart(); }}
+      onDragEnd={onDragEnd}
+      style={{padding:"10px 12px",background:"white",border:`1px solid ${T.border}`,borderRadius:8,cursor:canDrag?"grab":"pointer",boxShadow:isDragging?`0 8px 20px ${accentColor}55`:"0 1px 3px rgba(0,0,0,0.04)",transition:"all 0.15s",borderLeft:`3px solid ${accentColor}`,opacity:isDragging?0.5:1}}
       onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 4px 12px ${accentColor}25`;e.currentTarget.style.borderColor=accentColor;e.currentTarget.style.borderLeftColor=accentColor;}}
-      onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.04)";e.currentTarget.style.borderColor=T.border;e.currentTarget.style.borderLeftColor=accentColor;}}>
+      onMouseLeave={e=>{e.currentTarget.style.boxShadow=isDragging?`0 8px 20px ${accentColor}55`:"0 1px 3px rgba(0,0,0,0.04)";e.currentTarget.style.borderColor=T.border;e.currentTarget.style.borderLeftColor=accentColor;}}>
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
         {isCustom && (
           <span style={{padding:"1px 6px",fontSize:9,background:"rgba(217,119,6,0.12)",color:"#d97706",borderRadius:6,border:"1px solid rgba(217,119,6,0.3)",fontWeight:700,letterSpacing:0.3}}>🎨 Custom</span>
