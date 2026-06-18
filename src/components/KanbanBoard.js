@@ -15,7 +15,8 @@ export default function KanbanBoard({
   const [selected, setSelected] = useState(null); // { order, lotIdx }
   const [collapsed, setCollapsed] = useState({});
   const [columnOrder, setColumnOrder] = useState(PRODUCTION_STEPS);
-  const canReorder = user?.role === "admin" || user?.role === "manager";
+  // 🏭 production = ทำงานในโรงงาน → ทุก role ลาก/จัดการได้
+  const canReorder = !!user;
   // 🖱️ Drag & drop state
   const [draggingLot, setDraggingLot] = useState(null); // {orderId, lotIdx, fromStatus, orderRef, collection}
   const [dragOverStatus, setDragOverStatus] = useState(null);

@@ -370,7 +370,7 @@ export default function LotDetailModal({
       <div style={{padding:18,background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:12,marginBottom:14}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
           <div style={{fontSize:13,fontWeight:700,color:T.accent,textTransform:"uppercase",letterSpacing:"0.06em"}}>📦 รายการในล็อตนี้</div>
-          {(userRole === "admin" || userRole === "manager") && !isCancelled && !editMode && (
+          {!!userRole && !isCancelled && !editMode && (
             <button onClick={startEdit} style={{padding:"5px 12px",borderRadius:7,border:"1px solid rgba(59,91,139,0.3)",background:"rgba(59,91,139,0.08)",color:T.accent,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>✏️ แก้ไข</button>
           )}
         </div>
@@ -466,10 +466,10 @@ export default function LotDetailModal({
           {(lot.items || []).length > 0 && lotTotal > 1 && (
             <BtnGhost onClick={() => setShowSplit(true)} disabled={busy} style={{flex:1,minWidth:140}}>✂️ แยกล็อตย่อย</BtnGhost>
           )}
-          {(userRole === "admin" || userRole === "manager") && !isFinal && (
+          {!!userRole && !isFinal && (
             <BtnDanger onClick={handleCancel} disabled={busy} style={{minWidth:90}}>🛑 ยกเลิก</BtnDanger>
           )}
-          {(userRole === "admin" || userRole === "manager") && (
+          {!!userRole && (
             <button onClick={handleDeleteLot} disabled={busy}
               title={lots.length === 1 ? "ลบใบสั่งผลิตทั้งใบ" : "ลบล็อตนี้"}
               style={{padding:"8px 14px",borderRadius:8,border:"1px solid rgba(127,29,29,0.4)",background:"rgba(127,29,29,0.08)",color:"#7f1d1d",fontSize:13,fontWeight:600,cursor:busy?"not-allowed":"pointer",fontFamily:"'Sarabun',sans-serif",opacity:busy?0.45:1,minWidth:90}}>🗑 ลบ</button>
@@ -478,7 +478,7 @@ export default function LotDetailModal({
       )}
 
       {/* Cancelled lot ก็ลบได้ */}
-      {isCancelled && (userRole === "admin" || userRole === "manager") && (
+      {isCancelled && !!userRole && (
         <div style={{display:"flex",gap:8,marginBottom:14,justifyContent:"flex-end"}}>
           <button onClick={handleDeleteLot} disabled={busy}
             style={{padding:"8px 14px",borderRadius:8,border:"1px solid rgba(127,29,29,0.4)",background:"rgba(127,29,29,0.08)",color:"#7f1d1d",fontSize:13,fontWeight:600,cursor:busy?"not-allowed":"pointer",fontFamily:"'Sarabun',sans-serif"}}>🗑 ลบล็อตที่ยกเลิก</button>

@@ -135,12 +135,10 @@ export function addLotNote(lots, lotIdx, text, by = "", photoUrls = []) {
   });
 }
 
-// staff ขยับไปข้างหน้าเท่านั้น
+// ทุก role ขยับได้ทั้ง 2 ทิศ — โรงงานต้องคล่องตัว
 export function canMoveTo(currentStatus, targetStatus, role, steps = PRODUCTION_STEPS) {
   if (!targetStatus) return false;
-  const ci = steps.indexOf(currentStatus);
   const ti = steps.indexOf(targetStatus);
   if (ti < 0) return false;
-  if (role === "admin" || role === "manager") return true;
-  return ti > ci; // staff: forward only
+  return true;
 }
