@@ -101,13 +101,11 @@ export const sizeRank = (sz) => {
 };
 export const compareSizes = (a, b) => sizeRank(a) - sizeRank(b);
 
-// 🧩 splitSizesIntoRows — แบ่ง sizes ออกเป็นแถว ตามกฎ:
-//  - kids (numeric) ทุกตัวรวมแถวเดียว (max 4)
-//  - regular S/M/L/XL รวมแถวเดียว (max 4)
-//  - plus sizes (2XL+) ตัวละ 1 แถว
-//  - ไซส์ custom string → ตัวละ 1 แถว
-// items = [{ size, ...rest }] รับ object อะไรก็ได้ ตราบใดที่มี .size
-export const splitSizesIntoRows = (items, maxPerRow = 4) => {
+// 🧩 splitSizesIntoRows — แบ่ง sizes ออกเป็นแถว
+// options.fillPlus = true (default for print) → plus sizes ไปต่อท้าย regs row ถ้ามีที่ว่าง
+// options.fillPlus = false (สำหรับ invoice — เพราะ plus มักมีราคาต่างกัน)
+export const splitSizesIntoRows = (items, maxPerRow = 4, options = {}) => {
+  const { fillPlus = true } = options;
   const sorted = [...items].sort((a, b) => compareSizes(a.size, b.size));
   const isKid = (sz) => /^\d+$/.test(String(sz||""));
   const isReg = (sz) => ["S","M","L","XL"].includes(String(sz||"").toUpperCase());
@@ -119,10 +117,18 @@ export const splitSizesIntoRows = (items, maxPerRow = 4) => {
   const rows = [];
   // kids 4 ต่อแถว
   for (let i = 0; i < kids.length; i += maxPerRow) rows.push(kids.slice(i, i + maxPerRow));
-  // regs 4 ต่อแถว
-  for (let i = 0; i < regs.length; i += maxPerRow) rows.push(regs.slice(i, i + maxPerRow));
-  // plus + other ตัวละแถว
-  plus.forEach(p => rows.push([p]));
+
+  if (fillPlus) {
+    // 🔗 รวม regs + plus เรียงเป็น 4 ต่อแถว → 2XL จะไปต่อท้าย XL ถ้ามีที่ว่าง
+    const merged = [...regs, ...plus];
+    for (let i = 0; i < merged.length; i += maxPerRow) rows.push(merged.slice(i, i + maxPerRow));
+  } else {
+    // โหมดเดิม — regs รวมแถว, plus 1/แถว (สำหรับ invoice form)
+    for (let i = 0; i < regs.length; i += maxPerRow) rows.push(regs.slice(i, i + maxPerRow));
+    plus.forEach(p => rows.push([p]));
+  }
+
+  // other 1 ต่อแถว
   other.forEach(o => rows.push([o]));
   return rows;
 };

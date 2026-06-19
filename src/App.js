@@ -4052,7 +4052,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                   },{})).flatMap((group,gi)=>{
                     // ✨ sort + group ด้วย helper (รองรับ 2XL-9XL, 6XL/7XL)
                     const withSize = group.items.filter(i => i.size);
-                    const rows = splitSizesIntoRows(withSize, 4);
+                    const rows = splitSizesIntoRows(withSize, 4, { fillPlus: false });
                     if(rows.length===0) rows.push([]);
                     const totalQty=group.items.reduce((s,i)=>s+i.qty,0);
                     // คำนวณราคารวมของ group นี้ (qty × salePrice ตามไซส์)
@@ -4241,7 +4241,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                       // S/M/L/XL 4 ต่อแถว, 2XL+ และ 6XL/7XL/9XL ต่างๆ 1 ต่อแถว
                       const withSize = group.items.filter(i => i.size);
                       const noSize = group.items.filter(i => !i.size);
-                      const rows = splitSizesIntoRows(withSize, 4);
+                      const rows = splitSizesIntoRows(withSize, 4, { fillPlus: false });
                       noSize.forEach(n => rows.push([n]));
                       if(rows.length===0) rows.push([]);
                       return rows.map((chunk,ci)=>{
@@ -4829,7 +4829,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                         // ✨ sort + group (รองรับ 2XL-9XL)
                         const withSize = group.items.filter(i => i.size);
                         const noSize = group.items.filter(i => !i.size);
-                        const rows = splitSizesIntoRows(withSize, 4);
+                        const rows = splitSizesIntoRows(withSize, 4, { fillPlus: false });
                         noSize.forEach(n => rows.push([n]));
                         if(rows.length===0) rows.push([]);
                         return rows.map((chunk,ci)=>{
