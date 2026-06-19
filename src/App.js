@@ -268,6 +268,7 @@ export default function App() {
   const [showNewInvoice, setShowNewInvoice] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState(null); // ถ้ามี = โหมดแก้ไข
   const [profileCustomer, setProfileCustomer] = useState(null);
+  const [editingCustomer, setEditingCustomer] = useState(null); // 📝 customer edit modal
   const [orderSearch, setOrderSearch] = useState("");
   const [orderDateFrom, setOrderDateFrom] = useState("");
   const [orderDateTo, setOrderDateTo] = useState("");
@@ -2883,8 +2884,12 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                         <div>สั่งซื้อ {orders.filter(o=>o.customerId===c.id).length} ครั้ง</div>
                         <div style={{color:T.accent,fontSize:10,marginTop:2}}>👁 ดูโปรไฟล์</div>
                       </div>
+                      {role.canAdd&&<button onClick={(e)=>{e.stopPropagation(); setEditingCustomer({...c});}}
+                        title="แก้ไขชื่อ/ที่อยู่/เบอร์"
+                        style={{padding:"5px 9px",borderRadius:7,border:"1px solid rgba(59,91,139,0.25)",background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:11}}>✏️</button>}
                       {role.canDelete&&<button onClick={async(e)=>{
                         e.stopPropagation();
+                        if (!window.confirm(`ลบลูกค้า "${c.name}"?`)) return;
                         await deleteDoc(doc(db,"customers",c.id));
                         logAudit(user,{action:AUDIT_ACTIONS.DELETE,collection:"customers",targetId:c.id,targetLabel:c.name,before:{name:c.name,phone:c.phone}});
                       }} style={{padding:"5px 8px",borderRadius:7,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:11}}>✕</button>}
@@ -3588,6 +3593,74 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
             <div style={{fontSize:13,color:T.sub,marginBottom:8}}>สินค้าและประวัติทั้งหมดจะถูกลบออก</div>
             <div style={{fontSize:12,color:T.red,marginBottom:24,padding:"10px",background:"#fef2f2",borderRadius:8}}>⚠️ ไม่สามารถย้อนกลับได้!</div>
             <div style={{display:"flex",gap:10}}><BtnGhost onClick={()=>setShowClearConfirm(false)} style={{flex:1}}>ยกเลิก</BtnGhost><BtnDanger onClick={handleClear} style={{flex:1}}>ล้างคลังทั้งหมด</BtnDanger></div>
+          </div>
+        </Modal>
+      )}
+
+      {/* 📝 Edit Customer Modal */}
+      {editingCustomer&&(
+        <Modal onClose={()=>setEditingCustomer(null)} w={500}>
+          <MHead title={`✏️ แก้ไขลูกค้า — ${editingCustomer.name}`} onClose={()=>setEditingCustomer(null)}/>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <div>
+              <label style={{fontSize:11,color:T.muted,fontWeight:600,display:"block",marginBottom:4}}>ชื่อ / ร้านค้า *</label>
+              <input value={editingCustomer.name||""} onChange={e=>setEditingCustomer(c=>({...c,name:e.target.value}))}
+                style={{width:"100%",padding:"9px 12px",border:`1px solid ${T.inputBorder}`,borderRadius:8,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+            <div>
+              <label style={{fontSize:11,color:T.muted,fontWeight:600,display:"block",marginBottom:4}}>เบอร์โทร</label>
+              <input value={editingCustomer.phone||""} onChange={e=>setEditingCustomer(c=>({...c,phone:e.target.value}))}
+                style={{width:"100%",padding:"9px 12px",border:`1px solid ${T.inputBorder}`,borderRadius:8,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+            <div>
+              <label style={{fontSize:11,color:T.muted,fontWeight:600,display:"block",marginBottom:4}}>ที่อยู่</label>
+              <textarea value={editingCustomer.address||""} onChange={e=>setEditingCustomer(c=>({...c,address:e.target.value}))} rows={3}
+                placeholder="บ้านเลขที่ ซอย ถนน ตำบล อำเภอ จังหวัด รหัสไปรษณีย์"
+                style={{width:"100%",padding:"9px 12px",border:`1px solid ${T.inputBorder}`,borderRadius:8,fontSize:13,fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div>
+                <label style={{fontSize:11,color:T.muted,fontWeight:600,display:"block",marginBottom:4}}>เลขผู้เสียภาษี (ถ้ามี)</label>
+                <input value={editingCustomer.taxId||""} onChange={e=>setEditingCustomer(c=>({...c,taxId:e.target.value}))}
+                  style={{width:"100%",padding:"9px 12px",border:`1px solid ${T.inputBorder}`,borderRadius:8,fontSize:13,fontFamily:"monospace",boxSizing:"border-box"}}/>
+              </div>
+              <div>
+                <label style={{fontSize:11,color:T.muted,fontWeight:600,display:"block",marginBottom:4}}>Email</label>
+                <input value={editingCustomer.email||""} onChange={e=>setEditingCustomer(c=>({...c,email:e.target.value}))}
+                  style={{width:"100%",padding:"9px 12px",border:`1px solid ${T.inputBorder}`,borderRadius:8,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+              </div>
+            </div>
+            <div>
+              <label style={{fontSize:11,color:T.muted,fontWeight:600,display:"block",marginBottom:4}}>หมายเหตุ</label>
+              <input value={editingCustomer.note||""} onChange={e=>setEditingCustomer(c=>({...c,note:e.target.value}))}
+                placeholder="ลูกค้า VIP / เครดิต 30 วัน / ฯลฯ"
+                style={{width:"100%",padding:"9px 12px",border:`1px solid ${T.inputBorder}`,borderRadius:8,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:10,marginTop:18}}>
+            <BtnGhost onClick={()=>setEditingCustomer(null)} style={{flex:1}}>ยกเลิก</BtnGhost>
+            <BtnPrimary onClick={async()=>{
+              if (!editingCustomer.name?.trim()) { alert("กรุณากรอกชื่อ"); return; }
+              try {
+                const before = customers.find(x=>x.id===editingCustomer.id) || {};
+                // detect region/province ใหม่ถ้าที่อยู่เปลี่ยน
+                const updated = {
+                  name: editingCustomer.name.trim(),
+                  phone: (editingCustomer.phone||"").trim(),
+                  address: (editingCustomer.address||"").trim(),
+                  taxId: (editingCustomer.taxId||"").trim(),
+                  email: (editingCustomer.email||"").trim(),
+                  note: (editingCustomer.note||"").trim(),
+                  region: detectRegion(editingCustomer.address||""),
+                  province: detectProvince(editingCustomer.address||"") || "",
+                };
+                await updateDoc(doc(db,"customers",editingCustomer.id), updated);
+                logAudit(user,{action:AUDIT_ACTIONS.UPDATE,collection:"customers",targetId:editingCustomer.id,targetLabel:updated.name,
+                  before:{name:before.name,phone:before.phone,address:before.address},
+                  after:{name:updated.name,phone:updated.phone,address:updated.address}});
+                setEditingCustomer(null);
+              } catch (e) { alert("บันทึกไม่สำเร็จ: " + e.message); }
+            }} style={{flex:2}} disabled={!editingCustomer.name?.trim()}>💾 บันทึก</BtnPrimary>
           </div>
         </Modal>
       )}
