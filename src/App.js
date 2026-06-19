@@ -3926,8 +3926,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
             <div style={{background:"rgba(241,243,246,0.6)",borderRadius:10,border:`1px solid ${T.border}`,marginBottom:14,overflow:"hidden"}}>
               <div style={{padding:"8px 14px",background:"rgba(241,243,246,0.8)",borderBottom:`1px solid ${T.border}`,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>📋 สรุปรายการที่เลือก</div>
               {Object.entries(orderForm.items.reduce((acc,oi)=>{
-                const k=`${oi.clothingId||oi.clothingName}-${oi.colorIdx??""}|${oi.colorName||""}`;
-                if(!acc[k]) acc[k]={clothingName:oi.clothingName,colorName:oi.colorName,colorHex:oi.colorHex,clothingId:oi.clothingId,colorIdx:oi.colorIdx,sizes:[]};
+                const k=`${oi.clothingId||oi.clothingName}-${oi.colorIdx??""}|${oi.colorName||""}|${oi.variant||""}`;
+                if(!acc[k]) acc[k]={clothingName:oi.clothingName,colorName:oi.colorName,colorHex:oi.colorHex,clothingId:oi.clothingId,colorIdx:oi.colorIdx,variant:oi.variant||"",sizes:[]};
                 acc[k].sizes.push({size:oi.size,qty:oi.qty});
                 return acc;
               },{})).map(([k,g],gi,arr)=>(
@@ -4045,8 +4045,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 </thead>
                 <tbody>
                   {Object.values((showPrintOrder.items||[]).reduce((acc,oi)=>{
-                    const k=`${oi.clothingId||oi.clothingName}-${oi.colorIdx??""}|${oi.colorName||""}`;
-                    if(!acc[k]) acc[k]={clothingName:oi.clothingName,colorName:oi.colorName,colorHex:oi.colorHex,clothingId:oi.clothingId,colorIdx:oi.colorIdx,items:[]};
+                    const k=`${oi.clothingId||oi.clothingName}-${oi.colorIdx??""}|${oi.colorName||""}|${oi.variant||""}`;
+                    if(!acc[k]) acc[k]={clothingName:oi.clothingName,colorName:oi.colorName,colorHex:oi.colorHex,clothingId:oi.clothingId,colorIdx:oi.colorIdx,variant:oi.variant||"",items:[]};
                     acc[k].items.push(oi);
                     return acc;
                   },{})).flatMap((group,gi)=>{
@@ -4066,7 +4066,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                         <td style={{padding:"9px 10px",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:14}}>
                           {ci===0&&<div style={{display:"flex",alignItems:"center",gap:5}}>
                             <div style={{width:12,height:12,borderRadius:2,background:group.colorHex,border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/>
-                            <span>{group.colorName}</span>
+                            <span>{group.colorName}{group.variant?` (${group.variant})`:""}</span>
                           </div>}
                         </td>
                         {chunk.map(oi=>[
@@ -4209,8 +4209,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
             const generic=indexed.filter(i=>!(i.clothingId||i.clothingName));
             const groups=Object.values(structured.reduce((acc,it)=>{
               // 🔑 รวม colorName เข้าใน key — กัน legacy data ที่ colorIdx=0 ทุกแถว
-              const k=`${it.clothingId||it.clothingName}-${it.colorIdx??""}|${it.colorName||""}`;
-              if(!acc[k]) acc[k]={clothingName:it.clothingName,colorName:it.colorName,colorHex:it.colorHex,items:[]};
+              const k=`${it.clothingId||it.clothingName}-${it.colorIdx??""}|${it.colorName||""}|${it.variant||""}`;
+              if(!acc[k]) acc[k]={clothingName:it.clothingName,colorName:it.colorName,colorHex:it.colorHex,variant:it.variant||"",items:[]};
               acc[k].items.push(it);
               return acc;
             },{}));
@@ -4254,7 +4254,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                             <td style={{padding:"6px 10px",verticalAlign:"middle",border:`1px solid ${T.border}`}}>
                               {ci===0&&<div style={{display:"flex",alignItems:"center",gap:6}}>
                                 <div style={{width:10,height:10,borderRadius:2,background:group.colorHex,border:"1px solid rgba(255,255,255,0.15)",flexShrink:0}}/>
-                                <span>{group.colorName}</span>
+                                <span>{group.colorName}{group.variant?` (${group.variant})`:""}</span>
                               </div>}
                             </td>
                             {chunk.map(it=>[
@@ -4804,8 +4804,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 const structured=(showPrintInvoice.items||[]).filter(i=>i.clothingId||i.clothingName);
                 const generic=(showPrintInvoice.items||[]).filter(i=>!(i.clothingId||i.clothingName));
                 const groups=Object.values(structured.reduce((acc,it)=>{
-                  const k=`${it.clothingId||it.clothingName}-${it.colorIdx??""}|${it.colorName||""}`;
-                  if(!acc[k]) acc[k]={clothingName:it.clothingName,colorName:it.colorName,colorHex:it.colorHex,items:[]};
+                  const k=`${it.clothingId||it.clothingName}-${it.colorIdx??""}|${it.colorName||""}|${it.variant||""}`;
+                  if(!acc[k]) acc[k]={clothingName:it.clothingName,colorName:it.colorName,colorHex:it.colorHex,variant:it.variant||"",items:[]};
                   acc[k].items.push(it);
                   return acc;
                 },{}));
@@ -4844,7 +4844,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                                 {ci===0 ? (
                                   <div style={{display:"flex",alignItems:"center",gap:4,justifyContent:"center"}}>
                                     <div style={{width:9,height:9,borderRadius:2,background:group.colorHex,border:"1px solid #000",flexShrink:0}}/>
-                                    <span>{group.colorName}</span>
+                                    <span>{group.colorName}{group.variant?` (${group.variant})`:""}</span>
                                   </div>
                                 ) : " "}
                               </td>
