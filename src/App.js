@@ -288,7 +288,9 @@ export default function App() {
 
   // forms
   const [newProduct, setNewProduct] = useState({ code:"",name:"",category:"",qty:"",unit:"",minQty:"",location:"",barcode:"",image:"",costPrice:"",salePrice:"" });
-  const [txForm, setTxForm] = useState({ productId:"",qty:"",note:"" });
+  // tx modal — รองรับหลายแถวพร้อมกัน
+  const [txRows, setTxRows] = useState([{ productId:"", qty:"" }]);
+  const [txNote, setTxNote] = useState("");
   // 📦 bulk stock operations (ตัด/รับสต๊อกหลายรายการพร้อมกัน)
   const [selectedProducts, setSelectedProducts] = useState(new Set());
   const [bulkTxModal, setBulkTxModal] = useState(null); // {type:"รับ"|"จ่าย", items:[{id,code,name,unit,current,qty:""}]}
@@ -465,26 +467,44 @@ export default function App() {
 
   const handleTx = async () => {
     if (txSaving) return; // กัน double-submit
-    if (!txForm.productId || txForm.qty === "" || Number(txForm.qty) <= 0) return;
+    // process หลายแถวพร้อมกัน — ข้ามแถวที่ว่าง/qty<=0
+    const valid = txRows.filter(r => r.productId && Number(r.qty) > 0);
+    if (valid.length === 0) return;
     setTxSaving(true);
     try {
-      const pid = txForm.productId;
-      const qty = Number(txForm.qty);
-      const prod = products.find(p => p.id === pid);
-      const histEntry = { action: txType==="รับ" ? "รับสินค้าเข้าคลัง" : "จ่ายสินค้าออกคลัง", by: user.name, date: now(), note:`${txType==="รับ"?"+":"-"}${qty} ${prod?.unit||""}${txForm.note ? ` (${txForm.note})` : ""}` };
-      const oldQty = Number(prod.qty);
-      const newQty = txType==="รับ" ? oldQty+qty : Math.max(0, oldQty-qty);
-      await updateDoc(doc(db, "products", pid), { qty: newQty, lastUpdate: now(), history: [histEntry, ...(prod.history||[])] });
-      await addDoc(collection(db, "transactions"), { type:txType, code:prod?.code, name:prod?.name, qty, by:user.name, date:now(), note:txForm.note||"", createdAt: serverTimestamp() });
-      logAudit(user, {
-        action: AUDIT_ACTIONS.STOCK,
-        collection: "products",
-        targetId: pid,
-        targetLabel: `${prod?.code} ${prod?.name}`,
-        note: `${txType} ${qty} ${prod?.unit||""} (${oldQty}→${newQty})${txForm.note?` · ${txForm.note}`:""}`,
-      });
-      // ปิด modal + reset ทันทีหลัง save → กันกดซ้ำ
-      setTxForm({productId:"",qty:"",note:""});
+      const noteSuffix = txNote ? ` (${txNote})` : "";
+      for (const row of valid) {
+        const pid = row.productId;
+        const qty = Number(row.qty);
+        const prod = products.find(p => p.id === pid);
+        if (!prod) continue;
+        const histEntry = {
+          action: txType === "รับ" ? "รับสินค้าเข้าคลัง" : "จ่ายสินค้าออกคลัง",
+          by: user.name, date: now(),
+          note: `${txType==="รับ"?"+":"-"}${qty} ${prod.unit||""}${noteSuffix}`,
+        };
+        const oldQty = Number(prod.qty) || 0;
+        const newQty = txType === "รับ" ? oldQty + qty : Math.max(0, oldQty - qty);
+        await updateDoc(doc(db, "products", pid), {
+          qty: newQty, lastUpdate: now(),
+          history: [histEntry, ...(prod.history||[])],
+        });
+        await addDoc(collection(db, "transactions"), {
+          type: txType, code: prod.code, name: prod.name, qty,
+          by: user.name, date: now(), note: txNote||"",
+          createdAt: serverTimestamp(),
+        });
+        logAudit(user, {
+          action: AUDIT_ACTIONS.STOCK,
+          collection: "products",
+          targetId: pid,
+          targetLabel: `${prod.code} ${prod.name}`,
+          note: `${txType} ${qty} ${prod.unit||""} (${oldQty}→${newQty})${noteSuffix}${valid.length>1?" [multi]":""}`,
+        });
+      }
+      // ปิด modal + reset
+      setTxRows([{productId:"",qty:""}]);
+      setTxNote("");
       setShowTxModal(false);
       setTxSuccess(true);
       setTimeout(() => setTxSuccess(false), 1500);
@@ -1831,12 +1851,12 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
             {activeTab==="inventory"&&inventoryTab==="general"&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddModal(true)}>️ เพิ่มสินค้า</BtnPrimary>}
             {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddClothing(true)}>{inventoryTab==="sports"?"👟":"️"} เพิ่มรุ่นใหม่</BtnPrimary>}
             {activeTab==="inventory"&&inventoryTab==="general"&&<>
-              <BtnSuccess onClick={()=>{setTxType("รับ");setShowTxModal(true);}}>⬇ รับสินค้า</BtnSuccess>
-              <BtnDanger onClick={()=>{setTxType("จ่าย");setShowTxModal(true);}}>⬆ จ่ายสินค้า</BtnDanger>
+              <BtnSuccess onClick={()=>{setTxType("รับ");setTxRows([{productId:"",qty:""}]);setTxNote("");setShowTxModal(true);}}>⬇ รับสินค้า</BtnSuccess>
+              <BtnDanger onClick={()=>{setTxType("จ่าย");setTxRows([{productId:"",qty:""}]);setTxNote("");setShowTxModal(true);}}>⬆ จ่ายสินค้า</BtnDanger>
             </>}
             {activeTab==="transactions"&&<>
-              <BtnSuccess onClick={()=>{setTxType("รับ");setShowTxModal(true);}}>⬇ รับสินค้า</BtnSuccess>
-              <BtnDanger onClick={()=>{setTxType("จ่าย");setShowTxModal(true);}}>⬆ จ่ายสินค้า</BtnDanger>
+              <BtnSuccess onClick={()=>{setTxType("รับ");setTxRows([{productId:"",qty:""}]);setTxNote("");setShowTxModal(true);}}>⬇ รับสินค้า</BtnSuccess>
+              <BtnDanger onClick={()=>{setTxType("จ่าย");setTxRows([{productId:"",qty:""}]);setTxNote("");setShowTxModal(true);}}>⬆ จ่ายสินค้า</BtnDanger>
             </>}
             {activeTab==="inventory"&&role.canClear&&<button onClick={()=>setShowClearConfirm(true)} style={{padding:"8px 16px",borderRadius:8,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.08)",color:T.red,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>🗑 ล้างคลัง</button>}
           </div>
@@ -2897,7 +2917,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                         </div>
                       </div>
                       <div style={{textAlign:"right"}}><div style={{fontSize:24,fontWeight:700,color:T.red,fontFamily:"monospace"}}>{p.qty}</div><div style={{fontSize:11,color:T.muted}}>ขั้นต่ำ: {p.minQty} {p.unit}</div></div>
-                      <BtnPrimary onClick={()=>{setTxType("รับ");setTxForm(f=>({...f,productId:String(p.id)}));setShowTxModal(true);}}>+ รับสินค้า</BtnPrimary>
+                      <BtnPrimary onClick={()=>{setTxType("รับ");setTxRows([{productId:String(p.id),qty:""}]);setTxNote("");setShowTxModal(true);}}>+ รับสินค้า</BtnPrimary>
                     </CardBox>
                   ))}
                 </>
@@ -3364,38 +3384,76 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
       )}
 
       {/* ── MODAL: รับ/จ่าย ── */}
-      {showTxModal&&(
-        <Modal onClose={()=>setShowTxModal(false)} w={520}>
-          <MHead title={txType==="รับ"?"⬇️ รับสินค้าเข้าคลัง":"⬆️ จ่ายสินค้าออกคลัง"} onClose={()=>setShowTxModal(false)} color={txType==="รับ"?T.green:T.red}/>
+      {showTxModal&&(()=>{
+        const validRows = txRows.filter(r => r.productId && Number(r.qty) > 0);
+        const totalQty = validRows.reduce((s,r)=>s+Number(r.qty)||0,0);
+        return (
+        <Modal onClose={()=>setShowTxModal(false)} w={640}>
+          <MHead title={txType==="รับ"?"⬇️ รับสินค้าเข้าคลัง":"⬆️ จ่ายสินค้าออกคลัง"} sub={`${txRows.length} แถว${validRows.length!==txRows.length?` (กรอกครบ ${validRows.length})`:""}`} onClose={()=>setShowTxModal(false)} color={txType==="รับ"?T.green:T.red}/>
           {txSuccess&&<Toast msg="บันทึกสำเร็จ!"/>}
-          <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            <div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-                <label style={{fontSize:11,color:T.sub,fontWeight:500}}>สินค้า</label>
-                <button onClick={()=>setShowTxScanner(true)} style={{padding:"4px 12px",borderRadius:6,border:"1px solid rgba(124,58,237,0.3)",background:"rgba(124,58,237,0.08)",color:"#7c3aed",cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>📸 สแกน</button>
-              </div>
-              <select value={txForm.productId} onChange={e=>setTxForm(f=>({...f,productId:e.target.value}))} style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
-                <option value="">-- เลือกสินค้า --</option>
-                {products.map(p=><option key={p.id} value={p.id}>{p.code} — {p.name} (คงเหลือ: {p.qty} {p.unit})</option>)}
-              </select>
-              {txForm.productId && (()=>{
-                const p = products.find(x=>x.id===txForm.productId);
-                if(!p) return null;
-                return <div style={{marginTop:6,padding:"6px 10px",background:"rgba(58,122,82,0.08)",border:"1px solid rgba(58,122,82,0.2)",borderRadius:6,fontSize:11,color:T.green}}>✓ {p.code} · {p.name} · คงเหลือ <b>{p.qty} {p.unit}</b></div>;
-              })()}
+
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+            <label style={{fontSize:11,color:T.sub,fontWeight:600}}>รายการสินค้า</label>
+            <button onClick={()=>setShowTxScanner(true)} style={{padding:"4px 12px",borderRadius:6,border:"1px solid rgba(124,58,237,0.3)",background:"rgba(124,58,237,0.08)",color:"#7c3aed",cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>📸 สแกนเพิ่ม</button>
+          </div>
+
+          <div style={{maxHeight:340,overflowY:"auto",border:`1px solid ${T.border}`,borderRadius:10,marginBottom:10}}>
+            {txRows.map((row,idx)=>{
+              const prod = row.productId ? products.find(x=>x.id===row.productId) : null;
+              const q = Number(row.qty)||0;
+              const overflow = prod && txType==="จ่าย" && q > Number(prod.qty||0);
+              return (
+                <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr 100px 32px",alignItems:"center",gap:6,padding:"8px 10px",borderBottom:idx<txRows.length-1?`1px solid ${T.border}`:"none"}}>
+                  <div>
+                    <select value={row.productId} onChange={e=>setTxRows(prev=>prev.map((r,i)=>i===idx?{...r,productId:e.target.value}:r))}
+                      style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:6,padding:"6px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}>
+                      <option value="">-- เลือกสินค้า --</option>
+                      {products.map(p=><option key={p.id} value={p.id}>{p.code} — {p.name} (คงเหลือ {p.qty})</option>)}
+                    </select>
+                    {prod && (
+                      <div style={{fontSize:10,color:overflow?T.red:T.muted,marginTop:3}}>
+                        คงเหลือ {prod.qty} {prod.unit||""}
+                        {q>0 && <span style={{marginLeft:6}}>→ <b style={{color:overflow?T.red:(txType==="รับ"?T.green:T.amber)}}>{txType==="รับ"?Number(prod.qty)+q:Math.max(0,Number(prod.qty)-q)}</b></span>}
+                        {overflow && <span style={{marginLeft:6,fontWeight:700,color:T.red}}>⚠️ จ่ายเกิน!</span>}
+                      </div>
+                    )}
+                  </div>
+                  <input type="number" min="0" value={row.qty} placeholder="0"
+                    onFocus={e=>e.target.select()}
+                    onChange={e=>setTxRows(prev=>prev.map((r,i)=>i===idx?{...r,qty:e.target.value}:r))}
+                    style={{background:T.input,border:`1px solid ${overflow?T.red:T.inputBorder}`,color:T.text,borderRadius:6,padding:"6px 10px",fontFamily:"monospace",fontSize:13,fontWeight:700,textAlign:"right",outline:"none"}}/>
+                  {txRows.length>1
+                    ? <button onClick={()=>setTxRows(prev=>prev.filter((_,i)=>i!==idx))} title="ลบแถว" style={{padding:"4px 6px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:5,color:T.red,fontSize:11,cursor:"pointer"}}>✕</button>
+                    : <div/>}
+                </div>
+              );
+            })}
+            <button onClick={()=>setTxRows(prev=>[...prev,{productId:"",qty:""}])}
+              style={{width:"100%",padding:"8px",background:"rgba(59,91,139,0.06)",border:"none",borderTop:`1px dashed ${T.border}`,color:T.accent,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>+ เพิ่มแถว</button>
+          </div>
+
+          <div style={{marginBottom:10}}>
+            <label style={{fontSize:11,color:T.muted,fontWeight:600,display:"block",marginBottom:4}}>หมายเหตุ (ใช้กับทุกแถว)</label>
+            <input value={txNote} onChange={e=>setTxNote(e.target.value)} placeholder="ระบุหมายเหตุ (ถ้ามี)"
+              style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}/>
+          </div>
+
+          {validRows.length>0 && (
+            <div style={{padding:"8px 12px",background:txType==="รับ"?"rgba(22,163,74,0.06)":"rgba(220,38,38,0.06)",border:`1px solid ${txType==="รับ"?"rgba(22,163,74,0.25)":"rgba(220,38,38,0.25)"}`,borderRadius:8,marginBottom:12,fontSize:12,color:txType==="รับ"?"#15803d":"#991b1b",fontWeight:600}}>
+              📊 จะ{txType}สต๊อก <b>{validRows.length} รายการ</b> · รวม <b style={{fontFamily:"monospace"}}>{totalQty.toLocaleString("th-TH")}</b> หน่วย
             </div>
-            <Input label="จำนวน" type="number" placeholder="0" value={txForm.qty} onChange={e=>setTxForm(f=>({...f,qty:e.target.value}))}/>
-            <Input label="หมายเหตุ" placeholder="ระบุหมายเหตุ (ถ้ามี)" value={txForm.note} onChange={e=>setTxForm(f=>({...f,note:e.target.value}))}/>
-            <div style={{display:"flex",gap:10}}>
-              <BtnGhost onClick={()=>setShowTxModal(false)} disabled={txSaving} style={{flex:1}}>ยกเลิก</BtnGhost>
-              {txType==="รับ"
-                ?<BtnSuccess onClick={handleTx} disabled={txSaving||!txForm.productId||!txForm.qty||Number(txForm.qty)<=0} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":"ยืนยันรับสินค้า"}</BtnSuccess>
-                :<BtnDanger onClick={handleTx} disabled={txSaving||!txForm.productId||!txForm.qty||Number(txForm.qty)<=0} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":"ยืนยันจ่ายสินค้า"}</BtnDanger>
-              }
-            </div>
+          )}
+
+          <div style={{display:"flex",gap:10}}>
+            <BtnGhost onClick={()=>setShowTxModal(false)} disabled={txSaving} style={{flex:1}}>ยกเลิก</BtnGhost>
+            {txType==="รับ"
+              ? <BtnSuccess onClick={handleTx} disabled={txSaving||validRows.length===0} style={{flex:2}}>{txSaving?"⏳ กำลังบันทึก...":`✅ ยืนยันรับ ${validRows.length} รายการ`}</BtnSuccess>
+              : <BtnDanger onClick={handleTx} disabled={txSaving||validRows.length===0} style={{flex:2}}>{txSaving?"⏳ กำลังบันทึก...":`✅ ยืนยันจ่าย ${validRows.length} รายการ`}</BtnDanger>
+            }
           </div>
         </Modal>
-      )}
+        );
+      })()}
 
       {/* ── MODAL: ประวัติ ── */}
       {showHistoryModal&&(
@@ -5229,7 +5287,17 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
             const found = products.find(p => norm(p.barcode)===cNorm || norm(p.code)===cNorm);
             setShowTxScanner(false);
             if (found) {
-              setTxForm(f=>({...f, productId: String(found.id)}));
+              const pid = String(found.id);
+              setTxRows(prev => {
+                // ถ้ามีแถวที่เลือกสินค้านี้แล้ว → ข้าม
+                if (prev.some(r => r.productId === pid)) return prev;
+                // ถ้าแถวสุดท้ายว่าง → ใส่แทน, ไม่งั้น append แถวใหม่
+                const last = prev[prev.length-1];
+                if (last && !last.productId) {
+                  return prev.map((r,i) => i === prev.length-1 ? { productId: pid, qty: "1" } : r);
+                }
+                return [...prev, { productId: pid, qty: "1" }];
+              });
             } else {
               alert(`❌ ไม่พบสินค้าในระบบ\nรหัสที่อ่าน: "${c}"\n\nลองพิมพ์มือ หรือเลือกจาก dropdown`);
             }
