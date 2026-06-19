@@ -75,7 +75,7 @@ function CompanyEditor({ companyInfo, onSave }) {
 
 export { CompanyEditor };
 
-export default function LoginPage({ users, onLogin, onResetPassword, onRegister }) {
+export default function LoginPage({ users, usersLoaded = true, onLogin, onResetPassword, onRegister }) {
   const [u,setU]=useState(""); const [p,setP]=useState(""); const [err,setErr]=useState(""); const [loading,setLoading]=useState(false);
   const [rememberMe,setRememberMe]=useState(true); // default ติ๊กไว้ — กันรหัสหลุดบ่อย
   const [showForgot,setShowForgot]=useState(false);
@@ -104,13 +104,20 @@ export default function LoginPage({ users, onLogin, onResetPassword, onRegister 
 
   const handle = () => {
     if (!u || !p) { setErr("กรุณากรอกชื่อผู้ใช้และรหัสผ่าน"); return; }
-    if (!users || users.length === 0) { setErr("⏳ ระบบกำลังโหลด กรุณารอสักครู่แล้วลองใหม่"); return; }
+    if (!users || users.length === 0 || !usersLoaded) {
+      setErr("⏳ ระบบกำลังโหลดข้อมูลผู้ใช้ กรุณารอ 5-10 วินาทีแล้วลองใหม่");
+      return;
+    }
     setLoading(true); setErr("");
     setTimeout(() => {
       // ตรวจ username ก่อน — แยก error ระหว่าง "ไม่พบ user" กับ "รหัสผิด"
       const userMatch = users.find(x => x.username === u);
       if (!userMatch) {
-        setErr("ไม่พบบัญชี — ตรวจสอบชื่อผู้ใช้");
+        if (!usersLoaded) {
+          setErr("⏳ ระบบยังโหลดไม่เสร็จ — กรุณารอแล้วลองใหม่");
+        } else {
+          setErr("ไม่พบบัญชี — ตรวจสอบชื่อผู้ใช้");
+        }
         setLoading(false);
         return;
       }

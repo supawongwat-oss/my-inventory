@@ -5,6 +5,7 @@ import { INIT_USERS, INIT_CATS } from "../constants";
 
 export function useFirestore() {
   const [users, setUsers] = useState(INIT_USERS);
+  const [usersLoaded, setUsersLoaded] = useState(false); // 🔐 true เมื่อ Firestore ตอบกลับจริง (กัน race "ไม่พบบัญชี")
   const [products, setProducts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -39,16 +40,20 @@ export function useFirestore() {
         // แต่ "ห้าม" เขียน Firestore — ป้องกัน race condition ทับข้อมูลจริง
         if (!initialChecked) {
           setUsers(INIT_USERS);
+          // 🔐 ไม่ setUsersLoaded(true) — รอจริง ๆ ก่อน (กัน LoginPage แสดง "ไม่พบบัญชี" ตอน Firestore ยังไม่ตอบ)
         }
       } else {
         setUsers(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+        setUsersLoaded(true); // ✅ มีข้อมูลจริงแล้ว
       }
       initialChecked = true;
     }, (err) => {
       console.warn("[users] subscription error:", err);
       // permission-denied/network error → ใช้ค่าเดิม ไม่ overwrite อะไร
     });
-    return () => unsub();
+    // fallback timer — ถ้า 5 วินาทียัง empty → set loaded = true (อนุญาตให้ login ด้วย INIT_USERS)
+    const fallbackTimer = setTimeout(() => setUsersLoaded(true), 5000);
+    return () => { unsub(); clearTimeout(fallbackTimer); };
   }, []);
 
   useEffect(() => {
@@ -186,7 +191,7 @@ export function useFirestore() {
   }, []);
 
   return {
-    users, setUsers,
+    users, setUsers, usersLoaded,
     suppliers,
     products, setProducts,
     transactions,
