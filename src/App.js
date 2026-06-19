@@ -289,6 +289,11 @@ export default function App() {
   // forms
   const [newProduct, setNewProduct] = useState({ code:"",name:"",category:"",qty:"",unit:"",minQty:"",location:"",barcode:"",image:"",costPrice:"",salePrice:"" });
   const [txForm, setTxForm] = useState({ productId:"",qty:"",note:"" });
+  // 📦 bulk stock operations (ตัด/รับสต๊อกหลายรายการพร้อมกัน)
+  const [selectedProducts, setSelectedProducts] = useState(new Set());
+  const [bulkTxModal, setBulkTxModal] = useState(null); // {type:"รับ"|"จ่าย", items:[{id,code,name,unit,current,qty:""}]}
+  const [bulkTxNote, setBulkTxNote] = useState("");
+  const [bulkTxSaving, setBulkTxSaving] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [barcodeSearch, setBarcodeSearch] = useState("");
   const [showScanner, setShowScanner] = useState(false); // โหมดสแกนกล้อง
@@ -488,6 +493,69 @@ export default function App() {
       alert("บันทึกไม่สำเร็จ: " + (e.message || e));
     } finally {
       setTxSaving(false);
+    }
+  };
+
+  // ── Bulk stock operations ─────────────────────────────────────
+  const toggleSelectProduct = (id) => setSelectedProducts(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const openBulkTx = (type, sourceList) => {
+    const items = sourceList.filter(p => selectedProducts.has(p.id)).map(p => ({
+      id: p.id, code: p.code, name: p.name, unit: p.unit||"", current: Number(p.qty)||0, qty: ""
+    }));
+    if (items.length === 0) return;
+    setBulkTxModal({ type, items });
+    setBulkTxNote("");
+  };
+  const setBulkItemQty = (id, qty) => setBulkTxModal(m => m ? { ...m, items: m.items.map(it => it.id === id ? { ...it, qty } : it) } : m);
+  const handleBulkTx = async () => {
+    if (bulkTxSaving || !bulkTxModal) return;
+    const valid = bulkTxModal.items.filter(it => Number(it.qty) > 0);
+    if (valid.length === 0) { alert("กรอกจำนวนอย่างน้อย 1 รายการ"); return; }
+    setBulkTxSaving(true);
+    try {
+      const noteSuffix = bulkTxNote ? ` (${bulkTxNote})` : "";
+      for (const it of valid) {
+        const prod = products.find(x => x.id === it.id);
+        if (!prod) continue;
+        const qty = Number(it.qty);
+        const oldQty = Number(prod.qty) || 0;
+        const newQty = bulkTxModal.type === "รับ" ? oldQty + qty : Math.max(0, oldQty - qty);
+        const histEntry = {
+          action: bulkTxModal.type === "รับ" ? "รับสินค้าเข้าคลัง (bulk)" : "จ่ายสินค้าออกคลัง (bulk)",
+          by: user.name, date: now(),
+          note: `${bulkTxModal.type === "รับ" ? "+" : "-"}${qty} ${prod.unit||""}${noteSuffix}`,
+        };
+        await updateDoc(doc(db, "products", prod.id), {
+          qty: newQty, lastUpdate: now(),
+          history: [histEntry, ...(prod.history||[])],
+        });
+        await addDoc(collection(db, "transactions"), {
+          type: bulkTxModal.type, code: prod.code, name: prod.name, qty,
+          by: user.name, date: now(), note: bulkTxNote||"",
+          createdAt: serverTimestamp(),
+        });
+        logAudit(user, {
+          action: AUDIT_ACTIONS.STOCK,
+          collection: "products",
+          targetId: prod.id,
+          targetLabel: `${prod.code} · ${prod.name}`,
+          note: `${bulkTxModal.type} ${qty} ${prod.unit||""} (${oldQty}→${newQty})${noteSuffix} [bulk]`,
+        });
+      }
+      setBulkTxModal(null);
+      setBulkTxNote("");
+      setSelectedProducts(new Set());
+      setTxSuccess(true);
+      setTimeout(() => setTxSuccess(false), 1500);
+    } catch (e) {
+      console.error("[handleBulkTx] failed:", e);
+      alert("บันทึกไม่สำเร็จ: " + (e?.message || e));
+    } finally {
+      setBulkTxSaving(false);
     }
   };
 
@@ -1905,17 +1973,45 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 </div>
                 <div style={{marginLeft:"auto",fontSize:12,color:T.muted}}>พบ {filtered.length} รายการ</div>
               </div>
+
+              {/* Bulk action bar — โผล่เมื่อมีรายการที่เลือก */}
+              {selectedProducts.size > 0 && (
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,padding:"10px 14px",background:"linear-gradient(135deg,rgba(59,91,139,0.08),rgba(16,185,129,0.06))",border:`1px solid ${T.border}`,borderRadius:10}}>
+                  <span style={{fontSize:13,fontWeight:700,color:T.accent}}>✓ เลือก {selectedProducts.size} รายการ</span>
+                  <span style={{flex:1}}/>
+                  <button onClick={()=>openBulkTx("รับ", filtered)} style={{padding:"7px 16px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#16a34a,#16a34a)",color:"white",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(22,163,74,0.3)"}}>⬇ รับสต๊อก {selectedProducts.size} รายการ</button>
+                  <button onClick={()=>openBulkTx("จ่าย", filtered)} style={{padding:"7px 16px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#dc2626,#dc2626)",color:"white",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(220,38,38,0.3)"}}>⬆ จ่ายสต๊อก {selectedProducts.size} รายการ</button>
+                  <button onClick={()=>setSelectedProducts(new Set())} style={{padding:"7px 14px",borderRadius:8,border:`1px solid ${T.border}`,background:"white",color:T.sub,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>✕ ล้าง</button>
+                </div>
+              )}
+
               <CardBox style={{padding:0,overflow:"hidden"}}>
                 <div className="table-scroll">
                 {/* Table header */}
-                <div style={{display:"grid",gridTemplateColumns:"44px 90px minmax(180px,1fr) 110px 70px 70px 70px 100px 100px",minWidth:1100,alignItems:"center",padding:"10px 16px",background:"#f8f9fb",borderBottom:`1px solid ${T.border}`,color:T.muted,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>
+                <div style={{display:"grid",gridTemplateColumns:"32px 44px 90px minmax(180px,1fr) 110px 70px 70px 70px 100px 100px",minWidth:1132,alignItems:"center",padding:"10px 16px",background:"#f8f9fb",borderBottom:`1px solid ${T.border}`,color:T.muted,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>
+                  <div style={{textAlign:"center"}}>
+                    <input type="checkbox" title="เลือกทั้งหน้า"
+                      checked={filtered.length>0 && filtered.every(p=>selectedProducts.has(p.id))}
+                      ref={el => { if (el) el.indeterminate = filtered.some(p=>selectedProducts.has(p.id)) && !filtered.every(p=>selectedProducts.has(p.id)); }}
+                      onChange={e=>{
+                        if (e.target.checked) setSelectedProducts(prev => { const n=new Set(prev); filtered.forEach(p=>n.add(p.id)); return n; });
+                        else setSelectedProducts(prev => { const n=new Set(prev); filtered.forEach(p=>n.delete(p.id)); return n; });
+                      }}
+                      style={{cursor:"pointer",accentColor:T.accent}}/>
+                  </div>
                   <div>รูป</div><div>รหัส</div><div>ชื่อสินค้า</div><div>หมวดหมู่</div><div style={{textAlign:"right"}}>จำนวน</div><div style={{textAlign:"right"}}>ขั้นต่ำ</div><div>สถานะ</div><div>ที่เก็บ</div><div style={{textAlign:"center"}}>จัดการ</div>
                 </div>
                 {filtered.length===0?(
                   <div style={{padding:40,textAlign:"center",color:T.muted,fontSize:13}}>ยังไม่มีสินค้า — กด "️ เพิ่มสินค้า" เพื่อเริ่มต้น</div>
-                ):filtered.map((p,i)=>(
-                  <div key={p.id} style={{display:"grid",gridTemplateColumns:"44px 90px minmax(180px,1fr) 110px 70px 70px 70px 100px 100px",minWidth:1100,alignItems:"center",padding:"11px 16px",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",transition:"background .15s"}}
-                    onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.05)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                ):filtered.map((p,i)=>{
+                  const isSelected = selectedProducts.has(p.id);
+                  return (
+                  <div key={p.id} style={{display:"grid",gridTemplateColumns:"32px 44px 90px minmax(180px,1fr) 110px 70px 70px 70px 100px 100px",minWidth:1132,alignItems:"center",padding:"11px 16px",borderBottom:i<filtered.length-1?`1px solid ${T.border}`:"none",transition:"background .15s",background:isSelected?"rgba(59,91,139,0.06)":"transparent"}}
+                    onMouseEnter={e=>{if(!isSelected) e.currentTarget.style.background="rgba(59,91,139,0.05)";}} onMouseLeave={e=>{if(!isSelected) e.currentTarget.style.background="transparent";}}>
+                    <div style={{textAlign:"center"}}>
+                      <input type="checkbox" checked={isSelected} onChange={()=>toggleSelectProduct(p.id)}
+                        style={{cursor:"pointer",accentColor:T.accent}}/>
+                    </div>
                     <div style={{position:"relative"}}>
                       {p.image
                         ?<img src={p.image} alt="" style={{width:46,height:46,borderRadius:6,objectFit:"cover",border:`1px solid ${T.border}`,cursor:"pointer"}} onClick={()=>setShowImgModal(p)}/>
@@ -1947,7 +2043,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                       {role.canDelete&&<button title="ลบ" onClick={()=>setShowDeleteConfirm(p.id)} style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:12,color:T.red}}>✕</button>}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
                 </div>
               </CardBox>
               </div>} {/* end general tab */}
@@ -4456,6 +4553,65 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
         </Modal>
         );
       })()}
+
+      {/* ── MODAL: Bulk รับ/จ่ายสต๊อก หลายรายการ ── */}
+      {bulkTxModal && (
+        <Modal onClose={()=>!bulkTxSaving&&setBulkTxModal(null)} w={720}>
+          <MHead title={`${bulkTxModal.type==="รับ"?"⬇ รับสต๊อก":"⬆ จ่ายสต๊อก"} หลายรายการ`} sub={`${bulkTxModal.items.length} รายการที่เลือก`} onClose={()=>!bulkTxSaving&&setBulkTxModal(null)}/>
+
+          <div style={{maxHeight:380,overflowY:"auto",border:`1px solid ${T.border}`,borderRadius:10,marginBottom:12}}>
+            <div style={{display:"grid",gridTemplateColumns:"80px 1fr 90px 110px",alignItems:"center",padding:"8px 12px",background:"#f8f9fb",borderBottom:`1px solid ${T.border}`,fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>
+              <div>รหัส</div><div>ชื่อสินค้า</div><div style={{textAlign:"right"}}>คงเหลือ</div><div style={{textAlign:"right"}}>จำนวน{bulkTxModal.type==="รับ"?" + รับ":" - จ่าย"}</div>
+            </div>
+            {bulkTxModal.items.map((it,i)=>{
+              const q = Number(it.qty)||0;
+              const newQty = bulkTxModal.type==="รับ" ? it.current + q : Math.max(0, it.current - q);
+              const overflow = bulkTxModal.type==="จ่าย" && q > it.current;
+              return (
+                <div key={it.id} style={{display:"grid",gridTemplateColumns:"80px 1fr 90px 110px",alignItems:"center",padding:"8px 12px",borderBottom:i<bulkTxModal.items.length-1?`1px solid ${T.border}`:"none",gap:6}}>
+                  <div style={{fontFamily:"monospace",fontSize:10,color:T.muted}}>{it.code}</div>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:600,color:T.text}}>{it.name}</div>
+                    {q>0 && (
+                      <div style={{fontSize:10,color:overflow?T.red:T.muted,marginTop:1}}>
+                        {it.current} → <b style={{color:overflow?T.red:(bulkTxModal.type==="รับ"?T.green:T.amber)}}>{newQty}</b> {it.unit}
+                        {overflow && <span style={{marginLeft:6,fontWeight:700}}>⚠️ จ่ายเกินสต๊อก!</span>}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{textAlign:"right",fontFamily:"monospace",fontSize:12,color:T.sub}}>{it.current} {it.unit}</div>
+                  <div>
+                    <input type="number" min="0" value={it.qty} onChange={e=>setBulkItemQty(it.id, e.target.value)}
+                      placeholder="0"
+                      onFocus={e=>e.target.select()}
+                      style={{width:"100%",background:T.input,border:`1px solid ${overflow?T.red:T.inputBorder}`,color:T.text,borderRadius:6,padding:"6px 10px",fontFamily:"monospace",fontSize:13,fontWeight:700,textAlign:"right",outline:"none"}}/>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:11,color:T.muted,fontWeight:600,display:"block",marginBottom:4}}>หมายเหตุ (ใช้กับทุกรายการ)</label>
+            <input value={bulkTxNote} onChange={e=>setBulkTxNote(e.target.value)}
+              placeholder={bulkTxModal.type==="รับ"?"เช่น รับจาก supplier ABC":"เช่น ใช้ผลิตงาน CUS-xxxx"}
+              style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}/>
+          </div>
+
+          {(()=>{const valid=bulkTxModal.items.filter(it=>Number(it.qty)>0);const sum=valid.reduce((s,it)=>s+Number(it.qty)||0,0);return(
+            <div style={{padding:"8px 12px",background:bulkTxModal.type==="รับ"?"rgba(22,163,74,0.06)":"rgba(220,38,38,0.06)",border:`1px solid ${bulkTxModal.type==="รับ"?"rgba(22,163,74,0.25)":"rgba(220,38,38,0.25)"}`,borderRadius:8,marginBottom:12,fontSize:12,color:bulkTxModal.type==="รับ"?"#15803d":"#991b1b",fontWeight:600}}>
+              📊 จะ{bulkTxModal.type}สต๊อก <b>{valid.length} รายการ</b> · รวม <b style={{fontFamily:"monospace"}}>{sum.toLocaleString("th-TH")}</b> หน่วย
+            </div>
+          );})()}
+
+          <div style={{display:"flex",gap:10}}>
+            <BtnGhost onClick={()=>!bulkTxSaving&&setBulkTxModal(null)} disabled={bulkTxSaving} style={{flex:1}}>ยกเลิก</BtnGhost>
+            <BtnPrimary onClick={handleBulkTx} disabled={bulkTxSaving||bulkTxModal.items.filter(it=>Number(it.qty)>0).length===0} style={{flex:2}}>
+              {bulkTxSaving?"⏳ กำลังบันทึก...":`✅ บันทึก ${bulkTxModal.type}สต๊อก`}
+            </BtnPrimary>
+          </div>
+        </Modal>
+      )}
 
       {/* ── MODAL: พิมพ์บิล ── */}
       {showPrintInvoice&&(
