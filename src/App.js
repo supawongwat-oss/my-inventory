@@ -318,6 +318,7 @@ export default function App() {
   const [showSizeManager, setShowSizeManager] = useState(false); // 📏 modal จัดการไซส์
   const [showSalesToday, setShowSalesToday] = useState(false); // 📊 modal ขายวันนี้
   const [salesDate, setSalesDate] = useState(() => new Date().toISOString().slice(0,10)); // yyyy-mm-dd
+  const [salesCell, setSalesCell] = useState(null); // {model,color,size,prefix} ดู/ลบรายการจ่ายของช่องนั้น
   const [newApparelSize, setNewApparelSize] = useState("");
   const [newShoeSize, setNewShoeSize] = useState("");
   const [clothingTxNote, setClothingTxNote] = useState("");
@@ -790,6 +791,32 @@ export default function App() {
       }, { merge: true });
       logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: "settings", targetId: "sizes", targetLabel: "ไซส์", note: `ลบไซส์ ${kind==="shoe"?"รองเท้า":"เสื้อผ้า"}: ${val}` });
     } catch (e) { alert("ลบไม่สำเร็จ: " + (e.message || e)); }
+  };
+
+  // 🔧 ลบรายการจ่ายที่กรอกผิด + คืนสต็อกกลับ
+  const handleDeleteSaleTx = async (t) => {
+    if (txSaving) return;
+    const item = clothingItems.find(i => i.id === t.code);
+    const parts = (t.name||"").split(" / ");
+    const colorName = (parts[1]||"").trim();
+    const size = (parts[2]||"").trim();
+    if (!window.confirm(`ลบรายการจ่าย "${t.name}" จำนวน ${t.qty} ตัว?\n\nสต็อกจะถูกคืนกลับ +${t.qty} (ถ้ายังมีรุ่น/สีนี้อยู่)`)) return;
+    setTxSaving(true);
+    try {
+      // คืนสต็อก (ถ้ายังหา item/สีเจอ)
+      if (item) {
+        const ci = (item.colors||[]).findIndex(c => c.colorName === colorName);
+        if (ci >= 0) {
+          const newColors = item.colors.map((c,i) =>
+            i===ci ? { ...c, stock: { ...(c.stock||{}), [size]: (Number((c.stock||{})[size])||0) + (Number(t.qty)||0) } } : c
+          );
+          await updateDoc(doc(db, "clothing", item.id), { colors: newColors });
+        }
+      }
+      await deleteDoc(doc(db, "transactions", t.id));
+      logAudit(user, { action: AUDIT_ACTIONS.DELETE, collection: "transactions", targetId: t.id, targetLabel: t.name, note: `ลบรายการจ่ายผิด · คืนสต็อก +${t.qty}` });
+    } catch (e) { alert("ลบไม่สำเร็จ: " + (e.message || e)); }
+    finally { setTxSaving(false); }
   };
 
   // 🧺 เปิด modal ขายคละ
@@ -5389,10 +5416,13 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                           </div>
                           <div style={{display:"flex",flexWrap:"wrap",gap:5,flex:1}}>
                             {byColor[color].sizes.map((s,i)=>(
-                              <span key={i} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 9px",borderRadius:7,background:"rgba(241,243,246,0.8)",border:`1px solid ${T.border}`,fontSize:12}}>
+                              <button key={i} onClick={()=>setSalesCell({model,color,size:s.size,prefix})} title="คลิกเพื่อดู/ลบรายการที่กรอกผิด"
+                                style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 9px",borderRadius:7,background:"rgba(241,243,246,0.8)",border:`1px solid ${T.border}`,fontSize:12,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}
+                                onMouseEnter={e=>e.currentTarget.style.background="rgba(184,134,0,0.12)"}
+                                onMouseLeave={e=>e.currentTarget.style.background="rgba(241,243,246,0.8)"}>
                                 <span style={{fontFamily:"monospace",fontWeight:700,color:T.accent}}>{s.size}</span>
                                 <span style={{fontFamily:"monospace",fontWeight:700,color:T.text}}>×{s.qty}</span>
-                              </span>
+                              </button>
                             ))}
                           </div>
                         </div>
@@ -5405,6 +5435,45 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
           )}
           <div style={{marginTop:16}}>
             <BtnGhost onClick={()=>setShowSalesToday(false)} style={{width:"100%"}}>ปิด</BtnGhost>
+          </div>
+        </Modal>
+        );
+      })()}
+
+      {/* ── MODAL: รายการจ่ายของช่อง (ดู/ลบรายการที่กรอกผิด) ── */}
+      {salesCell&&(()=>{
+        const { model, color, size, prefix } = salesCell;
+        const targetName = `${model} / ${color} / ${size}`;
+        const cellTx = transactions
+          .filter(t => t.type==="จ่าย" && t.category==="เสื้อผ้า" && (t.date||"").startsWith(prefix) && (t.name||"")===targetName)
+          .sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));
+        const cellTotal = cellTx.reduce((s,t)=>s+(Number(t.qty)||0),0);
+        return (
+        <Modal onClose={()=>setSalesCell(null)} w={460}>
+          <MHead title="🔧 แก้ไขรายการจ่าย" sub={`${model} · ${color} · ไซส์ ${size}`} onClose={()=>setSalesCell(null)} color={T.amber}/>
+          <div style={{padding:"10px 12px",background:"rgba(184,134,0,0.06)",borderRadius:9,marginBottom:12,fontSize:12,color:T.sub}}>
+            รวมจ่ายช่องนี้ <b style={{color:T.text}}>{cellTotal.toLocaleString("th-TH")} ตัว</b> จาก {cellTx.length} รายการ · กรอกผิดให้กด 🗑 ลบรายการนั้น (สต็อกคืนกลับให้อัตโนมัติ)
+          </div>
+          {cellTx.length===0 ? (
+            <div style={{textAlign:"center",padding:30,color:T.muted,fontSize:13}}>ไม่พบรายการ</div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"50vh",overflowY:"auto"}}>
+              {cellTx.map(t=>(
+                <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",border:`1px solid ${T.border}`,borderRadius:10}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:14,fontWeight:800,color:T.text,fontFamily:"monospace"}}>×{t.qty} ตัว</div>
+                    <div style={{fontSize:11,color:T.muted}}>{t.date}{t.by?` · ${t.by}`:""}{t.note?` · ${t.note}`:""}</div>
+                  </div>
+                  {role.canAdd&&(
+                    <button onClick={async()=>{await handleDeleteSaleTx(t); if(cellTx.length<=1)setSalesCell(null);}} disabled={txSaving} title="ลบรายการนี้ + คืนสต็อก"
+                      style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(248,113,113,0.3)",background:"rgba(248,113,113,0.08)",color:T.red,cursor:txSaving?"wait":"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:600}}>🗑 ลบ</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{marginTop:14}}>
+            <BtnGhost onClick={()=>setSalesCell(null)} style={{width:"100%"}}>ปิด</BtnGhost>
           </div>
         </Modal>
         );
