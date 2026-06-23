@@ -5360,21 +5360,42 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
             <div style={{display:"flex",flexDirection:"column",gap:12,maxHeight:"60vh",overflowY:"auto"}}>
               {models.map(model=>{
                 const m = byModel[model];
-                const rows = Object.entries(m.rows).map(([k,qty])=>{const [color,size]=k.split("|||");return {color,size,qty};})
-                  .sort((a,b)=> a.color===b.color ? compareSizes(a.size,b.size) : a.color.localeCompare(b.color,"th"));
+                // จัดกลุ่มตามสีก่อน → แต่ละสีเรียงไซส์
+                const byColor = {};
+                Object.entries(m.rows).forEach(([k,qty])=>{
+                  const [color,size]=k.split("|||");
+                  if(!byColor[color]) byColor[color]={total:0,sizes:[]};
+                  byColor[color].total += qty;
+                  byColor[color].sizes.push({size,qty});
+                });
+                const colors = Object.keys(byColor).sort((a,b)=>byColor[b].total-byColor[a].total);
+                colors.forEach(c=>byColor[c].sizes.sort((a,b)=>compareSizes(a.size,b.size)));
+                // หา hex ของสีจาก clothingItems (ถ้ามี)
+                const itemMatch = clothingItems.find(it=>it.model===model);
+                const hexOf = (cn)=>(itemMatch?.colors||[]).find(c=>c.colorName===cn)?.hex || "#cbd2d9";
                 return (
                   <div key={model} style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:"rgba(58,122,82,0.08)"}}>
                       <div style={{fontSize:14,fontWeight:800,color:T.text}}>👕 {model}</div>
                       <div style={{fontSize:14,fontWeight:800,color:T.green,fontFamily:"monospace"}}>{m.total.toLocaleString("th-TH")} ตัว</div>
                     </div>
-                    <div style={{padding:"8px 10px",display:"flex",flexWrap:"wrap",gap:6}}>
-                      {rows.map((r,i)=>(
-                        <span key={i} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:8,background:"rgba(241,243,246,0.7)",border:`1px solid ${T.border}`,fontSize:12}}>
-                          <span style={{color:T.sub}}>{r.color}</span>
-                          <span style={{fontFamily:"monospace",fontWeight:700,color:T.accent}}>{r.size}</span>
-                          <span style={{fontFamily:"monospace",fontWeight:700,color:T.text}}>×{r.qty}</span>
-                        </span>
+                    <div style={{display:"flex",flexDirection:"column"}}>
+                      {colors.map((color,ci)=>(
+                        <div key={color} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"8px 14px",borderTop:ci>0?`1px solid ${T.border}`:"none"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:6,minWidth:96,flexShrink:0,paddingTop:3}}>
+                            <span style={{width:14,height:14,borderRadius:4,background:hexOf(color),border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/>
+                            <span style={{fontSize:13,fontWeight:700,color:T.text}}>{color}</span>
+                            <span style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>({byColor[color].total})</span>
+                          </div>
+                          <div style={{display:"flex",flexWrap:"wrap",gap:5,flex:1}}>
+                            {byColor[color].sizes.map((s,i)=>(
+                              <span key={i} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 9px",borderRadius:7,background:"rgba(241,243,246,0.8)",border:`1px solid ${T.border}`,fontSize:12}}>
+                                <span style={{fontFamily:"monospace",fontWeight:700,color:T.accent}}>{s.size}</span>
+                                <span style={{fontFamily:"monospace",fontWeight:700,color:T.text}}>×{s.qty}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
