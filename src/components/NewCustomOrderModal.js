@@ -5,7 +5,7 @@ import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { generateDocNo } from "../utils/docNumber";
 import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
-import { PRESET_COLORS, getProductionSize, isProductionSizeCapped } from "../theme";
+import { PRESET_COLORS, getProductionSize, isProductionSizeCapped, SIZES, compareSizes } from "../theme";
 
 const T = { border:"#e3e8ef", sub:"#5b6b85", text:"#1f2a44", muted:"#8a9bb3", accent:"#3b5b8b", input:"#f6f8fb", inputBorder:"#d8dee9", red:"#dc2626" };
 const fmt = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -28,6 +28,32 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const [shrinkOffset, setShrinkOffset] = useState(0); // 🪡 เผื่อหด: +0 / +1 / +2 / +3
   const [images, setImages] = useState([]); // [{dataUrl, label}]
   const [items, setItems] = useState([{ colorName:"", colorHex:"#94a3b8", size:"", qty:"", variant:"", productionSize:"" }]);
+  // ▦ โหมดตาราง: แถว=สี (มี variant ต่อสี), คอลัมน์=ไซส์ (แก้ได้)
+  const [inputMode, setInputMode] = useState("grid"); // "grid" | "rows"
+  const [gridSizes, setGridSizes] = useState(["S","M","L","XL","2XL","3XL"]);
+  const [newSizeCol, setNewSizeCol] = useState("");
+  const [gridColors, setGridColors] = useState([{ colorName:"", colorHex:"#94a3b8", variant:"", qty:{} }]);
+
+  const setGridCell = (ri, sz, v) => setGridColors(prev => prev.map((r,i)=> i===ri ? { ...r, qty:{...r.qty, [sz]:v} } : r));
+  const setGridColorField = (ri, patch) => setGridColors(prev => prev.map((r,i)=> i===ri ? { ...r, ...patch } : r));
+  const addGridColor = () => setGridColors(prev => { const last=prev[prev.length-1]; return [...prev, { colorName:"", colorHex:"#94a3b8", variant:last?.variant||"", qty:{} }]; });
+  const removeGridColor = (ri) => setGridColors(prev => prev.filter((_,i)=>i!==ri));
+  const addSizeCol = (raw) => {
+    const v=String(raw||"").trim(); if(!v) return;
+    setGridSizes(prev => prev.some(s=>s.toUpperCase()===v.toUpperCase()) ? prev : [...prev, v].sort(compareSizes));
+    setNewSizeCol("");
+  };
+  const removeSizeCol = (sz) => setGridSizes(prev => prev.filter(s=>s!==sz));
+  const gridToItems = () => {
+    const out=[];
+    gridColors.forEach(c => {
+      gridSizes.forEach(sz => {
+        const q = Number(c.qty?.[sz]) || 0;
+        if (q>0) out.push({ colorName:(c.colorName||"").trim()||"-", colorHex:c.colorHex||"#94a3b8", size:sz, qty:q, variant:(c.variant||"").trim()||"", productionSize:getProductionSize(sz, shrinkOffset) });
+      });
+    });
+    return out;
+  };
 
   // 🎽 รูปแบบเสื้อยอดนิยม — กดชิปเพื่อใส่ในแถวที่เลือก
   const VARIANT_PRESETS = ["แขนสั้น", "แขนยาว", "แขนกุด", "คอกลม", "คอวี", "โปโล", "ฮู้ด"];
@@ -91,7 +117,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const updateImageLabel = (idx, label) => setImages(prev => prev.map((im, i) => i === idx ? { ...im, label } : im));
   const removeImage = (idx) => setImages(prev => prev.filter((_, i) => i !== idx));
 
-  const validItems = items.filter(r => Number(r.qty) > 0);
+  const validItems = inputMode === "grid" ? gridToItems() : items.filter(r => Number(r.qty) > 0);
   const totalQty = validItems.reduce((s,r) => s + (Number(r.qty)||0), 0);
   const matCost = Number(costPerPiece) || 0;
   const labor = Number(laborCostPerPiece) || 0;
@@ -305,12 +331,15 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
 
       {/* รายการ */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
-        <div style={{fontSize:13,fontWeight:600,color:T.text}}>📦 รายการผลิต ({validItems.length} แถว · รวม {fmtInt(totalQty)} ตัว)</div>
-        <button onClick={addRow} style={{padding:"6px 14px",background:"rgba(59,91,139,0.08)",color:T.accent,border:`1px solid ${T.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit"}}>+ เพิ่มแถว</button>
+        <div style={{fontSize:13,fontWeight:600,color:T.text}}>📦 รายการผลิต (รวม {fmtInt(totalQty)} ตัว)</div>
+        <div style={{display:"flex",gap:4,background:"#eef2f7",borderRadius:8,padding:3}}>
+          <button onClick={()=>setInputMode("grid")} style={{padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",background:inputMode==="grid"?"white":"transparent",color:inputMode==="grid"?T.accent:T.sub,boxShadow:inputMode==="grid"?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>▦ ตาราง</button>
+          <button onClick={()=>setInputMode("rows")} style={{padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",background:inputMode==="rows"?"white":"transparent",color:inputMode==="rows"?T.accent:T.sub,boxShadow:inputMode==="rows"?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>☰ ทีละแถว</button>
+        </div>
       </div>
 
       {/* ใส่สีเดียวกันให้ทุกแถว */}
-      {items.length > 1 && (
+      {inputMode === "rows" && items.length > 1 && (
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"5px 10px",background:"rgba(217,119,6,0.06)",border:"1px solid rgba(217,119,6,0.2)",borderRadius:7,flexWrap:"wrap"}}>
           <span style={{fontSize:11,color:"#92400e",fontWeight:600}}>🎨 ใส่สีเดียวกันให้ทุกแถว:</span>
           <select onChange={e => {
@@ -358,6 +387,81 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
         ])].map(name => <option key={name} value={name}/>)}
       </datalist>
 
+      {/* ▦ โหมดตาราง */}
+      {inputMode === "grid" && (
+        <div style={{marginBottom:12}}>
+          {/* คอลัมน์ไซส์ — เพิ่ม/ลบได้ */}
+          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:8,padding:"6px 10px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:8}}>
+            <span style={{fontSize:11,color:T.sub,fontWeight:600}}>ไซส์ในตาราง:</span>
+            {gridSizes.map(sz=>(
+              <span key={sz} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"2px 4px 2px 9px",borderRadius:7,background:"white",border:`1px solid ${T.inputBorder}`,fontSize:11,fontFamily:"monospace",fontWeight:700,color:T.accent}}>
+                {sz}<button onClick={()=>removeSizeCol(sz)} title="ลบคอลัมน์" style={{border:"none",background:"transparent",color:T.red,cursor:"pointer",fontSize:12,lineHeight:1,padding:0}}>✕</button>
+              </span>
+            ))}
+            <input value={newSizeCol} onChange={e=>setNewSizeCol(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addSizeCol(newSizeCol)} placeholder="+ ไซส์"
+              style={{width:70,background:"white",border:`1px solid ${T.inputBorder}`,borderRadius:6,padding:"4px 8px",fontFamily:"inherit",fontSize:11,outline:"none"}}/>
+            <button onClick={()=>addSizeCol(newSizeCol)} disabled={!newSizeCol.trim()} style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${T.border}`,background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>เพิ่ม</button>
+          </div>
+
+          <div style={{overflowX:"auto",border:`1px solid ${T.border}`,borderRadius:10}}>
+            <table style={{borderCollapse:"collapse",width:"100%",fontSize:12,minWidth:520}}>
+              <thead>
+                <tr style={{background:"#f1f5fb"}}>
+                  <th style={{position:"sticky",left:0,background:"#f1f5fb",zIndex:2,padding:"7px 8px",textAlign:"left",color:T.sub,fontWeight:700,borderRight:`1px solid ${T.border}`,minWidth:150}}>สี · ลักษณะ</th>
+                  {gridSizes.map(sz=><th key={sz} style={{padding:"7px 4px",textAlign:"center",color:T.text,fontWeight:700,fontFamily:"monospace",minWidth:46,borderRight:`1px solid ${T.border}`}}>{sz}</th>)}
+                  <th style={{padding:"7px 6px",textAlign:"center",color:T.accent,fontWeight:700,minWidth:48}}>รวม</th>
+                  <th style={{width:30}}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {gridColors.map((c,ri)=>{
+                  const rowTotal = gridSizes.reduce((s,sz)=>s+(Number(c.qty?.[sz])||0),0);
+                  return (
+                    <tr key={ri} style={{borderTop:`1px solid ${T.border}`}}>
+                      <td style={{position:"sticky",left:0,background:"white",zIndex:1,padding:"5px 8px",borderRight:`1px solid ${T.border}`}}>
+                        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:3}}>
+                          <input type="color" value={c.colorHex||"#94a3b8"} onChange={e=>setGridColorField(ri,{colorHex:e.target.value})} title="เลือกสี"
+                            style={{width:24,height:24,padding:0,border:`1px solid ${T.inputBorder}`,borderRadius:5,cursor:"pointer",background:"transparent",flexShrink:0}}/>
+                          <input value={c.colorName} onChange={e=>setGridColorField(ri,{colorName:e.target.value})} list="custom-color-suggestions" placeholder="ชื่อสี"
+                            style={{flex:1,minWidth:60,background:"white",border:`1px solid ${T.inputBorder}`,borderRadius:5,padding:"4px 6px",fontFamily:"inherit",fontSize:12,outline:"none"}}/>
+                        </div>
+                        <input value={c.variant||""} onChange={e=>setGridColorField(ri,{variant:e.target.value})} list="variant-grid-suggestions" placeholder="🎽 ลักษณะ (แขนสั้น...)"
+                          style={{width:"100%",boxSizing:"border-box",background:"white",border:`1px solid ${T.inputBorder}`,borderRadius:5,padding:"3px 6px",fontFamily:"inherit",fontSize:10,outline:"none"}}/>
+                      </td>
+                      {gridSizes.map(sz=>(
+                        <td key={sz} style={{padding:"3px",borderRight:`1px solid ${T.border}`}}>
+                          <input type="number" inputMode="numeric" value={c.qty?.[sz] ?? ""} onChange={e=>setGridCell(ri,sz,e.target.value)} placeholder="·"
+                            style={{width:"100%",minWidth:38,boxSizing:"border-box",textAlign:"center",background:(c.qty?.[sz]>0)?"#eff6ff":"white",border:`1px solid ${T.inputBorder}`,borderRadius:5,padding:"6px 2px",fontFamily:"monospace",fontSize:13,outline:"none",color:T.text}}/>
+                        </td>
+                      ))}
+                      <td style={{textAlign:"center",fontFamily:"monospace",fontWeight:700,color:rowTotal>0?T.accent:T.muted}}>{rowTotal||""}</td>
+                      <td style={{textAlign:"center"}}>
+                        {gridColors.length>1&&<button onClick={()=>removeGridColor(ri)} title="ลบสี" style={{border:"none",background:"transparent",color:T.red,cursor:"pointer",fontSize:13}}>✕</button>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{background:"#f8fafc",borderTop:`2px solid ${T.border}`}}>
+                  <td style={{position:"sticky",left:0,background:"#f8fafc",padding:"7px 8px",fontWeight:700,color:T.sub,borderRight:`1px solid ${T.border}`}}>รวมไซส์</td>
+                  {gridSizes.map(sz=>{const ct=gridColors.reduce((s,c)=>s+(Number(c.qty?.[sz])||0),0);return <td key={sz} style={{textAlign:"center",fontFamily:"monospace",fontWeight:700,color:ct>0?"#16a34a":T.muted,borderRight:`1px solid ${T.border}`}}>{ct||""}</td>;})}
+                  <td style={{textAlign:"center",fontFamily:"monospace",fontWeight:800,color:"#16a34a"}}>{fmtInt(totalQty)}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <button onClick={addGridColor} style={{marginTop:8,padding:"6px 14px",background:"rgba(59,91,139,0.08)",color:T.accent,border:`1px solid ${T.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit"}}>+ เพิ่มสี</button>
+          {shrinkOffset>0 && <div style={{marginTop:6,fontSize:10,color:"#92400e"}}>🪡 เผื่อหด +{shrinkOffset}: ไซส์ผลิตจะถูกคำนวณอัตโนมัติจากไซส์ในตาราง</div>}
+          <datalist id="variant-grid-suggestions">{VARIANT_PRESETS.map(v=><option key={v} value={v}/>)}</datalist>
+        </div>
+      )}
+
+      {inputMode === "rows" && (<>
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
+        <button onClick={addRow} style={{padding:"6px 14px",background:"rgba(59,91,139,0.08)",color:T.accent,border:`1px solid ${T.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit"}}>+ เพิ่มแถว</button>
+      </div>
       <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:12,maxHeight:340,overflowY:"auto"}}>
         {items.map((r, idx) => (
           <div key={idx} style={{padding:"6px 8px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:7}}>
@@ -436,6 +540,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
           </div>
         ))}
       </div>
+      </>)}
 
       {/* ต้นทุน + ค่าแรง + หมายเหตุ — ขนาดเล็ก ประหยัดพื้นที่ */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 2fr",gap:8,marginBottom:10}}>
