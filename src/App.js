@@ -316,6 +316,8 @@ export default function App() {
   const [mixRows, setMixRows] = useState([]); // [{colorIdx, size, qty}]
   const [mixNote, setMixNote] = useState("");
   const [showSizeManager, setShowSizeManager] = useState(false); // 📏 modal จัดการไซส์
+  const [showSalesToday, setShowSalesToday] = useState(false); // 📊 modal ขายวันนี้
+  const [salesDate, setSalesDate] = useState(() => new Date().toISOString().slice(0,10)); // yyyy-mm-dd
   const [newApparelSize, setNewApparelSize] = useState("");
   const [newShoeSize, setNewShoeSize] = useState("");
   const [clothingTxNote, setClothingTxNote] = useState("");
@@ -2037,6 +2039,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             {activeTab==="inventory"&&inventoryTab==="general"&&role.canManageCats&&<BtnGhost onClick={()=>setShowCatModal(true)}>📦 หมวดหมู่</BtnGhost>}
             {activeTab==="inventory"&&inventoryTab==="general"&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddModal(true)}>️ เพิ่มสินค้า</BtnPrimary>}
+            {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&<BtnGhost onClick={()=>{setSalesDate(new Date().toISOString().slice(0,10));setShowSalesToday(true);}}>📊 ขายวันนี้</BtnGhost>}
             {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&role.canAdd&&<BtnGhost onClick={()=>setShowSizeManager(true)}>📏 จัดการไซส์</BtnGhost>}
             {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddClothing(true)}>{inventoryTab==="sports"?"👟":"️"} เพิ่มรุ่นใหม่</BtnPrimary>}
             {activeTab==="inventory"&&inventoryTab==="general"&&<>
@@ -5318,6 +5321,73 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
           </div>
         </Modal>
       )}
+
+      {/* ── MODAL: ขายวันนี้ (สรุปจ่ายออก แยกรุ่น/สี/ไซส์) ── */}
+      {showSalesToday&&(()=>{
+        const [yy,mm,dd] = salesDate.split("-");
+        const prefix = `${dd}/${mm}/${yy}`; // ตรงกับรูปแบบ transaction.date
+        const todays = transactions.filter(t => t.type==="จ่าย" && t.category==="เสื้อผ้า" && (t.date||"").startsWith(prefix));
+        const byModel = {};
+        todays.forEach(t => {
+          const parts = (t.name||"").split(" / ");
+          const model = (parts[0]||t.name||"-").trim();
+          const color = (parts[1]||"-").trim();
+          const size = (parts[2]||"-").trim();
+          if (!byModel[model]) byModel[model] = { total:0, rows:{} };
+          byModel[model].total += Number(t.qty)||0;
+          const k = `${color}|||${size}`;
+          byModel[model].rows[k] = (byModel[model].rows[k]||0) + (Number(t.qty)||0);
+        });
+        const models = Object.keys(byModel).sort((a,b)=>byModel[b].total-byModel[a].total);
+        const grandTotal = todays.reduce((s,t)=>s+(Number(t.qty)||0),0);
+        const isToday = salesDate === new Date().toISOString().slice(0,10);
+        return (
+        <Modal onClose={()=>setShowSalesToday(false)} w={640}>
+          <MHead title={`📊 ขาย${isToday?"วันนี้":"ตามวันที่"}`} onClose={()=>setShowSalesToday(false)} color={T.green}/>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14,flexWrap:"wrap"}}>
+            <input type="date" value={salesDate} onChange={e=>setSalesDate(e.target.value)}
+              style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+            <button onClick={()=>setSalesDate(new Date().toISOString().slice(0,10))} style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif"}}>วันนี้</button>
+            <div style={{marginLeft:"auto",fontSize:14,fontWeight:800,color:T.green}}>รวมทั้งหมด {grandTotal.toLocaleString("th-TH")} ตัว</div>
+          </div>
+
+          {models.length===0 ? (
+            <div style={{textAlign:"center",padding:40,color:T.muted,fontSize:13}}>
+              <div style={{fontSize:40,marginBottom:8,opacity:0.3}}>📭</div>
+              ยังไม่มีการจ่ายออกในวันนี้
+            </div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:12,maxHeight:"60vh",overflowY:"auto"}}>
+              {models.map(model=>{
+                const m = byModel[model];
+                const rows = Object.entries(m.rows).map(([k,qty])=>{const [color,size]=k.split("|||");return {color,size,qty};})
+                  .sort((a,b)=> a.color===b.color ? compareSizes(a.size,b.size) : a.color.localeCompare(b.color,"th"));
+                return (
+                  <div key={model} style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:"rgba(58,122,82,0.08)"}}>
+                      <div style={{fontSize:14,fontWeight:800,color:T.text}}>👕 {model}</div>
+                      <div style={{fontSize:14,fontWeight:800,color:T.green,fontFamily:"monospace"}}>{m.total.toLocaleString("th-TH")} ตัว</div>
+                    </div>
+                    <div style={{padding:"8px 10px",display:"flex",flexWrap:"wrap",gap:6}}>
+                      {rows.map((r,i)=>(
+                        <span key={i} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:8,background:"rgba(241,243,246,0.7)",border:`1px solid ${T.border}`,fontSize:12}}>
+                          <span style={{color:T.sub}}>{r.color}</span>
+                          <span style={{fontFamily:"monospace",fontWeight:700,color:T.accent}}>{r.size}</span>
+                          <span style={{fontFamily:"monospace",fontWeight:700,color:T.text}}>×{r.qty}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div style={{marginTop:16}}>
+            <BtnGhost onClick={()=>setShowSalesToday(false)} style={{width:"100%"}}>ปิด</BtnGhost>
+          </div>
+        </Modal>
+        );
+      })()}
 
       {/* ── MODAL: จัดการไซส์ (เพิ่ม/ลบ ไซส์เสื้อผ้า + รองเท้า) ── */}
       {showSizeManager&&(
