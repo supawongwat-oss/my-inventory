@@ -134,15 +134,23 @@ export default function TaxDocsTab({ taxDocs = [], user, role }) {
     setForm(f => ({ ...f, attachments: f.attachments.filter((_, i) => i !== idx) }));
   };
 
+  const [savedToast, setSavedToast] = useState("");
   const handleSave = async () => {
-    if (!form.docType || !form.date) { alert("กรอกประเภท + วันที่"); return; }
+    if (!form.docType) { alert("กรุณาเลือกประเภทเอกสาร"); return; }
+    if (!form.date) { alert("กรุณากรอกวันที่"); return; }
+    // ตรวจ date ให้แน่ใจว่า parse ได้ (กัน case orderBy ทิ้งจาก server)
+    const d = new Date(form.date);
+    if (isNaN(d.getTime())) { alert("วันที่ไม่ถูกต้อง: " + form.date); return; }
+
+    // ตัด field พิเศษ (เช่น _type จาก enriched) ที่ไม่ควรเขียนกลับ Firestore
+    const { _type, id, ...clean } = form;
     const data = {
-      ...form,
-      amount: Number(form.amount) || 0,
-      vat: Number(form.vat) || 0,
-      whtAmount: Number(form.whtAmount) || 0,
-      whtRate: Number(form.whtRate) || 0,
-      total: Number(form.total) || (Number(form.amount) || 0) + (Number(form.vat) || 0),
+      ...clean,
+      amount: Number(clean.amount) || 0,
+      vat: Number(clean.vat) || 0,
+      whtAmount: Number(clean.whtAmount) || 0,
+      whtRate: Number(clean.whtRate) || 0,
+      total: Number(clean.total) || (Number(clean.amount) || 0) + (Number(clean.vat) || 0),
       updatedBy: user.name,
       updatedAt: new Date().toISOString(),
     };
@@ -150,16 +158,25 @@ export default function TaxDocsTab({ taxDocs = [], user, role }) {
       if (editing) {
         await updateDoc(doc(db, "taxDocs", editing.id), data);
         logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: "taxDocs", targetId: editing.id, targetLabel: `${data.docType} ${data.docNo}` });
+        setSavedToast("✅ แก้ไขเอกสารสำเร็จ");
       } else {
         data.createdAt = serverTimestamp();
         data.createdBy = user.name;
         const ref = await addDoc(fsCollection(db, "taxDocs"), data);
         logAudit(user, { action: AUDIT_ACTIONS.CREATE, collection: "taxDocs", targetId: ref.id, targetLabel: `${data.docType} ${data.docNo}` });
+        setSavedToast("✅ เพิ่มเอกสารสำเร็จ");
+        // 🩹 reset filters ให้รายการใหม่ขึ้นแน่นอน (กัน user หาไม่เจอ)
+        const newYear = new Date(form.date).getFullYear() + 543;
+        setFilterType("ทั้งหมด");
+        setFilterMonth("ทั้งหมด");
+        setFilterYear(newYear);
       }
       setShowForm(false);
       setEditing(null);
       setForm(EMPTY_FORM);
+      setTimeout(()=>setSavedToast(""), 2500);
     } catch (e) {
+      console.error("[taxDocs handleSave] failed:", e);
       alert("บันทึกไม่สำเร็จ: " + (e.message || e));
     }
   };
@@ -176,6 +193,13 @@ export default function TaxDocsTab({ taxDocs = [], user, role }) {
   // ────────── RENDER ──────────
   return (
     <div style={{ animation: "fadeUp 0.4s ease" }}>
+      {/* Toast บันทึกสำเร็จ */}
+      {savedToast && (
+        <div style={{ position: "fixed", top: 18, left: "50%", transform: "translateX(-50%)", zIndex: 9999, background: "#dcfce7", border: "1px solid #86efac", borderRadius: 10, padding: "10px 22px", color: "#166534", fontSize: 13, fontWeight: 600, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", animation: "fadeUp 0.25s ease" }}>
+          {savedToast}
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
         <div>
