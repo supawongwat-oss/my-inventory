@@ -319,6 +319,7 @@ export default function App() {
   const [showSalesToday, setShowSalesToday] = useState(false); // 📊 modal ขายวันนี้
   const [salesDate, setSalesDate] = useState(() => new Date().toISOString().slice(0,10)); // yyyy-mm-dd
   const [salesCell, setSalesCell] = useState(null); // {model,color,size,prefix} ดู/ลบรายการจ่ายของช่องนั้น
+  const [collapsedSalesModels, setCollapsedSalesModels] = useState({}); // ย่อรุ่นใน "ขายวันนี้"
   const [newApparelSize, setNewApparelSize] = useState("");
   const [newShoeSize, setNewShoeSize] = useState("");
   const [clothingTxNote, setClothingTxNote] = useState("");
@@ -5375,6 +5376,9 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
             <input type="date" value={salesDate} onChange={e=>setSalesDate(e.target.value)}
               style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
             <button onClick={()=>setSalesDate(new Date().toISOString().slice(0,10))} style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif"}}>วันนี้</button>
+            {models.length>1&&(()=>{const allCollapsed=models.every(mm=>collapsedSalesModels[mm]);return(
+              <button onClick={()=>setCollapsedSalesModels(allCollapsed?{}:Object.fromEntries(models.map(mm=>[mm,true])))} style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif"}}>{allCollapsed?"⊞ กางทั้งหมด":"⊟ ย่อทั้งหมด"}</button>
+            );})()}
             <div style={{marginLeft:"auto",fontSize:14,fontWeight:800,color:T.green}}>รวมทั้งหมด {grandTotal.toLocaleString("th-TH")} ตัว</div>
           </div>
 
@@ -5400,13 +5404,19 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 // หา hex ของสีจาก clothingItems (ถ้ามี)
                 const itemMatch = clothingItems.find(it=>it.model===model);
                 const hexOf = (cn)=>(itemMatch?.colors||[]).find(c=>c.colorName===cn)?.hex || "#cbd2d9";
+                const mCollapsed = collapsedSalesModels[model];
                 return (
                   <div key={model} style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:"rgba(58,122,82,0.08)"}}>
-                      <div style={{fontSize:14,fontWeight:800,color:T.text}}>👕 {model}</div>
-                      <div style={{fontSize:14,fontWeight:800,color:T.green,fontFamily:"monospace"}}>{m.total.toLocaleString("th-TH")} ตัว</div>
+                    <div onClick={()=>setCollapsedSalesModels(p=>({...p,[model]:!p[model]}))}
+                      style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"10px 14px",background:"rgba(58,122,82,0.08)",cursor:"pointer",userSelect:"none"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+                        <span style={{width:18,height:18,borderRadius:5,background:"rgba(58,122,82,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:T.green,transition:"transform 0.2s",transform:mCollapsed?"rotate(-90deg)":"rotate(0deg)",flexShrink:0}}>▼</span>
+                        <div style={{fontSize:14,fontWeight:800,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>👕 {model}</div>
+                        <span style={{fontSize:11,color:T.muted,flexShrink:0}}>· {colors.length} สี</span>
+                      </div>
+                      <div style={{fontSize:14,fontWeight:800,color:T.green,fontFamily:"monospace",flexShrink:0}}>{m.total.toLocaleString("th-TH")} ตัว</div>
                     </div>
-                    <div style={{display:"flex",flexDirection:"column"}}>
+                    <div style={{display:mCollapsed?"none":"flex",flexDirection:"column"}}>
                       {colors.map((color,ci)=>(
                         <div key={color} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"8px 14px",borderTop:ci>0?`1px solid ${T.border}`:"none"}}>
                           <div style={{display:"flex",alignItems:"center",gap:6,minWidth:96,flexShrink:0,paddingTop:3}}>
