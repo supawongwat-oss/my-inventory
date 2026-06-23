@@ -306,6 +306,7 @@ export default function App() {
   const [clothingTxModal, setClothingTxModal] = useState(null); // {item, colorIdx, size}
   const [clothingTxType, setClothingTxType] = useState("รับ");
   const [clothingTxQty, setClothingTxQty] = useState("");
+  const [clothingTxSizeQty, setClothingTxSizeQty] = useState({}); // {S:"10", M:"5"} จ่าย/รับหลายไซส์พร้อมกัน
   const [clothingTxNote, setClothingTxNote] = useState("");
   const [clothingTxSuccess, setClothingTxSuccess] = useState(false);
   const [barcodeResult, setBarcodeResult] = useState(null);
@@ -944,36 +945,50 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
 
   const handleClothingTx = async () => {
     if (txSaving) return; // กัน double-submit (ใช้ flag เดียวกัน)
-    if (!clothingTxModal || !clothingTxQty || Number(clothingTxQty) <= 0) return;
+    if (!clothingTxModal) return;
+    // รวมรายการไซส์ที่มีจำนวน > 0 (รองรับหลายไซส์พร้อมกัน)
+    const entries = Object.entries(clothingTxSizeQty)
+      .map(([sz, q]) => [sz, Number(q)])
+      .filter(([, q]) => q > 0);
+    if (entries.length === 0) return;
     setTxSaving(true);
     try {
-      const { item, colorIdx, size } = clothingTxModal;
+      const { item, colorIdx } = clothingTxModal;
       const col = item.colors[colorIdx];
-      const curQty = (col.stock || {})[size] || 0;
-      const newQty = clothingTxType === "รับ"
-        ? curQty + Number(clothingTxQty)
-        : Math.max(0, curQty - Number(clothingTxQty));
+      // คำนวณสต็อกใหม่ทุกไซส์ในครั้งเดียว
+      const newStock = { ...(col.stock || {}) };
+      const changes = []; // เก็บไว้ทำ transaction + audit
+      for (const [sz, q] of entries) {
+        const curQty = newStock[sz] || 0;
+        const newQty = clothingTxType === "รับ" ? curQty + q : Math.max(0, curQty - q);
+        newStock[sz] = newQty;
+        changes.push({ sz, q, curQty, newQty });
+      }
       const newColors = item.colors.map((c, i) =>
-        i === colorIdx ? { ...c, stock: { ...c.stock, [size]: newQty } } : c
+        i === colorIdx ? { ...c, stock: newStock } : c
       );
       await updateDoc(doc(db, "clothing", item.id), { colors: newColors });
-      await addDoc(collection(db, "transactions"), {
-        type: clothingTxType, code: item.id,
-        name: `${item.model} / ${col.colorName} / ${size}`,
-        qty: Number(clothingTxQty), by: user.name,
-        date: now(), note: clothingTxNote || "", createdAt: serverTimestamp(),
-        category: "เสื้อผ้า"
-      });
+      // 1 transaction ต่อ 1 ไซส์ (เพื่อให้รายงานแยกไซส์ได้)
+      for (const { sz, q } of changes) {
+        await addDoc(collection(db, "transactions"), {
+          type: clothingTxType, code: item.id,
+          name: `${item.model} / ${col.colorName} / ${sz}`,
+          qty: q, by: user.name,
+          date: now(), note: clothingTxNote || "", createdAt: serverTimestamp(),
+          category: "เสื้อผ้า"
+        });
+      }
+      const totalQty = changes.reduce((s, c) => s + c.q, 0);
       logAudit(user, {
         action: AUDIT_ACTIONS.STOCK,
         collection: "clothing",
         targetId: item.id,
-        targetLabel: `${item.model} / ${col.colorName} / ${size}`,
-        note: `${clothingTxType} ${clothingTxQty} ชิ้น (${curQty}→${newQty})${clothingTxNote?` · ${clothingTxNote}`:""}`,
+        targetLabel: `${item.model} / ${col.colorName}`,
+        note: `${clothingTxType} ${totalQty} ชิ้น [${changes.map(c => `${c.sz}:${c.q}(${c.curQty}→${c.newQty})`).join(", ")}]${clothingTxNote ? ` · ${clothingTxNote}` : ""}`,
       });
       // ปิด modal + reset ทันที — กันกดซ้ำ
       setClothingTxModal(null);
-      setClothingTxQty(""); setClothingTxNote("");
+      setClothingTxQty(""); setClothingTxSizeQty({}); setClothingTxNote("");
       setTxSuccess(true);
       setTimeout(() => setTxSuccess(false), 1500);
     } catch (e) {
@@ -2211,8 +2226,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                                   </td>
                                   <td style={{textAlign:"center",padding:"4px 8px"}}>
                                     <div style={{display:"flex",gap:4,justifyContent:"center"}}>
-                                      <button onClick={()=>{setClothingTxModal({item,colorIdx:ci,size:null});setClothingTxType("รับ");setClothingTxQty("");setClothingTxNote("");}} style={{padding:"4px 8px",borderRadius:6,border:"1px solid rgba(52,211,153,0.3)",background:"rgba(52,211,153,0.08)",color:"#34d399",cursor:"pointer",fontSize:10,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>⬇ รับ</button>
-                                      <button onClick={()=>{setClothingTxModal({item,colorIdx:ci,size:null});setClothingTxType("จ่าย");setClothingTxQty("");setClothingTxNote("");}} style={{padding:"4px 8px",borderRadius:6,border:"1px solid rgba(248,113,113,0.3)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:10,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>⬆ จ่าย</button>
+                                      <button onClick={()=>{setClothingTxModal({item,colorIdx:ci,size:null});setClothingTxType("รับ");setClothingTxQty("");setClothingTxSizeQty({});setClothingTxNote("");}} style={{padding:"4px 8px",borderRadius:6,border:"1px solid rgba(52,211,153,0.3)",background:"rgba(52,211,153,0.08)",color:"#34d399",cursor:"pointer",fontSize:10,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>⬇ รับ</button>
+                                      <button onClick={()=>{setClothingTxModal({item,colorIdx:ci,size:null});setClothingTxType("จ่าย");setClothingTxQty("");setClothingTxSizeQty({});setClothingTxNote("");}} style={{padding:"4px 8px",borderRadius:6,border:"1px solid rgba(248,113,113,0.3)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:10,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>⬆ จ่าย</button>
                                     </div>
                                   </td>
                                   <td style={{textAlign:"center",padding:"4px 6px"}}>
@@ -5224,13 +5239,13 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div>
-              <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>ไซส์ *</label>
+              <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>เลือกไซส์ * <span style={{textTransform:"none",fontWeight:400,color:T.muted}}>(กดเพื่อเลือก/ยกเลิก — เลือกได้หลายไซส์)</span></label>
               <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                 {SIZES.map(sz=>{
                   const stock=((clothingTxModal.item.colors[clothingTxModal.colorIdx]||{}).stock||{})[sz]||0;
-                  const selected=clothingTxModal.size===sz;
+                  const selected=clothingTxSizeQty[sz]!==undefined;
                   return (
-                    <button key={sz} onClick={()=>setClothingTxModal(p=>({...p,size:sz}))}
+                    <button key={sz} onClick={()=>setClothingTxSizeQty(p=>{const n={...p}; if(selected){delete n[sz];}else{n[sz]="";} return n;})}
                       style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${selected?"#3b5b8b":"rgba(203,210,217,0.8)"}`,background:selected?"rgba(59,91,139,0.2)":"rgba(4,18,44,0.6)",color:selected?"#3b5b8b":T.sub,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:selected?700:400,transition:"all 0.15s"}}>
                       <div style={{fontWeight:700}}>{sz}</div>
                       <div style={{fontSize:9,color:stock===0?"#9aa5b1":stock<5?"#fbbf24":"#22d3ee",fontFamily:"monospace"}}>{stock}</div>
@@ -5239,12 +5254,36 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 })}
               </div>
             </div>
-            <div>
-              <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>จำนวน *</label>
-              <input type="number" placeholder="0" value={clothingTxQty} onChange={e=>setClothingTxQty(e.target.value)}
-                style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
-              {clothingTxModal.size&&<div style={{fontSize:11,color:T.sub,marginTop:4}}>สต็อกปัจจุบัน: <b style={{color:T.accent}}>{((clothingTxModal.item.colors[clothingTxModal.colorIdx]||{}).stock||{})[clothingTxModal.size]||0} ชิ้น</b></div>}
-            </div>
+            {/* จำนวนแยกตามไซส์ที่เลือก */}
+            {(() => {
+              const chosen = SIZES.filter(sz => clothingTxSizeQty[sz] !== undefined);
+              if (chosen.length === 0) return (
+                <div style={{fontSize:12,color:T.muted,padding:"10px 0"}}>↑ เลือกไซส์ที่ต้องการก่อน แล้วใส่จำนวนแต่ละไซส์</div>
+              );
+              const totalQty = chosen.reduce((s,sz)=>s+(Number(clothingTxSizeQty[sz])||0),0);
+              return (
+                <div>
+                  <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>จำนวนแต่ละไซส์ *</label>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {chosen.map(sz=>{
+                      const stock=((clothingTxModal.item.colors[clothingTxModal.colorIdx]||{}).stock||{})[sz]||0;
+                      const q=Number(clothingTxSizeQty[sz])||0;
+                      const over=clothingTxType==="จ่าย"&&q>stock;
+                      return (
+                        <div key={sz} style={{display:"flex",alignItems:"center",gap:10}}>
+                          <div style={{width:48,fontWeight:700,color:T.accent,textAlign:"center",background:"rgba(59,91,139,0.1)",borderRadius:8,padding:"6px 0",fontSize:13}}>{sz}</div>
+                          <input type="number" placeholder="0" value={clothingTxSizeQty[sz]} autoFocus={chosen[chosen.length-1]===sz}
+                            onChange={e=>setClothingTxSizeQty(p=>({...p,[sz]:e.target.value}))}
+                            style={{flex:1,background:T.input,border:`1px solid ${over?"#ef4444":T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+                          <div style={{fontSize:11,color:over?"#ef4444":T.sub,whiteSpace:"nowrap",width:90}}>{over?"⚠️ เกินสต็อก":`สต็อก ${stock}`}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{marginTop:8,fontSize:13,color:T.text,fontWeight:700,textAlign:"right"}}>รวม {totalQty.toLocaleString("th-TH")} ชิ้น</div>
+                </div>
+              );
+            })()}
             <div>
               <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>หมายเหตุ</label>
               <input placeholder="ระบุหมายเหตุ (ถ้ามี)" value={clothingTxNote} onChange={e=>setClothingTxNote(e.target.value)}
@@ -5252,10 +5291,13 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
             </div>
             <div style={{display:"flex",gap:10}}>
               <BtnGhost onClick={()=>setClothingTxModal(null)} disabled={txSaving} style={{flex:1}}>ยกเลิก</BtnGhost>
-              {clothingTxType==="รับ"
-                ?<BtnSuccess onClick={handleClothingTx} disabled={txSaving||!clothingTxModal.size||!clothingTxQty||Number(clothingTxQty)<=0} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":"✅ ยืนยันรับสินค้า"}</BtnSuccess>
-                :<BtnDanger onClick={handleClothingTx} disabled={txSaving||!clothingTxModal.size||!clothingTxQty||Number(clothingTxQty)<=0} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":"✅ ยืนยันจ่ายสินค้า"}</BtnDanger>
-              }
+              {(() => {
+                const totalQty = Object.values(clothingTxSizeQty).reduce((s,q)=>s+(Number(q)||0),0);
+                const disabled = txSaving || totalQty <= 0;
+                return clothingTxType==="รับ"
+                  ?<BtnSuccess onClick={handleClothingTx} disabled={disabled} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":`✅ ยืนยันรับสินค้า${totalQty>0?` (${totalQty})`:""}`}</BtnSuccess>
+                  :<BtnDanger onClick={handleClothingTx} disabled={disabled} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":`✅ ยืนยันจ่ายสินค้า${totalQty>0?` (${totalQty})`:""}`}</BtnDanger>;
+              })()}
             </div>
           </div>
         </Modal>
