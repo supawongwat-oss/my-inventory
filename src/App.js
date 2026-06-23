@@ -311,6 +311,9 @@ export default function App() {
   const [clothingTxType, setClothingTxType] = useState("รับ");
   const [clothingTxQty, setClothingTxQty] = useState("");
   const [clothingTxSizeQty, setClothingTxSizeQty] = useState({}); // {S:"10", M:"5"} จ่าย/รับหลายไซส์พร้อมกัน
+  const [mixModal, setMixModal] = useState(null); // 🧺 {item} ขายคละสีคละไซส์
+  const [mixRows, setMixRows] = useState([]); // [{colorIdx, size, qty}]
+  const [mixNote, setMixNote] = useState("");
   const [showSizeManager, setShowSizeManager] = useState(false); // 📏 modal จัดการไซส์
   const [newApparelSize, setNewApparelSize] = useState("");
   const [newShoeSize, setNewShoeSize] = useState("");
@@ -784,6 +787,65 @@ export default function App() {
       }, { merge: true });
       logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: "settings", targetId: "sizes", targetLabel: "ไซส์", note: `ลบไซส์ ${kind==="shoe"?"รองเท้า":"เสื้อผ้า"}: ${val}` });
     } catch (e) { alert("ลบไม่สำเร็จ: " + (e.message || e)); }
+  };
+
+  // 🧺 เปิด modal ขายคละ
+  const openMix = (item) => {
+    setMixModal({ item });
+    setMixRows([{ colorIdx: 0, size: "", qty: "" }]);
+    setMixNote("");
+  };
+
+  // 🧺 ตัดสต็อกแบบคละสีคละไซส์ (หลายแถวในครั้งเดียว)
+  const handleMixDispatch = async () => {
+    if (txSaving || !mixModal) return;
+    const item = mixModal.item;
+    const rows = mixRows
+      .map(r => ({ ...r, qty: Number(r.qty) }))
+      .filter(r => r.size && r.qty > 0);
+    if (rows.length === 0) return;
+    // รวมจำนวนที่ต้องตัดต่อ (สี+ไซส์) เผื่อมีแถวซ้ำ
+    const need = {};
+    rows.forEach(r => { const k = `${r.colorIdx}|${r.size}`; need[k] = (need[k] || 0) + r.qty; });
+    // ตรวจสต็อกพอไหม
+    for (const k in need) {
+      const [ci, sz] = k.split("|");
+      const col = item.colors[Number(ci)];
+      const stock = (col?.stock || {})[sz] || 0;
+      if (need[k] > stock) { alert(`สต็อกไม่พอ: ${col?.colorName} ไซส์ ${sz} มี ${stock} ตัว แต่จะตัด ${need[k]} ตัว`); return; }
+    }
+    setTxSaving(true);
+    try {
+      const newColors = item.colors.map((c, ci) => {
+        const stock = { ...(c.stock || {}) };
+        Object.keys(need).forEach(k => {
+          const [kci, ksz] = k.split("|");
+          if (Number(kci) === ci) stock[ksz] = Math.max(0, (stock[ksz] || 0) - need[k]);
+        });
+        return { ...c, stock };
+      });
+      await updateDoc(doc(db, "clothing", item.id), { colors: newColors });
+      const mixGroupId = `MIX-${Date.now()}`;
+      for (const r of rows) {
+        const col = item.colors[r.colorIdx];
+        await addDoc(collection(db, "transactions"), {
+          type: "จ่าย", code: item.id,
+          name: `${item.model} / ${col.colorName} / ${r.size}`,
+          qty: r.qty, by: user.name, date: now(),
+          note: `ขายคละ${mixNote ? ` · ${mixNote}` : ""}`, mixGroupId,
+          createdAt: serverTimestamp(), category: "เสื้อผ้า",
+        });
+      }
+      const totalQty = rows.reduce((s, r) => s + r.qty, 0);
+      logAudit(user, {
+        action: AUDIT_ACTIONS.STOCK, collection: "clothing", targetId: item.id, targetLabel: item.model,
+        note: `🧺 ขายคละ ${totalQty} ตัว [${rows.map(r => `${item.colors[r.colorIdx].colorName}/${r.size}:${r.qty}`).join(", ")}]${mixNote ? ` · ${mixNote}` : ""}`,
+      });
+      setMixModal(null); setMixRows([]); setMixNote("");
+      setTxSuccess(true); setTimeout(() => setTxSuccess(false), 1500);
+    } catch (e) {
+      alert("บันทึกไม่สำเร็จ: " + (e.message || e));
+    } finally { setTxSaving(false); }
   };
 
   const handleAddColorToItem = async (itemId, colorObj) => {
@@ -2180,6 +2242,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                       </div>
                       <div style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
                         <button onClick={()=>setShowAddColor(item.id)} style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(59,91,139,0.25)",background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:500}}>️ สี</button>
+                        {(item.colors||[]).length>0&&<button onClick={()=>openMix(item)} title="ขายคละสีคละไซส์" style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(184,134,0,0.3)",background:"rgba(184,134,0,0.08)",color:T.amber,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:600}}>🧺 ขายคละ</button>}
                         {role.canDelete&&<button onClick={()=>handleDeleteClothingItem(item.id)} style={{padding:"7px 12px",borderRadius:8,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:12}}>✕</button>}
                       </div>
                     </div>
@@ -5211,6 +5274,81 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
           </div>
         </Modal>
       )}
+
+      {/* ── MODAL: ขายคละสีคละไซส์ ── */}
+      {mixModal&&(()=>{
+        const item = mixModal.item;
+        const sizes = sizesFor(item);
+        const rows = mixRows;
+        const totalQty = rows.reduce((s,r)=>s+(Number(r.qty)||0),0);
+        const totalValue = rows.reduce((s,r)=>{
+          const col=item.colors[r.colorIdx];
+          return s + (Number(r.qty)||0) * getPriceForSize(col, r.size);
+        },0);
+        const setRow=(i,patch)=>setMixRows(rs=>rs.map((r,idx)=>idx===i?{...r,...patch}:r));
+        const stockOf=(ci,sz)=>((item.colors[ci]||{}).stock||{})[sz]||0;
+        return (
+        <Modal onClose={()=>setMixModal(null)} w={640}>
+          <MHead title="🧺 ขายคละสีคละไซส์" onClose={()=>setMixModal(null)} color={T.amber}/>
+          {txSuccess&&<Toast msg="ตัดสต็อกคละสำเร็จ!"/>}
+          <div style={{padding:12,background:"rgba(184,134,0,0.06)",border:`1px solid rgba(184,134,0,0.2)`,borderRadius:10,marginBottom:14}}>
+            <div style={{fontSize:13,fontWeight:700,color:T.text}}>{item.model}</div>
+            <div style={{fontSize:11,color:T.sub,marginTop:2}}>เลือกสี + ไซส์ + จำนวน แต่ละแถว · ตัดสต็อกตามจริง (บิลออกแยก)</div>
+          </div>
+
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+            <div style={{display:"grid",gridTemplateColumns:"1.4fr 1fr 0.9fr 1fr 32px",gap:8,fontSize:10,color:T.muted,fontWeight:700,textTransform:"uppercase",padding:"0 2px"}}>
+              <div>สี</div><div>ไซส์</div><div>จำนวน</div><div>สต็อก/ราคา</div><div></div>
+            </div>
+            {rows.map((r,i)=>{
+              const stock=stockOf(r.colorIdx,r.size);
+              const q=Number(r.qty)||0;
+              const over=r.size&&q>stock;
+              const price=getPriceForSize(item.colors[r.colorIdx], r.size);
+              return (
+                <div key={i} style={{display:"grid",gridTemplateColumns:"1.4fr 1fr 0.9fr 1fr 32px",gap:8,alignItems:"center"}}>
+                  <select value={r.colorIdx} onChange={e=>setRow(i,{colorIdx:Number(e.target.value)})}
+                    style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
+                    {item.colors.map((c,ci)=><option key={ci} value={ci}>{c.colorName}</option>)}
+                  </select>
+                  <select value={r.size} onChange={e=>setRow(i,{size:e.target.value})}
+                    style={{background:T.input,border:`1px solid ${r.size?T.inputBorder:"#fbbf24"}`,color:T.text,borderRadius:8,padding:"8px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
+                    <option value="">— ไซส์ —</option>
+                    {sizes.map(sz=><option key={sz} value={sz}>{sz} ({stockOf(r.colorIdx,sz)})</option>)}
+                  </select>
+                  <input type="number" placeholder="0" value={r.qty} onChange={e=>setRow(i,{qty:e.target.value})}
+                    style={{background:T.input,border:`1px solid ${over?"#ef4444":T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none",width:"100%"}}/>
+                  <div style={{fontSize:11,color:over?"#ef4444":T.sub,lineHeight:1.3}}>
+                    {r.size?<>คงเหลือ {stock}{over&&" ⚠️"}<br/><span style={{color:T.muted}}>{price?`${price.toLocaleString("th-TH")}฿/ตัว`:"ไม่ตั้งราคา"}</span></>:"—"}
+                  </div>
+                  <button onClick={()=>setMixRows(rs=>rs.filter((_,idx)=>idx!==i))} title="ลบแถว"
+                    style={{border:"none",background:"transparent",color:T.red,cursor:"pointer",fontSize:15,padding:0}}>✕</button>
+                </div>
+              );
+            })}
+          </div>
+
+          <button onClick={()=>setMixRows(rs=>[...rs,{colorIdx:0,size:"",qty:""}])}
+            style={{width:"100%",padding:"8px",borderRadius:8,border:`1px dashed ${T.accent}`,background:"rgba(59,91,139,0.05)",color:T.accent,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",marginBottom:14}}>➕ เพิ่มแถว</button>
+
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>หมายเหตุ (ชื่อลูกค้า/เลขบิล)</label>
+            <input placeholder="เช่น ร้านกีฬาสมศักดิ์ / บิล #123" value={mixNote} onChange={e=>setMixNote(e.target.value)}
+              style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+          </div>
+
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:"rgba(58,122,82,0.08)",borderRadius:9,marginBottom:14}}>
+            <div style={{fontSize:13,color:T.text,fontWeight:700}}>รวม {totalQty.toLocaleString("th-TH")} ตัว</div>
+            <div style={{fontSize:13,color:T.green,fontWeight:700}}>มูลค่า ~{totalValue.toLocaleString("th-TH")} ฿</div>
+          </div>
+
+          <div style={{display:"flex",gap:10}}>
+            <BtnGhost onClick={()=>setMixModal(null)} disabled={txSaving} style={{flex:1}}>ยกเลิก</BtnGhost>
+            <BtnDanger onClick={handleMixDispatch} disabled={txSaving||totalQty<=0} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":`✅ ตัดสต็อก (${totalQty})`}</BtnDanger>
+          </div>
+        </Modal>
+        );
+      })()}
 
       {/* ── MODAL: ตั้งราคาตามไซส์ ── */}
       {priceModal&&(()=>{
