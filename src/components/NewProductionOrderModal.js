@@ -158,7 +158,14 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
         )}
       </div>
 
-      {clothingId && (
+      {clothingId && (clothing?.colors||[]).length === 0 && (
+        <div style={{marginBottom:14,padding:"14px 16px",background:"#fff7e6",border:"1px solid #ffd980",borderRadius:10,fontSize:13,color:"#92400e",lineHeight:1.6}}>
+          ⚠️ <b>รุ่นนี้ยังไม่มีสี</b> — เลยกรอกจำนวนไม่ได้<br/>
+          <span style={{fontSize:12}}>ไปที่เมนู <b>คลัง → เสื้อผ้า</b> → กดที่รุ่น "{clothing?.model}" → ปุ่ม <b>+ สี</b> เพื่อเพิ่มสีก่อน แล้วกลับมาสั่งผลิตอีกครั้ง</span><br/>
+          <span style={{fontSize:11,opacity:0.85}}>หรือถ้าเป็นงานเฉพาะแบบ (พิมพ์สี/ไซส์เอง ไม่ตัดสต็อก) ให้ใช้ <b>🎨 สั่งผลิต Custom</b> แทน</span>
+        </div>
+      )}
+      {clothingId && (clothing?.colors||[]).length > 0 && (
         <>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
             <div style={{fontSize:13,fontWeight:600,color:T.text}}>📦 รายการที่จะผลิต (รวม {fmtInt(totalQty)} ตัว)</div>
