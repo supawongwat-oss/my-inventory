@@ -27,10 +27,26 @@ const DOC_TYPES = [
   { key: "other",        label: "🗂️ อื่นๆ",            color: T.muted,  group: "other" },
 ];
 
+// 🩹 Auto-detect ค.ศ./พ.ศ.: ถ้าปีในข้อมูล ≥ 2400 ถือว่าเป็น พ.ศ. แล้ว (ไม่ต้อง +543 อีก)
+const toBeYear = (yr) => (yr >= 2400 ? yr : yr + 543);
+// แปลงวันที่ใน DB (อาจเก็บผิดเป็น พ.ศ.) → ISO ค.ศ. สำหรับ <input type="date">
+const toCeIsoDate = (s) => {
+  if (!s) return "";
+  const dt = new Date(s);
+  if (isNaN(dt.getTime())) return s;
+  const yr = dt.getFullYear();
+  if (yr < 2400) return s;
+  const ce = yr - 543;
+  return `${ce}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+};
+// บังคับให้ปีใน ISO date เป็น ค.ศ. (กันผู้ใช้พิมพ์ พ.ศ. ในช่อง date picker)
+const normalizeDateToCE = toCeIsoDate;
+
 const fmtDate = (d) => {
   if (!d) return "—";
   const dt = new Date(d);
-  return `${String(dt.getDate()).padStart(2,"0")}/${String(dt.getMonth()+1).padStart(2,"0")}/${dt.getFullYear()+543}`;
+  if (isNaN(dt.getTime())) return d;
+  return `${String(dt.getDate()).padStart(2,"0")}/${String(dt.getMonth()+1).padStart(2,"0")}/${toBeYear(dt.getFullYear())}`;
 };
 
 const EMPTY_FORM = {
@@ -70,7 +86,10 @@ export default function TaxDocsTab({ taxDocs = [], user, role }) {
   const yearsAvailable = useMemo(() => {
     const set = new Set();
     enriched.forEach(d => {
-      if (d.date) set.add(new Date(d.date).getFullYear() + 543);
+      if (d.date) {
+        const dt = new Date(d.date);
+        if (!isNaN(dt.getTime())) set.add(toBeYear(dt.getFullYear()));
+      }
     });
     set.add(new Date().getFullYear() + 543);
     return [...set].sort((a,b)=>b-a);
@@ -80,7 +99,11 @@ export default function TaxDocsTab({ taxDocs = [], user, role }) {
   const filtered = useMemo(() => enriched.filter(d => {
     if (filterType !== "ทั้งหมด" && d.docType !== filterType) return false;
     if (filterYear !== "ทั้งหมด") {
-      const y = d.date ? new Date(d.date).getFullYear() + 543 : null;
+      let y = null;
+      if (d.date) {
+        const dt = new Date(d.date);
+        if (!isNaN(dt.getTime())) y = toBeYear(dt.getFullYear());
+      }
       if (y !== filterYear) return false;
     }
     if (filterMonth !== "ทั้งหมด") {
@@ -110,7 +133,7 @@ export default function TaxDocsTab({ taxDocs = [], user, role }) {
   const openNew = () => { setEditing(null); setForm({...EMPTY_FORM, date: new Date().toISOString().slice(0,10)}); setShowForm(true); };
   const openEdit = (d) => {
     setEditing(d);
-    setForm({ ...EMPTY_FORM, ...d, attachments: d.attachments || [] });
+    setForm({ ...EMPTY_FORM, ...d, date: toCeIsoDate(d.date), attachments: d.attachments || [] });
     setShowForm(true);
   };
 
@@ -144,8 +167,11 @@ export default function TaxDocsTab({ taxDocs = [], user, role }) {
 
     // ตัด field พิเศษ (เช่น _type จาก enriched) ที่ไม่ควรเขียนกลับ Firestore
     const { _type, id, ...clean } = form;
+    // 🩹 บังคับให้ date เป็น ค.ศ. ถ้าผู้ใช้กรอกเป็น พ.ศ. มาโดยไม่รู้ตัว
+    const ceDate = normalizeDateToCE(clean.date);
     const data = {
       ...clean,
+      date: ceDate,
       amount: Number(clean.amount) || 0,
       vat: Number(clean.vat) || 0,
       whtAmount: Number(clean.whtAmount) || 0,
@@ -166,7 +192,7 @@ export default function TaxDocsTab({ taxDocs = [], user, role }) {
         logAudit(user, { action: AUDIT_ACTIONS.CREATE, collection: "taxDocs", targetId: ref.id, targetLabel: `${data.docType} ${data.docNo}` });
         setSavedToast("✅ เพิ่มเอกสารสำเร็จ");
         // 🩹 reset filters ให้รายการใหม่ขึ้นแน่นอน (กัน user หาไม่เจอ)
-        const newYear = new Date(form.date).getFullYear() + 543;
+        const newYear = toBeYear(new Date(ceDate).getFullYear());
         setFilterType("ทั้งหมด");
         setFilterMonth("ทั้งหมด");
         setFilterYear(newYear);
@@ -299,7 +325,7 @@ export default function TaxDocsTab({ taxDocs = [], user, role }) {
             </div>
             <Grid2>
               <Field label="เลขที่เอกสาร" value={form.docNo} onChange={v=>setForm(f=>({...f,docNo:v}))}/>
-              <Field label="วันที่ *" type="date" value={form.date} onChange={v=>setForm(f=>({...f,date:v}))}/>
+              <Field label="วันที่ * (ค.ศ.)" type="date" value={form.date} onChange={v=>setForm(f=>({...f,date:v}))}/>
               <Field label="คู่ค้า (ชื่อบริษัท/บุคคล)" value={form.party} onChange={v=>setForm(f=>({...f,party:v}))}/>
               <Field label="เลขผู้เสียภาษี คู่ค้า" value={form.partyTaxId} onChange={v=>setForm(f=>({...f,partyTaxId:v}))}/>
             </Grid2>
