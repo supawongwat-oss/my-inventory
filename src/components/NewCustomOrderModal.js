@@ -53,7 +53,23 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
     setItems(prev => prev.map((r,i) => i===idx ? { ...r, colorName: prev[i-1].colorName, colorHex: prev[i-1].colorHex || "#94a3b8" } : r));
   };
 
-  // อัปโหลดได้หลายรูปพร้อมกัน — แต่ละรูป compress ก่อน
+  // 🪡 บีบรูปแบบ adaptive: ถ้ายังใหญ่เกิน targetKB จะ retry ด้วย maxDim/quality ที่ต่ำลง
+  const smartCompress = async (file, targetKB = 200) => {
+    const presets = [
+      { maxDim: 1100, quality: 0.78 },
+      { maxDim: 900,  quality: 0.72 },
+      { maxDim: 700,  quality: 0.65 },
+      { maxDim: 550,  quality: 0.55 },
+    ];
+    let last = null;
+    for (const p of presets) {
+      last = await compressImage(file, p);
+      if (dataUrlSizeKB(last) <= targetKB) return last;
+    }
+    return last; // ถ้ายังเกิน ส่งคืน attempt สุดท้าย (เล็กสุดเท่าที่ทำได้)
+  };
+
+  // อัปโหลดได้หลายรูปพร้อมกัน — บีบแบบ adaptive ให้ทุกรูปเล็กพอ
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
@@ -61,7 +77,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
       const compressed = [];
       for (const f of files) {
         if (!f.type?.startsWith("image/")) continue;
-        const dataUrl = await compressImage(f, { maxDim: 1200, quality: 0.8 });
+        const dataUrl = await smartCompress(f, 200);
         compressed.push({ dataUrl, label: "" });
       }
       setImages(prev => [...prev, ...compressed]);
@@ -84,8 +100,16 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
 
   const canSubmit = jobName.trim() && validItems.length > 0 && totalQty > 0;
 
+  // คำนวณขนาดรวมของรูปทั้งหมด (KB) — ใช้แสดง progress + guard ตอน save
+  const totalImageKB = images.reduce((s, im) => s + dataUrlSizeKB(im.dataUrl), 0);
+  const IMAGE_BUDGET_KB = 900; // เหลือ ~120 KB สำหรับ field อื่น ๆ (Firestore limit 1024 KB / doc)
+
   const handleSubmit = async () => {
     if (!canSubmit || saving) return;
+    if (totalImageKB > IMAGE_BUDGET_KB) {
+      alert(`รูปรวม ${totalImageKB} KB เกิน budget ${IMAGE_BUDGET_KB} KB\n(Firestore จำกัด ~1 MB ต่อ document)\n\nกรุณาลบรูปบางรูป หรือใช้รูปที่เล็กลง`);
+      return;
+    }
     setSaving(true);
     try {
     const prodNo = generateDocNo("CUS", customOrders, "prodNo");
@@ -245,7 +269,17 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
       {/* รูปแบบ — หลายรูปได้, แต่ละรูปใส่ label สีกำกับได้ */}
       <div style={{marginBottom:14,padding:12,background:"#f8fafc",borderRadius:10,border:`1px solid ${T.border}`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:images.length>0?10:0}}>
-          <div style={{fontSize:12,fontWeight:600,color:T.text}}>🎨 รูปแบบงาน ({images.length} รูป)</div>
+          <div style={{fontSize:12,fontWeight:600,color:T.text,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            🎨 รูปแบบงาน ({images.length} รูป)
+            {images.length > 0 && (
+              <span style={{padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:700,fontFamily:"monospace",background:totalImageKB > IMAGE_BUDGET_KB ? "rgba(220,38,38,0.1)" : totalImageKB > IMAGE_BUDGET_KB * 0.85 ? "rgba(217,119,6,0.1)" : "rgba(22,163,74,0.1)",color:totalImageKB > IMAGE_BUDGET_KB ? "#dc2626" : totalImageKB > IMAGE_BUDGET_KB * 0.85 ? "#92400e" : "#15803d",border:`1px solid ${totalImageKB > IMAGE_BUDGET_KB ? "rgba(220,38,38,0.3)" : totalImageKB > IMAGE_BUDGET_KB * 0.85 ? "rgba(217,119,6,0.3)" : "rgba(22,163,74,0.3)"}`}}>
+                {totalImageKB} / {IMAGE_BUDGET_KB} KB
+              </span>
+            )}
+            {totalImageKB > IMAGE_BUDGET_KB && (
+              <span style={{fontSize:10,color:T.red,fontWeight:700}}>⚠️ เกิน — บันทึกไม่ได้</span>
+            )}
+          </div>
           <BtnGhost onClick={()=>fileRef.current?.click()} style={{fontSize:11,padding:"5px 12px"}}>📁 + เพิ่มรูป</BtnGhost>
           <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={handleImageUpload}/>
         </div>
@@ -442,7 +476,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
 
       <div style={{display:"flex",gap:10}}>
         <BtnGhost onClick={onClose} style={{flex:1}}>ยกเลิก</BtnGhost>
-        <BtnPrimary onClick={handleSubmit} disabled={!canSubmit || saving} style={{flex:1}}>{saving ? "กำลังบันทึก..." : "🎨 ยืนยันสั่งผลิต Custom"}</BtnPrimary>
+        <BtnPrimary onClick={handleSubmit} disabled={!canSubmit || saving || totalImageKB > IMAGE_BUDGET_KB} style={{flex:1}}>{saving ? "กำลังบันทึก..." : totalImageKB > IMAGE_BUDGET_KB ? "⚠️ รูปใหญ่เกิน — ลดรูปก่อน" : "🎨 ยืนยันสั่งผลิต Custom"}</BtnPrimary>
       </div>
     </Modal>
   );
