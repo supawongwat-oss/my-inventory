@@ -229,6 +229,7 @@ export default function App() {
   const [freeItemCutStock, setFreeItemCutStock] = useState(true);
   const [collapsedOrderDates, setCollapsedOrderDates] = useState({});
   const [collapsedInvoiceDates, setCollapsedInvoiceDates] = useState({});
+  const [selectedInvoices, setSelectedInvoices] = useState(new Set()); // 🔗 เลือกบิลเพื่อรวม
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [showImportCustomers, setShowImportCustomers] = useState(false);
   const [showPrintOrder, setShowPrintOrder] = useState(null);
@@ -1261,6 +1262,76 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
     setShowPrintInvoice({...data, id:ref.id});
     setShowNewInvoice(false);
     setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0});
+  };
+
+  // 🔗 toggle เลือกบิล
+  const toggleInvoiceSelect = (id) => setSelectedInvoices(s => {
+    const n = new Set(s);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
+
+  // 🔗 รวมหลายบิลของลูกค้าคนเดียวกัน → บิลเดียว
+  const handleMergeInvoices = async () => {
+    const sel = invoices.filter(i => selectedInvoices.has(i.id));
+    if (sel.length < 2) { alert("เลือกอย่างน้อย 2 บิล"); return; }
+    const cname = sel[0].customerName;
+    if (!sel.every(i => i.customerName === cname)) { alert("รวมได้เฉพาะบิลของลูกค้าคนเดียวกัน"); return; }
+    if (sel.some(i => i.mergedInto)) { alert("มีบิลที่ถูกรวมไปแล้วในรายการที่เลือก"); return; }
+    if (sel.some(i => i.convertedTo)) { alert("มีบิลที่แปลงเป็นเอกสารอื่นแล้ว — รวมไม่ได้"); return; }
+    const days = new Set(sel.map(i => (i.date || "").slice(0, 10)));
+    if (days.size > 1 && !window.confirm("บิลที่เลือกอยู่คนละวัน — ยืนยันรวมต่อไหม?")) return;
+    if (!window.confirm(`รวม ${sel.length} บิลของ "${cname}" เป็นบิลเดียว?\n\nบิลเดิมจะถูกทำเครื่องหมาย "รวมแล้ว" (ไม่ถูกลบ — ย้อนได้)`)) return;
+    // เรียงตามเวลาออกบิล
+    const ordered = [...sel].sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+    const base = ordered[0];
+    const items = ordered.flatMap(i => i.items || []);
+    const discount = ordered.reduce((s, i) => s + (Number(i.billDiscount) || 0), 0);
+    const shippingFee = ordered.reduce((s, i) => s + (Number(i.shipping) || 0), 0);
+    const useShipping = shippingFee > 0;
+    const useVat = ordered.some(i => i.useVat || (Number(i.vat) || 0) > 0);
+    const vatRate = base.vatRate || 7;
+    const payments = ordered.flatMap(i => i.payments || []);
+    const calc = calcInvoice(items, vatRate, useVat, discount, "amount", useShipping, shippingFee);
+    const invNo = generateDocNo("INV", invoices, "invoiceNo");
+    const newData = {
+      ...base,
+      invoiceNo: invNo,
+      items, discount, discountType: "amount", useShipping, shippingFee, vatRate, useVat,
+      ...calc,
+      payments,
+      mergedFrom: ordered.map(i => ({ id: i.id, invoiceNo: i.invoiceNo, total: i.total })),
+      by: user.name, date: base.date, createdAt: serverTimestamp(),
+      status: base.status || "ออกแล้ว",
+      note: [base.note, `🔗 รวมจาก ${ordered.map(i => i.invoiceNo).join(", ")}`].filter(Boolean).join(" · "),
+    };
+    delete newData.id; delete newData.convertedTo; delete newData.mergedInto;
+    try {
+      const ref = await addDoc(collection(db, "invoices"), newData);
+      for (const i of ordered) {
+        await updateDoc(doc(db, "invoices", i.id), { mergedInto: { id: ref.id, invoiceNo: invNo } });
+      }
+      logAudit(user, {
+        action: AUDIT_ACTIONS.CREATE, collection: "invoices", targetId: ref.id,
+        targetLabel: `${invNo} · ${cname} (รวม ${ordered.length} บิล)`,
+        note: `รวมบิล: ${ordered.map(i => i.invoiceNo).join(", ")} → ฿${(calc.total || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}`,
+      });
+      setSelectedInvoices(new Set());
+      setShowPrintInvoice({ ...newData, id: ref.id });
+    } catch (e) { alert("รวมบิลไม่สำเร็จ: " + (e.message || e)); }
+  };
+
+  // 🔗 ยกเลิกการรวม — ปลด flag ออกจากบิลเดิม + ลบบิลรวม
+  const handleUnmergeInvoice = async (mergedInv) => {
+    if (!mergedInv?.mergedFrom?.length) return;
+    if (!window.confirm(`ยกเลิกการรวมบิล ${mergedInv.invoiceNo}?\n\nบิลเดิม ${mergedInv.mergedFrom.length} ใบจะกลับมาแสดง และบิลรวมนี้จะถูกลบ`)) return;
+    try {
+      for (const src of mergedInv.mergedFrom) {
+        await updateDoc(doc(db, "invoices", src.id), { mergedInto: null });
+      }
+      await deleteDoc(doc(db, "invoices", mergedInv.id));
+      logAudit(user, { action: AUDIT_ACTIONS.DELETE, collection: "invoices", targetId: mergedInv.id, targetLabel: `${mergedInv.invoiceNo} (ยกเลิกรวมบิล)`, note: `คืน ${mergedInv.mergedFrom.map(s => s.invoiceNo).join(", ")}` });
+    } catch (e) { alert("ยกเลิกไม่สำเร็จ: " + (e.message || e)); }
   };
 
   // แปลงใบวางบิล (quotation) → ใบเสร็จ/ใบกำกับ
@@ -2615,6 +2686,24 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                       style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>＋ ออกบิลใหม่</button>
                   : <span style={{fontSize:11,color:T.muted,padding:"6px 12px",background:"rgba(241,243,246,0.4)",border:`1px solid ${T.border}`,borderRadius:8}}>👁️ โหมดดูเท่านั้น</span>}
               </div>
+              {/* 🔗 แถบรวมบิล (ลอย) */}
+              {selectedInvoices.size>0&&(()=>{
+                const sel=invoices.filter(i=>selectedInvoices.has(i.id));
+                const cname=sel[0]?.customerName;
+                const sameCustomer=sel.every(i=>i.customerName===cname);
+                const total=sel.reduce((s,i)=>s+(i.total||0),0);
+                return (
+                  <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",zIndex:200,display:"flex",alignItems:"center",gap:14,background:T.card,border:`1px solid ${T.amber}`,borderRadius:14,padding:"12px 18px",boxShadow:"0 10px 40px rgba(0,0,0,0.25)"}}>
+                    <div style={{fontSize:13,color:T.text}}>
+                      เลือก <b style={{color:T.amber}}>{sel.length}</b> บิล
+                      {sameCustomer?<> · <b>{cname}</b> · รวม ฿{total.toLocaleString("th-TH",{minimumFractionDigits:2})}</>:<span style={{color:T.red,marginLeft:6}}>⚠️ คนละลูกค้า</span>}
+                    </div>
+                    <button onClick={handleMergeInvoices} disabled={sel.length<2||!sameCustomer}
+                      style={{padding:"8px 16px",borderRadius:9,border:"none",cursor:sel.length<2||!sameCustomer?"not-allowed":"pointer",background:sel.length<2||!sameCustomer?"rgba(184,134,0,0.3)":T.amber,color:"white",fontSize:13,fontWeight:700,fontFamily:"'Sarabun',sans-serif"}}>🔗 รวมเป็นบิลเดียว</button>
+                    <button onClick={()=>setSelectedInvoices(new Set())} style={{padding:"8px 12px",borderRadius:9,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif"}}>ยกเลิก</button>
+                  </div>
+                );
+              })()}
               {invoices.length===0?(
                 <div style={{textAlign:"center",padding:60,background:T.card,borderRadius:16,border:`1px solid ${T.border}`}}>
                   <div style={{fontSize:48,marginBottom:12,opacity:0.3}}>🧾</div>
@@ -2638,7 +2727,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                   <div style={{display:"flex",flexDirection:"column",gap:14}}>
                     {sortedDates.map(date=>{
                       const list=groups[date];
-                      const totalAmount=list.reduce((s,inv)=>s+(inv.total||0),0);
+                      // ไม่นับยอดบิลที่ถูกรวมไปแล้ว (กันนับซ้ำกับบิลรวม)
+                      const totalAmount=list.reduce((s,inv)=>s+(inv.mergedInto?0:(inv.total||0)),0);
                       const collapsed=collapsedInvoiceDates[date];
                       return (
                         <div key={date} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden"}}>
@@ -2658,12 +2748,20 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                             const st=paymentStatusStyle(inv.status||"ออกแล้ว");
                             return (
                             <div key={inv.id} onClick={()=>setShowPrintInvoice(inv)} title="คลิกเพื่อดูใบบิล"
-                              style={{display:"grid",gridTemplateColumns:"90px 80px 1fr 120px 100px 140px 100px",alignItems:"center",padding:"13px 20px",borderBottom:i<list.length-1?`1px solid ${T.border}`:"none",transition:"background 0.15s",cursor:"pointer"}}
-                              onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.08)"}
-                              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                              <div style={{fontFamily:"monospace",fontSize:11,color:T.accent,fontWeight:700}}>{inv.invoiceNo}</div>
+                              style={{display:"grid",gridTemplateColumns:"90px 80px 1fr 120px 100px 140px 100px",alignItems:"center",padding:"13px 20px",borderBottom:i<list.length-1?`1px solid ${T.border}`:"none",transition:"background 0.15s",cursor:"pointer",opacity:inv.mergedInto?0.5:1,background:selectedInvoices.has(inv.id)?"rgba(184,134,0,0.08)":"transparent"}}
+                              onMouseEnter={e=>{if(!selectedInvoices.has(inv.id))e.currentTarget.style.background="rgba(59,91,139,0.08)";}}
+                              onMouseLeave={e=>{if(!selectedInvoices.has(inv.id))e.currentTarget.style.background="transparent";}}>
+                              <div style={{display:"flex",alignItems:"center",gap:6}} onClick={e=>e.stopPropagation()}>
+                                {!inv.mergedInto&&!inv.convertedTo&&(
+                                  <input type="checkbox" checked={selectedInvoices.has(inv.id)} onChange={()=>toggleInvoiceSelect(inv.id)} title="เลือกเพื่อรวมบิล" style={{width:15,height:15,cursor:"pointer",accentColor:T.amber}}/>
+                                )}
+                                <span style={{fontFamily:"monospace",fontSize:11,color:T.accent,fontWeight:700}}>{inv.invoiceNo}</span>
+                              </div>
                               <div><span style={{padding:"2px 8px",borderRadius:12,fontSize:10,fontWeight:600,background:"rgba(59,91,139,0.1)",color:T.accent,border:"1px solid rgba(59,91,139,0.2)"}}>{docTypeLabel(inv.docType)?.slice(0,4)}</span></div>
-                              <div><div style={{fontWeight:600,color:T.text,fontSize:13}}>{inv.customerName}</div><div style={{fontSize:10,color:T.muted}}>{inv.customerPhone}</div></div>
+                              <div><div style={{fontWeight:600,color:T.text,fontSize:13,display:"flex",alignItems:"center",gap:6}}>{inv.customerName}
+                                {inv.mergedInto&&<span title={`รวมเข้า ${inv.mergedInto.invoiceNo}`} style={{padding:"1px 6px",fontSize:9,background:"rgba(184,134,0,0.15)",color:T.amber,borderRadius:5,fontWeight:700}}>🔗 รวมแล้ว</span>}
+                                {inv.mergedFrom?.length>0&&<span title={`รวมจาก ${inv.mergedFrom.length} บิล`} style={{padding:"1px 6px",fontSize:9,background:"rgba(58,122,82,0.15)",color:T.green,borderRadius:5,fontWeight:700}}>🔗 บิลรวม ×{inv.mergedFrom.length}</span>}
+                              </div><div style={{fontSize:10,color:T.muted}}>{inv.customerPhone}</div></div>
                               <div style={{textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#34d399",fontSize:13}}>
                                 ฿{(inv.total||0).toLocaleString("th-TH",{minimumFractionDigits:2})}
                                 {(inv.payments||[]).length>0&&(()=>{const paid=getPaidTotal(inv);const pct=getPaidPct(inv);return(
@@ -2685,6 +2783,9 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                                 )}
                                 {inv.convertedTo&&(
                                   <span title={`แปลงเป็น ${inv.convertedTo.invoiceNo} แล้ว`} style={{padding:"5px 8px",borderRadius:7,background:"rgba(58,122,82,0.06)",color:T.green,fontSize:10,fontFamily:"'Sarabun',sans-serif"}}>✓ แปลงแล้ว</span>
+                                )}
+                                {inv.mergedFrom?.length>0&&role.canDelete&&(
+                                  <button onClick={()=>handleUnmergeInvoice(inv)} title="ยกเลิกการรวม — คืนบิลเดิม" style={{padding:"5px 10px",borderRadius:7,border:"1px solid rgba(184,134,0,0.3)",background:"rgba(184,134,0,0.08)",color:T.amber,cursor:"pointer",fontSize:11,fontFamily:"'Sarabun',sans-serif"}}>🔓</button>
                                 )}
                                 {role.canIssueInvoice!==false&&<button onClick={()=>handleEditInvoice(inv)} title="แก้ไข" style={{padding:"5px 10px",borderRadius:7,border:"1px solid rgba(184,134,0,0.3)",background:"rgba(184,134,0,0.08)",color:T.amber,cursor:"pointer",fontSize:11,fontFamily:"'Sarabun',sans-serif"}}>✏️</button>}
                                 {role.canDelete&&<button onClick={async()=>{
