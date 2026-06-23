@@ -63,6 +63,16 @@ export function isProductionSizeCapped(customerSize, offset) {
 // helper: คืน array ของไซส์ที่เหมาะกับ item (ตาม sizeType)
 export const getSizesFor = (item) => (item && item.sizeType === "shoe") ? SHOE_SIZES : SIZES;
 
+// 🔧 รวมไซส์มาตรฐาน + ไซส์ที่ผู้ใช้เพิ่มเอง (custom) แล้วเรียงลำดับให้ถูก
+// base = SIZES หรือ SHOE_SIZES, extra = array ไซส์ที่เพิ่มจาก settings/sizes
+export const mergeSizes = (base, extra = []) => {
+  const seen = new Set(base.map(s => String(s).toUpperCase()));
+  const add = (extra || [])
+    .map(s => String(s || "").trim())
+    .filter(s => s && !seen.has(s.toUpperCase()));
+  return [...base, ...add].sort(compareSizes);
+};
+
 // กลุ่มไซส์สำหรับตั้งราคา — แต่ละกลุ่มใช้ราคาเดียวกัน
 export const SIZE_GROUPS = [
   { key: "kids", label: "ไซส์ 6-12", sizes: ["6","8","10","12"] },

@@ -1,7 +1,7 @@
-﻿import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { db, authReady } from "./firebase";
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, serverTimestamp, query, orderBy } from "firebase/firestore";
-import { T, SIZES, SHOE_SIZES, getSizesFor, PRESET_COLORS, MASTER_KEY, SIZE_GROUPS, getPriceForSize, compareSizes, splitSizesIntoRows } from "./theme";
+import { T, SIZES, SHOE_SIZES, getSizesFor, mergeSizes, PRESET_COLORS, MASTER_KEY, SIZE_GROUPS, getPriceForSize, compareSizes, splitSizesIntoRows } from "./theme";
 import { INIT_USERS, ROLES, INIT_CATS } from "./constants";
 import { BarcodeDisplay, Modal, MHead, Toast, Input, BtnPrimary, BtnSuccess, BtnDanger, BtnGhost, Badge, CardBox } from "./components/ui";
 import LoginPage, { CompanyEditor } from "./components/LoginPage";
@@ -36,7 +36,11 @@ export default function App() {
     authReady.then(() => setAuthChecked(true));
   }, []);
 
-  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs, catalogOrders, attendance, payrollRuns, usersLoaded } = useFirestore();
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs, catalogOrders, attendance, payrollRuns, customSizes, usersLoaded } = useFirestore();
+  // 📏 ไซส์ที่ใช้จริง = มาตรฐาน + ที่เพิ่มเอง
+  const apparelSizes = useMemo(() => mergeSizes(SIZES, customSizes?.apparel), [customSizes]);
+  const shoeSizes = useMemo(() => mergeSizes(SHOE_SIZES, customSizes?.shoe), [customSizes]);
+  const sizesFor = useCallback((item) => (item && item.sizeType === "shoe") ? shoeSizes : apparelSizes, [apparelSizes, shoeSizes]);
   // ใช้แทน ROLES[role].label เพื่อให้ admin เปลี่ยนชื่อบทบาทได้
   const rLabel = (key) => roleLabels[key] || ROLES[key]?.label || key;
 
@@ -307,6 +311,9 @@ export default function App() {
   const [clothingTxType, setClothingTxType] = useState("รับ");
   const [clothingTxQty, setClothingTxQty] = useState("");
   const [clothingTxSizeQty, setClothingTxSizeQty] = useState({}); // {S:"10", M:"5"} จ่าย/รับหลายไซส์พร้อมกัน
+  const [showSizeManager, setShowSizeManager] = useState(false); // 📏 modal จัดการไซส์
+  const [newApparelSize, setNewApparelSize] = useState("");
+  const [newShoeSize, setNewShoeSize] = useState("");
   const [clothingTxNote, setClothingTxNote] = useState("");
   const [clothingTxSuccess, setClothingTxSuccess] = useState(false);
   const [barcodeResult, setBarcodeResult] = useState(null);
@@ -747,10 +754,42 @@ export default function App() {
     setNewModel(""); setShowAddClothing(false);
   };
 
+  // 📏 เพิ่มไซส์ใหม่ (custom) — kind = "apparel" | "shoe"
+  const addCustomSize = async (kind, raw) => {
+    const val = String(raw || "").trim();
+    if (!val) return;
+    const base = kind === "shoe" ? SHOE_SIZES : SIZES;
+    const cur = customSizes?.[kind] || [];
+    const exists = [...base, ...cur].some(s => String(s).toUpperCase() === val.toUpperCase());
+    if (exists) { alert(`มีไซส์ "${val}" อยู่แล้ว`); return; }
+    try {
+      await setDoc(doc(db, "settings", "sizes"), {
+        apparel: customSizes?.apparel || [],
+        shoe: customSizes?.shoe || [],
+        [kind]: [...cur, val],
+      }, { merge: true });
+      logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: "settings", targetId: "sizes", targetLabel: "ไซส์", note: `เพิ่มไซส์ ${kind==="shoe"?"รองเท้า":"เสื้อผ้า"}: ${val}` });
+      if (kind === "shoe") setNewShoeSize(""); else setNewApparelSize("");
+    } catch (e) { alert("บันทึกไม่สำเร็จ: " + (e.message || e)); }
+  };
+
+  // 📏 ลบไซส์ที่เพิ่มเอง (ลบได้เฉพาะ custom — ไซส์มาตรฐานลบไม่ได้)
+  const removeCustomSize = async (kind, val) => {
+    if (!window.confirm(`ลบไซส์ "${val}" ออกจากรายการ?\n(สต็อกเดิมที่เคยกรอกไว้จะไม่ถูกลบ แต่จะไม่แสดงช่องไซส์นี้)`)) return;
+    try {
+      await setDoc(doc(db, "settings", "sizes"), {
+        apparel: customSizes?.apparel || [],
+        shoe: customSizes?.shoe || [],
+        [kind]: (customSizes?.[kind] || []).filter(s => s !== val),
+      }, { merge: true });
+      logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: "settings", targetId: "sizes", targetLabel: "ไซส์", note: `ลบไซส์ ${kind==="shoe"?"รองเท้า":"เสื้อผ้า"}: ${val}` });
+    } catch (e) { alert("ลบไม่สำเร็จ: " + (e.message || e)); }
+  };
+
   const handleAddColorToItem = async (itemId, colorObj) => {
     const item = clothingItems.find(i => i.id === itemId);
     if (!item) return;
-    const initStock = {}; SIZES.forEach(s => initStock[s] = 0);
+    const initStock = {}; sizesFor(item).forEach(s => initStock[s] = 0);
     const newColors = [...(item.colors||[]), { ...colorObj, stock: initStock, costPrice: colorObj.costPrice||0, salePrice: colorObj.salePrice||0 }];
     await updateDoc(doc(db, "clothing", itemId), { colors: newColors });
     logAudit(user, {
@@ -1865,6 +1904,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             {activeTab==="inventory"&&inventoryTab==="general"&&role.canManageCats&&<BtnGhost onClick={()=>setShowCatModal(true)}>📦 หมวดหมู่</BtnGhost>}
             {activeTab==="inventory"&&inventoryTab==="general"&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddModal(true)}>️ เพิ่มสินค้า</BtnPrimary>}
+            {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&role.canAdd&&<BtnGhost onClick={()=>setShowSizeManager(true)}>📏 จัดการไซส์</BtnGhost>}
             {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddClothing(true)}>{inventoryTab==="sports"?"👟":"️"} เพิ่มรุ่นใหม่</BtnPrimary>}
             {activeTab==="inventory"&&inventoryTab==="general"&&<>
               <BtnSuccess onClick={()=>{setTxType("รับ");setTxRows([{productId:"",qty:""}]);setTxNote("");setShowTxModal(true);}}>⬇ รับสินค้า</BtnSuccess>
@@ -2153,7 +2193,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                           <thead>
                             <tr style={{background:"rgba(241,243,246,0.8)"}}>
                               <th style={{padding:"10px 14px",textAlign:"left",color:T.sub,fontWeight:700,fontSize:12,textTransform:"uppercase",letterSpacing:"0.06em",width:120,borderRight:`1px solid ${T.border}`}}>สี</th>
-                              {getSizesFor(item).map(sz=>(
+                              {sizesFor(item).map(sz=>(
                                 <th key={sz} style={{padding:"10px 4px",textAlign:"center",color:T.text,fontWeight:700,fontSize:13,borderRight:"1px solid rgba(203,210,217,0.4)",fontFamily:"monospace",minWidth:46}}>{sz}</th>
                               ))}
                               <th style={{padding:"10px 10px",textAlign:"center",color:T.sub,fontWeight:700,fontSize:12,minWidth:60}}>รวม</th>
@@ -2174,7 +2214,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                                       <span style={{color:T.text,fontWeight:600,fontSize:14}}>{col.colorName}</span>
                                     </div>
                                   </td>
-                                  {getSizesFor(item).map(sz=>{
+                                  {sizesFor(item).map(sz=>{
                                     const isEd=editingStock?.itemId===item.id&&editingStock?.ci===ci&&editingStock?.size===sz;
                                     const val=(col.stock||{})[sz]||0;
                                     return (
@@ -2373,7 +2413,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                         <thead>
                           <tr style={{background:"rgba(241,243,246,0.8)"}}>
                             <th style={{padding:"8px 14px",textAlign:"left",color:T.muted,fontWeight:600,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",width:110,borderRight:`1px solid ${T.border}`}}>สี</th>
-                            {getSizesFor(item).map(sz=>(
+                            {sizesFor(item).map(sz=>(
                               <th key={sz} style={{padding:"8px 5px",textAlign:"center",color:T.accent,fontWeight:700,fontSize:10,borderRight:`1px solid rgba(203,210,217,0.4)`,fontFamily:"'DM Mono',monospace",minWidth:40}}>{sz}</th>
                             ))}
                             <th style={{padding:"8px 10px",textAlign:"center",color:T.muted,fontWeight:600,fontSize:10,textTransform:"uppercase",minWidth:50}}>รวม</th>
@@ -2393,7 +2433,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                                     <span style={{color:T.text,fontWeight:500,fontSize:11,fontFamily:"'DM Sans','Sarabun',sans-serif"}}>{col.colorName}</span>
                                   </div>
                                 </td>
-                                {getSizesFor(item).map(sz=>{
+                                {sizesFor(item).map(sz=>{
                                   const isEd=editingStock?.itemId===item.id&&editingStock?.ci===ci&&editingStock?.size===sz;
                                   const val=(col.stock||{})[sz]||0;
                                   return (
@@ -4524,7 +4564,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
               <div style={{gridColumn:"1/-1"}}>
                 <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:4,fontWeight:600}}>ไซส์ (ถ้ามี)</label>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {SIZES.map(sz=>{
+                  {[...apparelSizes, ...shoeSizes.filter(s=>!apparelSizes.includes(s))].map(sz=>{
                     const sel=invoiceItemForm.size===sz;
                     return (
                       <button key={sz} type="button" onClick={()=>setInvoiceItemForm(f=>({...f,size:sel?"":sz}))}
@@ -5115,6 +5155,63 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
         </Modal>
       )}
 
+      {/* ── MODAL: จัดการไซส์ (เพิ่ม/ลบ ไซส์เสื้อผ้า + รองเท้า) ── */}
+      {showSizeManager&&(
+        <Modal onClose={()=>setShowSizeManager(false)} w={540}>
+          <MHead title="📏 จัดการไซส์" onClose={()=>setShowSizeManager(false)}/>
+          <div style={{fontSize:12,color:T.sub,marginBottom:16,padding:"10px 12px",background:"rgba(59,91,139,0.06)",borderRadius:9,lineHeight:1.6}}>
+            เพิ่มไซส์ใหม่ได้เมื่อมีไซส์ใหญ่กว่าเดิม เช่น <b>6XL, 7XL</b> (เสื้อผ้า) หรือ <b>46, 47</b> (รองเท้า)<br/>
+            ไซส์ที่เพิ่มจะแสดงในทุกหน้า — ตารางสต็อก, รับ/จ่าย, ออกบิล · ไซส์มาตรฐานลบไม่ได้
+          </div>
+
+          {/* เสื้อผ้า */}
+          <div style={{marginBottom:18}}>
+            <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:8}}>👕 ไซส์เสื้อผ้า</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+              {SIZES.map(sz=>(
+                <span key={sz} style={{padding:"5px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"rgba(241,243,246,0.7)",color:T.sub,fontFamily:"monospace",fontSize:12,fontWeight:600}}>{sz}</span>
+              ))}
+              {(customSizes?.apparel||[]).slice().sort(compareSizes).map(sz=>(
+                <span key={sz} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"5px 8px 5px 12px",borderRadius:8,border:`1px solid ${T.accent}`,background:"rgba(59,91,139,0.12)",color:T.accent,fontFamily:"monospace",fontSize:12,fontWeight:700}}>
+                  {sz}
+                  <button onClick={()=>removeCustomSize("apparel",sz)} title="ลบ" style={{border:"none",background:"transparent",color:T.red,cursor:"pointer",fontSize:13,lineHeight:1,padding:0}}>✕</button>
+                </span>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <input value={newApparelSize} onChange={e=>setNewApparelSize(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addCustomSize("apparel",newApparelSize)} placeholder="เช่น 6XL, 7XL"
+                style={{flex:1,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+              <BtnPrimary onClick={()=>addCustomSize("apparel",newApparelSize)} disabled={!newApparelSize.trim()}>➕ เพิ่ม</BtnPrimary>
+            </div>
+          </div>
+
+          {/* รองเท้า */}
+          <div style={{marginBottom:6}}>
+            <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:8}}>👟 ไซส์รองเท้า</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+              {SHOE_SIZES.map(sz=>(
+                <span key={sz} style={{padding:"5px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"rgba(241,243,246,0.7)",color:T.sub,fontFamily:"monospace",fontSize:12,fontWeight:600}}>{sz}</span>
+              ))}
+              {(customSizes?.shoe||[]).slice().sort(compareSizes).map(sz=>(
+                <span key={sz} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"5px 8px 5px 12px",borderRadius:8,border:`1px solid ${T.accent}`,background:"rgba(59,91,139,0.12)",color:T.accent,fontFamily:"monospace",fontSize:12,fontWeight:700}}>
+                  {sz}
+                  <button onClick={()=>removeCustomSize("shoe",sz)} title="ลบ" style={{border:"none",background:"transparent",color:T.red,cursor:"pointer",fontSize:13,lineHeight:1,padding:0}}>✕</button>
+                </span>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <input value={newShoeSize} onChange={e=>setNewShoeSize(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addCustomSize("shoe",newShoeSize)} placeholder="เช่น 46, 47"
+                style={{flex:1,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+              <BtnPrimary onClick={()=>addCustomSize("shoe",newShoeSize)} disabled={!newShoeSize.trim()}>➕ เพิ่ม</BtnPrimary>
+            </div>
+          </div>
+
+          <div style={{marginTop:20}}>
+            <BtnGhost onClick={()=>setShowSizeManager(false)} style={{width:"100%"}}>ปิด</BtnGhost>
+          </div>
+        </Modal>
+      )}
+
       {/* ── MODAL: ตั้งราคาตามไซส์ ── */}
       {priceModal&&(()=>{
         const item = clothingItems.find(i=>i.id===priceModal.itemId);
@@ -5241,7 +5338,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
             <div>
               <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>เลือกไซส์ * <span style={{textTransform:"none",fontWeight:400,color:T.muted}}>(กดเพื่อเลือก/ยกเลิก — เลือกได้หลายไซส์)</span></label>
               <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {SIZES.map(sz=>{
+                {sizesFor(clothingTxModal.item).map(sz=>{
                   const stock=((clothingTxModal.item.colors[clothingTxModal.colorIdx]||{}).stock||{})[sz]||0;
                   const selected=clothingTxSizeQty[sz]!==undefined;
                   return (
@@ -5256,7 +5353,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
             </div>
             {/* จำนวนแยกตามไซส์ที่เลือก */}
             {(() => {
-              const chosen = SIZES.filter(sz => clothingTxSizeQty[sz] !== undefined);
+              const chosen = sizesFor(clothingTxModal.item).filter(sz => clothingTxSizeQty[sz] !== undefined);
               if (chosen.length === 0) return (
                 <div style={{fontSize:12,color:T.muted,padding:"10px 0"}}>↑ เลือกไซส์ที่ต้องการก่อน แล้วใส่จำนวนแต่ละไซส์</div>
               );

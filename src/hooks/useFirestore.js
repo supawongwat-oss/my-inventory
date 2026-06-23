@@ -26,6 +26,7 @@ export function useFirestore() {
   const [catalogOrders, setCatalogOrders] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [payrollRuns, setPayrollRuns] = useState([]);
+  const [customSizes, setCustomSizes] = useState({ apparel: [], shoe: [] }); // 📏 ไซส์ที่ผู้ใช้เพิ่มเอง
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -190,6 +191,17 @@ export function useFirestore() {
     return () => unsub();
   }, []);
 
+  // 📏 Custom sizes — ไซส์เสื้อผ้า/รองเท้าที่ผู้ใช้เพิ่มเอง (settings/sizes)
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "settings", "sizes"), snap => {
+      if (snap.exists()) {
+        const d = snap.data();
+        setCustomSizes({ apparel: d.apparel || [], shoe: d.shoe || [] });
+      }
+    }, ()=>{});
+    return () => unsub();
+  }, []);
+
   return {
     users, setUsers, usersLoaded,
     suppliers,
@@ -210,6 +222,7 @@ export function useFirestore() {
     catalogOrders,
     attendance,
     payrollRuns,
+    customSizes,
     employees,
     taxDocs,
     loading, setLoading,
