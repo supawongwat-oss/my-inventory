@@ -4,6 +4,7 @@ import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { generateDocNo } from "../utils/docNumber";
+import { SIZES, SHOE_SIZES, compareSizes } from "../theme";
 
 const T = { border:"#e3e8ef", sub:"#5b6b85", text:"#1f2a44", muted:"#8a9bb3", accent:"#3b5b8b", input:"#f6f8fb", inputBorder:"#d8dee9", red:"#dc2626", green:"#16a34a", amber:"#d97706" };
 const fmt = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -11,13 +12,41 @@ const fmtInt = (n) => Number(n || 0).toLocaleString("th-TH");
 
 export default function NewProductionOrderModal({ clothingItems = [], boms = [], products = [], productionOrders = [], user, onClose, onCreated }) {
   const [clothingId, setClothingId] = useState("");
-  const [items, setItems] = useState([]); // [{colorIdx, colorName, colorHex, size, qty}]
+  const [items, setItems] = useState([]); // [{colorIdx, colorName, colorHex, size, qty}] — โหมดทีละแถว
+  const [grid, setGrid] = useState({}); // { [colorIdx]: { [size]: qtyStr } } — โหมดตาราง
+  const [inputMode, setInputMode] = useState("grid"); // "grid" | "rows"
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const clothing = clothingItems.find(c => c.id === clothingId);
   const bom = useMemo(() => boms.find(b => b.clothingId === clothingId), [boms, clothingId]);
+
+  // ไซส์สำหรับตาราง = ไซส์มาตรฐาน (ตาม sizeType) ∪ ไซส์ที่มีในรุ่นนี้แล้ว
+  const gridSizes = useMemo(() => {
+    if (!clothing) return [];
+    const base = clothing.sizeType === "shoe" ? SHOE_SIZES : SIZES;
+    const present = new Set();
+    (clothing.colors || []).forEach(c => Object.keys(c.stock || {}).forEach(s => present.add(s)));
+    return [...new Set([...base, ...present])].sort(compareSizes);
+  }, [clothing]);
+
+  const setCell = (ci, sz, val) => setGrid(g => ({ ...g, [ci]: { ...(g[ci] || {}), [sz]: val } }));
+
+  const gridToItems = (g) => {
+    const out = [];
+    (clothing?.colors || []).forEach((c, ci) => {
+      const row = g[ci] || {};
+      gridSizes.forEach(sz => {
+        const q = Number(row[sz]) || 0;
+        if (q > 0) out.push({ colorIdx: ci, colorName: c.colorName, colorHex: c.colorHex || c.hex || "#999", size: sz, qty: q });
+      });
+    });
+    return out;
+  };
+
+  // รายการที่ใช้จริง (ขึ้นกับโหมด)
+  const effItems = inputMode === "grid" ? gridToItems(grid) : items;
 
   const addRow = () => {
     if (!clothing) return;
@@ -32,7 +61,7 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
     setRow(idx, { colorIdx, colorName:c.colorName, colorHex:c.colorHex });
   };
 
-  const totalQty = items.reduce((s,r) => s + (Number(r.qty)||0), 0);
+  const totalQty = effItems.reduce((s,r) => s + (Number(r.qty)||0), 0);
 
   // คำนวณวัตถุดิบที่ต้องใช้และเช็คสต็อก
   const materialPlan = useMemo(() => {
@@ -53,7 +82,7 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
   const grandTotal = totalCostPerPiece * totalQty;
   const hasShortage = materialPlan.some(m => !m.enough);
 
-  const canSubmit = clothingId && items.length > 0 && totalQty > 0;
+  const canSubmit = clothingId && effItems.length > 0 && totalQty > 0;
 
   const now = () => {
     const d = new Date(); const p=n=>String(n).padStart(2,"0");
@@ -82,7 +111,7 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
       clothingId,
       clothingName: clothing?.model || "",
       clothingImage: clothing?.image || "",
-      items: items.map(r => ({ colorIdx:Number(r.colorIdx)||0, colorName:r.colorName||"", colorHex:r.colorHex||"#999", size:r.size||"", qty:Number(r.qty)||0 })),
+      items: effItems.map(r => ({ colorIdx:Number(r.colorIdx)||0, colorName:r.colorName||"", colorHex:r.colorHex||"#999", size:r.size||"", qty:Number(r.qty)||0 })),
       totalQty,
       status: "พิมพ์ลาย",
       statusHistory: [{ status:"สร้างใบสั่งผลิต", at:now(), by:user?.name || "", note:note || "" }],
@@ -101,7 +130,7 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
       collection: "productionOrders",
       targetId: ref.id,
       targetLabel: `${prodNo} · ${data.clothingName}`,
-      note: `${items.length} แถว · ${totalQty} ตัว · ต้นทุน ฿${fmt(grandTotal)}${hasShortage ? " · ⚠️ วัตถุดิบไม่พอ" : ""}`,
+      note: `${effItems.length} แถว · ${totalQty} ตัว · ต้นทุน ฿${fmt(grandTotal)}${hasShortage ? " · ⚠️ วัตถุดิบไม่พอ" : ""}`,
     });
     setSaved(true);
     setTimeout(() => { setSaved(false); setSaving(false); onCreated && onCreated({ ...data, id: ref.id }); onClose && onClose(); }, 700);
@@ -117,7 +146,7 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
 
       <div style={{marginBottom:14}}>
         <label style={{fontSize:11,color:T.sub,display:"block",marginBottom:5,fontWeight:500}}>เลือกรุ่นเสื้อ *</label>
-        <select value={clothingId} onChange={e => { setClothingId(e.target.value); setItems([]); }}
+        <select value={clothingId} onChange={e => { setClothingId(e.target.value); setItems([]); setGrid({}); }}
           style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
           <option value="">— เลือกรุ่น —</option>
           {clothingItems.map(c => <option key={c.id} value={c.id}>{c.model}</option>)}
@@ -131,11 +160,64 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
 
       {clothingId && (
         <>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-            <div style={{fontSize:13,fontWeight:600,color:T.text}}>📦 รายการที่จะผลิต ({items.length} แถว · รวม {fmtInt(totalQty)} ตัว)</div>
-            <button onClick={addRow} style={{padding:"6px 14px",background:"rgba(59,91,139,0.08)",color:T.accent,border:`1px solid ${T.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit"}}>+ เพิ่มแถว</button>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
+            <div style={{fontSize:13,fontWeight:600,color:T.text}}>📦 รายการที่จะผลิต (รวม {fmtInt(totalQty)} ตัว)</div>
+            <div style={{display:"flex",gap:4,background:"#eef2f7",borderRadius:8,padding:3}}>
+              <button onClick={()=>setInputMode("grid")} style={{padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",background:inputMode==="grid"?"white":"transparent",color:inputMode==="grid"?T.accent:T.sub,boxShadow:inputMode==="grid"?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>▦ ตาราง</button>
+              <button onClick={()=>setInputMode("rows")} style={{padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",background:inputMode==="rows"?"white":"transparent",color:inputMode==="rows"?T.accent:T.sub,boxShadow:inputMode==="rows"?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>☰ ทีละแถว</button>
+            </div>
           </div>
 
+          {inputMode === "grid" ? (
+            <div style={{marginBottom:12,overflowX:"auto",border:`1px solid ${T.border}`,borderRadius:10}}>
+              <table style={{borderCollapse:"collapse",width:"100%",fontSize:12,minWidth:480}}>
+                <thead>
+                  <tr style={{background:"#f1f5fb"}}>
+                    <th style={{position:"sticky",left:0,background:"#f1f5fb",zIndex:2,padding:"8px 10px",textAlign:"left",color:T.sub,fontWeight:700,borderRight:`1px solid ${T.border}`,minWidth:96}}>สี</th>
+                    {gridSizes.map(sz => <th key={sz} style={{padding:"8px 4px",textAlign:"center",color:T.text,fontWeight:700,fontFamily:"monospace",minWidth:48,borderRight:`1px solid ${T.border}`}}>{sz}</th>)}
+                    <th style={{padding:"8px 8px",textAlign:"center",color:T.accent,fontWeight:700,minWidth:54}}>รวม</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(clothing?.colors || []).map((c, ci) => {
+                    const row = grid[ci] || {};
+                    const rowTotal = gridSizes.reduce((s,sz)=>s+(Number(row[sz])||0),0);
+                    return (
+                      <tr key={ci} style={{borderTop:`1px solid ${T.border}`}}>
+                        <td style={{position:"sticky",left:0,background:"white",zIndex:1,padding:"6px 10px",borderRight:`1px solid ${T.border}`,whiteSpace:"nowrap"}}>
+                          <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
+                            <span style={{width:12,height:12,borderRadius:3,background:c.colorHex||c.hex||"#999",border:"1px solid rgba(0,0,0,0.15)"}}/>
+                            <span style={{fontWeight:600,color:T.text}}>{c.colorName}</span>
+                          </span>
+                        </td>
+                        {gridSizes.map(sz => (
+                          <td key={sz} style={{padding:"3px",borderRight:`1px solid ${T.border}`}}>
+                            <input type="number" inputMode="numeric" value={row[sz] ?? ""} onChange={e=>setCell(ci,sz,e.target.value)} placeholder="·"
+                              style={{width:"100%",minWidth:40,boxSizing:"border-box",textAlign:"center",background:row[sz]>0?"#eff6ff":"white",border:`1px solid ${T.inputBorder}`,borderRadius:5,padding:"6px 2px",fontFamily:"monospace",fontSize:13,outline:"none",color:T.text}}/>
+                          </td>
+                        ))}
+                        <td style={{textAlign:"center",fontFamily:"monospace",fontWeight:700,color:rowTotal>0?T.accent:T.muted}}>{rowTotal||""}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{background:"#f8fafc",borderTop:`2px solid ${T.border}`}}>
+                    <td style={{position:"sticky",left:0,background:"#f8fafc",padding:"8px 10px",fontWeight:700,color:T.sub,borderRight:`1px solid ${T.border}`}}>รวมไซส์</td>
+                    {gridSizes.map(sz => {
+                      const colTotal = (clothing?.colors||[]).reduce((s,_,ci)=>s+(Number((grid[ci]||{})[sz])||0),0);
+                      return <td key={sz} style={{textAlign:"center",fontFamily:"monospace",fontWeight:700,color:colTotal>0?T.green:T.muted,borderRight:`1px solid ${T.border}`}}>{colTotal||""}</td>;
+                    })}
+                    <td style={{textAlign:"center",fontFamily:"monospace",fontWeight:800,color:T.green}}>{fmtInt(totalQty)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          ) : (
+          <>
+          <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
+            <button onClick={addRow} style={{padding:"6px 14px",background:"rgba(59,91,139,0.08)",color:T.accent,border:`1px solid ${T.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit"}}>+ เพิ่มแถว</button>
+          </div>
           <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:12,maxHeight:240,overflowY:"auto"}}>
             {items.map((r, idx) => (
               <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 32px",gap:6,alignItems:"end",padding:"6px 8px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:7}}>
@@ -150,7 +232,7 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
                   <label style={{fontSize:9,color:T.sub,display:"block",marginBottom:2}}>ไซส์</label>
                   <select value={r.size} onChange={e => setRow(idx, { size: e.target.value })}
                     style={{width:"100%",background:"white",border:`1px solid ${T.inputBorder}`,borderRadius:6,padding:"5px 8px",fontFamily:"inherit",fontSize:12,outline:"none"}}>
-                    {SIZES_ALL.map(s => <option key={s} value={s}>{s}</option>)}
+                    {(gridSizes.length?gridSizes:SIZES_ALL).map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 <div>
@@ -162,6 +244,8 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
               </div>
             ))}
           </div>
+          </>
+          )}
 
           {bom && totalQty > 0 && (
             <div style={{marginBottom:14}}>
