@@ -92,8 +92,8 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
               <table style={{width:"100%",borderCollapse:"collapse",marginBottom:10,fontSize:11}}>
                 <thead>
                   <tr style={{background:"#f1f5f9",color:"#000"}}>
-                    <th style={{padding:"5px 8px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,minWidth:80}}>รุ่น</th>
-                    <th style={{padding:"5px 8px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,minWidth:70}}>สี</th>
+                    <th style={{padding:"5px 5px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,width:58,minWidth:58}}>รุ่น</th>
+                    <th style={{padding:"5px 5px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,width:46,minWidth:46}}>สี</th>
                     {Array.from({length:MAX}).flatMap((_,i)=>([
                       <th key={`s${i}`} style={{padding:"5px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:10,minWidth:34,background:"#e0f2fe"}}>SIZE</th>,
                       <th key={`q${i}`} style={{padding:"5px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:10,minWidth:28}}></th>
@@ -110,8 +110,8 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                       const rowQty = chunk.reduce((s,x)=>s+x.qty, 0);
                       return (
                         <tr key={`${gi}-${ci}`} style={{background: gi%2===0?"white":"#f8fafc"}}>
-                          <td style={{padding:"4px 8px",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:11,verticalAlign:"middle"}}>{ci===0 ? (order.clothingName || "-") : ""}</td>
-                          <td style={{padding:"4px 8px",color:"#000",border:"1px solid #000",fontSize:11,verticalAlign:"middle"}}>
+                          <td style={{padding:"4px 5px",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:11,verticalAlign:"middle",width:58}}>{ci===0 ? (order.clothingName || "-") : ""}</td>
+                          <td style={{padding:"4px 5px",color:"#000",border:"1px solid #000",fontSize:11,verticalAlign:"middle",width:46}}>
                             {ci===0 && (<div>
                               <div style={{display:"flex",alignItems:"center",gap:5}}>
                                 <div style={{width:10,height:10,borderRadius:2,background:g.colorHex,border:"1px solid #000",flexShrink:0}}/>
