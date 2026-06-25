@@ -92,8 +92,8 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
               <table style={{width:"100%",borderCollapse:"collapse",marginBottom:10,fontSize:11}}>
                 <thead>
                   <tr style={{background:"#f1f5f9",color:"#000"}}>
-                    <th style={{padding:"5px 5px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,width:58,minWidth:58}}>รุ่น</th>
-                    <th style={{padding:"5px 5px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,width:46,minWidth:46}}>สี</th>
+                    <th style={{padding:"5px 5px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,width:75,minWidth:75}}>รุ่น</th>
+                    <th style={{padding:"5px 5px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,width:130,minWidth:130}}>สี</th>
                     {Array.from({length:MAX}).flatMap((_,i)=>([
                       <th key={`s${i}`} style={{padding:"5px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:10,minWidth:34,background:"#e0f2fe"}}>SIZE</th>,
                       <th key={`q${i}`} style={{padding:"5px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:10,minWidth:28}}></th>
@@ -110,15 +110,15 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                       const rowQty = chunk.reduce((s,x)=>s+x.qty, 0);
                       return (
                         <tr key={`${gi}-${ci}`} style={{background: gi%2===0?"white":"#f8fafc"}}>
-                          <td style={{padding:"4px 5px",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:11,verticalAlign:"middle",width:58}}>{ci===0 ? (order.clothingName || "-") : ""}</td>
-                          <td style={{padding:"4px 5px",color:"#000",border:"1px solid #000",fontSize:11,verticalAlign:"middle",width:46}}>
-                            {ci===0 && (<div>
-                              <div style={{display:"flex",alignItems:"center",gap:5}}>
+                          <td style={{padding:"4px 5px",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:11,verticalAlign:"middle",width:75}}>{ci===0 ? (order.clothingName || "-") : ""}</td>
+                          <td style={{padding:"4px 6px",color:"#000",border:"1px solid #000",fontSize:11,verticalAlign:"middle",width:130}}>
+                            {ci===0 && (
+                              <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                                 <div style={{width:10,height:10,borderRadius:2,background:g.colorHex,border:"1px solid #000",flexShrink:0}}/>
-                                <span>{g.colorName}</span>
+                                <span style={{whiteSpace:"nowrap"}}>{g.colorName}</span>
+                                {g.variant && <span style={{fontSize:10,color:"#475569",fontStyle:"italic",whiteSpace:"nowrap"}}>· {g.variant}</span>}
                               </div>
-                              {g.variant && <div style={{fontSize:9,color:"#475569",marginTop:2,fontStyle:"italic"}}>🎽 {g.variant}</div>}
-                            </div>)}
+                            )}
                           </td>
                           {chunk.flatMap((c,i)=>([
                             <td key={`s-${i}`} style={{padding:"4px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#0c4a6e",border:"1px solid #000",background:"#f0f9ff",fontSize:11}}>
