@@ -349,6 +349,12 @@ function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag 
         <span style={{fontSize:10,color:T.muted}}>· {lot.lotId}</span>
         <span style={{marginLeft:"auto",fontFamily:"monospace",fontWeight:700,color:T.text,fontSize:13}}>{fmtInt(total)}</span>
       </div>
+      {(lot.machine || lot.rollNo) && (
+        <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:5}}>
+          {lot.machine && <span style={{padding:"1px 7px",fontSize:10,background:"#eef6ff",color:"#1e40af",borderRadius:6,border:"1px solid #bfdbfe",fontWeight:700}}>🖨️ {lot.machine}</span>}
+          {lot.rollNo && <span style={{padding:"1px 7px",fontSize:10,background:"#f0fdf4",color:"#15803d",borderRadius:6,border:"1px solid #bbf7d0",fontWeight:700}}>🧵 ม้วน {lot.rollNo}</span>}
+        </div>
+      )}
       {/* 🖼️ Thumbnail + ชื่อรุ่น */}
       <div style={{display:"flex",gap:8,marginBottom:6,alignItems:"flex-start"}}>
         {thumb ? (

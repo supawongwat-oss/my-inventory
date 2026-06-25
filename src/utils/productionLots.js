@@ -12,6 +12,10 @@ export const PRODUCTION_STEPS = [
   "เข้าคลัง",
 ];
 
+// 🧵 กำลังพิมพ์ต่อ 1 ม้วนกระดาษ (โดยประมาณ) — ใช้ประเมินจำนวนม้วนของล็อต
+export const ROLL_CAPACITY = 1800;
+export const estimateRolls = (qty) => Math.max(1, Math.ceil((Number(qty) || 0) / ROLL_CAPACITY));
+
 export const STATUS_COLORS = {
   "พิมพ์ลาย":   "#0ea5e9",
   "ตัดผ้า":     "#6366f1",
@@ -126,6 +130,8 @@ export function splitLot(lots, lotIdx, selections, opts = {}) {
     statusHistory: [{ status: `แยกจาก ${oldLot.lotId}`, at, by: opts.by || "" }],
     notes: [],
     finishedStocked: false,
+    machine: opts.machine || "",   // 🖨️ เครื่องพิมพ์
+    rollNo: opts.rollNo || "",     // 🧵 ม้วน/แบตช์
   };
 
   // ถ้า old lot ไม่เหลือ items → ลบทิ้ง
