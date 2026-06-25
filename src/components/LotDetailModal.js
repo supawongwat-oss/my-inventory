@@ -340,6 +340,7 @@ export default function LotDetailModal({
           finishedStocked: false,
           machine: "",
           rollNo: hasRoll ? String(r.rollNo) : "",
+          jobLabel: r.jobLabel || "",
           machineByStage: {},
         }];
       });
@@ -835,11 +836,12 @@ function RollSplitModal({ lot, busy, onClose, onConfirm, onConfirmManual }) {
   }));
 
   // ── โหมดกรอกเอง ──
-  const [mRolls, setMRolls] = useState([{ rows: [{ itemIdx: "", qty: "" }] }]);
-  const setMRow = (ri, rowi, patch) => setMRolls(prev => prev.map((roll, i) => i !== ri ? roll : { rows: roll.rows.map((row, j) => j === rowi ? { ...row, ...patch } : row) }));
-  const addMRow = (ri) => setMRolls(prev => prev.map((roll, i) => i !== ri ? roll : { rows: [...roll.rows, { itemIdx: "", qty: "" }] }));
-  const removeMRow = (ri, rowi) => setMRolls(prev => prev.map((roll, i) => i !== ri ? roll : { rows: roll.rows.filter((_, j) => j !== rowi) }));
-  const addRoll = () => setMRolls(prev => [...prev, { rows: [{ itemIdx: "", qty: "" }] }]);
+  const [mRolls, setMRolls] = useState([{ jobLabel: "", rows: [{ itemIdx: "", qty: "" }] }]);
+  const setMRollField = (ri, patch) => setMRolls(prev => prev.map((roll, i) => i !== ri ? roll : { ...roll, ...patch }));
+  const setMRow = (ri, rowi, patch) => setMRolls(prev => prev.map((roll, i) => i !== ri ? roll : { ...roll, rows: roll.rows.map((row, j) => j === rowi ? { ...row, ...patch } : row) }));
+  const addMRow = (ri) => setMRolls(prev => prev.map((roll, i) => i !== ri ? roll : { ...roll, rows: [...roll.rows, { itemIdx: "", qty: "" }] }));
+  const removeMRow = (ri, rowi) => setMRolls(prev => prev.map((roll, i) => i !== ri ? roll : { ...roll, rows: roll.rows.filter((_, j) => j !== rowi) }));
+  const addRoll = () => setMRolls(prev => [...prev, { jobLabel: "", rows: [{ itemIdx: "", qty: "" }] }]);
   const removeRoll = (ri) => setMRolls(prev => prev.filter((_, i) => i !== ri));
 
   // รวมยอดที่ใช้ต่อ item + คงเหลือ
@@ -850,14 +852,15 @@ function RollSplitModal({ lot, busy, onClose, onConfirm, onConfirmManual }) {
   // สร้าง rolls สำหรับ confirm (โหมดกรอกเอง)
   const buildManualRolls = () => mRolls.map((roll, i) => ({
     rollNo: i + 1,
+    jobLabel: (roll.jobLabel || "").trim(),
     items: roll.rows.filter(r => r.itemIdx !== "" && Number(r.qty) > 0).map(r => ({ ...lotItems[Number(r.itemIdx)], qty: Number(r.qty) })),
   })).filter(r => r.items.length > 0);
 
   const itemLabel = (it) => `${it.colorName} / ${it.productionSize || it.size}`;
 
   return (
-    <Modal onClose={onClose} w={620}>
-      <MHead title={`🧵 แบ่งม้วน · ${lot.lotId}`} sub="กรอกเองว่าแต่ละม้วนพิมพ์อะไร หรือให้ระบบจัดอัตโนมัติ" onClose={onClose}/>
+    <Modal onClose={onClose} w={860}>
+      <MHead title={`🧵 แบ่งม้วน · ${lot.lotId}`} sub="กรอกเองว่าแต่ละม้วนพิมพ์อะไร (ใส่ชื่อรุ่น/งานได้) หรือให้ระบบจัดอัตโนมัติ" onClose={onClose}/>
 
       {/* tabs */}
       <div style={{display:"flex",gap:4,background:"#eef2f7",borderRadius:8,padding:3,marginBottom:14}}>
@@ -938,8 +941,12 @@ function RollSplitModal({ lot, busy, onClose, onConfirm, onConfirmManual }) {
               const rollTotal = roll.rows.reduce((s,r)=>s+(Number(r.qty)||0),0);
               return (
                 <div key={ri} style={{border:`1px solid #bfdbfe`,borderRadius:9,overflow:"hidden"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",background:"#eef6ff"}}>
-                    <span style={{fontSize:13,fontWeight:700,color:"#1e40af"}}>🧵 ม้วน {ri+1}</span>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"6px 10px",background:"#eef6ff",flexWrap:"wrap"}}>
+                    <span style={{display:"flex",alignItems:"center",gap:8,flex:"1 1 240px"}}>
+                      <span style={{fontSize:13,fontWeight:700,color:"#1e40af",whiteSpace:"nowrap"}}>🧵 ม้วน {ri+1}</span>
+                      <input value={roll.jobLabel||""} onChange={e=>setMRollField(ri,{jobLabel:e.target.value})} placeholder="👕 ชื่อรุ่น/งาน (เช่น K12, เสื้อคลาส)"
+                        style={{flex:1,minWidth:120,padding:"5px 8px",border:`1px solid ${T.border}`,borderRadius:6,fontSize:12,outline:"none",fontFamily:"inherit",background:"white"}}/>
+                    </span>
                     <span style={{display:"flex",alignItems:"center",gap:8}}>
                       <span style={{fontFamily:"monospace",fontWeight:700,color:"#1e40af",fontSize:13}}>{fmtInt(rollTotal)} ตัว</span>
                       {mRolls.length>1&&<button onClick={()=>removeRoll(ri)} style={{border:"none",background:"transparent",color:T.red,cursor:"pointer",fontSize:14}}>✕</button>}
