@@ -531,7 +531,7 @@ export default function LotDetailModal({
         ) : (
           <>
             <span style={{fontSize:13,color:T.text,fontWeight:600}}>🖨️ {lot.machine || <span style={{color:T.muted,fontWeight:400}}>ยังไม่ระบุเครื่อง</span>}</span>
-            {lot.rollNo && <span style={{fontSize:13,color:T.text,fontWeight:600}}>· 🧵 ม้วน {lot.rollNo}</span>}
+            {lot.rollNo && <span style={{fontSize:13,color:T.text,fontWeight:600}}>· 🧵 ม้วน {lot.rollNo} · {order.clothingName}</span>}
             <span style={{fontSize:11,color:T.sub,marginLeft:4}}>· ล็อตนี้ ≈ <b>{estimateRolls(lotTotal)}</b> ม้วน ({fmtInt(ROLL_CAPACITY)}/ม้วน)</span>
             {!!userRole && !isCancelled && (
               <button onClick={startEditMachine} style={{marginLeft:"auto",padding:"4px 12px",borderRadius:7,border:"1px solid rgba(59,91,139,0.3)",background:"white",color:T.accent,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>✏️ ตั้งเครื่อง/ม้วน</button>

@@ -1,11 +1,13 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { doc, setDoc, updateDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
-import { PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot, moveLot, getMachineForCurrentStage } from "../utils/productionLots";
+import { PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot, moveLot, getMachineForCurrentStage, nextLotId, nowStr } from "../utils/productionLots";
 import LotDetailModal from "./LotDetailModal";
 
 const T = { card:"#ffffff", border:"#e3e8ef", text:"#1f2a44", sub:"#5b6b85", muted:"#8a9bb3", accent:"#3b5b8b" };
 const fmtInt = (n) => Number(n || 0).toLocaleString("th-TH");
+// ขั้นที่ลากเข้าแล้วรวมม้วนของใบเดียวกันอัตโนมัติ (รีดเสร็จ → เย็บ)
+const AUTO_MERGE_STAGE = "เย็บ";
 
 export default function KanbanBoard({
   orders = [], collectionName: defaultCollection = "productionOrders", isCustom: defaultIsCustom = false,
@@ -86,7 +88,30 @@ export default function KanbanBoard({
       if (lots.length === 0 || lot.lotIdx === undefined || lot.lotIdx < 0) {
         await updateDoc(doc(db, collectionName, orderRef.id), { status: targetStatus });
       } else {
-        const newLots = moveLot(lots, lot.lotIdx, targetStatus, user?.name || "", `drag → ${targetStatus}`);
+        let newLots = moveLot(lots, lot.lotIdx, targetStatus, user?.name || "", `drag → ${targetStatus}`);
+        // 🔗 ลากเข้า "เย็บ" → รวมม้วนของใบนี้ที่อยู่เย็บแล้วเป็นล็อตเดียว (รอกระจายทีม)
+        if (targetStatus === AUTO_MERGE_STAGE) {
+          const atStage = newLots.filter(l => l.status === AUTO_MERGE_STAGE);
+          if (atStage.length > 1) {
+            const merged = new Map(); const notes = [];
+            atStage.forEach(l => {
+              (l.items || []).forEach(it => {
+                const q = Number(it.qty) || 0; if (q <= 0) return;
+                const key = [it.colorIdx ?? "", it.colorName ?? "", it.colorHex ?? "", it.size ?? "", it.variant ?? "", it.productionSize ?? ""].join("|");
+                if (!merged.has(key)) merged.set(key, { ...it, qty: 0 });
+                merged.get(key).qty += q;
+              });
+              (l.notes || []).forEach(n => notes.push(n));
+            });
+            const others = newLots.filter(l => l.status !== AUTO_MERGE_STAGE);
+            const id = nextLotId(others);
+            newLots = [...others, {
+              lotId: id, items: Array.from(merged.values()), status: AUTO_MERGE_STAGE,
+              statusHistory: [{ status: `รวม ${atStage.length} ม้วน → เย็บ`, at: nowStr(), by: user?.name || "" }],
+              notes, finishedStocked: false, machine: "", rollNo: "", machineByStage: {},
+            }];
+          }
+        }
         await updateDoc(doc(db, collectionName, orderRef.id), { lots: newLots });
       }
     } catch (e) {
@@ -352,7 +377,7 @@ function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag 
       {(lot.machine || lot.rollNo) && (
         <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:5}}>
           {lot.machine && <span style={{padding:"1px 7px",fontSize:10,background:"#eef6ff",color:"#1e40af",borderRadius:6,border:"1px solid #bfdbfe",fontWeight:700}}>🖨️ {lot.machine}</span>}
-          {lot.rollNo && <span style={{padding:"1px 7px",fontSize:10,background:"#f0fdf4",color:"#15803d",borderRadius:6,border:"1px solid #bbf7d0",fontWeight:700}}>🧵 ม้วน {lot.rollNo}</span>}
+          {lot.rollNo && <span style={{padding:"1px 7px",fontSize:10,background:"#f0fdf4",color:"#15803d",borderRadius:6,border:"1px solid #bbf7d0",fontWeight:700}}>🧵 ม้วน {lot.rollNo}{lot.clothingName?` · ${lot.clothingName}`:""}</span>}
         </div>
       )}
       {/* 🖼️ Thumbnail + ชื่อรุ่น */}
