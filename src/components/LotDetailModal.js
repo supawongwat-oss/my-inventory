@@ -650,11 +650,18 @@ export default function LotDetailModal({
       {showSplit && (
         <SplitLotModal
           lot={lot}
+          steps={steps}
           onClose={() => setShowSplit(false)}
           onConfirm={async (selections, opts = {}) => {
             setBusy(true);
             try {
-              const { newLots, splitOk } = splitLot(lots, lotIdx, selections, { by: user?.name || "", machine: opts.machine || "", rollNo: opts.rollNo || "" });
+              const { newLots, splitOk } = splitLot(lots, lotIdx, selections, {
+                by: user?.name || "",
+                machine: opts.machine || "",
+                rollNo: opts.rollNo || "",
+                targetStatus: opts.targetStatus || undefined,
+                machineByStage: opts.machineByStage || {},
+              });
               if (!splitOk) { setToast("กรอกจำนวนที่จะแยกอย่างน้อย 1 ตัว"); setBusy(false); return; }
               await persistLots(newLots);
               logAudit(user, {
@@ -680,37 +687,75 @@ export default function LotDetailModal({
 }
 
 // ── Split modal ──
-function SplitLotModal({ lot, onClose, onConfirm }) {
+function SplitLotModal({ lot, steps = PRODUCTION_STEPS, onClose, onConfirm }) {
   const [sels, setSels] = useState(() => (lot.items || []).map(() => ""));
   const [machine, setMachine] = useState("");
   const [rollNo, setRollNo] = useState("");
+  const [targetStage, setTargetStage] = useState("");   // "" = คงขั้นเดิม
+  const [team, setTeam] = useState("");                  // ทีม/เครื่องของขั้นปลายทาง
+  const [capacity, setCapacity] = useState(ROLL_CAPACITY); // ม้วนปรับได้ (ไม่ fix 1800)
   const setSel = (idx, val) => setSels(prev => prev.map((v, i) => i === idx ? val : v));
 
   const splitTotal = sels.reduce((s, v) => s + (Number(v) || 0), 0);
+  const cap = Math.max(1, Number(capacity) || ROLL_CAPACITY);
+  const rollEst = Math.max(1, Math.ceil(splitTotal / cap));
+  const stageTeamChoices = targetStage ? (MACHINES_BY_STAGE[targetStage] || []) : [];
 
   const submit = () => {
     const selections = sels.map((v, idx) => ({ itemIdx: idx, qty: Number(v) || 0 }))
                           .filter(s => s.qty > 0);
-    onConfirm(selections, { machine: machine.trim(), rollNo: rollNo.trim() });
+    const machineByStage = (targetStage && team) ? { [targetStage]: team } : {};
+    onConfirm(selections, { machine: machine.trim(), rollNo: rollNo.trim(), targetStatus: targetStage || undefined, machineByStage });
   };
 
   return (
     <Modal onClose={onClose} w={560}>
-      <MHead title={`✂️ แยกล็อต ${lot.lotId}`} sub="เลือกสี/ไซส์ + จำนวน แล้วระบุเครื่องพิมพ์/ม้วน → เป็นล็อตใหม่" onClose={onClose}/>
-      {/* เครื่องพิมพ์ + ม้วน ของล็อตใหม่ */}
-      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-        <div style={{flex:"1 1 180px"}}>
-          <label style={{fontSize:11,color:T.sub,display:"block",marginBottom:3,fontWeight:600}}>🖨️ เครื่องพิมพ์</label>
-          <input value={machine} onChange={e=>setMachine(e.target.value)} placeholder="เช่น เครื่อง A"
-            style={{width:"100%",boxSizing:"border-box",padding:"7px 10px",border:`1px solid ${T.border}`,borderRadius:7,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+      <MHead title={`✂️ แยกล็อต ${lot.lotId}`} sub="เลือกสี/ไซส์ + จำนวน → ส่งไปขั้น/ทีม หรือตั้งเครื่องพิมพ์-ม้วน" onClose={onClose}/>
+
+      {/* ส่งไปขั้น + ทีม (เช่น ส่งทีมเย็บ) */}
+      <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",padding:"10px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:9}}>
+        <div style={{flex:"1 1 160px"}}>
+          <label style={{fontSize:11,color:T.sub,display:"block",marginBottom:3,fontWeight:600}}>📍 ส่งไปขั้น</label>
+          <select value={targetStage} onChange={e=>{setTargetStage(e.target.value);setTeam("");}}
+            style={{width:"100%",boxSizing:"border-box",padding:"7px 10px",border:`1px solid ${T.border}`,borderRadius:7,fontSize:12,outline:"none",fontFamily:"inherit",background:"white"}}>
+            <option value="">— คงขั้นเดิม ({lot.status}) —</option>
+            {steps.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
         </div>
-        <div style={{flex:"0 1 120px"}}>
-          <label style={{fontSize:11,color:T.sub,display:"block",marginBottom:3,fontWeight:600}}>🧵 ม้วน</label>
-          <input value={rollNo} onChange={e=>setRollNo(e.target.value)} placeholder="เช่น 1"
-            style={{width:"100%",boxSizing:"border-box",padding:"7px 10px",border:`1px solid ${T.border}`,borderRadius:7,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+        <div style={{flex:"1 1 160px"}}>
+          <label style={{fontSize:11,color:T.sub,display:"block",marginBottom:3,fontWeight:600}}>🏭 ทีม/เครื่อง</label>
+          {stageTeamChoices.length > 0 ? (
+            <select value={team} onChange={e=>setTeam(e.target.value)}
+              style={{width:"100%",boxSizing:"border-box",padding:"7px 10px",border:`1px solid ${T.border}`,borderRadius:7,fontSize:12,outline:"none",fontFamily:"inherit",background:"white"}}>
+              <option value="">— ยังไม่ระบุ —</option>
+              {stageTeamChoices.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          ) : (
+            <input value={team} onChange={e=>setTeam(e.target.value)} placeholder={targetStage?"พิมพ์ทีม/เครื่อง":"เลือกขั้นก่อน"} disabled={!targetStage}
+              style={{width:"100%",boxSizing:"border-box",padding:"7px 10px",border:`1px solid ${T.border}`,borderRadius:7,fontSize:12,outline:"none",fontFamily:"inherit",background:targetStage?"white":"#f1f5f9"}}/>
+          )}
         </div>
       </div>
-      <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10,maxHeight:280,overflowY:"auto"}}>
+
+      {/* เครื่องพิมพ์ + ม้วน ของล็อตใหม่ (สำหรับวางแผนพิมพ์) */}
+      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+        <div style={{flex:"1 1 150px"}}>
+          <label style={{fontSize:11,color:T.sub,display:"block",marginBottom:3,fontWeight:600}}>🖨️ เครื่องพิมพ์ (ถ้ามี)</label>
+          <input value={machine} onChange={e=>setMachine(e.target.value)} placeholder="เช่น CPU 1"
+            style={{width:"100%",boxSizing:"border-box",padding:"7px 10px",border:`1px solid ${T.border}`,borderRadius:7,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+        </div>
+        <div style={{flex:"0 1 90px"}}>
+          <label style={{fontSize:11,color:T.sub,display:"block",marginBottom:3,fontWeight:600}}>🧵 ม้วน</label>
+          <input value={rollNo} onChange={e=>setRollNo(e.target.value)} placeholder="1"
+            style={{width:"100%",boxSizing:"border-box",padding:"7px 10px",border:`1px solid ${T.border}`,borderRadius:7,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+        </div>
+        <div style={{flex:"0 1 110px"}}>
+          <label style={{fontSize:11,color:T.sub,display:"block",marginBottom:3,fontWeight:600}}>ตัว/ม้วน</label>
+          <input type="number" value={capacity} onChange={e=>setCapacity(e.target.value)}
+            style={{width:"100%",boxSizing:"border-box",padding:"7px 10px",border:`1px solid ${T.border}`,borderRadius:7,fontSize:12,outline:"none",fontFamily:"monospace",textAlign:"center"}}/>
+        </div>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10,maxHeight:240,overflowY:"auto"}}>
         {(lot.items || []).map((it, i) => (
           <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 80px 90px",gap:8,alignItems:"center",padding:8,background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:8}}>
             <div style={{fontSize:12,color:T.text}}>
@@ -725,7 +770,8 @@ function SplitLotModal({ lot, onClose, onConfirm }) {
         ))}
       </div>
       <div style={{textAlign:"right",fontSize:12,color:T.sub,marginBottom:12}}>
-        จะแยกออก <b style={{color:T.accent}}>{fmtInt(splitTotal)}</b> ตัว{splitTotal>0&&<> ≈ <b style={{color:T.accent}}>{estimateRolls(splitTotal)}</b> ม้วน</>}
+        จะแยกออก <b style={{color:T.accent}}>{fmtInt(splitTotal)}</b> ตัว{splitTotal>0&&<> ≈ <b style={{color:T.accent}}>{rollEst}</b> ม้วน ({fmtInt(cap)}/ม้วน)</>}
+        {targetStage && <span style={{marginLeft:8,color:T.green,fontWeight:600}}>→ {targetStage}{team?` · ${team}`:""}</span>}
       </div>
       <div style={{display:"flex",gap:8}}>
         <BtnGhost onClick={onClose} style={{flex:1}}>ยกเลิก</BtnGhost>

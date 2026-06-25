@@ -132,6 +132,7 @@ export function splitLot(lots, lotIdx, selections, opts = {}) {
     finishedStocked: false,
     machine: opts.machine || "",   // 🖨️ เครื่องพิมพ์
     rollNo: opts.rollNo || "",     // 🧵 ม้วน/แบตช์
+    machineByStage: opts.machineByStage || {}, // 🏭 ทีม/เครื่องต่อขั้น (เช่น เย็บ: ทีม 3)
   };
 
   // ถ้า old lot ไม่เหลือ items → ลบทิ้ง
