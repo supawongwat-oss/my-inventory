@@ -16,6 +16,7 @@ export default function KanbanBoard({
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null); // { order, lotIdx }
   const [collapsed, setCollapsed] = useState({});
+  const [compact, setCompact] = useState(false); // 🗜️ ย่อการ์ดทั้งบอร์ด
   const [columnOrder, setColumnOrder] = useState(PRODUCTION_STEPS);
   // 🏭 production = ทำงานในโรงงาน → ทุก role ลาก/จัดการได้
   const canReorder = !!user;
@@ -231,6 +232,8 @@ export default function KanbanBoard({
             🖱️ ลากการ์ด → วางในคอลัมน์ที่ต้องการได้อิสระ
           </div>
         )}
+        <button onClick={()=>setCompact(c=>!c)} title={compact?"ขยายการ์ด":"ย่อการ์ดให้เหลือบรรทัดเดียว"}
+          style={{padding:"8px 14px",borderRadius:8,border:`1px solid ${compact?T.accent:T.border}`,background:compact?"rgba(59,91,139,0.1)":"white",color:compact?T.accent:T.sub,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>{compact?"🗗 ขยายการ์ด":"🗜️ ย่อการ์ด"}</button>
         {canReorder && (
           <>
             <button onClick={addColumn} title="เพิ่มสายงานใหม่"
@@ -299,7 +302,7 @@ export default function KanbanBoard({
                   {col.length === 0 ? (
                     <div style={{padding:20,textAlign:"center",fontSize:11,color:T.muted,fontStyle:"italic"}}>— ว่าง —</div>
                   ) : col.map(lot => (
-                    <KanbanCard key={`${lot.orderId}-${lot.lotId}`} lot={lot}
+                    <KanbanCard key={`${lot.orderId}-${lot.lotId}`} lot={lot} compact={compact}
                       onClick={() => setSelected({ order: lot.orderRef, lotIdx: lot.lotIdx })}
                       onDragStart={()=>setDraggingLot(lot)}
                       onDragEnd={()=>{ setDraggingLot(null); setDragOverStatus(null); }}
@@ -347,7 +350,7 @@ export default function KanbanBoard({
   );
 }
 
-function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag = true }) {
+function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag = true, compact = false }) {
   const total = totalQtyOfLot(lot);
   const colors = Array.from(new Set((lot.items || []).map(it => it.colorName)));
   const isCustom = lot.orderRef?.__isCustom;
@@ -358,6 +361,24 @@ function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag 
     || ord.clothingImage
     || (Array.isArray(ord.images) && ord.images[0]?.dataUrl)
     || "";
+
+  // 🗜️ โหมดย่อ — บรรทัดเดียว
+  if (compact) {
+    return (
+      <div onClick={onClick} draggable={canDrag}
+        onDragStart={e=>{ if (!canDrag) return; e.dataTransfer.effectAllowed="move"; e.dataTransfer.setData("text/plain", lot.lotId); onDragStart && onDragStart(); }}
+        onDragEnd={onDragEnd}
+        title={`${lot.prodNo} · ${lot.jobLabel||lot.clothingName||""}`}
+        style={{display:"flex",alignItems:"center",gap:6,padding:"5px 9px",background:"white",border:`1px solid ${T.border}`,borderLeft:`3px solid ${accentColor}`,borderRadius:6,cursor:canDrag?"grab":"pointer",opacity:isDragging?0.5:1,fontSize:11}}
+        onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+        onMouseLeave={e=>e.currentTarget.style.background="white"}>
+        {lot.rollNo&&<span style={{color:"#15803d",fontWeight:700,flexShrink:0}}>🧵{lot.rollNo}</span>}
+        <span style={{fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lot.jobLabel||lot.clothingName||lot.prodNo}</span>
+        <span style={{marginLeft:"auto",fontFamily:"monospace",fontWeight:700,color:T.text,flexShrink:0}}>{fmtInt(total)}</span>
+      </div>
+    );
+  }
+
   return (
     <div onClick={onClick}
       draggable={canDrag}
