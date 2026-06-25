@@ -862,18 +862,56 @@ function RollSplitModal({ lot, busy, onClose, onConfirm, onConfirmManual }) {
 
       {mode === "manual" ? (
         <>
-          {/* คงเหลือต่อ item */}
-          <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:12,padding:"8px 10px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:8}}>
-            {lotItems.map((it, idx) => {
-              const used = usedByItem[idx] || 0;
-              const remain = (Number(it.qty) || 0) - used;
-              return (
-                <span key={idx} style={{padding:"2px 8px",fontSize:11,borderRadius:6,background:"white",border:`1px solid ${remain<0?"#fecaca":T.border}`,color:remain<0?T.red:T.sub}}>
-                  {itemLabel(it)}: <b style={{color:remain<0?T.red:remain===0?T.green:T.accent}}>{fmtInt(remain)}</b>/{fmtInt(it.qty)}{remain<0&&" ⚠️เกิน"}
-                </span>
-              );
-            })}
-          </div>
+          {/* คงเหลือ — ตารางจัดกลุ่มตามสี (ดูง่าย) */}
+          {(() => {
+            // คำนวณคงเหลือต่อ item แล้วจัดกลุ่มตามสี
+            const rem = lotItems.map((it, idx) => ({ ...it, sz: it.productionSize || it.size, remain: (Number(it.qty) || 0) - (usedByItem[idx] || 0) }));
+            const groups = []; const gm = new Map();
+            rem.forEach(it => {
+              const key = (it.colorName || "-") + "|" + (it.colorHex || "#999");
+              if (!gm.has(key)) { const g = { colorName: it.colorName || "-", colorHex: it.colorHex || "#999", sizes: [] }; gm.set(key, g); groups.push(g); }
+              gm.get(key).sizes.push({ size: it.sz, remain: it.remain });
+            });
+            groups.forEach(g => g.sizes.sort((a, b) => sizeRank(a.size) - sizeRank(b.size)));
+            const grand = rem.reduce((s, it) => s + it.remain, 0);
+            return (
+              <div style={{marginBottom:12,border:`1px solid ${T.border}`,borderRadius:8,overflow:"hidden"}}>
+                <div style={{padding:"5px 10px",background:"#f1f5fb",fontSize:11,fontWeight:700,color:T.sub}}>📦 คงเหลือ (ยังไม่ใส่ม้วน)</div>
+                <div style={{maxHeight:170,overflowY:"auto"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                    <tbody>
+                      {groups.map((g,gi) => (
+                        <tr key={gi} style={{borderTop:`1px solid ${T.border}`}}>
+                          <td style={{padding:"5px 8px",whiteSpace:"nowrap",borderRight:`1px solid ${T.border}`,width:90}}>
+                            <span style={{display:"inline-flex",alignItems:"center",gap:5}}>
+                              <span style={{width:11,height:11,borderRadius:2,background:g.colorHex,border:"1px solid rgba(0,0,0,0.15)"}}/>
+                              <b style={{color:T.text}}>{g.colorName}</b>
+                            </span>
+                          </td>
+                          <td style={{padding:"4px 8px"}}>
+                            <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                              {g.sizes.map((s,si) => (
+                                <span key={si} style={{padding:"2px 8px",borderRadius:6,fontSize:11,background:s.remain<0?"#fef2f2":s.remain===0?"#f0fdf4":"#f8fafc",border:`1px solid ${s.remain<0?"#fecaca":T.border}`}}>
+                                  <span style={{fontFamily:"monospace",fontWeight:700,color:T.accent}}>{s.size}</span>{" "}
+                                  <b style={{color:s.remain<0?T.red:s.remain===0?T.green:T.text,fontFamily:"monospace"}}>{fmtInt(s.remain)}</b>
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{borderTop:`2px solid ${T.border}`,background:"#f8fafc"}}>
+                        <td style={{padding:"5px 8px",fontWeight:700,color:T.sub,borderRight:`1px solid ${T.border}`}}>รวมคงเหลือ</td>
+                        <td style={{padding:"5px 8px",fontFamily:"monospace",fontWeight:800,color:grand<0?T.red:T.green}}>{fmtInt(grand)} ตัว</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
 
           <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:12,maxHeight:300,overflowY:"auto"}}>
             {mRolls.map((roll, ri) => {
