@@ -361,18 +361,18 @@ export default function LotDetailModal({
     await replaceLotWithRolls(rolls, `แบ่ง ${rolls.length} ม้วน (${capacity}/ม้วน) จาก ${lot.lotId}`);
   };
 
-  // ── รวมล็อตที่ใช้งานอยู่ทั้งหมดกลับเป็นล็อตเดียว (undo แยก/แบ่งม้วน) ──
+  // ── รวมล็อตที่อยู่ "ขั้นเดียวกัน" กลับเป็นล็อตเดียว (เช่น รีดเสร็จ → รวมรอส่งเย็บ) ──
   const handleMergeAllLots = async () => {
     if (busy) return;
-    const active = lots.filter(l => l.status !== "ยกเลิก");
-    if (active.length < 2) { setToast("มีล็อตใช้งานเดียว — ไม่ต้องรวม"); return; }
-    if (!window.confirm(`รวม ${active.length} ล็อตที่ใช้งานอยู่ของ ${order.prodNo} เป็นล็อตเดียว?\n(ล็อตที่ยกเลิกจะไม่ถูกแตะ)`)) return;
+    const sameStage = lots.filter(l => l.status === lot.status && l.status !== "ยกเลิก");
+    if (sameStage.length < 2) { setToast(`ขั้น "${lot.status}" มีล็อตเดียว — ไม่ต้องรวม`); return; }
+    if (!window.confirm(`รวม ${sameStage.length} ล็อตที่อยู่ขั้น "${lot.status}" เป็นล็อตเดียว?\n(ล็อตในขั้นอื่นไม่ถูกแตะ)`)) return;
     setBusy(true);
     try {
       // รวม items (key = colorIdx|colorName|colorHex|size|variant|productionSize)
       const merged = new Map();
       const notes = [];
-      active.forEach(l => {
+      sameStage.forEach(l => {
         (l.items || []).forEach(it => {
           const q = Number(it.qty) || 0; if (q <= 0) return;
           const key = [it.colorIdx ?? "", it.colorName ?? "", it.colorHex ?? "", it.size ?? "", it.variant ?? "", it.productionSize ?? ""].join("|");
@@ -382,22 +382,20 @@ export default function LotDetailModal({
         (l.notes || []).forEach(n => notes.push(n));
       });
       const items = Array.from(merged.values());
-      // สถานะ = ขั้นที่น้อยที่สุดในบรรดาล็อตที่ใช้งาน (กันข้ามขั้น)
-      const idxs = active.map(l => steps.indexOf(l.status)).filter(i => i >= 0);
-      const status = steps[Math.min(...idxs)] || active[0].status;
-      const cancelled = lots.filter(l => l.status === "ยกเลิก");
-      const id = nextLotId(cancelled);
+      // ล็อตที่เหลือ (ขั้นอื่น + ยกเลิก) ไม่ถูกแตะ
+      const untouched = lots.filter(l => !(l.status === lot.status && l.status !== "ยกเลิก"));
+      const id = nextLotId(untouched);
       const mergedLot = {
-        lotId: id, items, status,
-        statusHistory: [{ status: `รวม ${active.length} ล็อต`, at: nowStr(), by: user?.name || "" }],
+        lotId: id, items, status: lot.status,
+        statusHistory: [{ status: `รวม ${sameStage.length} ล็อต (${lot.status})`, at: nowStr(), by: user?.name || "" }],
         notes, finishedStocked: false, machine: "", rollNo: "", machineByStage: {},
       };
-      await persistLots([mergedLot, ...cancelled]);
+      await persistLots([mergedLot, ...untouched]);
       logAudit(user, {
         action: AUDIT_ACTIONS.PRODUCTION_STATUS, collection: collectionName, targetId: order.id,
-        targetLabel: `${order.prodNo} · ${id}`, note: `รวม ${active.length} ล็อตเป็นล็อตเดียว`,
+        targetLabel: `${order.prodNo} · ${id}`, note: `รวม ${sameStage.length} ล็อตขั้น ${lot.status}`,
       });
-      setToast(`รวม ${active.length} ล็อตสำเร็จ`);
+      setToast(`รวม ${sameStage.length} ล็อตสำเร็จ`);
       setTimeout(() => onClose && onClose(), 700);
     } catch (e) { console.error(e); setToast("ผิดพลาด: " + (e.message || e)); setBusy(false); }
   };
@@ -645,8 +643,8 @@ export default function LotDetailModal({
           {lotTotal > ROLL_CAPACITY * 0.5 && (
             <BtnGhost onClick={() => setShowRollSplit(true)} disabled={busy} style={{flex:1,minWidth:150}}>🧵 แบ่งม้วน</BtnGhost>
           )}
-          {lots.filter(l => l.status !== "ยกเลิก").length > 1 && (
-            <BtnGhost onClick={handleMergeAllLots} disabled={busy} style={{flex:1,minWidth:140}}>🔗 รวมล็อตกลับ</BtnGhost>
+          {lots.filter(l => l.status === lot.status && l.status !== "ยกเลิก").length > 1 && (
+            <BtnGhost onClick={handleMergeAllLots} disabled={busy} style={{flex:1,minWidth:160}}>🔗 รวมล็อตขั้นนี้ ({lots.filter(l => l.status === lot.status && l.status !== "ยกเลิก").length})</BtnGhost>
           )}
           {!!userRole && !isFinal && (
             <BtnDanger onClick={handleCancel} disabled={busy} style={{minWidth:90}}>🛑 ยกเลิก</BtnDanger>
