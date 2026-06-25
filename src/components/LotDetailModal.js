@@ -7,7 +7,7 @@ import {
   PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot,
   moveLot, splitLot, addLotNote, nextStep, canMoveTo, removeLot, nowStr,
   MACHINES_BY_STAGE,
-  estimateRolls, ROLL_CAPACITY,
+  estimateRolls, ROLL_CAPACITY, packIntoRolls, nextLotId,
 } from "../utils/productionLots";
 import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
 
@@ -23,6 +23,7 @@ export default function LotDetailModal({
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
   const [showSplit, setShowSplit] = useState(false);
+  const [showRollSplit, setShowRollSplit] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [pendingPhotos, setPendingPhotos] = useState([]); // [{dataUrl, sizeKB}]
   const [photoCache, setPhotoCache] = useState({}); // {photoId: dataUrl}
@@ -317,6 +318,42 @@ export default function LotDetailModal({
     finally { setBusy(false); }
   };
 
+  // ── แบ่งม้วนอัตโนมัติ: แทนล็อตนี้ด้วยหลายล็อต (ม้วน 1..N) ──
+  const applyRollSplit = async (orderedItems, capacity) => {
+    if (busy) return;
+    const rolls = packIntoRolls(orderedItems, capacity);
+    if (rolls.length <= 1) { setToast("ของน้อยกว่า 1 ม้วน — ไม่ต้องแบ่ง"); return; }
+    setBusy(true);
+    try {
+      // เอาล็อตเดิมออก แล้วเติมล็อตม้วนใหม่ (id ไม่ซ้ำ)
+      let working = lots.filter((_, i) => i !== lotIdx);
+      const at = nowStr();
+      rolls.forEach(r => {
+        const id = nextLotId(working);
+        working = [...working, {
+          lotId: id,
+          items: r.items,
+          status: lot.status,
+          statusHistory: [{ status: `แบ่งม้วนจาก ${lot.lotId}`, at, by: user?.name || "" }],
+          notes: [],
+          finishedStocked: false,
+          machine: "",
+          rollNo: String(r.rollNo),
+          machineByStage: {},
+        }];
+      });
+      await persistLots(working);
+      logAudit(user, {
+        action: AUDIT_ACTIONS.PRODUCTION_STATUS, collection: collectionName, targetId: order.id,
+        targetLabel: `${order.prodNo} · ${lot.lotId}`,
+        note: `แบ่ง ${rolls.length} ม้วน (${capacity}/ม้วน) จาก ${lot.lotId}`,
+      });
+      setShowRollSplit(false);
+      setToast(`แบ่งเป็น ${rolls.length} ม้วนสำเร็จ`);
+      setTimeout(() => onClose && onClose(), 700);
+    } catch (e) { console.error(e); setToast("ผิดพลาด: " + (e.message || e)); setBusy(false); }
+  };
+
   const updateEditItem = (idx, patch) => setEditItems(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it));
   const removeEditItem = (idx) => setEditItems(prev => prev.filter((_, i) => i !== idx));
   const addEditItem = () => setEditItems(prev => [...prev, { colorName: "", colorHex: "#999", colorIdx: 0, size: "", variant: "", productionSize: "", qty: "1" }]);
@@ -539,6 +576,9 @@ export default function LotDetailModal({
           {(lot.items || []).length > 0 && lotTotal > 1 && (
             <BtnGhost onClick={() => setShowSplit(true)} disabled={busy} style={{flex:1,minWidth:140}}>✂️ แยกล็อตย่อย</BtnGhost>
           )}
+          {lotTotal > ROLL_CAPACITY * 0.5 && (
+            <BtnGhost onClick={() => setShowRollSplit(true)} disabled={busy} style={{flex:1,minWidth:150}}>🧵 แบ่งม้วนอัตโนมัติ</BtnGhost>
+          )}
           {!!userRole && !isFinal && (
             <BtnDanger onClick={handleCancel} disabled={busy} style={{minWidth:90}}>🛑 ยกเลิก</BtnDanger>
           )}
@@ -682,6 +722,89 @@ export default function LotDetailModal({
           }}
         />
       )}
+
+      {/* Roll-split modal */}
+      {showRollSplit && (
+        <RollSplitModal
+          lot={lot}
+          busy={busy}
+          onClose={() => setShowRollSplit(false)}
+          onConfirm={applyRollSplit}
+        />
+      )}
+    </Modal>
+  );
+}
+
+// ── Roll-split modal: แบ่งของในล็อตเป็นหลายม้วนอัตโนมัติ (เรียงลำดับพิมพ์ได้) ──
+function RollSplitModal({ lot, busy, onClose, onConfirm }) {
+  const [items, setItems] = useState(() => (lot.items || []).map(it => ({ ...it })));
+  const [capacity, setCapacity] = useState(ROLL_CAPACITY);
+  const move = (idx, dir) => setItems(prev => {
+    const ni = idx + dir;
+    if (ni < 0 || ni >= prev.length) return prev;
+    const arr = [...prev];
+    [arr[idx], arr[ni]] = [arr[ni], arr[idx]];
+    return arr;
+  });
+  const cap = Math.max(1, Number(capacity) || ROLL_CAPACITY);
+  const rolls = packIntoRolls(items, cap);
+
+  return (
+    <Modal onClose={onClose} w={600}>
+      <MHead title={`🧵 แบ่งม้วนอัตโนมัติ · ${lot.lotId}`} sub="เรียงลำดับที่จะพิมพ์ (บนลงล่าง) → ระบบเติมแต่ละม้วนต่อเนื่อง" onClose={onClose}/>
+
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+        <span style={{fontSize:12,color:T.sub,fontWeight:600}}>ความจุต่อม้วน:</span>
+        <input type="number" value={capacity} onChange={e=>setCapacity(e.target.value)}
+          style={{width:100,padding:"6px 10px",border:`1px solid ${T.border}`,borderRadius:7,fontSize:13,fontFamily:"monospace",textAlign:"center",outline:"none"}}/>
+        <span style={{fontSize:11,color:T.muted}}>ตัว/ม้วน (ปรับได้ตามจริง)</span>
+      </div>
+
+      {/* ลำดับการพิมพ์ */}
+      <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:6,textTransform:"uppercase"}}>1️⃣ ลำดับการพิมพ์</div>
+      <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:14,maxHeight:200,overflowY:"auto"}}>
+        {items.map((it, i) => (
+          <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 70px 28px 28px",gap:6,alignItems:"center",padding:"6px 8px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:7}}>
+            <div style={{fontSize:12,color:T.text}}>
+              <span style={{width:10,height:10,borderRadius:2,background:it.colorHex||"#999",display:"inline-block",marginRight:6,verticalAlign:"middle",border:"1px solid rgba(0,0,0,0.1)"}}/>
+              <b>{it.colorName}</b> / {it.productionSize || it.size}
+            </div>
+            <div style={{textAlign:"right",fontFamily:"monospace",fontWeight:700,color:T.accent,fontSize:12}}>{fmtInt(it.qty)}</div>
+            <button onClick={()=>move(i,-1)} disabled={i===0} style={{padding:"3px",border:`1px solid ${T.border}`,borderRadius:5,background:i===0?"#f1f5f9":"white",cursor:i===0?"not-allowed":"pointer",fontSize:11}}>↑</button>
+            <button onClick={()=>move(i,1)} disabled={i===items.length-1} style={{padding:"3px",border:`1px solid ${T.border}`,borderRadius:5,background:i===items.length-1?"#f1f5f9":"white",cursor:i===items.length-1?"not-allowed":"pointer",fontSize:11}}>↓</button>
+          </div>
+        ))}
+      </div>
+
+      {/* preview ม้วน */}
+      <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:6,textTransform:"uppercase"}}>2️⃣ ผลลัพธ์ — {rolls.length} ม้วน</div>
+      <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14,maxHeight:240,overflowY:"auto"}}>
+        {rolls.map((r) => (
+          <div key={r.rollNo} style={{border:`1px solid ${T.border}`,borderRadius:8,overflow:"hidden"}}>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"5px 10px",background:"#eef6ff",fontSize:12,fontWeight:700,color:"#1e40af"}}>
+              <span>🧵 ม้วน {r.rollNo}</span>
+              <span style={{fontFamily:"monospace"}}>{fmtInt(r.total)} ตัว</span>
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:4,padding:"6px 10px"}}>
+              {r.items.map((it,j) => (
+                <span key={j} style={{padding:"2px 8px",fontSize:11,background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:6}}>
+                  {it.colorName} {it.productionSize || it.size} <b style={{color:T.accent}}>×{fmtInt(it.qty)}</b>
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{padding:"8px 12px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,fontSize:11,color:"#92400e",marginBottom:12}}>
+        ⚠️ ยืนยันแล้ว ล็อต {lot.lotId} จะถูกแทนด้วย {rolls.length} ล็อตม้วน (ม้วน 1–{rolls.length}) — แต่ละม้วนเดิน Kanban แยกกัน
+      </div>
+
+      <div style={{display:"flex",gap:8}}>
+        <BtnGhost onClick={onClose} disabled={busy} style={{flex:1}}>ยกเลิก</BtnGhost>
+        <BtnPrimary onClick={()=>onConfirm(items, cap)} disabled={busy || rolls.length<=1} style={{flex:1}}>{busy?"กำลังบันทึก...":`🧵 สร้าง ${rolls.length} ม้วน`}</BtnPrimary>
+      </div>
     </Modal>
   );
 }

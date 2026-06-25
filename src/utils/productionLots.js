@@ -16,6 +16,29 @@ export const PRODUCTION_STEPS = [
 export const ROLL_CAPACITY = 1800;
 export const estimateRolls = (qty) => Math.max(1, Math.ceil((Number(qty) || 0) / ROLL_CAPACITY));
 
+// 🧵 จัดของลงม้วนแบบต่อเนื่อง (sequential bin-packing)
+// items เรียงตามลำดับที่จะพิมพ์ → เติมม้วนจนเต็ม capacity แล้วขึ้นม้วนใหม่
+// ไซส์เดียวพาดได้หลายม้วน, 1 ม้วนมีได้หลายไซส์/สี
+// คืน [{ rollNo, items:[{...it, qty}], total }]
+export function packIntoRolls(items, capacity) {
+  const cap = Math.max(1, Number(capacity) || ROLL_CAPACITY);
+  const rolls = [];
+  let cur = { items: [], total: 0 };
+  const queue = (items || []).map(it => ({ it, remaining: Number(it.qty) || 0 })).filter(x => x.remaining > 0);
+  for (const node of queue) {
+    while (node.remaining > 0) {
+      const space = cap - cur.total;
+      if (space <= 0) { rolls.push(cur); cur = { items: [], total: 0 }; continue; }
+      const take = Math.min(space, node.remaining);
+      cur.items.push({ ...node.it, qty: take });
+      cur.total += take;
+      node.remaining -= take;
+    }
+  }
+  if (cur.items.length > 0) rolls.push(cur);
+  return rolls.map((r, i) => ({ ...r, rollNo: i + 1 }));
+}
+
 export const STATUS_COLORS = {
   "พิมพ์ลาย":   "#0ea5e9",
   "ตัดผ้า":     "#6366f1",
