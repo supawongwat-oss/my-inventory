@@ -111,7 +111,7 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                       return (
                         <tr key={`${gi}-${ci}`} style={{background: gi%2===0?"white":"#f8fafc"}}>
                           <td style={{padding:"4px 5px",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:11,verticalAlign:"middle",width:75}}>{ci===0 ? (order.clothingName || "-") : ""}</td>
-                          <td style={{padding:"4px 6px",color:"#000",border:"1px solid #000",fontSize:11,verticalAlign:"middle",width:130}}>
+                          <td data-no-scale-tree="true" style={{padding:"4px 6px",color:"#000",border:"1px solid #000",fontSize:11,verticalAlign:"middle",width:130}}>
                             {ci===0 && (
                               <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                                 <div style={{width:10,height:10,borderRadius:2,background:g.colorHex,border:"1px solid #000",flexShrink:0}}/>
