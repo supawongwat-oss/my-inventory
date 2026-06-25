@@ -34,6 +34,7 @@ export default function LotDetailModal({
   const [editMachine, setEditMachine] = useState(false);
   const [machineVal, setMachineVal] = useState("");
   const [rollVal, setRollVal] = useState("");
+  const [jobVal, setJobVal] = useState("");
   const fileRef = useRef(null);
 
   const lots = getLots(order);
@@ -305,14 +306,14 @@ export default function LotDetailModal({
     }
   };
   // ── แก้เครื่องพิมพ์ + ม้วน ──
-  const startEditMachine = () => { setMachineVal(lot.machine || ""); setRollVal(lot.rollNo || ""); setEditMachine(true); };
+  const startEditMachine = () => { setMachineVal(lot.machine || ""); setRollVal(lot.rollNo || ""); setJobVal(lot.jobLabel || ""); setEditMachine(true); };
   const saveMachine = async () => {
     if (busy) return;
     setBusy(true);
     try {
-      const newLots = lots.map((l, i) => i === lotIdx ? { ...l, machine: machineVal.trim(), rollNo: rollVal.trim() } : l);
+      const newLots = lots.map((l, i) => i === lotIdx ? { ...l, machine: machineVal.trim(), rollNo: rollVal.trim(), jobLabel: jobVal.trim() } : l);
       await persistLots(newLots);
-      logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: collectionName, targetId: order.id, targetLabel: `${order.prodNo} · ${lot.lotId}`, note: `ตั้งเครื่องพิมพ์: ${machineVal||"-"} · ม้วน: ${rollVal||"-"}` });
+      logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: collectionName, targetId: order.id, targetLabel: `${order.prodNo} · ${lot.lotId}`, note: `ตั้งเครื่องพิมพ์: ${machineVal||"-"} · ม้วน: ${rollVal||"-"} · งาน: ${jobVal||"-"}` });
       setEditMachine(false);
       setToast("บันทึกเครื่องพิมพ์/ม้วนสำเร็จ");
     } catch (e) { console.error(e); setToast("ผิดพลาด: " + (e.message || e)); }
@@ -518,12 +519,17 @@ export default function LotDetailModal({
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <span style={{fontSize:12,color:T.sub}}>🖨️ เครื่อง:</span>
               <input value={machineVal} onChange={e=>setMachineVal(e.target.value)} placeholder="เช่น เครื่อง A"
-                style={{width:120,padding:"5px 8px",border:`1px solid ${T.border}`,borderRadius:6,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+                style={{width:110,padding:"5px 8px",border:`1px solid ${T.border}`,borderRadius:6,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <span style={{fontSize:12,color:T.sub}}>🧵 ม้วน:</span>
               <input value={rollVal} onChange={e=>setRollVal(e.target.value)} placeholder="เช่น 1"
-                style={{width:80,padding:"5px 8px",border:`1px solid ${T.border}`,borderRadius:6,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+                style={{width:70,padding:"5px 8px",border:`1px solid ${T.border}`,borderRadius:6,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:6,flex:"1 1 180px"}}>
+              <span style={{fontSize:12,color:T.sub,whiteSpace:"nowrap"}}>👕 รุ่น/งาน:</span>
+              <input value={jobVal} onChange={e=>setJobVal(e.target.value)} placeholder="เช่น K12, เสื้อคลาส (ถ้ามีหลายงานในม้วน)"
+                style={{flex:1,minWidth:120,padding:"5px 8px",border:`1px solid ${T.border}`,borderRadius:6,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
             </div>
             <BtnPrimary onClick={saveMachine} disabled={busy} style={{fontSize:12,padding:"5px 12px"}}>💾 บันทึก</BtnPrimary>
             <BtnGhost onClick={()=>setEditMachine(false)} disabled={busy} style={{fontSize:12,padding:"5px 12px"}}>ยกเลิก</BtnGhost>
@@ -531,7 +537,8 @@ export default function LotDetailModal({
         ) : (
           <>
             <span style={{fontSize:13,color:T.text,fontWeight:600}}>🖨️ {lot.machine || <span style={{color:T.muted,fontWeight:400}}>ยังไม่ระบุเครื่อง</span>}</span>
-            {lot.rollNo && <span style={{fontSize:13,color:T.text,fontWeight:600}}>· 🧵 ม้วน {lot.rollNo} · {order.clothingName}</span>}
+            {lot.rollNo && <span style={{fontSize:13,color:T.text,fontWeight:600}}>· 🧵 ม้วน {lot.rollNo}</span>}
+            <span style={{fontSize:13,color:T.text,fontWeight:600}}>· 👕 {lot.jobLabel || order.clothingName}</span>
             <span style={{fontSize:11,color:T.sub,marginLeft:4}}>· ล็อตนี้ ≈ <b>{estimateRolls(lotTotal)}</b> ม้วน ({fmtInt(ROLL_CAPACITY)}/ม้วน)</span>
             {!!userRole && !isCancelled && (
               <button onClick={startEditMachine} style={{marginLeft:"auto",padding:"4px 12px",borderRadius:7,border:"1px solid rgba(59,91,139,0.3)",background:"white",color:T.accent,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>✏️ ตั้งเครื่อง/ม้วน</button>
