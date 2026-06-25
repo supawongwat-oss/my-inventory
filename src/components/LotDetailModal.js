@@ -327,17 +327,18 @@ export default function LotDetailModal({
     try {
       let working = lots.filter((_, i) => i !== lotIdx);
       const at = nowStr();
-      rolls.forEach((r, idx) => {
+      rolls.forEach((r) => {
         const id = nextLotId(working);
+        const hasRoll = r.rollNo != null && r.rollNo !== "";
         working = [...working, {
           lotId: id,
           items: r.items,
           status: lot.status,
-          statusHistory: [{ status: `แบ่งม้วนจาก ${lot.lotId}`, at, by: user?.name || "" }],
+          statusHistory: [{ status: r.label || `แบ่งม้วนจาก ${lot.lotId}`, at, by: user?.name || "" }],
           notes: [],
           finishedStocked: false,
           machine: "",
-          rollNo: String(r.rollNo || idx + 1),
+          rollNo: hasRoll ? String(r.rollNo) : "",
           machineByStage: {},
         }];
       });
@@ -401,11 +402,22 @@ export default function LotDetailModal({
     } catch (e) { console.error(e); setToast("ผิดพลาด: " + (e.message || e)); setBusy(false); }
   };
 
-  // โหมดกรอกเอง — rolls = [{rollNo, items}]
+  // โหมดกรอกเอง — rolls = [{rollNo, items}] · ของที่ไม่ได้ใส่ในม้วน → เก็บเป็นล็อต "เหลือ" (ไม่หาย)
   const applyManualRolls = async (rolls) => {
     const clean = (rolls || []).filter(r => (r.items || []).length > 0);
     if (clean.length === 0) { setToast("กรอกอย่างน้อย 1 ม้วนที่มีของ"); return; }
-    await replaceLotWithRolls(clean, `แบ่ง ${clean.length} ม้วน (กรอกเอง) จาก ${lot.lotId}`);
+    const keyOf = (it) => [it.colorIdx ?? "", it.colorName ?? "", it.colorHex ?? "", it.size ?? "", it.variant ?? "", it.productionSize ?? ""].join("|");
+    const allocated = new Map();
+    clean.forEach(r => (r.items || []).forEach(it => { const k = keyOf(it); allocated.set(k, (allocated.get(k) || 0) + (Number(it.qty) || 0)); }));
+    const leftover = [];
+    (lot.items || []).forEach(it => {
+      const rem = (Number(it.qty) || 0) - (allocated.get(keyOf(it)) || 0);
+      if (rem > 0) leftover.push({ ...it, qty: rem });
+    });
+    const all = [...clean];
+    if (leftover.length > 0) all.push({ rollNo: "", items: leftover, label: `เหลือจาก ${lot.lotId}` });
+    const note = `แบ่ง ${clean.length} ม้วน (กรอกเอง)${leftover.length ? " + เหลือ 1 ล็อต" : ""} จาก ${lot.lotId}`;
+    await replaceLotWithRolls(all, note);
   };
 
   const updateEditItem = (idx, patch) => setEditItems(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it));
@@ -899,10 +911,19 @@ function RollSplitModal({ lot, busy, onClose, onConfirm, onConfirmManual }) {
 
           <button onClick={addRoll} style={{width:"100%",padding:"8px",borderRadius:8,border:`1px dashed ${T.accent}`,background:"rgba(59,91,139,0.05)",color:T.accent,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",marginBottom:12}}>+ เพิ่มม้วน</button>
 
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"rgba(58,122,82,0.08)",borderRadius:8,marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"rgba(58,122,82,0.08)",borderRadius:8,marginBottom:8}}>
             <span style={{fontSize:13,color:T.text,fontWeight:700}}>{mRolls.length} ม้วน</span>
             <span style={{fontSize:13,color:T.green,fontWeight:700,fontFamily:"monospace"}}>รวม {fmtInt(manualGrand)} ตัว</span>
           </div>
+          {(() => {
+            const lotTot = lotItems.reduce((s,it)=>s+(Number(it.qty)||0),0);
+            const left = lotTot - manualGrand;
+            return left > 0 ? (
+              <div style={{fontSize:11,color:"#92400e",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:7,padding:"6px 10px",marginBottom:12}}>
+                ℹ️ ที่เหลืออีก <b>{fmtInt(left)}</b> ตัวที่ยังไม่ใส่ม้วน → จะเก็บเป็นล็อต <b>"เหลือ"</b> อัตโนมัติ (ไม่หาย)
+              </div>
+            ) : null;
+          })()}
 
           <div style={{display:"flex",gap:8}}>
             <BtnGhost onClick={onClose} disabled={busy} style={{flex:1}}>ยกเลิก</BtnGhost>
