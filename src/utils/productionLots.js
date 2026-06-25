@@ -23,6 +23,29 @@ export const STATUS_COLORS = {
   "ยกเลิก":     "#dc2626",
 };
 
+// 🏭 รายการเครื่อง/ทีม ตาม stage (ขึ้นใน dropdown ของแต่ละม้วน)
+// - พิมพ์ลาย: CPU 1-5
+// - ตัดผ้า:   ใช้รวม (โต๊ะเดียว) → ไม่ต้องเลือก
+// - รีดลงผ้า/รีดให้เรียบ: รีด 1-3
+// - เย็บ: 14 ทีม (T1-T14) ไม่บังคับเลือก แก้ทีหลังได้
+export const MACHINES_BY_STAGE = {
+  "พิมพ์ลาย":   ["CPU 1", "CPU 2", "CPU 3", "CPU 4", "CPU 5"],
+  "ตัดผ้า":     [], // ใช้ตัดผ้ารวม — ไม่ต้องเลือก
+  "รีดลงผ้า":   ["รีด 1", "รีด 2", "รีด 3"],
+  "เย็บ":       Array.from({length:14}, (_,i)=>`ทีม ${i+1}`),
+  "รีดให้เรียบ": ["รีด 1", "รีด 2", "รีด 3"],
+  "แพ๊ค/QC":    [],
+  "เข้าคลัง":   [],
+};
+
+// helper: ดึงเครื่องที่ถูก assign สำหรับ stage ปัจจุบันของล็อต
+// lot.machineByStage = { "พิมพ์ลาย": "CPU 1", "เย็บ": "ทีม 3", ... }
+export function getMachineForCurrentStage(lot) {
+  if (!lot) return "";
+  const status = lot.status || PRODUCTION_STEPS[0];
+  return (lot.machineByStage || {})[status] || "";
+}
+
 // ดึง lots ของ order — ถ้าไม่มี lots[] → สร้าง pseudo lot จาก items + status ของใบ (legacy)
 export function getLots(order) {
   if (Array.isArray(order.lots) && order.lots.length > 0) return order.lots;
