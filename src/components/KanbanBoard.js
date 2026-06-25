@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { doc, setDoc, updateDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
-import { PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot, moveLot } from "../utils/productionLots";
+import { PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot, moveLot, getMachineForCurrentStage } from "../utils/productionLots";
 import LotDetailModal from "./LotDetailModal";
 
 const T = { card:"#ffffff", border:"#e3e8ef", text:"#1f2a44", sub:"#5b6b85", muted:"#8a9bb3", accent:"#3b5b8b" };
@@ -367,6 +367,14 @@ function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag 
           </div>
         </div>
       </div>
+      {(() => {
+        const machine = getMachineForCurrentStage(lot);
+        return machine ? (
+          <div style={{padding:"3px 8px",background:`${STATUS_COLORS[lot.status]||"#64748b"}12`,border:`1px solid ${STATUS_COLORS[lot.status]||"#64748b"}30`,borderRadius:5,fontSize:10,color:STATUS_COLORS[lot.status]||"#64748b",fontWeight:700,marginBottom:4}}>
+            🏭 {machine}
+          </div>
+        ) : null;
+      })()}
       {(lot.notes || []).length > 0 && (
         <div style={{padding:"4px 8px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:5,fontSize:10,color:"#92400e"}}>
           📝 {lot.notes.length} หมายเหตุ
