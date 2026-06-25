@@ -1623,10 +1623,10 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
       const all = [root, ...root.querySelectorAll("*")];
       all.forEach(n => {
         try {
-          // ข้าม element ที่ระบุ data-no-scale="true" (จะคงขนาดเดิม ไม่ scale)
+          // ข้าม element ที่ระบุ data-no-scale="true" หรืออยู่ใน subtree data-no-scale-tree
+          // (closest คลุม element ตัวเอง + ancestors — ถ้า td เป็น tree-root, td เองและ children ทั้งหมดจะถูกข้าม)
           if (n.getAttribute && n.getAttribute("data-no-scale") === "true") return;
-          // ข้ามถ้ามี ancestor ที่ no-scale → ใช้ closest
-          if (n.closest && n.closest('[data-no-scale-tree="true"]') && n !== n.closest('[data-no-scale-tree="true"]')) return;
+          if (n.closest && n.closest('[data-no-scale-tree="true"]')) return;
           const cs = window.getComputedStyle(n);
           const fs = parseFloat(cs.fontSize);
           if (!isNaN(fs) && fs > 0) n.style.fontSize = (fs * factor).toFixed(2) + "px";
