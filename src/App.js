@@ -267,6 +267,8 @@ export default function App() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [deleteClothingTarget, setDeleteClothingTarget] = useState(null); // {item} ยืนยันลบรุ่นเสื้อผ้า/รองเท้า
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [draggingClothingId, setDraggingClothingId] = useState(null); // 🖱️ ลากจัดลำดับรุ่น
+  const [dragOverClothingId, setDragOverClothingId] = useState(null);
   const [showHistoryModal, setShowHistoryModal] = useState(null);
   const [showCatModal, setShowCatModal] = useState(false);
   const [showImgModal, setShowImgModal] = useState(null);
@@ -977,6 +979,20 @@ export default function App() {
       targetLabel: item?.model || itemId,
       note: `ลบรุ่นเสื้อผ้า · ${(item?.colors||[]).length} สี`,
     });
+  };
+
+  // 🖱️ จัดลำดับรุ่นเสื้อผ้า/รองเท้า (drag & drop) → เขียน sortIndex ทุกตัวในแท็บ
+  const reorderClothing = async (draggedId, targetId, orderedItems) => {
+    if (!draggedId || !targetId || draggedId === targetId) return;
+    const ids = orderedItems.map(i => i.id);
+    const from = ids.indexOf(draggedId), to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    const arr = [...ids]; arr.splice(from, 1); arr.splice(to, 0, draggedId);
+    try {
+      const batch = writeBatch(db);
+      arr.forEach((id, idx) => batch.update(doc(db, "clothing", id), { sortIndex: idx }));
+      await batch.commit();
+    } catch (e) { alert("จัดลำดับไม่สำเร็จ: " + (e.message || e)); }
   };
 
   const handleDeleteClothingColor = async (itemId, colorIdx) => {
@@ -2350,7 +2366,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 // 👟 sports tab → shoe items only
                 const tabItems = clothingItems.filter(it =>
                   inventoryTab==="sports" ? it.sizeType==="shoe" : it.sizeType!=="shoe"
-                );
+                ).sort((a,b)=>(a.sortIndex??9999)-(b.sortIndex??9999));
                 return (
                 <div style={{animation:"fadeUp 0.4s ease"}}>
                 <input ref={clothingImgRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleClothingImageUpload}/>
@@ -2362,10 +2378,22 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                   </div>
                 )}
                 {tabItems.map((item,idx)=>(
-                  <div key={item.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,marginBottom:16,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.3)"}}>
+                  <div key={item.id}
+                    onDragOver={role.canAdd?(e=>{e.preventDefault();if(dragOverClothingId!==item.id)setDragOverClothingId(item.id);}):undefined}
+                    onDrop={role.canAdd?(e=>{e.preventDefault();reorderClothing(draggingClothingId,item.id,tabItems);setDraggingClothingId(null);setDragOverClothingId(null);}):undefined}
+                    style={{background:T.card,border:`1px solid ${dragOverClothingId===item.id&&draggingClothingId&&draggingClothingId!==item.id?T.accent:T.border}`,borderRadius:16,marginBottom:16,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.3)",opacity:draggingClothingId===item.id?0.4:1,transition:"opacity 0.15s"}}>
                     <div onClick={()=>toggleCollapse(item.id)} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 20px",borderBottom:collapsedItems[item.id]?"none":`1px solid ${T.border}`,cursor:"pointer",userSelect:"none",transition:"background 0.2s"}}
                       onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.04)"}
                       onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      {/* 🖱️ Drag handle — จัดลำดับ */}
+                      {role.canAdd&&(
+                        <div draggable
+                          onDragStart={e=>{e.stopPropagation();setDraggingClothingId(item.id);e.dataTransfer.effectAllowed="move";}}
+                          onDragEnd={()=>{setDraggingClothingId(null);setDragOverClothingId(null);}}
+                          onClick={e=>e.stopPropagation()}
+                          title="ลากเพื่อจัดลำดับ"
+                          style={{cursor:"grab",color:T.muted,fontSize:16,flexShrink:0,padding:"0 2px",lineHeight:1,userSelect:"none"}}>⠿</div>
+                      )}
                       {/* Collapse arrow */}
                       <div style={{width:24,height:24,borderRadius:6,background:"rgba(59,91,139,0.1)",border:"1px solid rgba(59,91,139,0.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"transform 0.2s",transform:collapsedItems[item.id]?"rotate(-90deg)":"rotate(0deg)",fontSize:11,color:T.accent}}>▼</div>
                       <div onClick={e=>{e.stopPropagation();setUploadingClothingId(item.id);setTimeout(()=>clothingImgRef.current?.click(),50);}}
