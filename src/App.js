@@ -265,6 +265,8 @@ export default function App() {
   const [showBarcodeModal, setShowBarcodeModal] = useState(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
+  const [deleteClothingTarget, setDeleteClothingTarget] = useState(null); // {item} ยืนยันลบรุ่นเสื้อผ้า/รองเท้า
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [showHistoryModal, setShowHistoryModal] = useState(null);
   const [showCatModal, setShowCatModal] = useState(false);
   const [showImgModal, setShowImgModal] = useState(null);
@@ -2398,7 +2400,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                       <div style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
                         <button onClick={()=>setShowAddColor(item.id)} style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(59,91,139,0.25)",background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:500}}>️ สี</button>
                         {(item.colors||[]).length>0&&<button onClick={()=>openMix(item)} title="ขายคละสีคละไซส์" style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(184,134,0,0.3)",background:"rgba(184,134,0,0.08)",color:T.amber,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:600}}>🧺 ขายคละ</button>}
-                        {role.canDelete&&<button onClick={()=>handleDeleteClothingItem(item.id)} style={{padding:"7px 12px",borderRadius:8,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:12}}>✕</button>}
+                        {role.canDelete&&<button onClick={()=>{setDeleteClothingTarget(item);setDeleteConfirmText("");}} style={{padding:"7px 12px",borderRadius:8,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:12}}>✕</button>}
                       </div>
                     </div>
 
@@ -2619,7 +2621,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                       <div style={{fontSize:11,color:T.muted,marginTop:2}}>{(item.colors||[]).length} สี · สต็อกรวม {(item.colors||[]).reduce((s,c)=>s+Object.values(c.stock||{}).reduce((a,b)=>a+b,0),0)} ชิ้น</div>
                     </div>
                     <button onClick={()=>setShowAddColor(item.id)} style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(59,91,139,0.25)",background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:12,fontFamily:"'DM Sans','Sarabun',sans-serif",fontWeight:500}}>️ เพิ่มสี</button>
-                    {role.canDelete&&<button onClick={()=>handleDeleteClothingItem(item.id)} style={{padding:"7px 12px",borderRadius:8,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:12}}>✕</button>}
+                    {role.canDelete&&<button onClick={()=>{setDeleteClothingTarget(item);setDeleteConfirmText("");}} style={{padding:"7px 12px",borderRadius:8,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:12}}>✕</button>}
                   </div>
 
                   {/* Table */}
@@ -3876,16 +3878,65 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
       )}
 
       {/* ── MODAL: ยืนยันลบ ── */}
-      {showDeleteConfirm&&(
-        <Modal onClose={()=>setShowDeleteConfirm(null)} w={420}>
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:42,marginBottom:12}}>🗑️</div>
-            <div style={{fontSize:15,fontWeight:700,color:T.text,marginBottom:8}}>ยืนยันการลบสินค้า?</div>
-            <div style={{fontSize:13,color:T.sub,marginBottom:24}}>ประวัติของสินค้านี้จะหายไปด้วย</div>
-            <div style={{display:"flex",gap:10}}><BtnGhost onClick={()=>setShowDeleteConfirm(null)} style={{flex:1}}>ยกเลิก</BtnGhost><BtnDanger onClick={()=>handleDelete(showDeleteConfirm)} style={{flex:1}}>ลบสินค้า</BtnDanger></div>
+      {showDeleteConfirm&&(()=>{
+        const p = products.find(x=>x.id===showDeleteConfirm);
+        const pname = (p?.name||"").trim();
+        const pqty = Number(p?.qty)||0;
+        const hasStock = pqty > 0;
+        const matched = !hasStock || deleteConfirmText.trim() === pname; // มีสต็อก → ต้องพิมพ์ชื่อ
+        return (
+        <Modal onClose={()=>{setShowDeleteConfirm(null);setDeleteConfirmText("");}} w={440}>
+          <div style={{textAlign:"center",marginBottom:6}}>
+            <div style={{fontSize:42,marginBottom:8}}>🗑️</div>
+            <div style={{fontSize:16,fontWeight:800,color:T.text}}>ลบสินค้า "{p?.name||""}"?</div>
+          </div>
+          <div style={{padding:"10px 12px",background:hasStock?"#fef2f2":"#fffbeb",border:`1px solid ${hasStock?"#fecaca":"#fde68a"}`,borderRadius:9,marginBottom:14,fontSize:13,color:hasStock?"#991b1b":"#92400e",lineHeight:1.6}}>
+            {hasStock
+              ? <>⚠️ สินค้านี้ยัง<b>มีสต็อก {pqty.toLocaleString("th-TH")} {p?.unit||"ชิ้น"}</b><br/>ลบแล้วประวัติทั้งหมดหายถาวร — ย้อนคืนไม่ได้</>
+              : <>สินค้านี้ไม่มีสต็อกแล้ว — ลบแล้วประวัติหายถาวร ย้อนคืนไม่ได้</>}
+          </div>
+          {hasStock && (
+            <>
+              <label style={{fontSize:12,color:T.sub,display:"block",marginBottom:6}}>พิมพ์ชื่อสินค้า <b style={{color:T.text}}>{pname}</b> เพื่อยืนยัน:</label>
+              <input value={deleteConfirmText} onChange={e=>setDeleteConfirmText(e.target.value)} placeholder={pname} autoFocus
+                style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${matched?"#16a34a":T.inputBorder}`,color:T.text,borderRadius:9,padding:"10px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:14,outline:"none",marginBottom:16}}/>
+            </>
+          )}
+          <div style={{display:"flex",gap:10}}>
+            <BtnGhost onClick={()=>{setShowDeleteConfirm(null);setDeleteConfirmText("");}} style={{flex:1}}>ยกเลิก</BtnGhost>
+            <BtnDanger onClick={()=>{handleDelete(showDeleteConfirm);setDeleteConfirmText("");}} disabled={!matched} style={{flex:1,opacity:matched?1:0.45,cursor:matched?"pointer":"not-allowed"}}>🗑 ลบสินค้า</BtnDanger>
           </div>
         </Modal>
-      )}
+        );
+      })()}
+
+      {/* ── MODAL: ยืนยันลบรุ่นเสื้อผ้า/รองเท้า — พิมพ์ชื่อรุ่นเพื่อยืนยัน (กันลบพลาด) ── */}
+      {deleteClothingTarget&&(()=>{
+        const it = deleteClothingTarget;
+        const totalStock = (it.colors||[]).reduce((s,c)=>s+Object.values(c.stock||{}).reduce((a,b)=>a+(Number(b)||0),0),0);
+        const matched = deleteConfirmText.trim() === (it.model||"").trim();
+        const hasStock = totalStock > 0;
+        return (
+        <Modal onClose={()=>setDeleteClothingTarget(null)} w={460}>
+          <div style={{textAlign:"center",marginBottom:6}}>
+            <div style={{fontSize:42,marginBottom:8}}>🗑️</div>
+            <div style={{fontSize:16,fontWeight:800,color:T.text}}>ลบรุ่น "{it.model}"?</div>
+          </div>
+          <div style={{padding:"10px 12px",background:hasStock?"#fef2f2":"#fffbeb",border:`1px solid ${hasStock?"#fecaca":"#fde68a"}`,borderRadius:9,marginBottom:14,fontSize:13,color:hasStock?"#991b1b":"#92400e",lineHeight:1.6}}>
+            {hasStock
+              ? <>⚠️ รุ่นนี้ยัง<b>มีสต็อก {totalStock.toLocaleString("th-TH")} ตัว</b> ({(it.colors||[]).length} สี)<br/>ถ้าลบ ข้อมูลสต็อก + ประวัติทั้งหมดจะหายถาวร — ย้อนคืนไม่ได้</>
+              : <>รุ่นนี้ไม่มีสต็อกแล้ว · {(it.colors||[]).length} สี — ลบแล้วย้อนคืนไม่ได้</>}
+          </div>
+          <label style={{fontSize:12,color:T.sub,display:"block",marginBottom:6}}>พิมพ์ชื่อรุ่น <b style={{color:T.text}}>{it.model}</b> เพื่อยืนยัน:</label>
+          <input value={deleteConfirmText} onChange={e=>setDeleteConfirmText(e.target.value)} placeholder={it.model} autoFocus
+            style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${matched?"#16a34a":T.inputBorder}`,color:T.text,borderRadius:9,padding:"10px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:14,outline:"none",marginBottom:16}}/>
+          <div style={{display:"flex",gap:10}}>
+            <BtnGhost onClick={()=>setDeleteClothingTarget(null)} style={{flex:1}}>ยกเลิก</BtnGhost>
+            <BtnDanger onClick={async()=>{await handleDeleteClothingItem(it.id);setDeleteClothingTarget(null);setDeleteConfirmText("");}} disabled={!matched} style={{flex:1,opacity:matched?1:0.45,cursor:matched?"pointer":"not-allowed"}}>🗑 ลบถาวร</BtnDanger>
+          </div>
+        </Modal>
+        );
+      })()}
 
       {/* ── MODAL: ล้างคลัง ── */}
       {showClearConfirm&&(
