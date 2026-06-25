@@ -318,17 +318,15 @@ export default function LotDetailModal({
     finally { setBusy(false); }
   };
 
-  // ── แบ่งม้วนอัตโนมัติ: แทนล็อตนี้ด้วยหลายล็อต (ม้วน 1..N) ──
-  const applyRollSplit = async (orderedItems, capacity) => {
+  // ── core: แทนล็อตนี้ด้วยหลายล็อต (ม้วน 1..N) จาก rolls = [{rollNo, items}] ──
+  const replaceLotWithRolls = async (rolls, noteLabel) => {
     if (busy) return;
-    const rolls = packIntoRolls(orderedItems, capacity);
-    if (rolls.length <= 1) { setToast("ของน้อยกว่า 1 ม้วน — ไม่ต้องแบ่ง"); return; }
+    if (!rolls || rolls.length === 0) { setToast("ยังไม่มีของในม้วน"); return; }
     setBusy(true);
     try {
-      // เอาล็อตเดิมออก แล้วเติมล็อตม้วนใหม่ (id ไม่ซ้ำ)
       let working = lots.filter((_, i) => i !== lotIdx);
       const at = nowStr();
-      rolls.forEach(r => {
+      rolls.forEach((r, idx) => {
         const id = nextLotId(working);
         working = [...working, {
           lotId: id,
@@ -338,7 +336,7 @@ export default function LotDetailModal({
           notes: [],
           finishedStocked: false,
           machine: "",
-          rollNo: String(r.rollNo),
+          rollNo: String(r.rollNo || idx + 1),
           machineByStage: {},
         }];
       });
@@ -346,12 +344,26 @@ export default function LotDetailModal({
       logAudit(user, {
         action: AUDIT_ACTIONS.PRODUCTION_STATUS, collection: collectionName, targetId: order.id,
         targetLabel: `${order.prodNo} · ${lot.lotId}`,
-        note: `แบ่ง ${rolls.length} ม้วน (${capacity}/ม้วน) จาก ${lot.lotId}`,
+        note: noteLabel || `แบ่ง ${rolls.length} ม้วนจาก ${lot.lotId}`,
       });
       setShowRollSplit(false);
       setToast(`แบ่งเป็น ${rolls.length} ม้วนสำเร็จ`);
       setTimeout(() => onClose && onClose(), 700);
     } catch (e) { console.error(e); setToast("ผิดพลาด: " + (e.message || e)); setBusy(false); }
+  };
+
+  // โหมดอัตโนมัติ — pack ตาม capacity
+  const applyRollSplit = async (orderedItems, capacity) => {
+    const rolls = packIntoRolls(orderedItems, capacity);
+    if (rolls.length <= 1) { setToast("ของน้อยกว่า 1 ม้วน — ไม่ต้องแบ่ง"); return; }
+    await replaceLotWithRolls(rolls, `แบ่ง ${rolls.length} ม้วน (${capacity}/ม้วน) จาก ${lot.lotId}`);
+  };
+
+  // โหมดกรอกเอง — rolls = [{rollNo, items}]
+  const applyManualRolls = async (rolls) => {
+    const clean = (rolls || []).filter(r => (r.items || []).length > 0);
+    if (clean.length === 0) { setToast("กรอกอย่างน้อย 1 ม้วนที่มีของ"); return; }
+    await replaceLotWithRolls(clean, `แบ่ง ${clean.length} ม้วน (กรอกเอง) จาก ${lot.lotId}`);
   };
 
   const updateEditItem = (idx, patch) => setEditItems(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it));
@@ -730,15 +742,20 @@ export default function LotDetailModal({
           busy={busy}
           onClose={() => setShowRollSplit(false)}
           onConfirm={applyRollSplit}
+          onConfirmManual={applyManualRolls}
         />
       )}
     </Modal>
   );
 }
 
-// ── Roll-split modal: แบ่งของในล็อตเป็นหลายม้วนอัตโนมัติ (เรียงลำดับพิมพ์ได้) ──
-function RollSplitModal({ lot, busy, onClose, onConfirm }) {
-  const [items, setItems] = useState(() => (lot.items || []).map(it => ({ ...it })));
+// ── Roll-split modal: แบ่งของในล็อตเป็นหลายม้วน (อัตโนมัติ หรือ กรอกเอง) ──
+function RollSplitModal({ lot, busy, onClose, onConfirm, onConfirmManual }) {
+  const [mode, setMode] = useState("manual"); // "manual" | "auto"
+  const lotItems = lot.items || [];
+
+  // ── โหมดอัตโนมัติ ──
+  const [items, setItems] = useState(() => lotItems.map(it => ({ ...it })));
   const [capacity, setCapacity] = useState(ROLL_CAPACITY);
   const move = (idx, dir) => setItems(prev => {
     const ni = idx + dir;
@@ -748,63 +765,146 @@ function RollSplitModal({ lot, busy, onClose, onConfirm }) {
     return arr;
   });
   const cap = Math.max(1, Number(capacity) || ROLL_CAPACITY);
-  const rolls = packIntoRolls(items, cap);
+  const autoRolls = packIntoRolls(items, cap);
+
+  // ── โหมดกรอกเอง ──
+  const [mRolls, setMRolls] = useState([{ rows: [{ itemIdx: "", qty: "" }] }]);
+  const setMRow = (ri, rowi, patch) => setMRolls(prev => prev.map((roll, i) => i !== ri ? roll : { rows: roll.rows.map((row, j) => j === rowi ? { ...row, ...patch } : row) }));
+  const addMRow = (ri) => setMRolls(prev => prev.map((roll, i) => i !== ri ? roll : { rows: [...roll.rows, { itemIdx: "", qty: "" }] }));
+  const removeMRow = (ri, rowi) => setMRolls(prev => prev.map((roll, i) => i !== ri ? roll : { rows: roll.rows.filter((_, j) => j !== rowi) }));
+  const addRoll = () => setMRolls(prev => [...prev, { rows: [{ itemIdx: "", qty: "" }] }]);
+  const removeRoll = (ri) => setMRolls(prev => prev.filter((_, i) => i !== ri));
+
+  // รวมยอดที่ใช้ต่อ item + คงเหลือ
+  const usedByItem = {};
+  mRolls.forEach(roll => roll.rows.forEach(r => { if (r.itemIdx !== "") usedByItem[r.itemIdx] = (usedByItem[r.itemIdx] || 0) + (Number(r.qty) || 0); }));
+  const manualGrand = Object.values(usedByItem).reduce((s, v) => s + v, 0);
+
+  // สร้าง rolls สำหรับ confirm (โหมดกรอกเอง)
+  const buildManualRolls = () => mRolls.map((roll, i) => ({
+    rollNo: i + 1,
+    items: roll.rows.filter(r => r.itemIdx !== "" && Number(r.qty) > 0).map(r => ({ ...lotItems[Number(r.itemIdx)], qty: Number(r.qty) })),
+  })).filter(r => r.items.length > 0);
+
+  const itemLabel = (it) => `${it.colorName} / ${it.productionSize || it.size}`;
 
   return (
-    <Modal onClose={onClose} w={600}>
-      <MHead title={`🧵 แบ่งม้วนอัตโนมัติ · ${lot.lotId}`} sub="เรียงลำดับที่จะพิมพ์ (บนลงล่าง) → ระบบเติมแต่ละม้วนต่อเนื่อง" onClose={onClose}/>
+    <Modal onClose={onClose} w={620}>
+      <MHead title={`🧵 แบ่งม้วน · ${lot.lotId}`} sub="กรอกเองว่าแต่ละม้วนพิมพ์อะไร หรือให้ระบบจัดอัตโนมัติ" onClose={onClose}/>
 
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
-        <span style={{fontSize:12,color:T.sub,fontWeight:600}}>ความจุต่อม้วน:</span>
-        <input type="number" value={capacity} onChange={e=>setCapacity(e.target.value)}
-          style={{width:100,padding:"6px 10px",border:`1px solid ${T.border}`,borderRadius:7,fontSize:13,fontFamily:"monospace",textAlign:"center",outline:"none"}}/>
-        <span style={{fontSize:11,color:T.muted}}>ตัว/ม้วน (ปรับได้ตามจริง)</span>
+      {/* tabs */}
+      <div style={{display:"flex",gap:4,background:"#eef2f7",borderRadius:8,padding:3,marginBottom:14}}>
+        <button onClick={()=>setMode("manual")} style={{flex:1,padding:"6px",borderRadius:6,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",background:mode==="manual"?"white":"transparent",color:mode==="manual"?T.accent:T.sub,boxShadow:mode==="manual"?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>✍️ กรอกเอง</button>
+        <button onClick={()=>setMode("auto")} style={{flex:1,padding:"6px",borderRadius:6,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",background:mode==="auto"?"white":"transparent",color:mode==="auto"?T.accent:T.sub,boxShadow:mode==="auto"?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>⚙️ อัตโนมัติ</button>
       </div>
 
-      {/* ลำดับการพิมพ์ */}
-      <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:6,textTransform:"uppercase"}}>1️⃣ ลำดับการพิมพ์</div>
-      <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:14,maxHeight:200,overflowY:"auto"}}>
-        {items.map((it, i) => (
-          <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 70px 28px 28px",gap:6,alignItems:"center",padding:"6px 8px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:7}}>
-            <div style={{fontSize:12,color:T.text}}>
-              <span style={{width:10,height:10,borderRadius:2,background:it.colorHex||"#999",display:"inline-block",marginRight:6,verticalAlign:"middle",border:"1px solid rgba(0,0,0,0.1)"}}/>
-              <b>{it.colorName}</b> / {it.productionSize || it.size}
-            </div>
-            <div style={{textAlign:"right",fontFamily:"monospace",fontWeight:700,color:T.accent,fontSize:12}}>{fmtInt(it.qty)}</div>
-            <button onClick={()=>move(i,-1)} disabled={i===0} style={{padding:"3px",border:`1px solid ${T.border}`,borderRadius:5,background:i===0?"#f1f5f9":"white",cursor:i===0?"not-allowed":"pointer",fontSize:11}}>↑</button>
-            <button onClick={()=>move(i,1)} disabled={i===items.length-1} style={{padding:"3px",border:`1px solid ${T.border}`,borderRadius:5,background:i===items.length-1?"#f1f5f9":"white",cursor:i===items.length-1?"not-allowed":"pointer",fontSize:11}}>↓</button>
-          </div>
-        ))}
-      </div>
-
-      {/* preview ม้วน */}
-      <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:6,textTransform:"uppercase"}}>2️⃣ ผลลัพธ์ — {rolls.length} ม้วน</div>
-      <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14,maxHeight:240,overflowY:"auto"}}>
-        {rolls.map((r) => (
-          <div key={r.rollNo} style={{border:`1px solid ${T.border}`,borderRadius:8,overflow:"hidden"}}>
-            <div style={{display:"flex",justifyContent:"space-between",padding:"5px 10px",background:"#eef6ff",fontSize:12,fontWeight:700,color:"#1e40af"}}>
-              <span>🧵 ม้วน {r.rollNo}</span>
-              <span style={{fontFamily:"monospace"}}>{fmtInt(r.total)} ตัว</span>
-            </div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:4,padding:"6px 10px"}}>
-              {r.items.map((it,j) => (
-                <span key={j} style={{padding:"2px 8px",fontSize:11,background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:6}}>
-                  {it.colorName} {it.productionSize || it.size} <b style={{color:T.accent}}>×{fmtInt(it.qty)}</b>
+      {mode === "manual" ? (
+        <>
+          {/* คงเหลือต่อ item */}
+          <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:12,padding:"8px 10px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:8}}>
+            {lotItems.map((it, idx) => {
+              const used = usedByItem[idx] || 0;
+              const remain = (Number(it.qty) || 0) - used;
+              return (
+                <span key={idx} style={{padding:"2px 8px",fontSize:11,borderRadius:6,background:"white",border:`1px solid ${remain<0?"#fecaca":T.border}`,color:remain<0?T.red:T.sub}}>
+                  {itemLabel(it)}: <b style={{color:remain<0?T.red:remain===0?T.green:T.accent}}>{fmtInt(remain)}</b>/{fmtInt(it.qty)}{remain<0&&" ⚠️เกิน"}
                 </span>
-              ))}
-            </div>
+              );
+            })}
           </div>
-        ))}
-      </div>
 
-      <div style={{padding:"8px 12px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,fontSize:11,color:"#92400e",marginBottom:12}}>
-        ⚠️ ยืนยันแล้ว ล็อต {lot.lotId} จะถูกแทนด้วย {rolls.length} ล็อตม้วน (ม้วน 1–{rolls.length}) — แต่ละม้วนเดิน Kanban แยกกัน
-      </div>
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:12,maxHeight:300,overflowY:"auto"}}>
+            {mRolls.map((roll, ri) => {
+              const rollTotal = roll.rows.reduce((s,r)=>s+(Number(r.qty)||0),0);
+              return (
+                <div key={ri} style={{border:`1px solid #bfdbfe`,borderRadius:9,overflow:"hidden"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",background:"#eef6ff"}}>
+                    <span style={{fontSize:13,fontWeight:700,color:"#1e40af"}}>🧵 ม้วน {ri+1}</span>
+                    <span style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontFamily:"monospace",fontWeight:700,color:"#1e40af",fontSize:13}}>{fmtInt(rollTotal)} ตัว</span>
+                      {mRolls.length>1&&<button onClick={()=>removeRoll(ri)} style={{border:"none",background:"transparent",color:T.red,cursor:"pointer",fontSize:14}}>✕</button>}
+                    </span>
+                  </div>
+                  <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",gap:5}}>
+                    {roll.rows.map((row, rowi) => (
+                      <div key={rowi} style={{display:"grid",gridTemplateColumns:"1fr 90px 28px",gap:6,alignItems:"center"}}>
+                        <select value={row.itemIdx} onChange={e=>setMRow(ri,rowi,{itemIdx:e.target.value})}
+                          style={{padding:"6px 8px",border:`1px solid ${T.border}`,borderRadius:6,fontSize:12,outline:"none",fontFamily:"inherit",background:"white"}}>
+                          <option value="">— เลือกสี/ไซส์ —</option>
+                          {lotItems.map((it,idx)=><option key={idx} value={idx}>{itemLabel(it)}</option>)}
+                        </select>
+                        <input type="number" min="0" value={row.qty} onChange={e=>setMRow(ri,rowi,{qty:e.target.value})} placeholder="จำนวน"
+                          style={{padding:"6px 8px",border:`1px solid ${T.border}`,borderRadius:6,textAlign:"center",fontFamily:"monospace",fontSize:13,outline:"none"}}/>
+                        {roll.rows.length>1
+                          ? <button onClick={()=>removeMRow(ri,rowi)} style={{border:`1px solid #fecaca`,background:"#fef2f2",borderRadius:5,color:T.red,cursor:"pointer",fontSize:11,height:28}}>✕</button>
+                          : <div/>}
+                      </div>
+                    ))}
+                    <button onClick={()=>addMRow(ri)} style={{alignSelf:"flex-start",padding:"3px 10px",fontSize:11,border:`1px dashed ${T.accent}`,borderRadius:6,background:"transparent",color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>+ เพิ่มสี/ไซส์ในม้วนนี้</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
-      <div style={{display:"flex",gap:8}}>
-        <BtnGhost onClick={onClose} disabled={busy} style={{flex:1}}>ยกเลิก</BtnGhost>
-        <BtnPrimary onClick={()=>onConfirm(items, cap)} disabled={busy || rolls.length<=1} style={{flex:1}}>{busy?"กำลังบันทึก...":`🧵 สร้าง ${rolls.length} ม้วน`}</BtnPrimary>
-      </div>
+          <button onClick={addRoll} style={{width:"100%",padding:"8px",borderRadius:8,border:`1px dashed ${T.accent}`,background:"rgba(59,91,139,0.05)",color:T.accent,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",marginBottom:12}}>+ เพิ่มม้วน</button>
+
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"rgba(58,122,82,0.08)",borderRadius:8,marginBottom:12}}>
+            <span style={{fontSize:13,color:T.text,fontWeight:700}}>{mRolls.length} ม้วน</span>
+            <span style={{fontSize:13,color:T.green,fontWeight:700,fontFamily:"monospace"}}>รวม {fmtInt(manualGrand)} ตัว</span>
+          </div>
+
+          <div style={{display:"flex",gap:8}}>
+            <BtnGhost onClick={onClose} disabled={busy} style={{flex:1}}>ยกเลิก</BtnGhost>
+            <BtnPrimary onClick={()=>onConfirmManual(buildManualRolls())} disabled={busy || manualGrand<=0} style={{flex:1}}>{busy?"กำลังบันทึก...":"🧵 สร้างม้วน"}</BtnPrimary>
+          </div>
+        </>
+      ) : (
+        <>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+            <span style={{fontSize:12,color:T.sub,fontWeight:600}}>ความจุต่อม้วน:</span>
+            <input type="number" value={capacity} onChange={e=>setCapacity(e.target.value)}
+              style={{width:100,padding:"6px 10px",border:`1px solid ${T.border}`,borderRadius:7,fontSize:13,fontFamily:"monospace",textAlign:"center",outline:"none"}}/>
+            <span style={{fontSize:11,color:T.muted}}>ตัว/ม้วน (ปรับได้ตามจริง)</span>
+          </div>
+          <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:6,textTransform:"uppercase"}}>1️⃣ ลำดับการพิมพ์</div>
+          <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:14,maxHeight:180,overflowY:"auto"}}>
+            {items.map((it, i) => (
+              <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 70px 28px 28px",gap:6,alignItems:"center",padding:"6px 8px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:7}}>
+                <div style={{fontSize:12,color:T.text}}>
+                  <span style={{width:10,height:10,borderRadius:2,background:it.colorHex||"#999",display:"inline-block",marginRight:6,verticalAlign:"middle",border:"1px solid rgba(0,0,0,0.1)"}}/>
+                  <b>{it.colorName}</b> / {it.productionSize || it.size}
+                </div>
+                <div style={{textAlign:"right",fontFamily:"monospace",fontWeight:700,color:T.accent,fontSize:12}}>{fmtInt(it.qty)}</div>
+                <button onClick={()=>move(i,-1)} disabled={i===0} style={{padding:"3px",border:`1px solid ${T.border}`,borderRadius:5,background:i===0?"#f1f5f9":"white",cursor:i===0?"not-allowed":"pointer",fontSize:11}}>↑</button>
+                <button onClick={()=>move(i,1)} disabled={i===items.length-1} style={{padding:"3px",border:`1px solid ${T.border}`,borderRadius:5,background:i===items.length-1?"#f1f5f9":"white",cursor:i===items.length-1?"not-allowed":"pointer",fontSize:11}}>↓</button>
+              </div>
+            ))}
+          </div>
+          <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:6,textTransform:"uppercase"}}>2️⃣ ผลลัพธ์ — {autoRolls.length} ม้วน</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14,maxHeight:220,overflowY:"auto"}}>
+            {autoRolls.map((r) => (
+              <div key={r.rollNo} style={{border:`1px solid ${T.border}`,borderRadius:8,overflow:"hidden"}}>
+                <div style={{display:"flex",justifyContent:"space-between",padding:"5px 10px",background:"#eef6ff",fontSize:12,fontWeight:700,color:"#1e40af"}}>
+                  <span>🧵 ม้วน {r.rollNo}</span>
+                  <span style={{fontFamily:"monospace"}}>{fmtInt(r.total)} ตัว</span>
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:4,padding:"6px 10px"}}>
+                  {r.items.map((it,j) => (
+                    <span key={j} style={{padding:"2px 8px",fontSize:11,background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:6}}>
+                      {it.colorName} {it.productionSize || it.size} <b style={{color:T.accent}}>×{fmtInt(it.qty)}</b>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <BtnGhost onClick={onClose} disabled={busy} style={{flex:1}}>ยกเลิก</BtnGhost>
+            <BtnPrimary onClick={()=>onConfirm(items, cap)} disabled={busy || autoRolls.length<=1} style={{flex:1}}>{busy?"กำลังบันทึก...":`🧵 สร้าง ${autoRolls.length} ม้วน`}</BtnPrimary>
+          </div>
+        </>
+      )}
     </Modal>
   );
 }
