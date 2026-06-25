@@ -245,6 +245,7 @@ export default function App() {
 
   const [showAddClothing, setShowAddClothing] = useState(false);
   const [showAddColor, setShowAddColor] = useState(null);
+  const [pickedColors, setPickedColors] = useState([]); // multi-select buffer: [{colorName, hex}]
   const [priceModal, setPriceModal] = useState(null); // {itemId, ci}
   const [priceForm, setPriceForm] = useState({ costPrice:"", kids:"", reg:"", "2XL":"", "3XL":"", "4XL":"", "5XL":"" });
   const [newModel, setNewModel] = useState("");
@@ -894,6 +895,54 @@ export default function App() {
     });
     setShowAddColor(null); setCustomColorName(""); setNewColorHex("#ffffff");
     setNewColorCost(""); setNewColorSale("");
+  };
+
+  // 🎨 Toggle สีใน buffer (กดเพื่อ select/unselect)
+  const togglePickedColor = (color) => setPickedColors(prev => {
+    const has = prev.some(p => p.colorName === color.colorName);
+    return has ? prev.filter(p => p.colorName !== color.colorName) : [...prev, color];
+  });
+
+  // 🎨 เพิ่มสีเองเข้า buffer (จาก custom color input)
+  const addPickedFromCustom = () => {
+    const name = customColorName.trim();
+    if (!name) return;
+    if (pickedColors.some(p => p.colorName === name)) {
+      setCustomColorName("");
+      return;
+    }
+    setPickedColors(prev => [...prev, { colorName: name, hex: newColorHex }]);
+    setCustomColorName("");
+    setNewColorHex("#ffffff");
+  };
+
+  // 🎨 บันทึก buffer ทั้งหมดทีเดียว — update doc ครั้งเดียว
+  const handleAddMultipleColors = async () => {
+    if (!showAddColor || pickedColors.length === 0) return;
+    const item = clothingItems.find(i => i.id === showAddColor);
+    if (!item) return;
+    const sizesList = sizesFor(item);
+    // กรองสีที่ซ้ำกับที่มีอยู่ในรุ่นแล้ว
+    const existingNames = new Set((item.colors||[]).map(c => c.colorName));
+    const fresh = pickedColors.filter(c => !existingNames.has(c.colorName));
+    if (fresh.length === 0) {
+      setShowAddColor(null); setPickedColors([]); setCustomColorName(""); setNewColorHex("#ffffff");
+      return;
+    }
+    const newColorObjs = fresh.map(c => {
+      const initStock = {}; sizesList.forEach(s => initStock[s] = 0);
+      return { colorName: c.colorName, hex: c.hex, stock: initStock, costPrice: 0, salePrice: 0 };
+    });
+    const newColors = [...(item.colors||[]), ...newColorObjs];
+    await updateDoc(doc(db, "clothing", showAddColor), { colors: newColors });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.UPDATE,
+      collection: "clothing",
+      targetId: showAddColor,
+      targetLabel: `${item.model} · เพิ่ม ${fresh.length} สี`,
+      note: `+ สี: ${fresh.map(c=>c.colorName).join(", ")}`,
+    });
+    setShowAddColor(null); setPickedColors([]); setCustomColorName(""); setNewColorHex("#ffffff");
   };
 
   const handleUpdateClothingStock = async (itemId, colorIdx, size, val) => {
@@ -2651,8 +2700,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 </div>
               )}
 
-              {/* ── MODAL: เพิ่มสี ── */}
-              {showAddColor&&(
+              {/* ── MODAL: เพิ่มสี ── (DEPRECATED inline modal — top-level modal ด้านล่างใช้แทน) */}
+              {false && showAddColor&&(
                 <div style={{position:"fixed",inset:0,background:T.overlay,display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,backdropFilter:"blur(6px)"}}>
                   <div onMouseDown={e=>e.stopPropagation()} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:28,width:480,boxShadow:"0 24px 60px rgba(0,0,0,0.6)"}}>
                     <div style={{fontSize:15,fontWeight:700,color:T.accent,marginBottom:20,fontFamily:"'DM Sans','Sarabun',sans-serif"}}>🎨 เพิ่มสีใหม่</div>
@@ -5697,37 +5746,61 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
         );
       })()}
 
-      {/* ── MODAL: เพิ่มสีเสื้อผ้า ── */}
+      {/* ── MODAL: เพิ่มสีเสื้อผ้า (multi-select) ── */}
       {showAddColor&&(
-        <Modal onClose={()=>{setShowAddColor(null);setCustomColorName("");setNewColorHex("#ffffff");}} w={480}>
-          <MHead title="🎨 เพิ่มสีใหม่" onClose={()=>{setShowAddColor(null);setCustomColorName("");setNewColorHex("#ffffff");}}/>
-          <div style={{fontSize:11,color:T.muted,marginBottom:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>เลือกสีที่มี</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:18}}>
+        <Modal onClose={()=>{setShowAddColor(null);setPickedColors([]);setCustomColorName("");setNewColorHex("#ffffff");}} w={520}>
+          <MHead title="🎨 เพิ่มสีใหม่" sub="เลือกได้หลายสีพร้อมกัน" onClose={()=>{setShowAddColor(null);setPickedColors([]);setCustomColorName("");setNewColorHex("#ffffff");}}/>
+          <div style={{fontSize:11,color:T.muted,marginBottom:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>เลือกสีที่มี (กดเพื่อเลือก/ยกเลิก)</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:14}}>
             {PRESET_COLORS.map(c=>{
               const item=clothingItems.find(i=>i.id===showAddColor);
               const already=(item?.colors||[]).some(cl=>cl.colorName===c.name);
+              const picked = pickedColors.some(p => p.colorName === c.name);
               return (
-                <div key={c.name} onClick={()=>!already&&handleAddColorToItem(showAddColor,{colorName:c.name,hex:c.hex})}
-                  style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:20,border:`1px solid ${already?"rgba(203,210,217,0.5)":"rgba(59,91,139,0.25)"}`,cursor:already?"not-allowed":"pointer",background:already?"rgba(203,210,217,0.3)":"rgba(59,91,139,0.08)",opacity:already?0.4:1,transition:"all 0.2s"}}
-                  onMouseEnter={e=>{if(!already)e.currentTarget.style.background="rgba(59,91,139,0.18)";}}
-                  onMouseLeave={e=>{if(!already)e.currentTarget.style.background="rgba(59,91,139,0.08)";}}>
-                  <div style={{width:12,height:12,borderRadius:3,background:c.hex,border:"1px solid rgba(255,255,255,0.2)"}}/>
-                  <span style={{fontSize:12,color:already?T.muted:T.text,fontFamily:"'Sarabun',sans-serif"}}>{c.name}</span>
-                  {already&&<span style={{fontSize:9,color:T.muted}}>✓</span>}
+                <div key={c.name} onClick={()=>!already && togglePickedColor({colorName:c.name,hex:c.hex})}
+                  style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:20,border:`1px solid ${already?"rgba(203,210,217,0.5)":picked?T.accent:"rgba(59,91,139,0.25)"}`,cursor:already?"not-allowed":"pointer",background:already?"rgba(203,210,217,0.3)":picked?"rgba(59,91,139,0.22)":"rgba(59,91,139,0.08)",opacity:already?0.4:1,transition:"all 0.15s",boxShadow:picked?`0 0 0 2px ${T.accent}30`:"none"}}>
+                  <div style={{width:12,height:12,borderRadius:3,background:c.hex,border:"1px solid rgba(0,0,0,0.15)"}}/>
+                  <span style={{fontSize:12,color:already?T.muted:T.text,fontFamily:"'Sarabun',sans-serif",fontWeight:picked?700:400}}>{c.name}</span>
+                  {already && <span style={{fontSize:9,color:T.muted}}>✓ มีแล้ว</span>}
+                  {picked && !already && <span style={{fontSize:11,color:T.accent,fontWeight:800}}>✓</span>}
                 </div>
               );
             })}
           </div>
-          <div style={{padding:14,background:"rgba(4,18,44,0.6)",borderRadius:10,border:`1px solid ${T.border}`,marginBottom:16}}>
-            <div style={{fontSize:11,color:T.muted,marginBottom:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>หรือเพิ่มสีเอง</div>
+
+          {/* Custom color → เพิ่มเข้า buffer */}
+          <div style={{padding:12,background:"rgba(4,18,44,0.6)",borderRadius:10,border:`1px solid ${T.border}`,marginBottom:14}}>
+            <div style={{fontSize:11,color:T.muted,marginBottom:8,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>หรือเพิ่มสีเอง</div>
             <div style={{display:"flex",gap:10,alignItems:"center"}}>
               <input type="color" value={newColorHex} onChange={e=>setNewColorHex(e.target.value)} style={{width:40,height:36,borderRadius:8,border:`1px solid ${T.border}`,cursor:"pointer",background:"transparent",padding:2}}/>
-              <input value={customColorName} onChange={e=>setCustomColorName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&customColorName.trim()&&handleAddColorToItem(showAddColor,{colorName:customColorName.trim(),hex:newColorHex})} placeholder="ชื่อสี เช่น เทา, กรมท่า..."
+              <input value={customColorName} onChange={e=>setCustomColorName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addPickedFromCustom()} placeholder="ชื่อสี เช่น เทา, กรมท่า..."
                 style={{flex:1,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
-              <BtnPrimary onClick={()=>customColorName.trim()&&handleAddColorToItem(showAddColor,{colorName:customColorName.trim(),hex:newColorHex})} disabled={!customColorName.trim()}>เพิ่ม</BtnPrimary>
+              <BtnPrimary onClick={addPickedFromCustom} disabled={!customColorName.trim()}>+ เพิ่มในรายการ</BtnPrimary>
             </div>
           </div>
-          <BtnGhost onClick={()=>{setShowAddColor(null);setCustomColorName("");setNewColorHex("#ffffff");}} style={{width:"100%"}}>ปิด</BtnGhost>
+
+          {/* Selected colors preview */}
+          {pickedColors.length>0 && (
+            <div style={{padding:"10px 12px",background:"rgba(22,163,74,0.06)",border:"1px solid rgba(22,163,74,0.25)",borderRadius:10,marginBottom:12}}>
+              <div style={{fontSize:11,color:"#15803d",fontWeight:700,marginBottom:6}}>✓ เลือกไว้แล้ว {pickedColors.length} สี:</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {pickedColors.map(p => (
+                  <div key={p.colorName} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 9px",background:"white",border:`1px solid ${T.border}`,borderRadius:14,fontSize:11}}>
+                    <div style={{width:10,height:10,borderRadius:2,background:p.hex,border:"1px solid rgba(0,0,0,0.15)"}}/>
+                    <span>{p.colorName}</span>
+                    <button onClick={()=>togglePickedColor(p)} style={{background:"none",border:"none",cursor:"pointer",color:T.red,fontWeight:700,padding:0,marginLeft:2}}>×</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{display:"flex",gap:10}}>
+            <BtnGhost onClick={()=>{setShowAddColor(null);setPickedColors([]);setCustomColorName("");setNewColorHex("#ffffff");}} style={{flex:1}}>ปิด</BtnGhost>
+            <BtnPrimary onClick={handleAddMultipleColors} disabled={pickedColors.length===0} style={{flex:2}}>
+              {pickedColors.length===0 ? "เลือกสีก่อน" : `✅ เพิ่ม ${pickedColors.length} สี`}
+            </BtnPrimary>
+          </div>
         </Modal>
       )}
 
