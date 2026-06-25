@@ -6,7 +6,7 @@ import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import {
   PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot,
   moveLot, splitLot, addLotNote, nextStep, canMoveTo, removeLot, nowStr,
-  MACHINES_BY_STAGE,
+  MACHINES_BY_STAGE, getMachineForCurrentStage,
   estimateRolls, ROLL_CAPACITY, packIntoRolls, nextLotId,
 } from "../utils/productionLots";
 import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
@@ -480,6 +480,58 @@ export default function LotDetailModal({
   const currentIdx = steps.indexOf(lot.status);
   const isCancelled = lot.status === "ยกเลิก";
 
+  // 🏷️ พิมพ์ป้ายม้วน — สติกเกอร์แปะม้วน (กลุ่มตามสี)
+  const printRollLabel = () => {
+    const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    // group by color
+    const gm = new Map(); const groups = [];
+    (lot.items || []).forEach(it => {
+      const key = (it.colorName || "-") + "|" + (it.colorHex || "#999");
+      if (!gm.has(key)) { const g = { colorName: it.colorName || "-", colorHex: it.colorHex || "#999", sizes: [] }; gm.set(key, g); groups.push(g); }
+      gm.get(key).sizes.push({ size: it.productionSize || it.size, qty: Number(it.qty) || 0 });
+    });
+    const rowsHtml = groups.map(g => `
+      <tr>
+        <td class="c"><span class="sw" style="background:${esc(g.colorHex)}"></span>${esc(g.colorName)}</td>
+        <td>${g.sizes.map(s => `<span class="sz">${esc(s.size)}<b>${fmtInt(s.qty)}</b></span>`).join(" ")}</td>
+      </tr>`).join("");
+    const machine = getMachineForCurrentStage(lot) || lot.machine || "";
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>ป้ายม้วน ${esc(lot.rollNo || lot.lotId)}</title>
+      <style>
+        *{box-sizing:border-box;font-family:'Sarabun',Tahoma,sans-serif;}
+        body{margin:0;padding:8px;}
+        .label{width:100%;max-width:380px;border:2px solid #000;border-radius:8px;padding:10px 12px;}
+        .hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:6px;}
+        .roll{font-size:30px;font-weight:800;line-height:1;}
+        .roll small{font-size:13px;font-weight:600;}
+        .job{font-size:15px;font-weight:800;text-align:right;max-width:200px;}
+        .meta{font-size:12px;color:#222;text-align:right;margin-top:2px;}
+        table{width:100%;border-collapse:collapse;font-size:13px;}
+        td{padding:4px 2px;border-bottom:1px dashed #bbb;vertical-align:top;}
+        td.c{white-space:nowrap;font-weight:700;width:78px;}
+        .sw{display:inline-block;width:11px;height:11px;border:1px solid #000;border-radius:2px;margin-right:4px;vertical-align:middle;}
+        .sz{display:inline-block;border:1px solid #999;border-radius:5px;padding:1px 6px;margin:1px;font-family:monospace;}
+        .sz b{margin-left:3px;}
+        .tot{display:flex;justify-content:space-between;border-top:2px solid #000;margin-top:6px;padding-top:5px;font-size:15px;font-weight:800;}
+        @media print{ body{padding:0;} .label{border-width:1.5px;} }
+      </style></head>
+      <body><div class="label">
+        <div class="hd">
+          <div><div class="roll">🧵 ม้วน ${esc(lot.rollNo || lot.lotId)}</div>
+            ${machine ? `<small>🖨️ ${esc(machine)}</small>` : ""}</div>
+          <div><div class="job">${esc(lot.jobLabel || order.clothingName || "")}</div>
+            <div class="meta">${esc(order.prodNo || "")}<br>${esc(nowStr())}</div></div>
+        </div>
+        <table><tbody>${rowsHtml}</tbody></table>
+        <div class="tot"><span>รวม</span><span>${fmtInt(lotTotal)} ตัว</span></div>
+      </div>
+      <script>window.onload=function(){window.print();}</script>
+      </body></html>`;
+    const w = window.open("", "_blank", "width=420,height=640");
+    if (!w) { setToast("เบราว์เซอร์บล็อกป๊อปอัพ — อนุญาตก่อน"); return; }
+    w.document.write(html); w.document.close();
+  };
+
   return (
     <Modal onClose={onClose} w={720}>
       <MHead
@@ -541,9 +593,12 @@ export default function LotDetailModal({
             {lot.rollNo && <span style={{fontSize:13,color:T.text,fontWeight:600}}>· 🧵 ม้วน {lot.rollNo}</span>}
             <span style={{fontSize:13,color:T.text,fontWeight:600}}>· 👕 {lot.jobLabel || order.clothingName}</span>
             <span style={{fontSize:11,color:T.sub,marginLeft:4}}>· ล็อตนี้ ≈ <b>{estimateRolls(lotTotal)}</b> ม้วน ({fmtInt(ROLL_CAPACITY)}/ม้วน)</span>
-            {!!userRole && !isCancelled && (
-              <button onClick={startEditMachine} style={{marginLeft:"auto",padding:"4px 12px",borderRadius:7,border:"1px solid rgba(59,91,139,0.3)",background:"white",color:T.accent,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>✏️ ตั้งเครื่อง/ม้วน</button>
-            )}
+            <span style={{marginLeft:"auto",display:"flex",gap:6}}>
+              <button onClick={printRollLabel} title="พิมพ์ป้ายแปะม้วน" style={{padding:"4px 12px",borderRadius:7,border:"1px solid rgba(58,122,82,0.35)",background:"#f0fdf4",color:T.green,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>🏷️ พิมพ์ป้าย</button>
+              {!!userRole && !isCancelled && (
+                <button onClick={startEditMachine} style={{padding:"4px 12px",borderRadius:7,border:"1px solid rgba(59,91,139,0.3)",background:"white",color:T.accent,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>✏️ ตั้งเครื่อง/ม้วน</button>
+              )}
+            </span>
           </>
         )}
       </div>
