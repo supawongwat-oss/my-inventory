@@ -10,6 +10,7 @@ import {
   estimateRolls, ROLL_CAPACITY, packIntoRolls, nextLotId,
 } from "../utils/productionLots";
 import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
+import { sizeRank } from "../theme";
 
 const T = { border:"#e3e8ef", sub:"#5b6b85", text:"#1f2a44", muted:"#8a9bb3", accent:"#3b5b8b", red:"#dc2626", green:"#16a34a" };
 const fmtInt = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -810,6 +811,11 @@ function RollSplitModal({ lot, busy, onClose, onConfirm, onConfirmManual }) {
   });
   const cap = Math.max(1, Number(capacity) || ROLL_CAPACITY);
   const autoRolls = packIntoRolls(items, cap);
+  // เรียงตามไซส์ (รวมทุกสีของไซส์เดียวกันไว้ด้วยกัน) — JS sort เสถียร สีคงลำดับเดิม
+  const sortBySize = (dir) => setItems(prev => [...prev].sort((a,b) => {
+    const ra = sizeRank(a.productionSize || a.size), rb = sizeRank(b.productionSize || b.size);
+    return dir === "desc" ? rb - ra : ra - rb;
+  }));
 
   // ── โหมดกรอกเอง ──
   const [mRolls, setMRolls] = useState([{ rows: [{ itemIdx: "", qty: "" }] }]);
@@ -911,7 +917,13 @@ function RollSplitModal({ lot, busy, onClose, onConfirm, onConfirmManual }) {
               style={{width:100,padding:"6px 10px",border:`1px solid ${T.border}`,borderRadius:7,fontSize:13,fontFamily:"monospace",textAlign:"center",outline:"none"}}/>
             <span style={{fontSize:11,color:T.muted}}>ตัว/ม้วน (ปรับได้ตามจริง)</span>
           </div>
-          <div style={{fontSize:11,fontWeight:700,color:T.sub,marginBottom:6,textTransform:"uppercase"}}>1️⃣ ลำดับการพิมพ์</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6,flexWrap:"wrap",gap:6}}>
+            <span style={{fontSize:11,fontWeight:700,color:T.sub,textTransform:"uppercase"}}>1️⃣ ลำดับการพิมพ์</span>
+            <span style={{display:"flex",gap:5}}>
+              <button onClick={()=>sortBySize("desc")} title="พิมพ์ไซส์ใหญ่ก่อน (XL→L→M) ทุกสีของไซส์เดียวกันอยู่ด้วยกัน" style={{padding:"3px 10px",fontSize:11,border:`1px solid ${T.border}`,borderRadius:6,background:"white",color:T.accent,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>↕️ ไซส์ใหญ่→เล็ก</button>
+              <button onClick={()=>sortBySize("asc")} title="ไซส์เล็กก่อน" style={{padding:"3px 10px",fontSize:11,border:`1px solid ${T.border}`,borderRadius:6,background:"white",color:T.sub,cursor:"pointer",fontFamily:"inherit"}}>เล็ก→ใหญ่</button>
+            </span>
+          </div>
           <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:14,maxHeight:180,overflowY:"auto"}}>
             {items.map((it, i) => (
               <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 70px 28px 28px",gap:6,alignItems:"center",padding:"6px 8px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:7}}>
