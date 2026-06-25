@@ -1623,6 +1623,10 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
       const all = [root, ...root.querySelectorAll("*")];
       all.forEach(n => {
         try {
+          // ข้าม element ที่ระบุ data-no-scale="true" (จะคงขนาดเดิม ไม่ scale)
+          if (n.getAttribute && n.getAttribute("data-no-scale") === "true") return;
+          // ข้ามถ้ามี ancestor ที่ no-scale → ใช้ closest
+          if (n.closest && n.closest('[data-no-scale-tree="true"]') && n !== n.closest('[data-no-scale-tree="true"]')) return;
           const cs = window.getComputedStyle(n);
           const fs = parseFloat(cs.fontSize);
           if (!isNaN(fs) && fs > 0) n.style.fontSize = (fs * factor).toFixed(2) + "px";
