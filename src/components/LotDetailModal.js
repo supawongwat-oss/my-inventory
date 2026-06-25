@@ -359,6 +359,47 @@ export default function LotDetailModal({
     await replaceLotWithRolls(rolls, `แบ่ง ${rolls.length} ม้วน (${capacity}/ม้วน) จาก ${lot.lotId}`);
   };
 
+  // ── รวมล็อตที่ใช้งานอยู่ทั้งหมดกลับเป็นล็อตเดียว (undo แยก/แบ่งม้วน) ──
+  const handleMergeAllLots = async () => {
+    if (busy) return;
+    const active = lots.filter(l => l.status !== "ยกเลิก");
+    if (active.length < 2) { setToast("มีล็อตใช้งานเดียว — ไม่ต้องรวม"); return; }
+    if (!window.confirm(`รวม ${active.length} ล็อตที่ใช้งานอยู่ของ ${order.prodNo} เป็นล็อตเดียว?\n(ล็อตที่ยกเลิกจะไม่ถูกแตะ)`)) return;
+    setBusy(true);
+    try {
+      // รวม items (key = colorIdx|colorName|colorHex|size|variant|productionSize)
+      const merged = new Map();
+      const notes = [];
+      active.forEach(l => {
+        (l.items || []).forEach(it => {
+          const q = Number(it.qty) || 0; if (q <= 0) return;
+          const key = [it.colorIdx ?? "", it.colorName ?? "", it.colorHex ?? "", it.size ?? "", it.variant ?? "", it.productionSize ?? ""].join("|");
+          if (!merged.has(key)) merged.set(key, { ...it, qty: 0 });
+          merged.get(key).qty += q;
+        });
+        (l.notes || []).forEach(n => notes.push(n));
+      });
+      const items = Array.from(merged.values());
+      // สถานะ = ขั้นที่น้อยที่สุดในบรรดาล็อตที่ใช้งาน (กันข้ามขั้น)
+      const idxs = active.map(l => steps.indexOf(l.status)).filter(i => i >= 0);
+      const status = steps[Math.min(...idxs)] || active[0].status;
+      const cancelled = lots.filter(l => l.status === "ยกเลิก");
+      const id = nextLotId(cancelled);
+      const mergedLot = {
+        lotId: id, items, status,
+        statusHistory: [{ status: `รวม ${active.length} ล็อต`, at: nowStr(), by: user?.name || "" }],
+        notes, finishedStocked: false, machine: "", rollNo: "", machineByStage: {},
+      };
+      await persistLots([mergedLot, ...cancelled]);
+      logAudit(user, {
+        action: AUDIT_ACTIONS.PRODUCTION_STATUS, collection: collectionName, targetId: order.id,
+        targetLabel: `${order.prodNo} · ${id}`, note: `รวม ${active.length} ล็อตเป็นล็อตเดียว`,
+      });
+      setToast(`รวม ${active.length} ล็อตสำเร็จ`);
+      setTimeout(() => onClose && onClose(), 700);
+    } catch (e) { console.error(e); setToast("ผิดพลาด: " + (e.message || e)); setBusy(false); }
+  };
+
   // โหมดกรอกเอง — rolls = [{rollNo, items}]
   const applyManualRolls = async (rolls) => {
     const clean = (rolls || []).filter(r => (r.items || []).length > 0);
@@ -589,7 +630,10 @@ export default function LotDetailModal({
             <BtnGhost onClick={() => setShowSplit(true)} disabled={busy} style={{flex:1,minWidth:140}}>✂️ แยกล็อตย่อย</BtnGhost>
           )}
           {lotTotal > ROLL_CAPACITY * 0.5 && (
-            <BtnGhost onClick={() => setShowRollSplit(true)} disabled={busy} style={{flex:1,minWidth:150}}>🧵 แบ่งม้วนอัตโนมัติ</BtnGhost>
+            <BtnGhost onClick={() => setShowRollSplit(true)} disabled={busy} style={{flex:1,minWidth:150}}>🧵 แบ่งม้วน</BtnGhost>
+          )}
+          {lots.filter(l => l.status !== "ยกเลิก").length > 1 && (
+            <BtnGhost onClick={handleMergeAllLots} disabled={busy} style={{flex:1,minWidth:140}}>🔗 รวมล็อตกลับ</BtnGhost>
           )}
           {!!userRole && !isFinal && (
             <BtnDanger onClick={handleCancel} disabled={busy} style={{minWidth:90}}>🛑 ยกเลิก</BtnDanger>
