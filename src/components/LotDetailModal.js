@@ -862,49 +862,64 @@ function RollSplitModal({ lot, busy, onClose, onConfirm, onConfirmManual }) {
 
       {mode === "manual" ? (
         <>
-          {/* คงเหลือ — ตารางจัดกลุ่มตามสี (ดูง่าย) */}
+          {/* คงเหลือ — ตารางกริด ไซส์เป็นคอลัมน์ตรงกันทุกสี */}
           {(() => {
-            // คำนวณคงเหลือต่อ item แล้วจัดกลุ่มตามสี
             const rem = lotItems.map((it, idx) => ({ ...it, sz: it.productionSize || it.size, remain: (Number(it.qty) || 0) - (usedByItem[idx] || 0) }));
+            // union ไซส์ทั้งหมด เรียงเล็ก→ใหญ่
+            const allSizes = Array.from(new Set(rem.map(it => it.sz))).sort((a, b) => sizeRank(a) - sizeRank(b));
+            // group by สี → { size: remain }
             const groups = []; const gm = new Map();
             rem.forEach(it => {
               const key = (it.colorName || "-") + "|" + (it.colorHex || "#999");
-              if (!gm.has(key)) { const g = { colorName: it.colorName || "-", colorHex: it.colorHex || "#999", sizes: [] }; gm.set(key, g); groups.push(g); }
-              gm.get(key).sizes.push({ size: it.sz, remain: it.remain });
+              if (!gm.has(key)) { const g = { colorName: it.colorName || "-", colorHex: it.colorHex || "#999", map: {} }; gm.set(key, g); groups.push(g); }
+              gm.get(key).map[it.sz] = (gm.get(key).map[it.sz] || 0) + it.remain;
             });
-            groups.forEach(g => g.sizes.sort((a, b) => sizeRank(a.size) - sizeRank(b.size)));
+            const colTotal = (sz) => groups.reduce((s, g) => s + (g.map[sz] || 0), 0);
             const grand = rem.reduce((s, it) => s + it.remain, 0);
+            const th = { padding: "5px 4px", textAlign: "center", fontWeight: 700, fontSize: 11, fontFamily: "monospace", borderRight: `1px solid ${T.border}`, background: "#e0f2fe", color: "#0c4a6e", minWidth: 40 };
             return (
               <div style={{marginBottom:12,border:`1px solid ${T.border}`,borderRadius:8,overflow:"hidden"}}>
                 <div style={{padding:"5px 10px",background:"#f1f5fb",fontSize:11,fontWeight:700,color:T.sub}}>📦 คงเหลือ (ยังไม่ใส่ม้วน)</div>
-                <div style={{maxHeight:170,overflowY:"auto"}}>
-                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                <div style={{overflowX:"auto",maxHeight:200,overflowY:"auto"}}>
+                  <table style={{borderCollapse:"collapse",fontSize:12,width:"100%"}}>
+                    <thead>
+                      <tr style={{background:"#f1f5fb"}}>
+                        <th style={{position:"sticky",left:0,background:"#f1f5fb",zIndex:2,padding:"5px 8px",textAlign:"left",fontWeight:700,fontSize:11,color:T.sub,borderRight:`1px solid ${T.border}`,minWidth:80}}>สี</th>
+                        {allSizes.map(sz => <th key={sz} style={th}>{sz}</th>)}
+                        <th style={{padding:"5px 8px",textAlign:"center",fontWeight:700,fontSize:11,color:T.accent,minWidth:46}}>รวม</th>
+                      </tr>
+                    </thead>
                     <tbody>
-                      {groups.map((g,gi) => (
-                        <tr key={gi} style={{borderTop:`1px solid ${T.border}`}}>
-                          <td style={{padding:"5px 8px",whiteSpace:"nowrap",borderRight:`1px solid ${T.border}`,width:90}}>
-                            <span style={{display:"inline-flex",alignItems:"center",gap:5}}>
-                              <span style={{width:11,height:11,borderRadius:2,background:g.colorHex,border:"1px solid rgba(0,0,0,0.15)"}}/>
-                              <b style={{color:T.text}}>{g.colorName}</b>
-                            </span>
-                          </td>
-                          <td style={{padding:"4px 8px"}}>
-                            <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
-                              {g.sizes.map((s,si) => (
-                                <span key={si} style={{padding:"2px 8px",borderRadius:6,fontSize:11,background:s.remain<0?"#fef2f2":s.remain===0?"#f0fdf4":"#f8fafc",border:`1px solid ${s.remain<0?"#fecaca":T.border}`}}>
-                                  <span style={{fontFamily:"monospace",fontWeight:700,color:T.accent}}>{s.size}</span>{" "}
-                                  <b style={{color:s.remain<0?T.red:s.remain===0?T.green:T.text,fontFamily:"monospace"}}>{fmtInt(s.remain)}</b>
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                      {groups.map((g,gi) => {
+                        const rowTotal = allSizes.reduce((s,sz)=>s+(g.map[sz]||0),0);
+                        return (
+                          <tr key={gi} style={{borderTop:`1px solid ${T.border}`}}>
+                            <td style={{position:"sticky",left:0,background:"white",zIndex:1,padding:"4px 8px",whiteSpace:"nowrap",borderRight:`1px solid ${T.border}`}}>
+                              <span style={{display:"inline-flex",alignItems:"center",gap:5}}>
+                                <span style={{width:11,height:11,borderRadius:2,background:g.colorHex,border:"1px solid rgba(0,0,0,0.15)"}}/>
+                                <b style={{color:T.text}}>{g.colorName}</b>
+                              </span>
+                            </td>
+                            {allSizes.map(sz => {
+                              const v = g.map[sz];
+                              return (
+                                <td key={sz} style={{padding:"4px 4px",textAlign:"center",fontFamily:"monospace",borderRight:`1px solid ${T.border}`,fontWeight:700,
+                                  background: v===undefined?"#fff":v<0?"#fef2f2":v===0?"#f0fdf4":"#fff",
+                                  color: v===undefined?"#cbd5e1":v<0?T.red:v===0?T.green:T.text}}>
+                                  {v===undefined?"·":fmtInt(v)}
+                                </td>
+                              );
+                            })}
+                            <td style={{padding:"4px 6px",textAlign:"center",fontFamily:"monospace",fontWeight:800,color:T.accent}}>{fmtInt(rowTotal)}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                     <tfoot>
                       <tr style={{borderTop:`2px solid ${T.border}`,background:"#f8fafc"}}>
-                        <td style={{padding:"5px 8px",fontWeight:700,color:T.sub,borderRight:`1px solid ${T.border}`}}>รวมคงเหลือ</td>
-                        <td style={{padding:"5px 8px",fontFamily:"monospace",fontWeight:800,color:grand<0?T.red:T.green}}>{fmtInt(grand)} ตัว</td>
+                        <td style={{position:"sticky",left:0,background:"#f8fafc",padding:"5px 8px",fontWeight:700,color:T.sub,borderRight:`1px solid ${T.border}`}}>รวม</td>
+                        {allSizes.map(sz => {const ct=colTotal(sz);return <td key={sz} style={{padding:"5px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:ct<0?T.red:T.green,borderRight:`1px solid ${T.border}`}}>{fmtInt(ct)}</td>;})}
+                        <td style={{padding:"5px 6px",textAlign:"center",fontFamily:"monospace",fontWeight:800,color:grand<0?T.red:T.green}}>{fmtInt(grand)}</td>
                       </tr>
                     </tfoot>
                   </table>
