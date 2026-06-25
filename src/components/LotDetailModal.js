@@ -6,6 +6,7 @@ import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import {
   PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot,
   moveLot, splitLot, addLotNote, nextStep, canMoveTo, removeLot, nowStr,
+  MACHINES_BY_STAGE,
 } from "../utils/productionLots";
 import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
 
@@ -365,6 +366,30 @@ export default function LotDetailModal({
         onClose={onClose}
       />
       {toast && <Toast msg={toast}/>}
+
+      {/* 🏭 เครื่อง/ทีม ที่กำลังทำม้วนนี้ใน stage ปัจจุบัน */}
+      {(()=>{
+        const currentStage = lot?.status || "";
+        const choices = MACHINES_BY_STAGE[currentStage] || [];
+        if (choices.length === 0) return null; // stage ที่ไม่ต้องเลือกเครื่อง (ตัดผ้ารวม, แพ๊ค, เข้าคลัง)
+        const current = (lot?.machineByStage || {})[currentStage] || "";
+        return (
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,padding:"10px 14px",background:"rgba(59,91,139,0.06)",border:`1px solid ${T.border}`,borderRadius:10}}>
+            <span style={{fontSize:11,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em"}}>🏭 {currentStage} — เครื่อง/ทีม:</span>
+            <select value={current} disabled={!userRole || isCancelled} onChange={async e=>{
+              const v = e.target.value;
+              const newLots = lots.map((l,i) => i === lotIdx ? { ...l, machineByStage: { ...(l.machineByStage||{}), [currentStage]: v } } : l);
+              await persistLots(newLots);
+              setToast(v ? `อัพเดท: ${v}` : "ล้างเครื่อง/ทีมแล้ว");
+            }}
+              style={{background:"white",border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"6px 12px",fontSize:12,outline:"none",cursor:"pointer",fontFamily:"inherit",minWidth:140}}>
+              <option value="">— ยังไม่ระบุ —</option>
+              {choices.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+            {current && <span style={{fontSize:11,padding:"3px 9px",borderRadius:10,background:`${STATUS_COLORS[currentStage]||"#64748b"}18`,color:STATUS_COLORS[currentStage]||"#64748b",fontWeight:700,border:`1px solid ${STATUS_COLORS[currentStage]||"#64748b"}40`}}>✓ {current}</span>}
+          </div>
+        );
+      })()}
 
       {/* Items — ใหญ่ขึ้นเพื่อเห็นรายการชัดเจน */}
       <div style={{padding:18,background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:12,marginBottom:14}}>
