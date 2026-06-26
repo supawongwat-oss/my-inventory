@@ -5434,10 +5434,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 <span style={{fontSize:12,color:"#64748b",fontWeight:500}}>ขนาดกระดาษ:</span>
                 <div style={{display:"flex",gap:6}}>
                   {[
-                    {id:"A5",label:"A5",size:"A5 portrait",margin:"8mm"},
                     {id:"A4",label:"A4",size:"A4 portrait",margin:"10mm"},
-                    {id:"80mm",label:"80mm (สลิป)",size:"80mm auto",margin:"2mm 4mm"},
-                    {id:"57mm",label:"57mm (ม้วน)",size:"57mm auto",margin:"1mm 3mm"},
+                    {id:"A5",label:"A5",size:"A5 portrait",margin:"8mm"},
                   ].map(p=>(
                     <button key={p.id}
                       onClick={()=>printElementById("invoice-print-area",p.size,p.margin,INVOICE_FONT_SCALE)}
@@ -5451,8 +5449,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 <button onClick={()=>setShowPrintInvoice(null)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid #e2e8f0",background:"white",color:"#64748b",fontSize:13,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>ปิด</button>
                 <button onClick={()=>downloadInvoicePdf(showPrintInvoice,false)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(220,38,38,0.35)",background:"white",color:"#dc2626",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>📄 PDF</button>
                 <button onClick={()=>downloadInvoicePdf(showPrintInvoice,true)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(220,38,38,0.35)",background:"white",color:"#dc2626",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>📄 PDF × 3 ชุด</button>
-                <button onClick={()=>printElementById("invoice-print-area","A5 portrait","8mm",INVOICE_FONT_SCALE)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(59,91,139,0.35)",background:"white",color:"#3b5b8b",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>🖨️ พิมพ์ (A5)</button>
-                <button onClick={()=>printInvoiceCopies("invoice-print-area")} style={{padding:"9px 16px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>🖨️ พิมพ์ × 3 ชุด (A5)</button>
+                <button onClick={()=>printElementById("invoice-print-area","A4 portrait","10mm",INVOICE_FONT_SCALE)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(59,91,139,0.35)",background:"white",color:"#3b5b8b",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>🖨️ พิมพ์ (A4)</button>
+                <button onClick={()=>printInvoiceCopies("invoice-print-area",undefined,INVOICE_FONT_SCALE,"A4 portrait","10mm")} style={{padding:"9px 16px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>🖨️ พิมพ์ × 3 ชุด (A4)</button>
               </div>
             </div>
           </div>
