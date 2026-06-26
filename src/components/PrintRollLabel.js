@@ -1,7 +1,6 @@
 import React from "react";
 import { Modal, MHead, BtnPrimary, BtnGhost } from "./ui";
 import { totalQtyOfLot, getMachineForCurrentStage, STATUS_COLORS } from "../utils/productionLots";
-import { sizeRank } from "../theme";
 
 const fmtInt = (n) => Number(n || 0).toLocaleString("th-TH");
 
@@ -41,8 +40,8 @@ export default function PrintRollLabel({ order, lot, onClose, onPrint, companyIn
         });
       }
     });
-    // เรียงไซส์ตาม sizeRank (S, M, L, XL, 2XL, ...)
-    return Array.from(map.values()).sort((a, b) => sizeRank(a.size) - sizeRank(b.size));
+    // คงลำดับตามที่ user กรอก (ไม่ sort — ลำดับสะท้อนแผนการพิมพ์จริง)
+    return Array.from(map.values());
   })();
 
   return (
