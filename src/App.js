@@ -5124,10 +5124,10 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
       {showPrintInvoice&&(
         <div className="print-modal-overlay" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,backdropFilter:"blur(6px)"}}
           onMouseDown={e=>{if(e.target===e.currentTarget)setShowPrintInvoice(null);}}>
-          <div className="print-modal-card" onMouseDown={e=>e.stopPropagation()} style={{background:"white",borderRadius:16,width:760,maxHeight:"94vh",overflowY:"auto",boxShadow:"0 24px 60px rgba(0,0,0,0.7)"}}>
+          <div className="print-modal-card" onMouseDown={e=>e.stopPropagation()} style={{background:"white",borderRadius:16,width:"min(96vw, 794px)",maxHeight:"94vh",overflow:"auto",boxShadow:"0 24px 60px rgba(0,0,0,0.7)"}}>
 
-            {/* ── เนื้อหาบิล (พิมพ์ได้) ── */}
-            <div id="invoice-print-area" style={{padding:"12px 28px 14px",fontFamily:"'Sarabun',sans-serif",color:"#000"}}>
+            {/* ── เนื้อหาบิล (พิมพ์ได้) — กว้างเท่า A4 portrait (794px @96dpi) ── */}
+            <div id="invoice-print-area" style={{padding:"12px 28px 14px",fontFamily:"'Sarabun',sans-serif",color:"#000",boxSizing:"border-box"}}>
 
               {/* ── HEADER ── */}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,paddingBottom:10,borderBottom:"2px solid #000"}}>
