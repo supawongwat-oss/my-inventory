@@ -1659,170 +1659,134 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
     return root;
   };
 
-  // ปริ้นผ่าน iframe — เนื้อหาใหญ่เต็ม A4 และไหลข้ามหน้าได้
+  // 🖨️ พิมพ์แบบ same-page isolation — ใช้ได้ทุกอุปกรณ์ (desktop + Samsung/iOS/Android)
+  // วิธีนี้ clone เนื้อหาที่จะพิมพ์ไปไว้ที่ body ระดับบนสุด แล้วใช้ @media print ซ่อนทุกอย่างที่เหลือ
+  // → ไม่มี sidebar/โลโก้แอป หลุดเข้ามา (เดิม iframe.print() บน Samsung พิมพ์ทั้งหน้าหลัก = โลโก้ซ้ำ)
   const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10mm", fontScale = PRINT_FONT_SCALE) => {
     const el = document.getElementById(id);
     if (!el) return;
-    // ตรวจว่าเป็น thermal mode (รูปแบบ "<W>mm <H>mm")
     const thermalMatch = /^(\d+(?:\.\d+)?)mm\s+(\d+(?:\.\d+)?)mm$/i.exec(String(pageSize).trim());
     const isThermal = !!thermalMatch;
     const tW = isThermal ? Number(thermalMatch[1]) : null;
-    const tH = isThermal ? Number(thermalMatch[2]) : null;
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
-    document.body.appendChild(iframe);
-    // 🩹 Browser print header ใช้ parent document.title (ไม่ใช่ iframe title) — swap ชั่วคราว
-    const prevTitle = document.title;
-    document.title = " ";
-    const doc = iframe.contentWindow.document;
-    doc.open();
-    const extraThermal = isThermal ? `
-      html, body { width: ${tW}mm; height: auto; }
-      body > * { width: ${tW}mm; max-width: ${tW}mm; box-sizing: border-box; }
-    ` : "";
-    doc.write(`<!doctype html><html><head><meta charset="utf-8"/>
-      <title> </title>
-      <link rel="icon" href="data:,">
-      <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-      <style>
-        @page { size: ${pageSize}; margin: ${pageMargin}; }
-        html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun', sans-serif; }
-        body { padding: 0; }
-        table { border-collapse: collapse; width: 100%; }
-        tr, td, th { page-break-inside: avoid; }
-        thead { display: table-header-group; }
-        tfoot { display: table-footer-group; }
-        img { max-width: 100%; }
-        .no-print, [data-no-print="true"] { display: none !important; }
-        ${extraThermal}
-      </style></head><body></body></html>`);
-    // thermal: ไม่ scale font (ขนาดเล็กอยู่แล้ว) — A4: scale ตามปกติ
+
+    // เก็บกวาดของเก่า (กันค้างถ้ากดซ้ำ)
+    document.getElementById("__print_root__")?.remove();
+    document.getElementById("__print_style__")?.remove();
+
+    // clone + scale font
     const clone = el.cloneNode(true);
+    clone.removeAttribute("id"); // กัน id ซ้ำกับต้นฉบับ
     const finalEl = isThermal ? clone : scaleFontInElement(clone, fontScale);
-    doc.body.appendChild(doc.importNode(finalEl, true));
-    doc.close();
-    // มือถือต้อง delay มากกว่า desktop
-    // 🩹 detect mobile/tablet ให้คลุมเครื่องที่ UA หลุด regex เดิม:
-    //    - iPadOS 13+ รายงาน "Macintosh" → ใช้ maxTouchPoints
-    //    - Samsung tablet บางตัว UA มี "Mobi"/"Tablet"/"Silk" แต่ไม่มี "Android"
-    //    - touch-only + no fine pointer → ถือว่ามือถือ
-    const isMobile = /Android|iPhone|iPad|iPod|Mobi|Tablet|Silk|webOS|Kindle|PlayBook|BB10/i.test(navigator.userAgent)
-      || (typeof navigator !== "undefined" && navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent))
-      || (typeof navigator !== "undefined" && navigator.userAgentData && navigator.userAgentData.mobile)
-      || (typeof window !== "undefined" && window.matchMedia && window.matchMedia("(hover: none) and (pointer: coarse)").matches);
-    // 🩹 Android/Samsung Tab: iframe และ @media print CSS ไม่น่าเชื่อถือ
-    //    → เปิด tab ใหม่แล้ว print ใน window นั้นโดยตรง (วิธีที่เสถียรสุดบนมือถือ)
-    const triggerMobile = () => {
-      iframe.remove();
-      document.title = prevTitle;
-      // ใช้ฟอนต์ระบบ (ไม่ดึง web font CDN) — กัน Samsung print framework timeout
-      // มีปุ่ม "พิมพ์" ในหน้าใหม่ไว้กดเองด้วย เผื่อ auto-print ไม่ติด
-      const html = `<!doctype html><html><head><meta charset="utf-8"/>
-        <title>พิมพ์เอกสาร</title>
-        <link rel="icon" href="data:,">
-        <style>
-          @page { size: ${pageSize}; margin: ${pageMargin}; }
-          html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun', 'Sukhumvit Set', 'Noto Sans Thai', sans-serif; }
-          table { border-collapse: collapse; width: 100%; }
-          tr, td, th { page-break-inside: avoid; }
-          thead { display: table-header-group; }
-          tfoot { display: table-footer-group; }
-          img { max-width: 100%; }
-          .no-print, [data-no-print="true"] { display: none !important; }
-          #__print_btn { position: fixed; top: 12px; right: 12px; padding: 10px 18px; background: #3b5b8b; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.2); z-index: 9999; }
-          @media print { #__print_btn { display: none !important; } }
-          ${extraThermal}
-        </style></head><body>
-        <button id="__print_btn" onclick="window.print()">🖨️ พิมพ์</button>
-        ${el.outerHTML}
-        </body></html>`;
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const w = window.open(url, "_blank");
-      if (!w) {
-        URL.revokeObjectURL(url);
-        alert("เบราว์เซอร์บล็อก popup — กรุณาอนุญาต popup สำหรับหน้านี้แล้วลองใหม่");
-        return;
+
+    const root = document.createElement("div");
+    root.id = "__print_root__";
+    root.appendChild(finalEl);
+    document.body.appendChild(root);
+
+    const extraThermal = isThermal ? `
+      #__print_root__ { width: ${tW}mm; }
+      #__print_root__ > * { width: ${tW}mm; max-width: ${tW}mm; box-sizing: border-box; }
+    ` : "";
+
+    const style = document.createElement("style");
+    style.id = "__print_style__";
+    style.textContent = `
+      /* ตอนแสดงบนจอ ซ่อน root ไว้นอกจอ (ไม่ให้เด้งทับ UI) */
+      @media screen { #__print_root__ { position: fixed; left: -99999px; top: 0; width: 1px; height: 1px; overflow: hidden; } }
+      @media print {
+        @page { size: ${pageSize}; margin: ${pageMargin}; }
+        html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+        /* ซ่อนทุก element ระดับบนสุด เหลือเฉพาะ print root */
+        body > *:not(#__print_root__) { display: none !important; }
+        #__print_root__ { display: block !important; position: static !important; left: auto !important; top: auto !important; width: auto !important; height: auto !important; overflow: visible !important; }
+        #__print_root__ table { border-collapse: collapse; width: 100%; }
+        #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; }
+        #__print_root__ thead { display: table-header-group; }
+        #__print_root__ tfoot { display: table-footer-group; }
+        #__print_root__ img { max-width: 100%; }
+        .no-print, [data-no-print="true"], .print-hide { display: none !important; }
+        ${extraThermal}
       }
-      // รอ window load + ทุกรูปโหลดเสร็จ แล้วค่อย print (ไม่ปิด tab อัตโนมัติ — ปล่อยผู้ใช้ปิดเอง)
-      const tryPrint = () => {
-        try {
-          const imgs = Array.from(w.document.images || []);
-          const allReady = imgs.every(im => im.complete && im.naturalWidth > 0);
-          if (!allReady) { setTimeout(tryPrint, 300); return; }
-          w.focus();
-          w.print();
-        } catch (e) {
-          console.warn("[print] auto-print failed; ผู้ใช้กดปุ่ม 'พิมพ์' ใน tab ใหม่ได้:", e);
-        } finally {
-          setTimeout(() => URL.revokeObjectURL(url), 60000);
-        }
-      };
-      // window.open กับ blob: บางทีไม่ trigger 'load' event ใน parent — ใช้ polling
-      const start = Date.now();
-      const waitLoad = () => {
-        if (w.closed) return;
-        const ready = w.document && w.document.readyState === "complete";
-        if (ready) { setTimeout(tryPrint, 500); return; }
-        if (Date.now() - start > 10000) { tryPrint(); return; } // กัน hang
-        setTimeout(waitLoad, 200);
-      };
-      setTimeout(waitLoad, 300);
+    `;
+    document.head.appendChild(style);
+
+    let done = false;
+    const cleanup = () => {
+      if (done) return; done = true;
+      root.remove();
+      style.remove();
+      window.removeEventListener("afterprint", cleanup);
     };
-    const triggerDesktop = () => {
-      try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e){}
-      setTimeout(() => { iframe.remove(); document.title = prevTitle; }, 2000);
-    };
-    const trigger = isMobile ? triggerMobile : triggerDesktop;
-    if (doc.fonts && doc.fonts.ready) {
-      doc.fonts.ready.then(() => setTimeout(trigger, isMobile ? 600 : 200));
-    } else {
-      setTimeout(trigger, isMobile ? 900 : 500);
-    }
+    window.addEventListener("afterprint", cleanup);
+
+    // รอรูป + ฟอนต์โหลดก่อนสั่งพิมพ์
+    const imgs = Array.from(root.querySelectorAll("img"));
+    const waitImgs = Promise.all(imgs.map(im =>
+      (im.complete && im.naturalWidth > 0)
+        ? Promise.resolve()
+        : new Promise(res => { im.onload = res; im.onerror = res; setTimeout(res, 3000); })
+    ));
+    const fontsReady = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+
+    Promise.all([waitImgs, fontsReady]).then(() => {
+      setTimeout(() => {
+        try { window.print(); } catch (e) { console.warn("[print] failed:", e); }
+        // เผื่อ afterprint ไม่ยิง (บางมือถือ) — เก็บกวาดหลัง 60 วิ
+        setTimeout(cleanup, 60000);
+      }, 120);
+    });
   };
 
   // พิมพ์เอกสารหลายชุด (ต้นฉบับ + สำเนา) บน A4 — ขึ้นหน้าใหม่ทุกชุด
-  const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"], fontScale = INVOICE_FONT_SCALE) => {
+  const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"], fontScale = INVOICE_FONT_SCALE, pageSize = "A5 portrait", pageMargin = "8mm") => {
     const el = document.getElementById(id);
     if (!el) return;
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed"; iframe.style.right = "0"; iframe.style.bottom = "0";
-    iframe.style.width = "0"; iframe.style.height = "0"; iframe.style.border = "0";
-    document.body.appendChild(iframe);
-    const doc = iframe.contentWindow.document;
-    doc.open();
-    doc.write(`<!doctype html><html><head><meta charset="utf-8"/>
-      <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-      <style>
-        @page { size: A4 portrait; margin: 10mm; }
-        html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun', sans-serif; }
-        table { border-collapse: collapse; width: 100%; }
-        tr, td, th { page-break-inside: avoid; }
-        thead { display: table-header-group; }
-        img { max-width: 100%; }
-      </style></head><body></body></html>`);
+    document.getElementById("__print_root__")?.remove();
+    document.getElementById("__print_style__")?.remove();
+
+    const root = document.createElement("div");
+    root.id = "__print_root__";
     labels.forEach((label, i) => {
       const clone = el.cloneNode(true);
+      clone.removeAttribute("id");
       const tag = clone.querySelector("[data-doc-label]");
       if (tag) tag.textContent = label;
       scaleFontInElement(clone, fontScale);
-      const wrap = doc.createElement("div");
+      const wrap = document.createElement("div");
       if (i < labels.length - 1) wrap.style.pageBreakAfter = "always";
-      wrap.appendChild(doc.importNode(clone, true));
-      doc.body.appendChild(wrap);
+      wrap.appendChild(clone);
+      root.appendChild(wrap);
     });
-    doc.close();
-    const trigger = () => {
-      try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch(e){}
-      setTimeout(() => iframe.remove(), 1000);
-    };
-    if (doc.fonts && doc.fonts.ready) doc.fonts.ready.then(() => setTimeout(trigger, 200));
-    else setTimeout(trigger, 500);
+    document.body.appendChild(root);
+
+    const style = document.createElement("style");
+    style.id = "__print_style__";
+    style.textContent = `
+      @media screen { #__print_root__ { position: fixed; left: -99999px; top: 0; width: 1px; height: 1px; overflow: hidden; } }
+      @media print {
+        @page { size: ${pageSize}; margin: ${pageMargin}; }
+        html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+        body > *:not(#__print_root__) { display: none !important; }
+        #__print_root__ { display: block !important; position: static !important; left: auto !important; top: auto !important; width: auto !important; overflow: visible !important; }
+        #__print_root__ table { border-collapse: collapse; width: 100%; }
+        #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; }
+        #__print_root__ thead { display: table-header-group; }
+        #__print_root__ img { max-width: 100%; }
+        .no-print, [data-no-print="true"], .print-hide { display: none !important; }
+      }
+    `;
+    document.head.appendChild(style);
+
+    let done = false;
+    const cleanup = () => { if (done) return; done = true; root.remove(); style.remove(); window.removeEventListener("afterprint", cleanup); };
+    window.addEventListener("afterprint", cleanup);
+
+    const imgs = Array.from(root.querySelectorAll("img"));
+    const waitImgs = Promise.all(imgs.map(im => (im.complete && im.naturalWidth > 0) ? Promise.resolve() : new Promise(res => { im.onload = res; im.onerror = res; setTimeout(res, 3000); })));
+    const fontsReady = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+    Promise.all([waitImgs, fontsReady]).then(() => {
+      setTimeout(() => { try { window.print(); } catch (e) {} setTimeout(cleanup, 60000); }, 120);
+    });
   };
 
   // ดาวน์โหลดเอกสารเป็น PDF (ใช้ html2pdf.js)
@@ -5446,6 +5410,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 <span style={{fontSize:12,color:"#64748b",fontWeight:500}}>ขนาดกระดาษ:</span>
                 <div style={{display:"flex",gap:6}}>
                   {[
+                    {id:"A5",label:"A5",size:"A5 portrait",margin:"8mm"},
                     {id:"A4",label:"A4",size:"A4 portrait",margin:"10mm"},
                     {id:"80mm",label:"80mm (สลิป)",size:"80mm auto",margin:"2mm 4mm"},
                     {id:"57mm",label:"57mm (ม้วน)",size:"57mm auto",margin:"1mm 3mm"},
@@ -5462,8 +5427,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 <button onClick={()=>setShowPrintInvoice(null)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid #e2e8f0",background:"white",color:"#64748b",fontSize:13,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>ปิด</button>
                 <button onClick={()=>downloadInvoicePdf(showPrintInvoice,false)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(220,38,38,0.35)",background:"white",color:"#dc2626",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>📄 PDF</button>
                 <button onClick={()=>downloadInvoicePdf(showPrintInvoice,true)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(220,38,38,0.35)",background:"white",color:"#dc2626",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>📄 PDF × 3 ชุด</button>
-                <button onClick={()=>printElementById("invoice-print-area","A4 portrait","10mm",INVOICE_FONT_SCALE)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(59,91,139,0.35)",background:"white",color:"#3b5b8b",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>🖨️ พิมพ์ปกติ</button>
-                <button onClick={()=>printInvoiceCopies("invoice-print-area")} style={{padding:"9px 16px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>🖨️ พิมพ์ × 3 ชุด</button>
+                <button onClick={()=>printElementById("invoice-print-area","A5 portrait","8mm",INVOICE_FONT_SCALE)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(59,91,139,0.35)",background:"white",color:"#3b5b8b",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>🖨️ พิมพ์ (A5)</button>
+                <button onClick={()=>printInvoiceCopies("invoice-print-area")} style={{padding:"9px 16px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>🖨️ พิมพ์ × 3 ชุด (A5)</button>
               </div>
             </div>
           </div>
