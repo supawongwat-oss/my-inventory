@@ -1068,7 +1068,7 @@ function RollSplitModal({ lot, lots = [], lotIdx, busy, onClose, onConfirm, onCo
             );
           })()}
 
-          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:12,maxHeight:300,overflowY:"auto"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:12}}>
             {mRolls.map((roll, ri) => {
               const rollTotal = roll.rows.reduce((s,r)=>s+(Number(r.qty)||0),0);
               return (
