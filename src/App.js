@@ -1688,17 +1688,30 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
       #__print_root__ > * { width: ${tW}mm; max-width: ${tW}mm; box-sizing: border-box; }
     ` : "";
 
+    // 🩹 แปลงชื่อขนาดกระดาษเป็น mm (บาง browser/printer ไม่ honor "A5 portrait")
+    const sizeMap = {
+      "A4 portrait":  "210mm 297mm",
+      "A4 landscape": "297mm 210mm",
+      "A5 portrait":  "148mm 210mm",
+      "A5 landscape": "210mm 148mm",
+    };
+    const cssPageSize = sizeMap[pageSize] || pageSize;
+    // คำนวณ content width = paper width - 2× margin → บังคับ layout จริงๆ
+    const marginMm = parseFloat(String(pageMargin).match(/^([\d.]+)/)?.[1] || "10");
+    const pageMatch = cssPageSize.match(/^([\d.]+)mm\s+([\d.]+)mm$/);
+    const contentWidth = (pageMatch && !isThermal) ? (parseFloat(pageMatch[1]) - 2 * marginMm) + "mm" : "auto";
+
     const style = document.createElement("style");
     style.id = "__print_style__";
     style.textContent = `
       /* ตอนแสดงบนจอ ซ่อน root ไว้นอกจอ (ไม่ให้เด้งทับ UI) */
       @media screen { #__print_root__ { position: fixed; left: -99999px; top: 0; width: 1px; height: 1px; overflow: hidden; } }
       @media print {
-        @page { size: ${pageSize}; margin: ${pageMargin}; }
+        @page { size: ${cssPageSize}; margin: ${pageMargin}; }
         html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
         /* ซ่อนทุก element ระดับบนสุด เหลือเฉพาะ print root */
         body > *:not(#__print_root__) { display: none !important; }
-        #__print_root__ { display: block !important; position: static !important; left: auto !important; top: auto !important; width: auto !important; height: auto !important; overflow: visible !important; }
+        #__print_root__ { display: block !important; position: static !important; left: auto !important; top: auto !important; width: ${contentWidth} !important; max-width: ${contentWidth} !important; height: auto !important; overflow: visible !important; box-sizing: border-box; margin: 0 auto; }
         #__print_root__ table { border-collapse: collapse; width: 100%; }
         #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; }
         #__print_root__ thead { display: table-header-group; }
@@ -1759,15 +1772,27 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
     });
     document.body.appendChild(root);
 
+    const sizeMap2 = {
+      "A4 portrait":  "210mm 297mm",
+      "A4 landscape": "297mm 210mm",
+      "A5 portrait":  "148mm 210mm",
+      "A5 landscape": "210mm 148mm",
+    };
+    const cssPageSize2 = sizeMap2[pageSize] || pageSize;
+    const marginMm2 = parseFloat(String(pageMargin).match(/^([\d.]+)/)?.[1] || "10");
+    const pm2 = cssPageSize2.match(/^([\d.]+)mm\s+([\d.]+)mm$/);
+    const contentWidth2 = pm2 ? (parseFloat(pm2[1]) - 2 * marginMm2) + "mm" : "auto";
+
     const style = document.createElement("style");
     style.id = "__print_style__";
     style.textContent = `
       @media screen { #__print_root__ { position: fixed; left: -99999px; top: 0; width: 1px; height: 1px; overflow: hidden; } }
       @media print {
-        @page { size: ${pageSize}; margin: ${pageMargin}; }
+        @page { size: ${cssPageSize2}; margin: ${pageMargin}; }
         html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
         body > *:not(#__print_root__) { display: none !important; }
-        #__print_root__ { display: block !important; position: static !important; left: auto !important; top: auto !important; width: auto !important; overflow: visible !important; }
+        #__print_root__ { display: block !important; position: static !important; left: auto !important; top: auto !important; width: ${contentWidth2} !important; max-width: ${contentWidth2} !important; overflow: visible !important; box-sizing: border-box; margin: 0 auto; }
+        #__print_root__ > div { width: ${contentWidth2} !important; max-width: ${contentWidth2} !important; box-sizing: border-box; }
         #__print_root__ table { border-collapse: collapse; width: 100%; }
         #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; }
         #__print_root__ thead { display: table-header-group; }
