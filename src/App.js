@@ -1696,6 +1696,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
       "A5 landscape": "210mm 148mm",
     };
     const cssPageSize = sizeMap[pageSize] || pageSize;
+    // A5/ความร้อน = หน้าแคบ → บังคับตารางยุบพอดี (A4 ปล่อย auto กันเลย์เอาต์เพี้ยน)
+    const tableLayout = (isThermal || /A5/i.test(pageSize)) ? "table-layout: fixed;" : "";
     // คำนวณ content width = paper width - 2× margin → บังคับ layout จริงๆ
     const marginMm = parseFloat(String(pageMargin).match(/^([\d.]+)/)?.[1] || "10");
     const pageMatch = cssPageSize.match(/^([\d.]+)mm\s+([\d.]+)mm$/);
@@ -1710,12 +1712,14 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
       @media print {
         html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
         body > *:not(#__print_root__) { display: none !important; }
+        /* 🩹 กันโลโก้ซ้อน 2 อัน (Samsung) — ซ่อน modal เดิมเด็ดขาดตอนพิมพ์แบบ isolated */
+        .print-modal-overlay, .print-modal-card { display: none !important; }
         #__print_root__ { display: block !important; position: static !important; left: auto !important; top: auto !important; width: ${contentWidth} !important; max-width: ${contentWidth} !important; height: auto !important; overflow: visible !important; box-sizing: border-box; margin: 0 auto; }
-        #__print_root__ table { border-collapse: collapse; width: 100%; }
-        #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; }
+        #__print_root__ table { border-collapse: collapse; width: 100%; ${tableLayout} }
+        #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
         #__print_root__ thead { display: table-header-group; }
         #__print_root__ tfoot { display: table-footer-group; }
-        #__print_root__ img { max-width: 100%; }
+        #__print_root__ img { max-width: 100%; height: auto; }
         .no-print, [data-no-print="true"], .print-hide { display: none !important; }
         ${extraThermal}
       }
@@ -1778,6 +1782,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
       "A5 landscape": "210mm 148mm",
     };
     const cssPageSize2 = sizeMap2[pageSize] || pageSize;
+    const tableLayout2 = /A5/i.test(pageSize) ? "table-layout: fixed;" : "";
     const marginMm2 = parseFloat(String(pageMargin).match(/^([\d.]+)/)?.[1] || "10");
     const pm2 = cssPageSize2.match(/^([\d.]+)mm\s+([\d.]+)mm$/);
     const contentWidth2 = pm2 ? (parseFloat(pm2[1]) - 2 * marginMm2) + "mm" : "auto";
@@ -1790,12 +1795,14 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
       @media print {
         html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
         body > *:not(#__print_root__) { display: none !important; }
+        /* 🩹 กันโลโก้ซ้อน 2 อัน (Samsung) */
+        .print-modal-overlay, .print-modal-card { display: none !important; }
         #__print_root__ { display: block !important; position: static !important; left: auto !important; top: auto !important; width: ${contentWidth2} !important; max-width: ${contentWidth2} !important; overflow: visible !important; box-sizing: border-box; margin: 0 auto; }
         #__print_root__ > div { width: ${contentWidth2} !important; max-width: ${contentWidth2} !important; box-sizing: border-box; }
-        #__print_root__ table { border-collapse: collapse; width: 100%; }
-        #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; }
+        #__print_root__ table { border-collapse: collapse; width: 100%; ${tableLayout2} }
+        #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
         #__print_root__ thead { display: table-header-group; }
-        #__print_root__ img { max-width: 100%; }
+        #__print_root__ img { max-width: 100%; height: auto; }
         .no-print, [data-no-print="true"], .print-hide { display: none !important; }
       }
     `;
