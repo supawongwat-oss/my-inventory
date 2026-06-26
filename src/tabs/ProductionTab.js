@@ -138,6 +138,7 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
             ]}
             user={user} role={role}
             products={products} clothingItems={clothingItems}
+            printElementById={printElementById} companyInfo={companyInfo}
           />
         </>
       )}
