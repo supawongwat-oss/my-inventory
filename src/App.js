@@ -1703,13 +1703,12 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
 
     const style = document.createElement("style");
     style.id = "__print_style__";
+    // 🩹 @page ต้องอยู่ top-level (ไม่ใช่ใน @media print) — บาง browser ไม่ parse
     style.textContent = `
-      /* ตอนแสดงบนจอ ซ่อน root ไว้นอกจอ (ไม่ให้เด้งทับ UI) */
+      @page { size: ${cssPageSize}; margin: ${pageMargin}; }
       @media screen { #__print_root__ { position: fixed; left: -99999px; top: 0; width: 1px; height: 1px; overflow: hidden; } }
       @media print {
-        @page { size: ${cssPageSize}; margin: ${pageMargin}; }
         html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
-        /* ซ่อนทุก element ระดับบนสุด เหลือเฉพาะ print root */
         body > *:not(#__print_root__) { display: none !important; }
         #__print_root__ { display: block !important; position: static !important; left: auto !important; top: auto !important; width: ${contentWidth} !important; max-width: ${contentWidth} !important; height: auto !important; overflow: visible !important; box-sizing: border-box; margin: 0 auto; }
         #__print_root__ table { border-collapse: collapse; width: 100%; }
@@ -1786,9 +1785,9 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
     const style = document.createElement("style");
     style.id = "__print_style__";
     style.textContent = `
+      @page { size: ${cssPageSize2}; margin: ${pageMargin}; }
       @media screen { #__print_root__ { position: fixed; left: -99999px; top: 0; width: 1px; height: 1px; overflow: hidden; } }
       @media print {
-        @page { size: ${cssPageSize2}; margin: ${pageMargin}; }
         html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
         body > *:not(#__print_root__) { display: none !important; }
         #__print_root__ { display: block !important; position: static !important; left: auto !important; top: auto !important; width: ${contentWidth2} !important; max-width: ${contentWidth2} !important; overflow: visible !important; box-sizing: border-box; margin: 0 auto; }
