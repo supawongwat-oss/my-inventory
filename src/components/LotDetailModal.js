@@ -11,6 +11,7 @@ import {
 } from "../utils/productionLots";
 import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
 import { sizeRank } from "../theme";
+import PrintRollLabel from "./PrintRollLabel";
 
 const T = { border:"#e3e8ef", sub:"#5b6b85", text:"#1f2a44", muted:"#8a9bb3", accent:"#3b5b8b", red:"#dc2626", green:"#16a34a" };
 const fmtInt = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -19,8 +20,10 @@ export default function LotDetailModal({
   order, lotIdx, user, role, products = [], clothingItems = [],
   collectionName = "productionOrders", isCustom = false,
   steps = PRODUCTION_STEPS,
+  printElementById, companyInfo = {},
   onClose,
 }) {
+  const [showRollLabel, setShowRollLabel] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
   const [showSplit, setShowSplit] = useState(false);
@@ -540,6 +543,30 @@ export default function LotDetailModal({
         onClose={onClose}
       />
       {toast && <Toast msg={toast}/>}
+
+      {/* 🏷️ ปุ่มพิมพ์ป้ายม้วน (สติ๊กเกอร์ 100×150mm) */}
+      {printElementById && (
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
+          <button onClick={()=>setShowRollLabel(true)}
+            style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(59,91,139,0.3)",background:"rgba(59,91,139,0.08)",color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
+            🏷️ พิมพ์ป้ายม้วน (100×150mm)
+          </button>
+        </div>
+      )}
+
+      {/* Modal ป้ายม้วน */}
+      {showRollLabel && (
+        <PrintRollLabel
+          order={order}
+          lot={lot}
+          companyInfo={companyInfo}
+          onClose={()=>setShowRollLabel(false)}
+          onPrint={(id, size, margin)=>{
+            printElementById(id, size, margin);
+            setTimeout(()=>setShowRollLabel(false), 1500);
+          }}
+        />
+      )}
 
       {/* 🏭 เครื่อง/ทีม ที่กำลังทำม้วนนี้ใน stage ปัจจุบัน */}
       {(()=>{
