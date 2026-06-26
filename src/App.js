@@ -1628,8 +1628,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
 
   // scale fontSize ของทุก element ใน clone (ใช้ก่อนพิมพ์/PDF) — ค่าเริ่มต้น 1.3 = ใหญ่ขึ้น 30%
   const PRINT_FONT_SCALE = 1.3;
-  // ใบบิลใช้ scale ต่ำกว่า เพราะมีรายการเยอะ ต้องอยู่ในหน้าเดียว
-  const INVOICE_FONT_SCALE = 1.05;
+  // ใบบิล: ย่อให้พอดี A4 หน้าเดียวเมื่อรายการเยอะ (0.85 = ลด 15% จากขนาดจริง)
+  const INVOICE_FONT_SCALE = 0.85;
   const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
     // ต้อง attach root เข้า DOM ชั่วคราวเพื่ออ่าน computed style
     const holder = document.createElement("div");
