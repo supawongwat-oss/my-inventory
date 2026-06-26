@@ -1628,6 +1628,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
 
   // scale fontSize ของทุก element ใน clone (ใช้ก่อนพิมพ์/PDF) — ค่าเริ่มต้น 1.3 = ใหญ่ขึ้น 30%
   const PRINT_FONT_SCALE = 1.3;
+  // ใบบิลใช้ scale ต่ำกว่า เพราะมีรายการเยอะ ต้องอยู่ในหน้าเดียว
+  const INVOICE_FONT_SCALE = 1.05;
   const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
     // ต้อง attach root เข้า DOM ชั่วคราวเพื่ออ่าน computed style
     const holder = document.createElement("div");
@@ -1658,7 +1660,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
   };
 
   // ปริ้นผ่าน iframe — เนื้อหาใหญ่เต็ม A4 และไหลข้ามหน้าได้
-  const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10mm") => {
+  const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10mm", fontScale = PRINT_FONT_SCALE) => {
     const el = document.getElementById(id);
     if (!el) return;
     // ตรวจว่าเป็น thermal mode (รูปแบบ "<W>mm <H>mm")
@@ -1701,7 +1703,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
       </style></head><body></body></html>`);
     // thermal: ไม่ scale font (ขนาดเล็กอยู่แล้ว) — A4: scale ตามปกติ
     const clone = el.cloneNode(true);
-    const finalEl = isThermal ? clone : scaleFontInElement(clone);
+    const finalEl = isThermal ? clone : scaleFontInElement(clone, fontScale);
     doc.body.appendChild(doc.importNode(finalEl, true));
     doc.close();
     // มือถือต้อง delay มากกว่า desktop
@@ -1785,7 +1787,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
   };
 
   // พิมพ์เอกสารหลายชุด (ต้นฉบับ + สำเนา) บน A4 — ขึ้นหน้าใหม่ทุกชุด
-  const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"]) => {
+  const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"], fontScale = INVOICE_FONT_SCALE) => {
     const el = document.getElementById(id);
     if (!el) return;
     const iframe = document.createElement("iframe");
@@ -1808,7 +1810,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
       const clone = el.cloneNode(true);
       const tag = clone.querySelector("[data-doc-label]");
       if (tag) tag.textContent = label;
-      scaleFontInElement(clone);
+      scaleFontInElement(clone, fontScale);
       const wrap = doc.createElement("div");
       if (i < labels.length - 1) wrap.style.pageBreakAfter = "always";
       wrap.appendChild(doc.importNode(clone, true));
@@ -5449,7 +5451,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                     {id:"57mm",label:"57mm (ม้วน)",size:"57mm auto",margin:"1mm 3mm"},
                   ].map(p=>(
                     <button key={p.id}
-                      onClick={()=>printElementById("invoice-print-area",p.size,p.margin)}
+                      onClick={()=>printElementById("invoice-print-area",p.size,p.margin,INVOICE_FONT_SCALE)}
                       style={{padding:"6px 12px",borderRadius:7,border:"1px solid #e2e8f0",background:"white",color:"#475569",fontSize:11,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:500}}>
                       {p.label}
                     </button>
@@ -5460,7 +5462,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 <button onClick={()=>setShowPrintInvoice(null)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid #e2e8f0",background:"white",color:"#64748b",fontSize:13,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>ปิด</button>
                 <button onClick={()=>downloadInvoicePdf(showPrintInvoice,false)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(220,38,38,0.35)",background:"white",color:"#dc2626",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>📄 PDF</button>
                 <button onClick={()=>downloadInvoicePdf(showPrintInvoice,true)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(220,38,38,0.35)",background:"white",color:"#dc2626",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>📄 PDF × 3 ชุด</button>
-                <button onClick={()=>printElementById("invoice-print-area")} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(59,91,139,0.35)",background:"white",color:"#3b5b8b",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>🖨️ พิมพ์ปกติ</button>
+                <button onClick={()=>printElementById("invoice-print-area","A4 portrait","10mm",INVOICE_FONT_SCALE)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(59,91,139,0.35)",background:"white",color:"#3b5b8b",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>🖨️ พิมพ์ปกติ</button>
                 <button onClick={()=>printInvoiceCopies("invoice-print-area")} style={{padding:"9px 16px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>🖨️ พิมพ์ × 3 ชุด</button>
               </div>
             </div>
