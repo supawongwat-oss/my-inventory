@@ -13,23 +13,32 @@ export default function PrintRollLabel({ order, lot, onClose, onPrint, companyIn
   const machine = getMachineForCurrentStage(lot);
   const stageColor = STATUS_COLORS[lot.status] || "#475569";
 
-  // group items by (color, variant, productionSize)
-  const groups = (() => {
+  // group items by color → list of (size, variant, qty) chips
+  const colorGroups = (() => {
     const map = new Map();
     (lot.items || []).forEach(it => {
       const pSize = it.productionSize || it.size || "-";
-      const key = (it.colorName || "-") + "|" + (it.colorHex || "#999") + "|" + (it.variant || "") + "|" + pSize;
-      if (!map.has(key)) {
-        map.set(key, {
+      const cKey = (it.colorName || "-") + "|" + (it.colorHex || "#999");
+      if (!map.has(cKey)) {
+        map.set(cKey, {
           colorName: it.colorName || "-",
           colorHex: it.colorHex || "#999",
-          variant: it.variant || "",
-          size: pSize,
-          customerSize: it.size || "",
-          qty: 0,
+          sizes: [],
         });
       }
-      map.get(key).qty += Number(it.qty) || 0;
+      const sizeKey = pSize + "|" + (it.variant || "");
+      const existing = map.get(cKey).sizes.find(s => s.key === sizeKey);
+      if (existing) {
+        existing.qty += Number(it.qty) || 0;
+      } else {
+        map.get(cKey).sizes.push({
+          key: sizeKey,
+          size: pSize,
+          customerSize: it.size || "",
+          variant: it.variant || "",
+          qty: Number(it.qty) || 0,
+        });
+      }
     });
     return Array.from(map.values());
   })();
@@ -82,41 +91,45 @@ export default function PrintRollLabel({ order, lot, onClose, onPrint, companyIn
             </div>
           </div>
 
-          {/* Items breakdown — สี/ไซส์/จำนวน */}
-          <div style={{marginBottom:5}}>
-            <div style={{fontSize:9,color:"#475569",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:"0.05em"}}>📋 รายการในม้วน ({groups.length} กลุ่ม)</div>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
-              <thead>
-                <tr style={{background:"#f1f5f9"}}>
-                  <th style={{padding:"3px 4px",textAlign:"left",border:"1px solid #94a3b8",fontWeight:700,fontSize:9}}>สี</th>
-                  <th style={{padding:"3px 4px",textAlign:"center",border:"1px solid #94a3b8",fontWeight:700,fontSize:9,width:"22mm"}}>ไซส์</th>
-                  <th style={{padding:"3px 4px",textAlign:"right",border:"1px solid #94a3b8",fontWeight:700,fontSize:9,width:"18mm"}}>จำนวน</th>
-                </tr>
-              </thead>
-              <tbody>
-                {groups.map((g, i) => (
-                  <tr key={i}>
-                    <td style={{padding:"3px 4px",border:"1px solid #94a3b8",verticalAlign:"middle"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:4}}>
-                        <div style={{width:8,height:8,borderRadius:1,background:g.colorHex,border:"1px solid #000",flexShrink:0}}/>
-                        <span style={{fontWeight:600}}>{g.colorName}</span>
-                        {g.variant && <span style={{fontSize:8,color:"#475569",fontStyle:"italic"}}>· {g.variant}</span>}
-                      </div>
-                    </td>
-                    <td style={{padding:"3px 4px",textAlign:"center",border:"1px solid #94a3b8",fontFamily:"monospace",fontWeight:700}}>
-                      {g.size}
-                      {g.customerSize && g.customerSize !== g.size && (
-                        <div style={{fontSize:7,color:"#475569",fontWeight:500}}>(ลูกค้า: {g.customerSize})</div>
-                      )}
-                    </td>
-                    <td style={{padding:"3px 4px",textAlign:"right",border:"1px solid #94a3b8",fontFamily:"monospace",fontWeight:700}}>{fmtInt(g.qty)}</td>
-                  </tr>
-                ))}
-                {groups.length === 0 && (
-                  <tr><td colSpan={3} style={{padding:6,textAlign:"center",color:"#94a3b8",fontStyle:"italic"}}>— ไม่มีรายการ —</td></tr>
-                )}
-              </tbody>
-            </table>
+          {/* Items breakdown — สีเป็นแถว, ไซส์เป็น chip (มีเส้นแบ่งระหว่างสี) */}
+          <div style={{fontSize:9,color:"#475569",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:"0.05em"}}>📋 รายการในม้วน ({colorGroups.length} สี)</div>
+          <div style={{marginBottom:5,border:"1px solid #94a3b8",borderRadius:4,overflow:"hidden"}}>
+            {colorGroups.length === 0 ? (
+              <div style={{padding:8,textAlign:"center",color:"#94a3b8",fontStyle:"italic",fontSize:10}}>— ไม่มีรายการ —</div>
+            ) : colorGroups.map((g, i) => (
+              <div key={i} style={{
+                display:"flex",alignItems:"center",gap:6,
+                padding:"4px 6px",
+                borderBottom: i < colorGroups.length - 1 ? "1px solid #cbd5e1" : "none",
+                background: i % 2 === 0 ? "white" : "#f8fafc",
+              }}>
+                {/* color label */}
+                <div style={{display:"flex",alignItems:"center",gap:4,minWidth:"18mm",flexShrink:0}}>
+                  <div style={{width:9,height:9,borderRadius:1,background:g.colorHex,border:"1px solid #000",flexShrink:0}}/>
+                  <span style={{fontSize:10,fontWeight:700}}>{g.colorName}</span>
+                </div>
+                {/* size chips */}
+                <div style={{display:"flex",flexWrap:"wrap",gap:3,flex:1}}>
+                  {g.sizes.map((s, j) => (
+                    <span key={j} style={{
+                      padding:"1px 5px",
+                      border:"1px solid #475569",
+                      borderRadius:8,
+                      fontSize:9,
+                      fontFamily:"monospace",
+                      fontWeight:700,
+                      whiteSpace:"nowrap",
+                      background:"white",
+                    }}>
+                      <span style={{color:"#0c4a6e"}}>{s.size}</span>
+                      {" "}
+                      <b>{fmtInt(s.qty)}</b>
+                      {s.variant && <span style={{fontSize:7,color:"#475569",fontStyle:"italic",marginLeft:2}}>· {s.variant}</span>}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Note (ถ้ามี) */}
