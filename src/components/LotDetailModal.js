@@ -361,8 +361,15 @@ export default function LotDetailModal({
 
   // โหมดอัตโนมัติ — pack ตาม capacity
   const applyRollSplit = async (orderedItems, capacity) => {
-    const rolls = packIntoRolls(orderedItems, capacity);
-    if (rolls.length <= 1) { setToast("ของน้อยกว่า 1 ม้วน — ไม่ต้องแบ่ง"); return; }
+    const baseRolls = packIntoRolls(orderedItems, capacity);
+    if (baseRolls.length <= 1) { setToast("ของน้อยกว่า 1 ม้วน — ไม่ต้องแบ่ง"); return; }
+    // 🩹 offset rollNo เพื่อต่อจากม้วนพี่น้องที่มีอยู่
+    const siblingMaxRoll = lots.reduce((max, l, i) => {
+      if (i === lotIdx) return max;
+      const n = parseInt(l.rollNo, 10);
+      return !isNaN(n) && n > max ? n : max;
+    }, 0);
+    const rolls = baseRolls.map((r, i) => ({ ...r, rollNo: siblingMaxRoll + i + 1 }));
     await replaceLotWithRolls(rolls, `แบ่ง ${rolls.length} ม้วน (${capacity}/ม้วน) จาก ${lot.lotId}`);
   };
 
@@ -884,6 +891,8 @@ export default function LotDetailModal({
       {showRollSplit && (
         <RollSplitModal
           lot={lot}
+          lots={lots}
+          lotIdx={lotIdx}
           busy={busy}
           onClose={() => setShowRollSplit(false)}
           onConfirm={applyRollSplit}
@@ -895,9 +904,21 @@ export default function LotDetailModal({
 }
 
 // ── Roll-split modal: แบ่งของในล็อตเป็นหลายม้วน (อัตโนมัติ หรือ กรอกเอง) ──
-function RollSplitModal({ lot, busy, onClose, onConfirm, onConfirmManual }) {
+function RollSplitModal({ lot, lots = [], lotIdx, busy, onClose, onConfirm, onConfirmManual }) {
   const [mode, setMode] = useState("manual"); // "manual" | "auto"
   const lotItems = lot.items || [];
+
+  // 🩹 หา rollNo สูงสุดของม้วนพี่น้อง (ที่ไม่ใช่ตัวเอง) — เพื่อให้ลำดับม้วนใหม่ต่อจากเดิม
+  const siblingMaxRoll = (() => {
+    let max = 0;
+    (lots || []).forEach((l, i) => {
+      if (i === lotIdx) return; // ข้ามล็อตที่กำลังแบ่ง
+      const n = parseInt(l.rollNo, 10);
+      if (!isNaN(n) && n > max) max = n;
+    });
+    return max;
+  })();
+  const startRollNo = siblingMaxRoll; // ม้วนใหม่จะเริ่มที่ startRollNo + 1, +2, ...
 
   // ── โหมดอัตโนมัติ ──
   const [items, setItems] = useState(() => lotItems.map(it => ({ ...it })));
@@ -931,9 +952,9 @@ function RollSplitModal({ lot, busy, onClose, onConfirm, onConfirmManual }) {
   mRolls.forEach(roll => roll.rows.forEach(r => { if (r.itemIdx !== "") usedByItem[r.itemIdx] = (usedByItem[r.itemIdx] || 0) + (Number(r.qty) || 0); }));
   const manualGrand = Object.values(usedByItem).reduce((s, v) => s + v, 0);
 
-  // สร้าง rolls สำหรับ confirm (โหมดกรอกเอง)
+  // สร้าง rolls สำหรับ confirm (โหมดกรอกเอง) — ต่อจาก siblingMaxRoll
   const buildManualRolls = () => mRolls.map((roll, i) => ({
-    rollNo: i + 1,
+    rollNo: startRollNo + i + 1,
     jobLabel: (roll.jobLabel || "").trim(),
     items: roll.rows.filter(r => r.itemIdx !== "" && Number(r.qty) > 0).map(r => ({ ...lotItems[Number(r.itemIdx)], qty: Number(r.qty) })),
   })).filter(r => r.items.length > 0);
@@ -1025,7 +1046,7 @@ function RollSplitModal({ lot, busy, onClose, onConfirm, onConfirmManual }) {
                 <div key={ri} style={{border:`1px solid #bfdbfe`,borderRadius:9,overflow:"hidden"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"6px 10px",background:"#eef6ff",flexWrap:"wrap"}}>
                     <span style={{display:"flex",alignItems:"center",gap:8,flex:"1 1 240px"}}>
-                      <span style={{fontSize:13,fontWeight:700,color:"#1e40af",whiteSpace:"nowrap"}}>🧵 ม้วน {ri+1}</span>
+                      <span style={{fontSize:13,fontWeight:700,color:"#1e40af",whiteSpace:"nowrap"}}>🧵 ม้วน {startRollNo + ri + 1}</span>
                       <input value={roll.jobLabel||""} onChange={e=>setMRollField(ri,{jobLabel:e.target.value})} placeholder="👕 ชื่อรุ่น/งาน (เช่น K12, เสื้อคลาส)"
                         style={{flex:1,minWidth:120,padding:"5px 8px",border:`1px solid ${T.border}`,borderRadius:6,fontSize:12,outline:"none",fontFamily:"inherit",background:"white"}}/>
                     </span>
@@ -1058,8 +1079,11 @@ function RollSplitModal({ lot, busy, onClose, onConfirm, onConfirmManual }) {
 
           <button onClick={addRoll} style={{width:"100%",padding:"8px",borderRadius:8,border:`1px dashed ${T.accent}`,background:"rgba(59,91,139,0.05)",color:T.accent,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",marginBottom:12}}>+ เพิ่มม้วน</button>
 
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"rgba(58,122,82,0.08)",borderRadius:8,marginBottom:8}}>
-            <span style={{fontSize:13,color:T.text,fontWeight:700}}>{mRolls.length} ม้วน</span>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"rgba(58,122,82,0.08)",borderRadius:8,marginBottom:8,flexWrap:"wrap",gap:6}}>
+            <span style={{fontSize:13,color:T.text,fontWeight:700}}>
+              เพิ่ม {mRolls.length} ม้วนใหม่ (#{startRollNo+1}–#{startRollNo+mRolls.length})
+              {startRollNo > 0 && <span style={{fontSize:11,color:T.muted,fontWeight:500,marginLeft:6}}>· มีอยู่แล้ว {startRollNo} ม้วน</span>}
+            </span>
             <span style={{fontSize:13,color:T.green,fontWeight:700,fontFamily:"monospace"}}>รวม {fmtInt(manualGrand)} ตัว</span>
           </div>
           {(() => {
@@ -1110,7 +1134,7 @@ function RollSplitModal({ lot, busy, onClose, onConfirm, onConfirmManual }) {
             {autoRolls.map((r) => (
               <div key={r.rollNo} style={{border:`1px solid ${T.border}`,borderRadius:8,overflow:"hidden"}}>
                 <div style={{display:"flex",justifyContent:"space-between",padding:"5px 10px",background:"#eef6ff",fontSize:12,fontWeight:700,color:"#1e40af"}}>
-                  <span>🧵 ม้วน {r.rollNo}</span>
+                  <span>🧵 ม้วน {startRollNo + r.rollNo}</span>
                   <span style={{fontFamily:"monospace"}}>{fmtInt(r.total)} ตัว</span>
                 </div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:4,padding:"6px 10px"}}>
