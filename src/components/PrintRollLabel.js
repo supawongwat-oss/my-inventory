@@ -13,34 +13,25 @@ export default function PrintRollLabel({ order, lot, onClose, onPrint, companyIn
   const machine = getMachineForCurrentStage(lot);
   const stageColor = STATUS_COLORS[lot.status] || "#475569";
 
-  // 🩹 group items by SIZE first → ใต้แต่ละไซส์มี list ของ (สี, จำนวน)
-  // ใช้สำหรับ workflow โรงพิมพ์: พิมพ์ไซส์เดียวกันต่อกันก่อน เปลี่ยนไซส์ทีหลัง
-  const sizeGroups = (() => {
+  // 1 รายการ = 1 แถว (สี · ไซส์ · จำนวน) — รวมเฉพาะที่ key เดียวกันให้เป็นแถวเดียว
+  // คงลำดับตามที่ user กรอกในขั้น "แบ่งม้วน"
+  const flatRows = (() => {
     const map = new Map();
     (lot.items || []).forEach(it => {
       const pSize = it.productionSize || it.size || "-";
-      const sKey = pSize + "|" + (it.variant || "");
-      if (!map.has(sKey)) {
-        map.set(sKey, {
-          size: pSize,
-          variant: it.variant || "",
-          colors: [],
-        });
-      }
-      const cKey = (it.colorName || "-") + "|" + (it.colorHex || "#999");
-      const existing = map.get(sKey).colors.find(c => c.key === cKey);
-      if (existing) {
-        existing.qty += Number(it.qty) || 0;
+      const key = [it.colorName || "-", it.colorHex || "#999", pSize, it.variant || ""].join("|");
+      if (map.has(key)) {
+        map.get(key).qty += Number(it.qty) || 0;
       } else {
-        map.get(sKey).colors.push({
-          key: cKey,
+        map.set(key, {
           colorName: it.colorName || "-",
           colorHex: it.colorHex || "#999",
+          size: pSize,
+          variant: it.variant || "",
           qty: Number(it.qty) || 0,
         });
       }
     });
-    // คงลำดับตามที่ user กรอก (ไม่ sort — ลำดับสะท้อนแผนการพิมพ์จริง)
     return Array.from(map.values());
   })();
 
@@ -92,40 +83,36 @@ export default function PrintRollLabel({ order, lot, onClose, onPrint, companyIn
             </div>
           </div>
 
-          {/* Items breakdown — group ตามไซส์ (เรียงลำดับ S→XL→...) ใต้แต่ละไซส์มี "สี - จำนวน" */}
-          <div style={{fontSize:9,color:"#475569",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:"0.05em"}}>📋 ลำดับการพิมพ์ ({sizeGroups.length} ไซส์)</div>
-          <div style={{marginBottom:5,border:"1px solid #94a3b8",borderRadius:4,overflow:"hidden"}}>
-            {sizeGroups.length === 0 ? (
+          {/* Items breakdown — 1 แถว = สี · ไซส์ · จำนวน (คงลำดับตามที่กรอก) */}
+          <div style={{fontSize:9,color:"#475569",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:"0.05em"}}>📋 ลำดับการพิมพ์ ({flatRows.length} รายการ)</div>
+          <div style={{marginBottom:5,border:"1px solid #000",borderRadius:4,overflow:"hidden"}}>
+            {/* header */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 16mm 18mm",background:"#1e293b",color:"white",padding:"3px 6px",fontSize:9,fontWeight:700,letterSpacing:"0.05em"}}>
+              <span>สี</span>
+              <span style={{textAlign:"center"}}>ไซส์</span>
+              <span style={{textAlign:"right"}}>จำนวน</span>
+            </div>
+            {flatRows.length === 0 ? (
               <div style={{padding:8,textAlign:"center",color:"#94a3b8",fontStyle:"italic",fontSize:10}}>— ไม่มีรายการ —</div>
-            ) : sizeGroups.map((g, i) => {
-              const groupTotal = g.colors.reduce((s, c) => s + c.qty, 0);
-              return (
-                <div key={i} style={{
-                  borderBottom: i < sizeGroups.length - 1 ? "2px solid #94a3b8" : "none",
-                  background: i % 2 === 0 ? "white" : "#f8fafc",
-                }}>
-                  {/* size header */}
-                  <div style={{padding:"3px 6px",background:"#1e293b",color:"white",display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
-                    <span style={{fontSize:12,fontWeight:800,fontFamily:"monospace",letterSpacing:0.5}}>
-                      🧵 {g.size}
-                      {g.variant && <span style={{fontSize:9,fontFamily:"'Sarabun',sans-serif",fontStyle:"italic",fontWeight:500,marginLeft:5,opacity:0.85}}>({g.variant})</span>}
-                    </span>
-                    <span style={{fontSize:10,fontFamily:"monospace",fontWeight:700,opacity:0.95}}>รวม {fmtInt(groupTotal)}</span>
-                  </div>
-                  {/* colors under this size */}
-                  <div style={{padding:"3px 8px"}}>
-                    {g.colors.map((c, j) => (
-                      <div key={j} style={{display:"flex",alignItems:"center",gap:5,padding:"1px 0",fontSize:11}}>
-                        <span style={{width:9,height:9,borderRadius:1,background:c.colorHex,border:"1px solid #000",flexShrink:0}}/>
-                        <span style={{flex:1,fontWeight:600}}>{c.colorName}</span>
-                        <span style={{color:"#475569"}}>—</span>
-                        <span style={{fontFamily:"monospace",fontWeight:800,minWidth:"14mm",textAlign:"right"}}>{fmtInt(c.qty)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+            ) : flatRows.map((r, i) => (
+              <div key={i} style={{
+                display:"grid",
+                gridTemplateColumns:"1fr 16mm 18mm",
+                alignItems:"center",
+                padding:"3px 6px",
+                fontSize:11,
+                borderBottom: i < flatRows.length - 1 ? "1px solid #cbd5e1" : "none",
+                background: i % 2 === 0 ? "white" : "#f8fafc",
+              }}>
+                <span style={{display:"flex",alignItems:"center",gap:5,minWidth:0}}>
+                  <span style={{width:10,height:10,borderRadius:2,background:r.colorHex,border:"1px solid #000",flexShrink:0}}/>
+                  <span style={{fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.colorName}</span>
+                  {r.variant && <span style={{fontSize:9,color:"#475569",fontStyle:"italic"}}>({r.variant})</span>}
+                </span>
+                <span style={{textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#0c4a6e"}}>{r.size}</span>
+                <span style={{textAlign:"right",fontFamily:"monospace",fontWeight:800}}>{fmtInt(r.qty)}</span>
+              </div>
+            ))}
           </div>
 
           {/* Note (ถ้ามี) */}
