@@ -91,28 +91,26 @@ export default function PrintRollLabel({ order, lot, onClose, onPrint, companyIn
             </div>
           </div>
 
-          {/* Items breakdown — สีเป็นแถว, ไซส์เป็น chip (มีเส้นแบ่งระหว่างสี) */}
-          <div style={{fontSize:9,color:"#475569",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:"0.05em"}}>📋 รายการในม้วน ({colorGroups.length} สี)</div>
-          <div style={{marginBottom:5,border:"1px solid #94a3b8",borderRadius:4,overflow:"hidden"}}>
-            {colorGroups.length === 0 ? (
-              <div style={{padding:8,textAlign:"center",color:"#94a3b8",fontStyle:"italic",fontSize:10}}>— ไม่มีรายการ —</div>
-            ) : colorGroups.map((g, i) => (
-              <div key={i} style={{
-                display:"flex",alignItems:"center",gap:6,
-                padding:"4px 6px",
-                borderBottom: i < colorGroups.length - 1 ? "1px solid #cbd5e1" : "none",
-                background: i % 2 === 0 ? "white" : "#f8fafc",
-              }}>
-                {/* color label */}
-                <div style={{display:"flex",alignItems:"center",gap:4,minWidth:"18mm",flexShrink:0}}>
-                  <div style={{width:9,height:9,borderRadius:1,background:g.colorHex,border:"1px solid #000",flexShrink:0}}/>
-                  <span style={{fontSize:10,fontWeight:700}}>{g.colorName}</span>
-                </div>
-                {/* size chips */}
-                <div style={{display:"flex",flexWrap:"wrap",gap:3,flex:1}}>
-                  {g.sizes.map((s, j) => (
-                    <span key={j} style={{
-                      padding:"1px 5px",
+          {/* Items breakdown — ทุก (สี+ไซส์) เป็น chip ไหลในแถวเดียว wrap ได้ */}
+          {(() => {
+            const allChips = [];
+            colorGroups.forEach(g => {
+              g.sizes.forEach(s => {
+                allChips.push({ ...s, colorName: g.colorName, colorHex: g.colorHex });
+              });
+            });
+            return (
+              <>
+                <div style={{fontSize:9,color:"#475569",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:"0.05em"}}>📋 รายการในม้วน ({colorGroups.length} สี · {allChips.length} รายการ)</div>
+                <div style={{marginBottom:5,padding:"4px 5px",border:"1px solid #94a3b8",borderRadius:4,display:"flex",flexWrap:"wrap",gap:3}}>
+                  {allChips.length === 0 ? (
+                    <div style={{padding:6,textAlign:"center",color:"#94a3b8",fontStyle:"italic",fontSize:10,flex:1}}>— ไม่มีรายการ —</div>
+                  ) : allChips.map((c, i) => (
+                    <span key={i} style={{
+                      display:"inline-flex",
+                      alignItems:"center",
+                      gap:3,
+                      padding:"2px 5px",
                       border:"1px solid #475569",
                       borderRadius:8,
                       fontSize:9,
@@ -121,16 +119,17 @@ export default function PrintRollLabel({ order, lot, onClose, onPrint, companyIn
                       whiteSpace:"nowrap",
                       background:"white",
                     }}>
-                      <span style={{color:"#0c4a6e"}}>{s.size}</span>
-                      {" "}
-                      <b>{fmtInt(s.qty)}</b>
-                      {s.variant && <span style={{fontSize:7,color:"#475569",fontStyle:"italic",marginLeft:2}}>· {s.variant}</span>}
+                      <span style={{width:7,height:7,borderRadius:1,background:c.colorHex,border:"1px solid #000",display:"inline-block"}}/>
+                      <span style={{fontFamily:"'Sarabun',sans-serif"}}>{c.colorName}</span>
+                      <span style={{color:"#0c4a6e"}}>{c.size}</span>
+                      <b>{fmtInt(c.qty)}</b>
+                      {c.variant && <span style={{fontSize:7,color:"#475569",fontStyle:"italic"}}>· {c.variant}</span>}
                     </span>
                   ))}
                 </div>
-              </div>
-            ))}
-          </div>
+              </>
+            );
+          })()}
 
           {/* Note (ถ้ามี) */}
           {order.note && (
