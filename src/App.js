@@ -5293,10 +5293,10 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                           const rowSub=chunk.reduce((s,i)=>s+(Number(i.unitPrice)||0)*i.qty,0);
                           return (
                             <tr key={`${gi}-${ci}`} style={{background:gi%2===0?"white":"#f8fafc"}}>
-                              <td style={{padding:"8px 8px",fontWeight:600,color:"#000",verticalAlign:"middle",border:"1px solid #000",fontSize:13,width:62,textAlign:"center"}}>
+                              <td style={{padding:"8px 10px",fontWeight:600,color:"#000",verticalAlign:"middle",border:"1px solid #000",fontSize:13,textAlign:"center",whiteSpace:"nowrap"}}>
                                 {ci===0 ? group.clothingName : " "}
                               </td>
-                              <td style={{padding:"8px 8px",verticalAlign:"middle",border:"1px solid #000",fontSize:13,color:"#000",width:74}}>
+                              <td style={{padding:"8px 10px",verticalAlign:"middle",border:"1px solid #000",fontSize:13,color:"#000",whiteSpace:"nowrap"}}>
                                 {ci===0 ? (
                                   <div style={{display:"flex",alignItems:"center",gap:4,justifyContent:"center"}}>
                                     <div style={{width:9,height:9,borderRadius:2,background:group.colorHex,border:"1px solid #000",flexShrink:0}}/>
