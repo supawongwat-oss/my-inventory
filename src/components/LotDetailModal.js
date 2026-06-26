@@ -944,8 +944,25 @@ function RollSplitModal({ lot, lots = [], lotIdx, busy, onClose, onConfirm, onCo
   const setMRow = (ri, rowi, patch) => setMRolls(prev => prev.map((roll, i) => i !== ri ? roll : { ...roll, rows: roll.rows.map((row, j) => j === rowi ? { ...row, ...patch } : row) }));
   const addMRow = (ri) => setMRolls(prev => prev.map((roll, i) => i !== ri ? roll : { ...roll, rows: [...roll.rows, { itemIdx: "", qty: "" }] }));
   const removeMRow = (ri, rowi) => setMRolls(prev => prev.map((roll, i) => i !== ri ? roll : { ...roll, rows: roll.rows.filter((_, j) => j !== rowi) }));
+  // เลื่อนแถวขึ้น/ลงในม้วน (สลับกับแถวข้างเคียง)
+  const moveMRow = (ri, rowi, dir) => setMRolls(prev => prev.map((roll, i) => {
+    if (i !== ri) return roll;
+    const ni = rowi + dir;
+    if (ni < 0 || ni >= roll.rows.length) return roll;
+    const arr = [...roll.rows];
+    [arr[rowi], arr[ni]] = [arr[ni], arr[rowi]];
+    return { ...roll, rows: arr };
+  }));
   const addRoll = () => setMRolls(prev => [...prev, { jobLabel: "", rows: [{ itemIdx: "", qty: "" }] }]);
   const removeRoll = (ri) => setMRolls(prev => prev.filter((_, i) => i !== ri));
+  // เลื่อนม้วนขึ้น/ลง
+  const moveRoll = (ri, dir) => setMRolls(prev => {
+    const ni = ri + dir;
+    if (ni < 0 || ni >= prev.length) return prev;
+    const arr = [...prev];
+    [arr[ri], arr[ni]] = [arr[ni], arr[ri]];
+    return arr;
+  });
 
   // รวมยอดที่ใช้ต่อ item + คงเหลือ
   const usedByItem = {};
@@ -1052,12 +1069,31 @@ function RollSplitModal({ lot, lots = [], lotIdx, busy, onClose, onConfirm, onCo
                     </span>
                     <span style={{display:"flex",alignItems:"center",gap:8}}>
                       <span style={{fontFamily:"monospace",fontWeight:700,color:"#1e40af",fontSize:13}}>{fmtInt(rollTotal)} ตัว</span>
+                      {mRolls.length>1 && (
+                        <span style={{display:"flex",flexDirection:"column",gap:1}}>
+                          <button onClick={()=>moveRoll(ri,-1)} disabled={ri===0}
+                            title="เลื่อนม้วนขึ้น"
+                            style={{height:13,width:18,padding:0,border:`1px solid ${ri===0?T.border:"#1e40af"}`,background:ri===0?"#f1f5f9":"white",color:ri===0?T.muted:"#1e40af",borderRadius:3,cursor:ri===0?"not-allowed":"pointer",fontSize:8,fontFamily:"inherit",fontWeight:700,opacity:ri===0?0.4:1}}>▲</button>
+                          <button onClick={()=>moveRoll(ri,1)} disabled={ri===mRolls.length-1}
+                            title="เลื่อนม้วนลง"
+                            style={{height:13,width:18,padding:0,border:`1px solid ${ri===mRolls.length-1?T.border:"#1e40af"}`,background:ri===mRolls.length-1?"#f1f5f9":"white",color:ri===mRolls.length-1?T.muted:"#1e40af",borderRadius:3,cursor:ri===mRolls.length-1?"not-allowed":"pointer",fontSize:8,fontFamily:"inherit",fontWeight:700,opacity:ri===mRolls.length-1?0.4:1}}>▼</button>
+                        </span>
+                      )}
                       {mRolls.length>1&&<button onClick={()=>removeRoll(ri)} style={{border:"none",background:"transparent",color:T.red,cursor:"pointer",fontSize:14}}>✕</button>}
                     </span>
                   </div>
                   <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",gap:5}}>
                     {roll.rows.map((row, rowi) => (
-                      <div key={rowi} style={{display:"grid",gridTemplateColumns:"1fr 90px 28px",gap:6,alignItems:"center"}}>
+                      <div key={rowi} style={{display:"grid",gridTemplateColumns:"40px 1fr 90px 28px",gap:6,alignItems:"center"}}>
+                        {/* up/down arrows */}
+                        <div style={{display:"flex",flexDirection:"column",gap:1}}>
+                          <button onClick={()=>moveMRow(ri,rowi,-1)} disabled={rowi===0}
+                            title="เลื่อนขึ้น"
+                            style={{height:13,padding:0,border:`1px solid ${rowi===0?T.border:T.accent}`,background:rowi===0?"#f1f5f9":"rgba(59,91,139,0.08)",color:rowi===0?T.muted:T.accent,borderRadius:4,cursor:rowi===0?"not-allowed":"pointer",fontSize:8,fontFamily:"inherit",fontWeight:700,opacity:rowi===0?0.4:1}}>▲</button>
+                          <button onClick={()=>moveMRow(ri,rowi,1)} disabled={rowi===roll.rows.length-1}
+                            title="เลื่อนลง"
+                            style={{height:13,padding:0,border:`1px solid ${rowi===roll.rows.length-1?T.border:T.accent}`,background:rowi===roll.rows.length-1?"#f1f5f9":"rgba(59,91,139,0.08)",color:rowi===roll.rows.length-1?T.muted:T.accent,borderRadius:4,cursor:rowi===roll.rows.length-1?"not-allowed":"pointer",fontSize:8,fontFamily:"inherit",fontWeight:700,opacity:rowi===roll.rows.length-1?0.4:1}}>▼</button>
+                        </div>
                         <select value={row.itemIdx} onChange={e=>setMRow(ri,rowi,{itemIdx:e.target.value})}
                           style={{padding:"6px 8px",border:`1px solid ${T.border}`,borderRadius:6,fontSize:12,outline:"none",fontFamily:"inherit",background:"white"}}>
                           <option value="">— เลือกสี/ไซส์ —</option>
