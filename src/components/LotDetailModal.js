@@ -493,17 +493,22 @@ export default function LotDetailModal({
   // 🏷️ พิมพ์ป้ายม้วน — สติกเกอร์แปะม้วน (กลุ่มตามสี)
   const printRollLabel = () => {
     const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-    // group by color
-    const gm = new Map(); const groups = [];
+    // 1 แถว = 1 (สี + ไซส์ + จำนวน) — รวมถ้า key เดียวกัน, คงลำดับตามที่กรอก
+    const map = new Map(); const flat = [];
     (lot.items || []).forEach(it => {
-      const key = (it.colorName || "-") + "|" + (it.colorHex || "#999");
-      if (!gm.has(key)) { const g = { colorName: it.colorName || "-", colorHex: it.colorHex || "#999", sizes: [] }; gm.set(key, g); groups.push(g); }
-      gm.get(key).sizes.push({ size: it.productionSize || it.size, qty: Number(it.qty) || 0 });
+      const pSize = it.productionSize || it.size || "-";
+      const key = (it.colorName || "-") + "|" + (it.colorHex || "#999") + "|" + pSize + "|" + (it.variant || "");
+      if (map.has(key)) { map.get(key).qty += Number(it.qty) || 0; }
+      else {
+        const row = { colorName: it.colorName || "-", colorHex: it.colorHex || "#999", size: pSize, variant: it.variant || "", qty: Number(it.qty) || 0 };
+        map.set(key, row); flat.push(row);
+      }
     });
-    const rowsHtml = groups.map(g => `
-      <tr>
-        <td class="c"><span class="sw" style="background:${esc(g.colorHex)}"></span>${esc(g.colorName)}</td>
-        <td>${g.sizes.map(s => `<span class="sz">${esc(s.size)}<b>${fmtInt(s.qty)}</b></span>`).join(" ")}</td>
+    const rowsHtml = flat.map((r, i) => `
+      <tr style="background:${i%2===0?"#fff":"#f8fafc"}">
+        <td class="c"><span class="sw" style="background:${esc(r.colorHex)}"></span>${esc(r.colorName)}${r.variant ? ` <i class="v">(${esc(r.variant)})</i>` : ""}</td>
+        <td class="sz">${esc(r.size)}</td>
+        <td class="q">${fmtInt(r.qty)}</td>
       </tr>`).join("");
     const machine = getMachineForCurrentStage(lot) || lot.machine || "";
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>ป้ายม้วน ${esc(lot.rollNo || lot.lotId)}</title>
@@ -513,15 +518,19 @@ export default function LotDetailModal({
         .label{width:100%;max-width:380px;border:2px solid #000;border-radius:8px;padding:10px 12px;}
         .hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:6px;}
         .roll{font-size:30px;font-weight:800;line-height:1;}
-        .roll small{font-size:13px;font-weight:600;}
+        .roll small{font-size:13px;font-weight:600;display:block;margin-top:2px;}
         .job{font-size:15px;font-weight:800;text-align:right;max-width:200px;}
         .meta{font-size:12px;color:#222;text-align:right;margin-top:2px;}
-        table{width:100%;border-collapse:collapse;font-size:13px;}
-        td{padding:4px 2px;border-bottom:1px dashed #bbb;vertical-align:top;}
-        td.c{white-space:nowrap;font-weight:700;width:78px;}
+        table{width:100%;border-collapse:collapse;font-size:13px;border:1px solid #000;}
+        thead th{background:#1e293b;color:#fff;padding:4px 6px;font-size:11px;text-align:left;}
+        thead th.sz,thead th.q{text-align:center;}
+        thead th.q{text-align:right;}
+        td{padding:4px 6px;border-bottom:1px solid #cbd5e1;vertical-align:middle;}
+        td.c{white-space:nowrap;font-weight:700;}
+        td.sz{text-align:center;font-family:monospace;font-weight:700;color:#0c4a6e;width:60px;}
+        td.q{text-align:right;font-family:monospace;font-weight:800;width:70px;}
+        .v{color:#475569;font-size:11px;font-weight:500;font-style:italic;}
         .sw{display:inline-block;width:11px;height:11px;border:1px solid #000;border-radius:2px;margin-right:4px;vertical-align:middle;}
-        .sz{display:inline-block;border:1px solid #999;border-radius:5px;padding:1px 6px;margin:1px;font-family:monospace;}
-        .sz b{margin-left:3px;}
         .tot{display:flex;justify-content:space-between;border-top:2px solid #000;margin-top:6px;padding-top:5px;font-size:15px;font-weight:800;}
         @media print{ body{padding:0;} .label{border-width:1.5px;} }
       </style></head>
@@ -532,7 +541,10 @@ export default function LotDetailModal({
           <div><div class="job">${esc(lot.jobLabel || order.clothingName || "")}</div>
             <div class="meta">${esc(order.prodNo || "")}<br>${esc(nowStr())}</div></div>
         </div>
-        <table><tbody>${rowsHtml}</tbody></table>
+        <table>
+          <thead><tr><th>สี</th><th class="sz">ไซส์</th><th class="q">จำนวน</th></tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
         <div class="tot"><span>รวม</span><span>${fmtInt(lotTotal)} ตัว</span></div>
       </div>
       <script>window.onload=function(){window.print();}</script>
