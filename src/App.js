@@ -1628,8 +1628,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
 
   // scale fontSize ของทุก element ใน clone (ใช้ก่อนพิมพ์/PDF) — ค่าเริ่มต้น 1.3 = ใหญ่ขึ้น 30%
   const PRINT_FONT_SCALE = 1.3;
-  // ใบบิล: ย่อให้พอดี A4 หน้าเดียวเมื่อรายการเยอะ (0.85 = ลด 15% จากขนาดจริง)
-  const INVOICE_FONT_SCALE = 0.85;
+  // ใบบิล: A4 มีพื้นที่พอ → พิมพ์ที่ขนาดเกือบเต็ม (0.95) ให้ตารางอ่านง่าย
+  const INVOICE_FONT_SCALE = 0.95;
   const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
     // ต้อง attach root เข้า DOM ชั่วคราวเพื่ออ่าน computed style
     const holder = document.createElement("div");
@@ -1754,7 +1754,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
   };
 
   // พิมพ์เอกสารหลายชุด (ต้นฉบับ + สำเนา) บน A4 — ขึ้นหน้าใหม่ทุกชุด
-  const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"], fontScale = INVOICE_FONT_SCALE, pageSize = "A5 portrait", pageMargin = "8mm") => {
+  const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"], fontScale = INVOICE_FONT_SCALE, pageSize = "A4 portrait", pageMargin = "10mm") => {
     const el = document.getElementById(id);
     if (!el) return;
     document.getElementById("__print_root__")?.remove();
@@ -5240,7 +5240,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                           <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap:6}}>
                             {imgs.map((im,i)=>(
                               <div key={i} style={{textAlign:"center"}}>
-                                <div style={{width:"100%",height:imgs.length===1?180:140,background:"#fff",border:"1px solid #e2e8f0",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+                                <div style={{width:"100%",height:imgs.length===1?120:100,background:"#fff",border:"1px solid #e2e8f0",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
                                   <img src={im.dataUrl} alt="" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/>
                                 </div>
                                 {im.label&&<div style={{fontSize:10,color:"#1e293b",fontWeight:700,marginTop:3}}>{im.label}</div>}
@@ -5266,18 +5266,18 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                   return acc;
                 },{}));
                 return (
-                  <table style={{width:"100%",borderCollapse:"collapse",marginBottom:10,fontSize:13}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",marginBottom:10,fontSize:15}}>
                     <thead>
                       <tr style={{background:"#f1f5f9",color:"#000"}}>
-                        <th style={{padding:"6px 8px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:12,color:"#000"}}>รุ่น</th>
-                        <th style={{padding:"6px 8px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:12,color:"#000"}}>สี</th>
+                        <th style={{padding:"9px 8px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:14,color:"#000"}}>รุ่น</th>
+                        <th style={{padding:"9px 8px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:14,color:"#000"}}>สี</th>
                         {[1,2,3,4].flatMap(i=>[
-                          <th key={`sh${i}`} style={{padding:"6px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",background:"#f1f5f9",color:"#000",minWidth:38,fontSize:11}}>SIZE</th>,
-                          <th key={`qh${i}`} style={{padding:"6px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",minWidth:30,fontSize:11,color:"#000"}}></th>
+                          <th key={`sh${i}`} style={{padding:"9px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",background:"#f1f5f9",color:"#000",minWidth:44,fontSize:13}}>SIZE</th>,
+                          <th key={`qh${i}`} style={{padding:"9px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",minWidth:34,fontSize:13,color:"#000"}}></th>
                         ])}
-                        <th style={{padding:"6px 8px",textAlign:"center",fontWeight:700,border:"1px solid #000",width:56,fontSize:12,color:"#000"}}>จำนวน</th>
-                        <th style={{padding:"6px 6px",textAlign:"right",fontWeight:700,border:"1px solid #000",width:76,fontSize:11,color:"#000"}}>ราคา/หน่วย</th>
-                        <th style={{padding:"6px 8px",textAlign:"right",fontWeight:700,border:"1px solid #000",width:96,fontSize:12,color:"#000"}}>ราคารวม (฿)</th>
+                        <th style={{padding:"9px 8px",textAlign:"center",fontWeight:700,border:"1px solid #000",width:60,fontSize:14,color:"#000"}}>จำนวน</th>
+                        <th style={{padding:"9px 6px",textAlign:"right",fontWeight:700,border:"1px solid #000",width:82,fontSize:13,color:"#000"}}>ราคา/หน่วย</th>
+                        <th style={{padding:"9px 8px",textAlign:"right",fontWeight:700,border:"1px solid #000",width:100,fontSize:14,color:"#000"}}>ราคารวม (฿)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -5293,10 +5293,10 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                           const rowSub=chunk.reduce((s,i)=>s+(Number(i.unitPrice)||0)*i.qty,0);
                           return (
                             <tr key={`${gi}-${ci}`} style={{background:gi%2===0?"white":"#f8fafc"}}>
-                              <td style={{padding:"5px 7px",fontWeight:600,color:"#000",verticalAlign:"middle",border:"1px solid #000",fontSize:11,width:60,textAlign:"center"}}>
+                              <td style={{padding:"8px 8px",fontWeight:600,color:"#000",verticalAlign:"middle",border:"1px solid #000",fontSize:13,width:62,textAlign:"center"}}>
                                 {ci===0 ? group.clothingName : " "}
                               </td>
-                              <td style={{padding:"5px 7px",verticalAlign:"middle",border:"1px solid #000",fontSize:11,color:"#000",width:70}}>
+                              <td style={{padding:"8px 8px",verticalAlign:"middle",border:"1px solid #000",fontSize:13,color:"#000",width:74}}>
                                 {ci===0 ? (
                                   <div style={{display:"flex",alignItems:"center",gap:4,justifyContent:"center"}}>
                                     <div style={{width:9,height:9,borderRadius:2,background:group.colorHex,border:"1px solid #000",flexShrink:0}}/>
@@ -5305,21 +5305,21 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                                 ) : " "}
                               </td>
                               {chunk.map(it=>[
-                                <td key={`s-${it.size}`} style={{padding:"6px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#000",border:"1px solid #000",background:"#f1f5f9",fontSize:13}}>{it.size}</td>,
-                                <td key={`q-${it.size}`} style={{padding:"6px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:13}}>{it.qty}</td>
+                                <td key={`s-${it.size}`} style={{padding:"9px 5px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#000",border:"1px solid #000",background:"#f1f5f9",fontSize:15}}>{it.size}</td>,
+                                <td key={`q-${it.size}`} style={{padding:"9px 5px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:15}}>{it.qty}</td>
                               ])}
                               {Array(4-chunk.length).fill(null).flatMap((_,i)=>[
                                 <td key={`e1-${ci}-${i}`} style={{border:"1px solid #000",background:"#f8fafc"}}/>,
                                 <td key={`e2-${ci}-${i}`} style={{border:"1px solid #000",background:"#f8fafc"}}/>
                               ])}
-                              <td style={{padding:"7px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:14,color:"#000",verticalAlign:"middle",border:"1px solid #000"}}>{rowQty}</td>
+                              <td style={{padding:"9px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:16,color:"#000",verticalAlign:"middle",border:"1px solid #000"}}>{rowQty}</td>
                               {(()=>{
                                 const prices=chunk.map(i=>Number(i.unitPrice)||0).filter(p=>p>0);
                                 const uniq=[...new Set(prices)];
                                 const unitTxt=uniq.length===1?uniq[0].toLocaleString("th-TH",{minimumFractionDigits:2}):(rowQty>0?`${(rowSub/rowQty).toFixed(2)}*`:"-");
                                 return (<>
-                                  <td style={{padding:"5px 7px",textAlign:"right",fontFamily:"monospace",fontSize:11,color:"#000",verticalAlign:"middle",border:"1px solid #000"}}>{unitTxt}</td>
-                                  <td style={{padding:"5px 8px",textAlign:"right",fontFamily:"monospace",fontWeight:700,fontSize:12,color:"#000",verticalAlign:"middle",border:"1px solid #000"}}>{rowSub.toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                                  <td style={{padding:"8px 8px",textAlign:"right",fontFamily:"monospace",fontSize:13,color:"#000",verticalAlign:"middle",border:"1px solid #000"}}>{unitTxt}</td>
+                                  <td style={{padding:"8px 8px",textAlign:"right",fontFamily:"monospace",fontWeight:700,fontSize:14,color:"#000",verticalAlign:"middle",border:"1px solid #000"}}>{rowSub.toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                                 </>);
                               })()}
                             </tr>
@@ -5442,7 +5442,6 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 <div style={{display:"flex",gap:6}}>
                   {[
                     {id:"A4",label:"A4",size:"A4 portrait",margin:"10mm"},
-                    {id:"A5",label:"A5",size:"A5 portrait",margin:"8mm"},
                   ].map(p=>(
                     <button key={p.id}
                       onClick={()=>printElementById("invoice-print-area",p.size,p.margin,INVOICE_FONT_SCALE)}
