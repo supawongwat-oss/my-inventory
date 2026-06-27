@@ -285,25 +285,50 @@ export default function LotDetailModal({
   const cancelEdit = () => { setEditMode(false); setEditItems([]); };
   const saveEdit = async () => {
     if (busy) return;
+    // normalize: qty เป็นเลข, trim ฟิลด์ string, ตัดแถวที่ qty <= 0
     const cleaned = editItems
-      .map(it => ({ ...it, qty: Math.max(0, Number(it.qty) || 0) }))
+      .map(it => ({
+        ...it,
+        colorName: (it.colorName || "").trim(),
+        size: (it.size || "").trim(),
+        variant: (it.variant || "").trim(),
+        productionSize: (it.productionSize || "").trim(),
+        qty: Math.max(0, Number(it.qty) || 0),
+      }))
       .filter(it => it.qty > 0);
-    if (cleaned.length === 0) { setToast("ต้องมีอย่างน้อย 1 รายการ"); return; }
+    console.log("[saveEdit] cleaned items:", cleaned, "lotIdx:", lotIdx, "total:", cleaned.reduce((s,i)=>s+i.qty,0));
+    if (cleaned.length === 0) {
+      // อนุญาตให้ "ลบทุกรายการในล็อตนี้" → ล็อตจะถูกลบไป
+      if (!window.confirm("ทุกรายการในล็อตนี้มีจำนวน 0 — ลบทั้งล็อตเลยไหม?")) return;
+    }
     setBusy(true);
     try {
-      const newLots = lots.map((l, i) => i === lotIdx ? { ...l, items: cleaned } : l);
+      let newLots;
+      if (cleaned.length === 0) {
+        newLots = lots.filter((_, i) => i !== lotIdx);
+      } else {
+        newLots = lots.map((l, i) => i === lotIdx ? { ...l, items: cleaned } : l);
+      }
+      console.log("[saveEdit] newLots:", newLots);
       await persistLots(newLots);
+      const beforeTotal = (lot.items || []).reduce((s,i)=>s+(Number(i.qty)||0), 0);
+      const afterTotal = cleaned.reduce((s,i)=>s+i.qty, 0);
       logAudit(user, {
         action: AUDIT_ACTIONS.UPDATE,
         collection: collectionName,
         targetId: order.id,
         targetLabel: `${order.prodNo} · ${lot.lotId}`,
-        note: `แก้ไขรายการล็อต (${cleaned.length} รายการ, ${cleaned.reduce((s,i)=>s+i.qty,0)} ตัว)`,
+        note: `แก้ไขรายการล็อต (${cleaned.length} รายการ, ${afterTotal} ตัว · เปลี่ยนจาก ${beforeTotal} → ${afterTotal})`,
       });
-      setToast("บันทึกรายการสำเร็จ");
+      setToast(cleaned.length === 0
+        ? "ลบล็อตสำเร็จ"
+        : `บันทึกสำเร็จ · ${beforeTotal} → ${afterTotal} ตัว${beforeTotal !== afterTotal ? ` (${afterTotal > beforeTotal ? "+" : ""}${afterTotal - beforeTotal})` : ""}`);
       setEditMode(false);
+      if (cleaned.length === 0 && onClose) setTimeout(onClose, 800);
     } catch (e) {
-      console.error(e); setToast("ผิดพลาด: " + (e.message || e));
+      console.error("[saveEdit] failed:", e);
+      alert("บันทึกไม่สำเร็จ: " + (e?.message || e));
+      setToast("ผิดพลาด: " + (e?.message || e));
     } finally {
       setBusy(false);
     }
