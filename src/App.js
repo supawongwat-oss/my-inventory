@@ -1669,11 +1669,81 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
     const isThermal = !!thermalMatch;
     const tW = isThermal ? Number(thermalMatch[1]) : null;
 
-    // เก็บกวาดของเก่า
+    // 🩹 Mobile/Tablet (Samsung Tab, iPad, Android) — เปิด tab ใหม่แล้ว print
+    //    เพราะ Samsung Print Service capture ทั้งหน้าจอ ไม่ honor display:none
+    const isMobile = /Android|iPhone|iPad|iPod|Mobi|Tablet|Silk|webOS|Kindle|PlayBook|BB10/i.test(navigator.userAgent)
+      || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent))
+      || (navigator.userAgentData && navigator.userAgentData.mobile)
+      || (window.matchMedia && window.matchMedia("(hover: none) and (pointer: coarse)").matches);
+
+    if (isMobile) {
+      const sizeMapM = {
+        "A4 portrait":  "210mm 297mm",
+        "A4 landscape": "297mm 210mm",
+        "A5 portrait":  "148mm 210mm",
+        "A5 landscape": "210mm 148mm",
+      };
+      const cssPageSizeM = sizeMapM[pageSize] || pageSize;
+      const cloneM = el.cloneNode(true);
+      cloneM.removeAttribute("id");
+      const finalElM = isThermal ? cloneM : scaleFontInElement(cloneM, fontScale);
+      // ดึง <style>/<link> ที่จำเป็นจาก parent (สำหรับให้สไตล์ inline ของ React ทำงานเหมือนเดิม)
+      const html = `<!doctype html><html><head><meta charset="utf-8"/>
+        <title>พิมพ์เอกสาร</title>
+        <link rel="icon" href="data:,">
+        <style>
+          @page { size: ${cssPageSizeM}; margin: ${pageMargin}; }
+          html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun','Sukhumvit Set','Noto Sans Thai',sans-serif; }
+          table { border-collapse: collapse; width: 100%; }
+          tr, td, th { page-break-inside: avoid; }
+          thead { display: table-header-group; }
+          tfoot { display: table-footer-group; }
+          img { max-width: 100%; height: auto; }
+          .no-print, [data-no-print="true"], .print-hide { display: none !important; }
+          #__print_btn { position: fixed; top: 12px; right: 12px; padding: 10px 18px; background: #3b5b8b; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.2); z-index: 9999; }
+          @media print { #__print_btn { display: none !important; } }
+        </style></head><body>
+        <button id="__print_btn" onclick="window.print()">🖨️ พิมพ์</button>
+        ${finalElM.outerHTML}
+        </body></html>`;
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const w = window.open(url, "_blank");
+      if (!w) {
+        URL.revokeObjectURL(url);
+        alert("เบราว์เซอร์บล็อก popup — กรุณาอนุญาต popup สำหรับหน้านี้แล้วลองใหม่");
+        return;
+      }
+      // รอ window load + รูปครบ แล้วค่อย print (ไม่ปิด tab อัตโนมัติ)
+      const tryPrint = () => {
+        try {
+          const imgs = Array.from(w.document.images || []);
+          const allReady = imgs.every(im => im.complete && im.naturalWidth > 0);
+          if (!allReady) { setTimeout(tryPrint, 300); return; }
+          w.focus();
+          w.print();
+        } catch (e) {
+          console.warn("[print] auto-print failed:", e);
+        } finally {
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+        }
+      };
+      const start = Date.now();
+      const waitLoad = () => {
+        if (w.closed) return;
+        const ready = w.document && w.document.readyState === "complete";
+        if (ready) { setTimeout(tryPrint, 500); return; }
+        if (Date.now() - start > 10000) { tryPrint(); return; }
+        setTimeout(waitLoad, 200);
+      };
+      setTimeout(waitLoad, 300);
+      return;
+    }
+
+    // === Desktop: ใช้ same-page isolation ===
     document.getElementById("__print_root__")?.remove();
     document.getElementById("__print_style__")?.remove();
 
-    // clone + scale font
     const clone = el.cloneNode(true);
     clone.removeAttribute("id");
     const finalEl = isThermal ? clone : scaleFontInElement(clone, fontScale);
@@ -1787,6 +1857,75 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
   const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"], fontScale = INVOICE_FONT_SCALE, pageSize = "A4 portrait", pageMargin = "10mm") => {
     const el = document.getElementById(id);
     if (!el) return;
+
+    // 🩹 Mobile/Tablet — เปิด tab ใหม่
+    const isMobileM = /Android|iPhone|iPad|iPod|Mobi|Tablet|Silk|webOS|Kindle|PlayBook|BB10/i.test(navigator.userAgent)
+      || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent))
+      || (navigator.userAgentData && navigator.userAgentData.mobile)
+      || (window.matchMedia && window.matchMedia("(hover: none) and (pointer: coarse)").matches);
+
+    if (isMobileM) {
+      const sizeMapM = {
+        "A4 portrait":  "210mm 297mm",
+        "A4 landscape": "297mm 210mm",
+        "A5 portrait":  "148mm 210mm",
+        "A5 landscape": "210mm 148mm",
+      };
+      const cssPageSizeM = sizeMapM[pageSize] || pageSize;
+      const allHtml = labels.map((label, i) => {
+        const cl = el.cloneNode(true);
+        cl.removeAttribute("id");
+        const tag = cl.querySelector("[data-doc-label]");
+        if (tag) tag.textContent = label;
+        scaleFontInElement(cl, fontScale);
+        const sep = i < labels.length - 1 ? ' style="page-break-after: always;"' : '';
+        return `<div${sep}>${cl.outerHTML}</div>`;
+      }).join("");
+      const html = `<!doctype html><html><head><meta charset="utf-8"/>
+        <title>พิมพ์เอกสาร × ${labels.length}</title>
+        <link rel="icon" href="data:,">
+        <style>
+          @page { size: ${cssPageSizeM}; margin: ${pageMargin}; }
+          html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun','Sukhumvit Set','Noto Sans Thai',sans-serif; }
+          table { border-collapse: collapse; width: 100%; }
+          tr, td, th { page-break-inside: avoid; }
+          thead { display: table-header-group; }
+          tfoot { display: table-footer-group; }
+          img { max-width: 100%; height: auto; }
+          .no-print, [data-no-print="true"], .print-hide { display: none !important; }
+          #__print_btn { position: fixed; top: 12px; right: 12px; padding: 10px 18px; background: #3b5b8b; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.2); z-index: 9999; }
+          @media print { #__print_btn { display: none !important; } }
+        </style></head><body>
+        <button id="__print_btn" onclick="window.print()">🖨️ พิมพ์ × ${labels.length}</button>
+        ${allHtml}
+        </body></html>`;
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const w = window.open(url, "_blank");
+      if (!w) {
+        URL.revokeObjectURL(url);
+        alert("เบราว์เซอร์บล็อก popup — กรุณาอนุญาต popup แล้วลองใหม่");
+        return;
+      }
+      const tryPrint = () => {
+        try {
+          const imgs = Array.from(w.document.images || []);
+          if (!imgs.every(im => im.complete && im.naturalWidth > 0)) { setTimeout(tryPrint, 300); return; }
+          w.focus(); w.print();
+        } catch (e) {} finally { setTimeout(() => URL.revokeObjectURL(url), 60000); }
+      };
+      const start = Date.now();
+      const waitLoad = () => {
+        if (w.closed) return;
+        if (w.document?.readyState === "complete") { setTimeout(tryPrint, 500); return; }
+        if (Date.now() - start > 10000) { tryPrint(); return; }
+        setTimeout(waitLoad, 200);
+      };
+      setTimeout(waitLoad, 300);
+      return;
+    }
+
+    // === Desktop: same-page isolation ===
     document.getElementById("__print_root__")?.remove();
     document.getElementById("__print_style__")?.remove();
 
