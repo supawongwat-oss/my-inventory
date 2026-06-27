@@ -774,7 +774,7 @@ export default function LotDetailModal({
           {(lot.items || []).length > 0 && lotTotal > 1 && (
             <BtnGhost onClick={() => setShowSplit(true)} disabled={busy} style={{flex:1,minWidth:140}}>✂️ แยกล็อตย่อย</BtnGhost>
           )}
-          {lotTotal > ROLL_CAPACITY * 0.5 && (
+          {lotTotal > 0 && (
             <BtnGhost onClick={() => setShowRollSplit(true)} disabled={busy} style={{flex:1,minWidth:150}}>🧵 แบ่งม้วน</BtnGhost>
           )}
           {lots.filter(l => l.status === lot.status && l.status !== "ยกเลิก").length > 1 && (
