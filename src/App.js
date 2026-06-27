@@ -5507,8 +5507,6 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                   {[
                     {id:"A4",label:"A4",size:"A4 portrait",margin:"10mm"},
                     {id:"A5",label:"A5",size:"A5 portrait",margin:"8mm"},
-                    {id:"80mm",label:"80mm (สลิป)",size:"80mm auto",margin:"2mm 4mm"},
-                    {id:"57mm",label:"57mm (ม้วน)",size:"57mm auto",margin:"1mm 3mm"},
                   ].map(p=>(
                     <button key={p.id}
                       onClick={()=>printElementById("invoice-print-area",p.size,p.margin,INVOICE_FONT_SCALE)}
