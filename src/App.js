@@ -1669,13 +1669,13 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
     const isThermal = !!thermalMatch;
     const tW = isThermal ? Number(thermalMatch[1]) : null;
 
-    // เก็บกวาดของเก่า (กันค้างถ้ากดซ้ำ)
+    // เก็บกวาดของเก่า
     document.getElementById("__print_root__")?.remove();
     document.getElementById("__print_style__")?.remove();
 
     // clone + scale font
     const clone = el.cloneNode(true);
-    clone.removeAttribute("id"); // กัน id ซ้ำกับต้นฉบับ
+    clone.removeAttribute("id");
     const finalEl = isThermal ? clone : scaleFontInElement(clone, fontScale);
 
     const root = document.createElement("div");
@@ -1683,12 +1683,36 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
     root.appendChild(finalEl);
     document.body.appendChild(root);
 
+    // 🩹 JS-based hiding — ซ่อนทุก body child ด้วย inline style (CSS @media print ไม่ทำงานบน Samsung)
+    //    เก็บค่า display เดิมไว้ restore ทีหลัง
+    const bodyChildren = Array.from(document.body.children);
+    const hiddenState = [];
+    bodyChildren.forEach(child => {
+      if (child === root) return;
+      hiddenState.push({ el: child, prev: child.style.display });
+      child.style.display = "none";
+    });
+    // เผื่อ modal overlay ใช้ position:fixed นอก body flow → hide ด้วย class
+    const fixedHidden = [];
+    document.querySelectorAll(".print-modal-overlay, [data-print-hide]").forEach(el => {
+      if (el === root || root.contains(el)) return;
+      fixedHidden.push({ el, prev: el.style.display });
+      el.style.display = "none";
+    });
+    // reset html/body margin/padding ชั่วคราว
+    const prevHtml = { margin: document.documentElement.style.margin, padding: document.documentElement.style.padding };
+    const prevBody = { margin: document.body.style.margin, padding: document.body.style.padding, background: document.body.style.background };
+    document.documentElement.style.margin = "0";
+    document.documentElement.style.padding = "0";
+    document.body.style.margin = "0";
+    document.body.style.padding = "0";
+    document.body.style.background = "#fff";
+
     const extraThermal = isThermal ? `
       #__print_root__ { width: ${tW}mm; }
       #__print_root__ > * { width: ${tW}mm; max-width: ${tW}mm; box-sizing: border-box; }
     ` : "";
 
-    // 🩹 แปลงชื่อขนาดกระดาษเป็น mm (บาง browser/printer ไม่ honor "A5 portrait")
     const sizeMap = {
       "A4 portrait":  "210mm 297mm",
       "A4 landscape": "297mm 210mm",
@@ -1696,33 +1720,32 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
       "A5 landscape": "210mm 148mm",
     };
     const cssPageSize = sizeMap[pageSize] || pageSize;
-    // A5/ความร้อน = หน้าแคบ → บังคับตารางยุบพอดี (A4 ปล่อย auto กันเลย์เอาต์เพี้ยน)
     const tableLayout = (isThermal || /A5/i.test(pageSize)) ? "table-layout: fixed;" : "";
-    // คำนวณ content width = paper width - 2× margin → บังคับ layout จริงๆ
     const marginMm = parseFloat(String(pageMargin).match(/^([\d.]+)/)?.[1] || "10");
     const pageMatch = cssPageSize.match(/^([\d.]+)mm\s+([\d.]+)mm$/);
     const contentWidth = (pageMatch && !isThermal) ? (parseFloat(pageMatch[1]) - 2 * marginMm) + "mm" : "auto";
 
+    // ตั้งค่า root inline เพื่อให้แสดง on-screen ตอน print (ไม่พึ่ง @media print ที่ Samsung ไม่ honor บางที)
+    root.style.position = "static";
+    root.style.left = "auto";
+    root.style.top = "auto";
+    root.style.width = contentWidth;
+    root.style.maxWidth = contentWidth;
+    root.style.margin = "0 auto";
+    root.style.boxSizing = "border-box";
+    root.style.background = "#fff";
+
     const style = document.createElement("style");
     style.id = "__print_style__";
-    // 🩹 @page ต้องอยู่ top-level (ไม่ใช่ใน @media print) — บาง browser ไม่ parse
     style.textContent = `
       @page { size: ${cssPageSize}; margin: ${pageMargin}; }
-      @media screen { #__print_root__ { position: fixed; left: -99999px; top: 0; width: 1px; height: 1px; overflow: hidden; } }
-      @media print {
-        html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
-        body > *:not(#__print_root__) { display: none !important; }
-        /* 🩹 กันโลโก้ซ้อน 2 อัน (Samsung) — ซ่อน modal เดิมเด็ดขาดตอนพิมพ์แบบ isolated */
-        .print-modal-overlay, .print-modal-card { display: none !important; }
-        #__print_root__ { display: block !important; position: static !important; left: auto !important; top: auto !important; width: ${contentWidth} !important; max-width: ${contentWidth} !important; height: auto !important; overflow: visible !important; box-sizing: border-box; margin: 0 auto; }
-        #__print_root__ table { border-collapse: collapse; width: 100%; ${tableLayout} }
-        #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
-        #__print_root__ thead { display: table-header-group; }
-        #__print_root__ tfoot { display: table-footer-group; }
-        #__print_root__ img { max-width: 100%; height: auto; }
-        .no-print, [data-no-print="true"], .print-hide { display: none !important; }
-        ${extraThermal}
-      }
+      #__print_root__ table { border-collapse: collapse; width: 100%; ${tableLayout} }
+      #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
+      #__print_root__ thead { display: table-header-group; }
+      #__print_root__ tfoot { display: table-footer-group; }
+      #__print_root__ img { max-width: 100%; height: auto; }
+      .no-print, [data-no-print="true"], .print-hide { display: none !important; }
+      ${extraThermal}
     `;
     document.head.appendChild(style);
 
@@ -1731,11 +1754,18 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
       if (done) return; done = true;
       root.remove();
       style.remove();
+      // restore body children
+      hiddenState.forEach(({ el, prev }) => { el.style.display = prev || ""; });
+      fixedHidden.forEach(({ el, prev }) => { el.style.display = prev || ""; });
+      document.documentElement.style.margin = prevHtml.margin;
+      document.documentElement.style.padding = prevHtml.padding;
+      document.body.style.margin = prevBody.margin;
+      document.body.style.padding = prevBody.padding;
+      document.body.style.background = prevBody.background;
       window.removeEventListener("afterprint", cleanup);
     };
     window.addEventListener("afterprint", cleanup);
 
-    // รอรูป + ฟอนต์โหลดก่อนสั่งพิมพ์
     const imgs = Array.from(root.querySelectorAll("img"));
     const waitImgs = Promise.all(imgs.map(im =>
       (im.complete && im.naturalWidth > 0)
@@ -1775,6 +1805,28 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
     });
     document.body.appendChild(root);
 
+    // 🩹 JS-based hiding (CSS @media print ไม่ทำงานบน Samsung)
+    const bodyChildren2 = Array.from(document.body.children);
+    const hiddenState2 = [];
+    bodyChildren2.forEach(child => {
+      if (child === root) return;
+      hiddenState2.push({ el: child, prev: child.style.display });
+      child.style.display = "none";
+    });
+    const fixedHidden2 = [];
+    document.querySelectorAll(".print-modal-overlay, [data-print-hide]").forEach(elx => {
+      if (elx === root || root.contains(elx)) return;
+      fixedHidden2.push({ el: elx, prev: elx.style.display });
+      elx.style.display = "none";
+    });
+    const prevHtml2 = { margin: document.documentElement.style.margin, padding: document.documentElement.style.padding };
+    const prevBody2 = { margin: document.body.style.margin, padding: document.body.style.padding, background: document.body.style.background };
+    document.documentElement.style.margin = "0";
+    document.documentElement.style.padding = "0";
+    document.body.style.margin = "0";
+    document.body.style.padding = "0";
+    document.body.style.background = "#fff";
+
     const sizeMap2 = {
       "A4 portrait":  "210mm 297mm",
       "A4 landscape": "297mm 210mm",
@@ -1787,29 +1839,41 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
     const pm2 = cssPageSize2.match(/^([\d.]+)mm\s+([\d.]+)mm$/);
     const contentWidth2 = pm2 ? (parseFloat(pm2[1]) - 2 * marginMm2) + "mm" : "auto";
 
+    root.style.position = "static";
+    root.style.left = "auto";
+    root.style.top = "auto";
+    root.style.width = contentWidth2;
+    root.style.maxWidth = contentWidth2;
+    root.style.margin = "0 auto";
+    root.style.boxSizing = "border-box";
+    root.style.background = "#fff";
+
     const style = document.createElement("style");
     style.id = "__print_style__";
     style.textContent = `
       @page { size: ${cssPageSize2}; margin: ${pageMargin}; }
-      @media screen { #__print_root__ { position: fixed; left: -99999px; top: 0; width: 1px; height: 1px; overflow: hidden; } }
-      @media print {
-        html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
-        body > *:not(#__print_root__) { display: none !important; }
-        /* 🩹 กันโลโก้ซ้อน 2 อัน (Samsung) */
-        .print-modal-overlay, .print-modal-card { display: none !important; }
-        #__print_root__ { display: block !important; position: static !important; left: auto !important; top: auto !important; width: ${contentWidth2} !important; max-width: ${contentWidth2} !important; overflow: visible !important; box-sizing: border-box; margin: 0 auto; }
-        #__print_root__ > div { width: ${contentWidth2} !important; max-width: ${contentWidth2} !important; box-sizing: border-box; }
-        #__print_root__ table { border-collapse: collapse; width: 100%; ${tableLayout2} }
-        #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
-        #__print_root__ thead { display: table-header-group; }
-        #__print_root__ img { max-width: 100%; height: auto; }
-        .no-print, [data-no-print="true"], .print-hide { display: none !important; }
-      }
+      #__print_root__ > div { width: ${contentWidth2} !important; max-width: ${contentWidth2} !important; box-sizing: border-box; }
+      #__print_root__ table { border-collapse: collapse; width: 100%; ${tableLayout2} }
+      #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
+      #__print_root__ thead { display: table-header-group; }
+      #__print_root__ img { max-width: 100%; height: auto; }
+      .no-print, [data-no-print="true"], .print-hide { display: none !important; }
     `;
     document.head.appendChild(style);
 
     let done = false;
-    const cleanup = () => { if (done) return; done = true; root.remove(); style.remove(); window.removeEventListener("afterprint", cleanup); };
+    const cleanup = () => {
+      if (done) return; done = true;
+      root.remove(); style.remove();
+      hiddenState2.forEach(({ el, prev }) => { el.style.display = prev || ""; });
+      fixedHidden2.forEach(({ el, prev }) => { el.style.display = prev || ""; });
+      document.documentElement.style.margin = prevHtml2.margin;
+      document.documentElement.style.padding = prevHtml2.padding;
+      document.body.style.margin = prevBody2.margin;
+      document.body.style.padding = prevBody2.padding;
+      document.body.style.background = prevBody2.background;
+      window.removeEventListener("afterprint", cleanup);
+    };
     window.addEventListener("afterprint", cleanup);
 
     const imgs = Array.from(root.querySelectorAll("img"));
