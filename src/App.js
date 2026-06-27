@@ -4693,13 +4693,13 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
               <table style={{width:"100%",borderCollapse:"collapse",marginBottom:20,fontSize:14}}>
                 <thead>
                   <tr style={{background:"#3b5b8b",color:"white"}}>
-                    <th style={{padding:"6px 6px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:11,width:62,minWidth:62}}>รุ่น</th>
-                    <th style={{padding:"6px 6px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:11,width:90,minWidth:90}}>สี</th>
+                    <th style={{padding:"5px 4px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:9,width:46,minWidth:46}}>รุ่น</th>
+                    <th style={{padding:"5px 4px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:9,width:68,minWidth:68}}>สี</th>
                     {[1,2,3,4].flatMap(i=>[
                       <th key={`sh${i}`} style={{padding:"8px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",background:"#166534",color:"#bbf7d0",minWidth:40,fontSize:12}}>SIZE</th>,
                       <th key={`qh${i}`} style={{padding:"8px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",minWidth:32,fontSize:12}}></th>
                     ])}
-                    <th style={{padding:"9px 10px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",fontSize:13}}>จำนวน</th>
+                    <th style={{padding:"9px 10px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",fontSize:13,width:80,minWidth:80}}>จำนวน</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -4721,10 +4721,10 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                     const lastIdx=rows.length-1;
                     return rows.map((chunk,ci)=>(
                       <tr key={`${gi}-${ci}`} style={{borderBottom:"1px solid #e2e8f0",background:gi%2===0?"white":"#f8fafc"}}>
-                        <td style={{padding:"6px 6px",fontWeight:600,color:"#1e293b",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:11,width:62}}>{ci===0&&<div><div>{group.clothingName}</div>{(group.fabricType||group.collarType||group.jobDescription)&&<div style={{fontSize:9,color:"#64748b",fontWeight:400,marginTop:2,display:"flex",flexWrap:"wrap",gap:3}}>{group.fabricType&&<span>🧵 {group.fabricType}</span>}{group.collarType&&<span>· 👔 {group.collarType}</span>}{group.jobDescription&&<span>· {group.jobDescription}</span>}</div>}</div>}</td>
-                        <td style={{padding:"6px 6px",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:11,width:90}}>
-                          {ci===0&&<div style={{display:"flex",alignItems:"center",gap:4}}>
-                            <div style={{width:9,height:9,borderRadius:2,background:group.colorHex,border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/>
+                        <td style={{padding:"5px 4px",fontWeight:600,color:"#1e293b",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:9,width:46}}>{ci===0&&<div><div>{group.clothingName}</div>{(group.fabricType||group.collarType||group.jobDescription)&&<div style={{fontSize:8,color:"#64748b",fontWeight:400,marginTop:2,display:"flex",flexWrap:"wrap",gap:2}}>{group.fabricType&&<span>🧵 {group.fabricType}</span>}{group.collarType&&<span>· 👔 {group.collarType}</span>}{group.jobDescription&&<span>· {group.jobDescription}</span>}</div>}</div>}</td>
+                        <td style={{padding:"5px 4px",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:9,width:68}}>
+                          {ci===0&&<div style={{display:"flex",alignItems:"center",gap:3}}>
+                            <div style={{width:7,height:7,borderRadius:2,background:group.colorHex,border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/>
                             <span>{group.colorName}{group.variant?` (${group.variant})`:""}</span>
                           </div>}
                         </td>
@@ -4736,7 +4736,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                           <td key={`e1-${ci}-${i}`} style={{border:"1px solid #e2e8f0",background:"#fafafa"}}/>,
                           <td key={`e2-${ci}-${i}`} style={{border:"1px solid #e2e8f0",background:"#fafafa"}}/>
                         ])}
-                        <td style={{padding:"9px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:16,color:"#3b5b8b",verticalAlign:"middle",border:"1px solid #e2e8f0"}}>{ci===lastIdx?totalQty:""}</td>
+                        <td style={{padding:"9px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:16,color:"#3b5b8b",verticalAlign:"middle",border:"1px solid #e2e8f0",width:80,minWidth:80}}>{ci===lastIdx?totalQty:""}</td>
                       </tr>
                     ));
                   })}
