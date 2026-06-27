@@ -104,7 +104,8 @@ export default function AuditLogTab({ auditLogs = [], users = [] }) {
       </div>
 
       {/* List */}
-      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+        <div style={{minWidth:780}}>
         {/* Table header */}
         <div style={{display:"grid",gridTemplateColumns:"160px 110px 1fr 1fr 28px",alignItems:"center",padding:"10px 16px",background:"#f8f9fb",borderBottom:`1px solid ${T.border}`,color:T.muted,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>
           <div>เวลา</div><div>ผู้ทำ</div><div>Action</div><div>เป้าหมาย</div><div></div>
@@ -174,6 +175,7 @@ export default function AuditLogTab({ auditLogs = [], users = [] }) {
             </button>
           </div>
         )}
+        </div>
       </div>
 
       <div style={{marginTop:12,padding:10,background:"rgba(59,91,139,0.06)",border:"1px solid rgba(59,91,139,0.15)",borderRadius:8,fontSize:11,color:T.sub}}>
