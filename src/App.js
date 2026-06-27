@@ -1629,7 +1629,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
   // scale fontSize ของทุก element ใน clone (ใช้ก่อนพิมพ์/PDF) — ค่าเริ่มต้น 1.3 = ใหญ่ขึ้น 30%
   const PRINT_FONT_SCALE = 1.3;
   // ใบบิล: A4 มีพื้นที่พอ → พิมพ์ที่ขนาดเกือบเต็ม (0.95) ให้ตารางอ่านง่าย
-  const INVOICE_FONT_SCALE = 0.95;
+  const INVOICE_FONT_SCALE = 1.0;
   const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
     // ต้อง attach root เข้า DOM ชั่วคราวเพื่ออ่าน computed style
     const holder = document.createElement("div");
@@ -5506,6 +5506,9 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 <div style={{display:"flex",gap:6}}>
                   {[
                     {id:"A4",label:"A4",size:"A4 portrait",margin:"10mm"},
+                    {id:"A5",label:"A5",size:"A5 portrait",margin:"8mm"},
+                    {id:"80mm",label:"80mm (สลิป)",size:"80mm auto",margin:"2mm 4mm"},
+                    {id:"57mm",label:"57mm (ม้วน)",size:"57mm auto",margin:"1mm 3mm"},
                   ].map(p=>(
                     <button key={p.id}
                       onClick={()=>printElementById("invoice-print-area",p.size,p.margin,INVOICE_FONT_SCALE)}
