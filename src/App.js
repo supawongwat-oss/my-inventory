@@ -36,7 +36,7 @@ export default function App() {
     authReady.then(() => setAuthChecked(true));
   }, []);
 
-  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs, catalogOrders, attendance, payrollRuns, customSizes, usersLoaded } = useFirestore();
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs, catalogOrders, attendance, payrollRuns, customSizes, materials, usersLoaded } = useFirestore();
   // 📏 ไซส์ที่ใช้จริง = มาตรฐาน + ที่เพิ่มเอง
   const apparelSizes = useMemo(() => mergeSizes(SIZES, customSizes?.apparel), [customSizes]);
   const shoeSizes = useMemo(() => mergeSizes(SHOE_SIZES, customSizes?.shoe), [customSizes]);
@@ -269,6 +269,16 @@ export default function App() {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [draggingClothingId, setDraggingClothingId] = useState(null); // 🖱️ ลากจัดลำดับรุ่น
   const [dragOverClothingId, setDragOverClothingId] = useState(null);
+  // 🧱 วัตถุดิบ — modals/state
+  const [showAddMaterial, setShowAddMaterial] = useState(false);
+  const [newMaterial, setNewMaterial] = useState({ name:"", category:"ผ้า", unit:"kg", qty:"", costPerUnit:"", minStock:"", supplier:"", note:"", isCostOnly:false });
+  const [editMaterialId, setEditMaterialId] = useState(null);
+  const [editMaterialForm, setEditMaterialForm] = useState({});
+  const [materialStockModal, setMaterialStockModal] = useState(null); // {material, mode:"in"|"out", qty, note}
+  const [deleteMaterialTarget, setDeleteMaterialTarget] = useState(null);
+  const [deleteMaterialConfirm, setDeleteMaterialConfirm] = useState("");
+  const [materialSearch, setMaterialSearch] = useState("");
+  const [materialCatFilter, setMaterialCatFilter] = useState("ทั้งหมด");
   const [showHistoryModal, setShowHistoryModal] = useState(null);
   const [showCatModal, setShowCatModal] = useState(false);
   const [showImgModal, setShowImgModal] = useState(null);
@@ -993,6 +1003,98 @@ export default function App() {
       arr.forEach((id, idx) => batch.update(doc(db, "clothing", id), { sortIndex: idx }));
       await batch.commit();
     } catch (e) { alert("จัดลำดับไม่สำเร็จ: " + (e.message || e)); }
+  };
+
+  // 🧱 ─────── วัตถุดิบ (Materials) ───────
+  const MATERIAL_CATEGORIES = ["ผ้า","กระดาษ","หมึก","ด้าย","กระดาษรองพับ","ป้าย","ถุง","ค่าไฟ","อื่นๆ"];
+  const MATERIAL_UNITS_BY_CAT = {
+    "ผ้า":["kg","หลา","เมตร"],
+    "กระดาษ":["ม้วน","ตร.ม.","แผ่น"],
+    "กระดาษรองพับ":["แผ่น","กก."],
+    "หมึก":["ลิตร","ml","ขวด"],
+    "ด้าย":["หลอด","กรัม","เมตร"],
+    "ป้าย":["ชิ้น","แผ่น"],
+    "ถุง":["ใบ","แพ็ค"],
+    "ค่าไฟ":["kWh","บาท"],
+    "อื่นๆ":["ชิ้น","ชุด","kg"],
+  };
+  const newMaterialId = () => {
+    const max = materials.reduce((m,it)=>{ const n=Number(String(it.id||"").replace(/\D/g,""))||0; return n>m?n:m; },0);
+    return `MAT-${String(max+1).padStart(4,"0")}`;
+  };
+  const handleAddMaterial = async () => {
+    const m = newMaterial;
+    if (!m.name.trim()) { alert("กรุณาใส่ชื่อวัตถุดิบ"); return; }
+    const isCost = m.category === "ค่าไฟ" || m.isCostOnly;
+    try {
+      const id = newMaterialId();
+      await setDoc(doc(db, "materials", id), {
+        name: m.name.trim(),
+        category: m.category,
+        unit: m.unit,
+        qty: isCost ? 0 : (Number(m.qty)||0),
+        costPerUnit: Number(m.costPerUnit)||0,
+        minStock: Number(m.minStock)||0,
+        supplier: m.supplier.trim(),
+        note: m.note.trim(),
+        isCostOnly: isCost,
+        createdAt: new Date().toISOString(),
+        createdBy: user?.name || "",
+      });
+      setShowAddMaterial(false);
+      setNewMaterial({ name:"", category:"ผ้า", unit:"kg", qty:"", costPerUnit:"", minStock:"", supplier:"", note:"", isCostOnly:false });
+    } catch (e) { alert("เพิ่มไม่สำเร็จ: " + (e.message||e)); }
+  };
+  const startEditMaterial = (mat) => {
+    setEditMaterialId(mat.id);
+    setEditMaterialForm({ name:mat.name, category:mat.category, unit:mat.unit, costPerUnit:String(mat.costPerUnit||""), minStock:String(mat.minStock||""), supplier:mat.supplier||"", note:mat.note||"" });
+  };
+  const saveEditMaterial = async () => {
+    if (!editMaterialId) return;
+    const f = editMaterialForm;
+    if (!f.name.trim()) { alert("ชื่อห้ามว่าง"); return; }
+    try {
+      await updateDoc(doc(db, "materials", editMaterialId), {
+        name:f.name.trim(), category:f.category, unit:f.unit,
+        costPerUnit:Number(f.costPerUnit)||0, minStock:Number(f.minStock)||0,
+        supplier:f.supplier.trim(), note:f.note.trim(),
+        updatedAt: new Date().toISOString(), updatedBy: user?.name||"",
+      });
+      setEditMaterialId(null);
+    } catch (e) { alert("แก้ไขไม่สำเร็จ: " + (e.message||e)); }
+  };
+  const handleMaterialStock = async () => {
+    const mod = materialStockModal; if (!mod) return;
+    const q = Number(mod.qty)||0; if (q<=0) { alert("กรุณาใส่จำนวน"); return; }
+    const sign = mod.mode === "in" ? 1 : -1;
+    const newQty = (Number(mod.material.qty)||0) + sign*q;
+    if (newQty < 0) { alert(`สต็อกไม่พอ — มี ${mod.material.qty} ${mod.material.unit}`); return; }
+    try {
+      await updateDoc(doc(db, "materials", mod.material.id), {
+        qty: newQty,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user?.name||"",
+      });
+      // log เป็น transaction (เผื่อใช้ดูประวัติ)
+      try {
+        await setDoc(doc(collection(db,"transactions")), {
+          type: mod.mode==="in" ? "เข้า" : "จ่าย",
+          category: "วัตถุดิบ",
+          name: mod.material.name, qty: q, unit: mod.material.unit,
+          materialId: mod.material.id,
+          note: mod.note || (mod.mode==="in" ? "รับวัตถุดิบ" : "ใช้ในการผลิต"),
+          date: now(), by: user?.name||"", createdAt: new Date().toISOString(),
+        });
+      } catch(e) { console.warn("[material tx] failed:", e); }
+      setMaterialStockModal(null);
+    } catch (e) { alert("ปรับสต็อกไม่สำเร็จ: " + (e.message||e)); }
+  };
+  const handleDeleteMaterial = async () => {
+    if (!deleteMaterialTarget) return;
+    try {
+      await deleteDoc(doc(db, "materials", deleteMaterialTarget.id));
+      setDeleteMaterialTarget(null); setDeleteMaterialConfirm("");
+    } catch(e) { alert("ลบไม่สำเร็จ: "+(e.message||e)); }
   };
 
   const handleDeleteClothingColor = async (itemId, colorIdx) => {
@@ -2341,6 +2443,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
             {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&<BtnGhost onClick={()=>{setSalesDate(new Date().toISOString().slice(0,10));setShowSalesToday(true);}}>📊 ขายวันนี้</BtnGhost>}
             {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&role.canAdd&&<BtnGhost onClick={()=>setShowSizeManager(true)}>📏 จัดการไซส์</BtnGhost>}
             {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddClothing(true)}>{inventoryTab==="sports"?"👟":"️"} เพิ่มรุ่นใหม่</BtnPrimary>}
+            {activeTab==="inventory"&&inventoryTab==="materials"&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddMaterial(true)}>🧱 เพิ่มวัตถุดิบ</BtnPrimary>}
             {activeTab==="inventory"&&inventoryTab==="general"&&<>
               <BtnSuccess onClick={()=>{setTxType("รับ");setTxRows([{productId:"",qty:""}]);setTxNote("");setShowTxModal(true);}}>⬇ รับสินค้า</BtnSuccess>
               <BtnDanger onClick={()=>{setTxType("จ่าย");setTxRows([{productId:"",qty:""}]);setTxNote("");setShowTxModal(true);}}>⬆ จ่ายสินค้า</BtnDanger>
@@ -2434,10 +2537,12 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                   {id:"general",icon:"📦",label:"สินค้าทั่วไป"},
                   {id:"clothing",icon:"👕",label:"เสื้อผ้า"},
                   {id:"sports",icon:"👟",label:"รองเท้า & อุปกรณ์กีฬา",cats:["รองเท้า","อุปกรณ์กีฬา"]},
+                  {id:"materials",icon:"🧱",label:"วัตถุดิบ"},
                 ].map(t=>{
                   // นับสินค้าในหมวด (รองรับหลาย cats)
                   const count = t.cats ? products.filter(p=>t.cats.includes(p.category)).length
-                    : t.id==="clothing" ? clothingItems.length : 0;
+                    : t.id==="clothing" ? clothingItems.length
+                    : t.id==="materials" ? materials.length : 0;
                   return (
                     <button key={t.id} onClick={async()=>{
                       setInventoryTab(t.id);
@@ -2731,6 +2836,119 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                   </div>
                 ))}
               </div>);})()}
+
+              {/* ─── 🧱 MATERIALS TAB ─── */}
+              {inventoryTab==="materials"&&(()=>{
+                const filtered = materials
+                  .filter(m => materialCatFilter==="ทั้งหมด" || m.category===materialCatFilter)
+                  .filter(m => !materialSearch.trim() || (m.name||"").toLowerCase().includes(materialSearch.toLowerCase()))
+                  .sort((a,b)=>(a.category||"").localeCompare(b.category||"") || (a.name||"").localeCompare(b.name||""));
+                const totalValue = materials.reduce((s,m)=>s + (Number(m.qty)||0)*(Number(m.costPerUnit)||0), 0);
+                const lowStock = materials.filter(m => !m.isCostOnly && Number(m.minStock)>0 && Number(m.qty)<=Number(m.minStock));
+                return (
+                <div style={{animation:"fadeUp 0.4s ease"}}>
+                  {/* สรุปบน */}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10,marginBottom:14}}>
+                    <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:10,padding:"12px 14px"}}>
+                      <div style={{fontSize:11,color:T.muted,fontWeight:600}}>📦 จำนวนวัตถุดิบ</div>
+                      <div style={{fontSize:20,fontWeight:800,color:T.accent,marginTop:2}}>{materials.length} <span style={{fontSize:11,color:T.muted,fontWeight:400}}>รายการ</span></div>
+                    </div>
+                    <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:10,padding:"12px 14px"}}>
+                      <div style={{fontSize:11,color:T.muted,fontWeight:600}}>💰 มูลค่ารวมในคลัง</div>
+                      <div style={{fontSize:20,fontWeight:800,color:"#16a34a",marginTop:2}}>฿{totalValue.toLocaleString("th-TH",{minimumFractionDigits:0,maximumFractionDigits:0})}</div>
+                    </div>
+                    {lowStock.length>0&&(
+                      <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"12px 14px"}}>
+                        <div style={{fontSize:11,color:"#991b1b",fontWeight:600}}>⚠️ ใกล้หมด</div>
+                        <div style={{fontSize:20,fontWeight:800,color:"#dc2626",marginTop:2}}>{lowStock.length} <span style={{fontSize:11,color:"#991b1b",fontWeight:400}}>รายการ</span></div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Filter bar */}
+                  <div style={{display:"flex",gap:10,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}>
+                    <input value={materialSearch} onChange={e=>setMaterialSearch(e.target.value)} placeholder="🔍 ค้นหาชื่อวัตถุดิบ..."
+                      style={{flex:"1 1 240px",background:"white",border:`1px solid ${T.border}`,color:T.text,borderRadius:9,padding:"9px 14px",fontSize:13,fontFamily:"inherit",outline:"none"}}/>
+                    <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                      {["ทั้งหมด",...MATERIAL_CATEGORIES].map(c=>(
+                        <button key={c} onClick={()=>setMaterialCatFilter(c)} style={{padding:"6px 12px",borderRadius:18,border:`1px solid ${materialCatFilter===c?T.accent:T.border}`,background:materialCatFilter===c?T.accent:"white",color:materialCatFilter===c?"white":T.sub,fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:materialCatFilter===c?700:500}}>{c}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* List */}
+                  {filtered.length===0?(
+                    <div style={{textAlign:"center",padding:60,background:T.card,borderRadius:16,border:`1px solid ${T.border}`}}>
+                      <div style={{fontSize:48,marginBottom:12,opacity:0.3}}>🧱</div>
+                      <div style={{fontSize:14,fontWeight:600,color:T.accent,marginBottom:6}}>{materials.length===0?"ยังไม่มีวัตถุดิบ":"ไม่พบรายการที่ตรง"}</div>
+                      {materials.length===0&&<div style={{fontSize:11,color:T.muted}}>กด "🧱 เพิ่มวัตถุดิบ" เพื่อเริ่มต้น</div>}
+                    </div>
+                  ):(
+                    <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
+                      <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                        <thead>
+                          <tr style={{background:"rgba(59,91,139,0.04)",borderBottom:`1px solid ${T.border}`}}>
+                            <th style={{padding:"10px 12px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}>หมวด</th>
+                            <th style={{padding:"10px 12px",textAlign:"left",fontWeight:700,color:T.sub,fontSize:11}}>ชื่อวัตถุดิบ</th>
+                            <th style={{padding:"10px 12px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}}>คงเหลือ</th>
+                            <th style={{padding:"10px 12px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}}>ต้นทุน/หน่วย</th>
+                            <th style={{padding:"10px 12px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11}}>มูลค่ารวม</th>
+                            <th style={{padding:"10px 12px",textAlign:"right",fontWeight:700,color:T.sub,fontSize:11,width:200}}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filtered.map(m=>{
+                            const editing = editMaterialId===m.id;
+                            const low = !m.isCostOnly && Number(m.minStock)>0 && Number(m.qty)<=Number(m.minStock);
+                            const value = (Number(m.qty)||0)*(Number(m.costPerUnit)||0);
+                            return (
+                              <tr key={m.id} style={{borderBottom:`1px solid ${T.border}`,background:low?"rgba(254,242,242,0.5)":"transparent"}}>
+                                <td style={{padding:"10px 12px"}}>
+                                  {editing?<select value={editMaterialForm.category} onChange={e=>setEditMaterialForm(f=>({...f,category:e.target.value,unit:MATERIAL_UNITS_BY_CAT[e.target.value]?.[0]||f.unit}))} style={{padding:"4px 8px",border:`1px solid ${T.border}`,borderRadius:6,fontSize:12,fontFamily:"inherit"}}>{MATERIAL_CATEGORIES.map(c=><option key={c}>{c}</option>)}</select>
+                                    :<span style={{padding:"3px 8px",background:"rgba(59,91,139,0.08)",borderRadius:10,fontSize:10,fontWeight:600,color:T.accent}}>{m.category}</span>}
+                                </td>
+                                <td style={{padding:"10px 12px"}}>
+                                  {editing?<input value={editMaterialForm.name} onChange={e=>setEditMaterialForm(f=>({...f,name:e.target.value}))} style={{width:"100%",padding:"4px 8px",border:`1px solid ${T.border}`,borderRadius:6,fontSize:12,fontFamily:"inherit"}}/>
+                                    :<><div style={{fontWeight:600,color:T.text}}>{m.name}{m.isCostOnly&&<span style={{marginLeft:6,fontSize:9,padding:"1px 6px",background:"#fef3c7",color:"#92400e",borderRadius:8}}>ต้นทุนเท่านั้น</span>}</div>
+                                    {m.supplier&&<div style={{fontSize:10,color:T.muted,marginTop:2}}>🏪 {m.supplier}</div>}</>}
+                                </td>
+                                <td style={{padding:"10px 12px",textAlign:"right",fontFamily:"monospace"}}>
+                                  {m.isCostOnly?<span style={{color:T.muted,fontSize:11}}>—</span>
+                                    :<><span style={{fontWeight:700,fontSize:14,color:low?"#dc2626":T.text}}>{Number(m.qty||0).toLocaleString("th-TH")}</span>
+                                    {editing?<input value={editMaterialForm.unit} onChange={e=>setEditMaterialForm(f=>({...f,unit:e.target.value}))} style={{marginLeft:4,width:60,padding:"2px 6px",border:`1px solid ${T.border}`,borderRadius:6,fontSize:11,fontFamily:"inherit"}}/>:<span style={{color:T.muted,fontSize:11,marginLeft:3}}>{m.unit}</span>}
+                                    {low&&<div style={{fontSize:9,color:"#dc2626",marginTop:2}}>⚠️ ต่ำกว่า min ({m.minStock})</div>}</>}
+                                </td>
+                                <td style={{padding:"10px 12px",textAlign:"right",fontFamily:"monospace",fontSize:12}}>
+                                  {editing?<input type="number" value={editMaterialForm.costPerUnit} onChange={e=>setEditMaterialForm(f=>({...f,costPerUnit:e.target.value}))} style={{width:80,padding:"4px 8px",border:`1px solid ${T.border}`,borderRadius:6,fontSize:12,fontFamily:"monospace",textAlign:"right"}}/>
+                                    :<>฿{Number(m.costPerUnit||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</>}
+                                </td>
+                                <td style={{padding:"10px 12px",textAlign:"right",fontFamily:"monospace",fontWeight:700,fontSize:13,color:"#16a34a"}}>{m.isCostOnly?"—":`฿${value.toLocaleString("th-TH",{minimumFractionDigits:0,maximumFractionDigits:0})}`}</td>
+                                <td style={{padding:"10px 12px",textAlign:"right"}}>
+                                  {editing?(
+                                    <div style={{display:"flex",gap:5,justifyContent:"flex-end"}}>
+                                      <button onClick={saveEditMaterial} style={{padding:"5px 10px",borderRadius:6,border:"none",background:T.accent,color:"white",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>บันทึก</button>
+                                      <button onClick={()=>setEditMaterialId(null)} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${T.border}`,background:"white",color:T.sub,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>ยกเลิก</button>
+                                    </div>
+                                  ):(
+                                    <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
+                                      {!m.isCostOnly&&role.canAdd&&<button onClick={()=>setMaterialStockModal({material:m,mode:"in",qty:"",note:""})} title="รับเข้า" style={{padding:"5px 9px",borderRadius:6,border:"1px solid rgba(22,163,74,0.3)",background:"rgba(22,163,74,0.08)",color:"#16a34a",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>＋ เข้า</button>}
+                                      {!m.isCostOnly&&role.canAdd&&<button onClick={()=>setMaterialStockModal({material:m,mode:"out",qty:"",note:""})} title="เบิกออก" style={{padding:"5px 9px",borderRadius:6,border:"1px solid rgba(220,38,38,0.3)",background:"rgba(220,38,38,0.08)",color:"#dc2626",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>− ออก</button>}
+                                      {role.canAdd&&<button onClick={()=>startEditMaterial(m)} title="แก้ไข" style={{padding:"5px 9px",borderRadius:6,border:`1px solid ${T.border}`,background:"white",color:T.sub,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>✏️</button>}
+                                      {role.canDelete&&<button onClick={()=>{setDeleteMaterialTarget(m);setDeleteMaterialConfirm("");}} title="ลบ" style={{padding:"5px 9px",borderRadius:6,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>✕</button>}
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+                );
+              })()}
+
             </div>
           )}
 
@@ -4161,6 +4379,116 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
           <div style={{display:"flex",gap:10}}>
             <BtnGhost onClick={()=>setDeleteClothingTarget(null)} style={{flex:1}}>ยกเลิก</BtnGhost>
             <BtnDanger onClick={async()=>{await handleDeleteClothingItem(it.id);setDeleteClothingTarget(null);setDeleteConfirmText("");}} disabled={!matched} style={{flex:1,opacity:matched?1:0.45,cursor:matched?"pointer":"not-allowed"}}>🗑 ลบถาวร</BtnDanger>
+          </div>
+        </Modal>
+        );
+      })()}
+
+      {/* ── 🧱 MODAL: เพิ่มวัตถุดิบ ── */}
+      {showAddMaterial&&(()=>{
+        const m = newMaterial; const isCost = m.category==="ค่าไฟ" || m.isCostOnly;
+        return (
+        <Modal onClose={()=>setShowAddMaterial(false)} w={520}>
+          <MHead title="🧱 เพิ่มวัตถุดิบใหม่" onClose={()=>setShowAddMaterial(false)}/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+            <div style={{gridColumn:"1 / -1"}}>
+              <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>ชื่อวัตถุดิบ *</label>
+              <input value={m.name} onChange={e=>setNewMaterial(f=>({...f,name:e.target.value}))} placeholder="เช่น ผ้า Micro ขาว, กระดาษพิมพ์ subli, หมึก สี K..."
+                style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+            </div>
+            <div>
+              <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>หมวด</label>
+              <select value={m.category} onChange={e=>{const c=e.target.value;setNewMaterial(f=>({...f,category:c,unit:MATERIAL_UNITS_BY_CAT[c]?.[0]||f.unit,isCostOnly:c==="ค่าไฟ"}));}}
+                style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"inherit",fontSize:13,outline:"none"}}>
+                {MATERIAL_CATEGORIES.map(c=><option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>หน่วยนับ</label>
+              <select value={m.unit} onChange={e=>setNewMaterial(f=>({...f,unit:e.target.value}))}
+                style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"inherit",fontSize:13,outline:"none"}}>
+                {(MATERIAL_UNITS_BY_CAT[m.category]||["ชิ้น"]).map(u=><option key={u}>{u}</option>)}
+              </select>
+            </div>
+            {!isCost&&(
+              <div>
+                <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>สต็อกเริ่มต้น</label>
+                <input type="number" value={m.qty} onChange={e=>setNewMaterial(f=>({...f,qty:e.target.value}))} placeholder="0"
+                  style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"monospace",fontSize:13,outline:"none"}}/>
+              </div>
+            )}
+            <div>
+              <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>ต้นทุน/หน่วย (฿)</label>
+              <input type="number" value={m.costPerUnit} onChange={e=>setNewMaterial(f=>({...f,costPerUnit:e.target.value}))} placeholder="0.00"
+                style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"monospace",fontSize:13,outline:"none"}}/>
+            </div>
+            {!isCost&&(
+              <div>
+                <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>แจ้งเตือนเมื่อต่ำกว่า</label>
+                <input type="number" value={m.minStock} onChange={e=>setNewMaterial(f=>({...f,minStock:e.target.value}))} placeholder="0"
+                  style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"monospace",fontSize:13,outline:"none"}}/>
+              </div>
+            )}
+            <div style={{gridColumn:"1 / -1"}}>
+              <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>ผู้ขาย / โน้ต (ไม่บังคับ)</label>
+              <input value={m.supplier} onChange={e=>setNewMaterial(f=>({...f,supplier:e.target.value}))} placeholder="เช่น ร้าน A, จุดสั่ง..."
+                style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"inherit",fontSize:13,outline:"none"}}/>
+            </div>
+          </div>
+          {isCost&&<div style={{padding:"8px 12px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,fontSize:11,color:"#92400e",marginBottom:12}}>💡 รายการนี้เป็น "ต้นทุนเท่านั้น" — ใช้คำนวณราคา ไม่ตัดสต็อก</div>}
+          <div style={{display:"flex",gap:10}}>
+            <BtnGhost onClick={()=>setShowAddMaterial(false)} style={{flex:1}}>ยกเลิก</BtnGhost>
+            <BtnPrimary onClick={handleAddMaterial} disabled={!m.name.trim()} style={{flex:1}}>✅ เพิ่ม</BtnPrimary>
+          </div>
+        </Modal>
+        );
+      })()}
+
+      {/* ── 🧱 MODAL: รับเข้า / เบิกออก สต็อกวัตถุดิบ ── */}
+      {materialStockModal&&(()=>{
+        const mod = materialStockModal; const mat = mod.material; const isIn = mod.mode==="in";
+        const after = (Number(mat.qty)||0) + (isIn?1:-1)*(Number(mod.qty)||0);
+        return (
+        <Modal onClose={()=>setMaterialStockModal(null)} w={420}>
+          <MHead title={`${isIn?"＋ รับเข้า":"− เบิกออก"} — ${mat.name}`} onClose={()=>setMaterialStockModal(null)}/>
+          <div style={{padding:"10px 12px",background:isIn?"#f0fdf4":"#fef2f2",border:`1px solid ${isIn?"#bbf7d0":"#fecaca"}`,borderRadius:9,marginBottom:14,fontSize:12,color:isIn?"#166534":"#991b1b"}}>
+            คงเหลือปัจจุบัน: <b>{Number(mat.qty||0).toLocaleString("th-TH")} {mat.unit}</b>
+          </div>
+          <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>จำนวน ({mat.unit})</label>
+          <input type="number" value={mod.qty} onChange={e=>setMaterialStockModal(m=>({...m,qty:e.target.value}))} autoFocus placeholder="0"
+            style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"10px 14px",fontFamily:"monospace",fontSize:18,outline:"none",marginBottom:10,textAlign:"right",fontWeight:700}}/>
+          <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>โน้ต (ไม่บังคับ)</label>
+          <input value={mod.note} onChange={e=>setMaterialStockModal(m=>({...m,note:e.target.value}))} placeholder={isIn?"เช่น รับจากร้าน A":"เช่น ใช้ในใบ PRD-0001"}
+            style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontSize:13,fontFamily:"inherit",outline:"none",marginBottom:14}}/>
+          {Number(mod.qty)>0&&<div style={{padding:"8px 12px",background:after<0?"#fef2f2":"#f8fafc",border:`1px solid ${after<0?"#fecaca":T.border}`,borderRadius:8,marginBottom:14,fontSize:12,textAlign:"center"}}>หลังทำรายการ: <b style={{color:after<0?"#dc2626":T.text,fontFamily:"monospace"}}>{after.toLocaleString("th-TH")} {mat.unit}</b>{after<0&&<span style={{color:"#dc2626",marginLeft:6}}>⚠️ ติดลบ</span>}</div>}
+          <div style={{display:"flex",gap:10}}>
+            <BtnGhost onClick={()=>setMaterialStockModal(null)} style={{flex:1}}>ยกเลิก</BtnGhost>
+            <BtnPrimary onClick={handleMaterialStock} disabled={!Number(mod.qty)||after<0} style={{flex:1}}>{isIn?"＋ รับเข้า":"− เบิกออก"}</BtnPrimary>
+          </div>
+        </Modal>
+        );
+      })()}
+
+      {/* ── 🧱 MODAL: ลบวัตถุดิบ (ต้องพิมพ์ชื่อยืนยัน) ── */}
+      {deleteMaterialTarget&&(()=>{
+        const mat = deleteMaterialTarget;
+        const hasStock = !mat.isCostOnly && Number(mat.qty)>0;
+        const matched = !hasStock || deleteMaterialConfirm.trim() === (mat.name||"").trim();
+        return (
+        <Modal onClose={()=>{setDeleteMaterialTarget(null);setDeleteMaterialConfirm("");}} w={440}>
+          <div style={{textAlign:"center",marginBottom:6}}>
+            <div style={{fontSize:42,marginBottom:8}}>🗑️</div>
+            <div style={{fontSize:16,fontWeight:800,color:T.text}}>ลบวัตถุดิบ "{mat.name}"?</div>
+          </div>
+          <div style={{padding:"10px 12px",background:hasStock?"#fef2f2":"#fffbeb",border:`1px solid ${hasStock?"#fecaca":"#fde68a"}`,borderRadius:9,marginBottom:14,fontSize:13,color:hasStock?"#991b1b":"#92400e",lineHeight:1.6}}>
+            {hasStock?<>⚠️ ยังมีสต็อก <b>{Number(mat.qty).toLocaleString("th-TH")} {mat.unit}</b><br/>ลบแล้วประวัติทั้งหมดหายถาวร — ย้อนคืนไม่ได้</>:<>ลบแล้วประวัติหายถาวร ย้อนคืนไม่ได้</>}
+          </div>
+          {hasStock&&(<><label style={{fontSize:12,color:T.sub,display:"block",marginBottom:6}}>พิมพ์ชื่อ <b style={{color:T.text}}>{mat.name}</b> เพื่อยืนยัน:</label>
+          <input value={deleteMaterialConfirm} onChange={e=>setDeleteMaterialConfirm(e.target.value)} placeholder={mat.name} autoFocus
+            style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${matched?"#16a34a":T.inputBorder}`,color:T.text,borderRadius:9,padding:"10px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:14,outline:"none",marginBottom:16}}/></>)}
+          <div style={{display:"flex",gap:10}}>
+            <BtnGhost onClick={()=>{setDeleteMaterialTarget(null);setDeleteMaterialConfirm("");}} style={{flex:1}}>ยกเลิก</BtnGhost>
+            <BtnDanger onClick={handleDeleteMaterial} disabled={!matched} style={{flex:1,opacity:matched?1:0.45,cursor:matched?"pointer":"not-allowed"}}>🗑 ลบถาวร</BtnDanger>
           </div>
         </Modal>
         );

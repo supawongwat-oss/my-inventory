@@ -27,6 +27,7 @@ export function useFirestore() {
   const [attendance, setAttendance] = useState([]);
   const [payrollRuns, setPayrollRuns] = useState([]);
   const [customSizes, setCustomSizes] = useState({ apparel: [], shoe: [] }); // 📏 ไซส์ที่ผู้ใช้เพิ่มเอง
+  const [materials, setMaterials] = useState([]); // 🧱 วัตถุดิบ (ผ้า, กระดาษ, หมึก, ด้าย, ป้าย, ถุง, ค่าไฟ ฯลฯ)
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -191,6 +192,14 @@ export function useFirestore() {
     return () => unsub();
   }, []);
 
+  // 🧱 Materials — วัตถุดิบสำหรับผลิต (subscribe ตามชื่อ)
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "materials"),
+      snap => setMaterials(snap.docs.map(d => ({...d.data(), id:d.id}))),
+      ()=>{});
+    return () => unsub();
+  }, []);
+
   // 📏 Custom sizes — ไซส์เสื้อผ้า/รองเท้าที่ผู้ใช้เพิ่มเอง (settings/sizes)
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "settings", "sizes"), snap => {
@@ -223,6 +232,7 @@ export function useFirestore() {
     attendance,
     payrollRuns,
     customSizes,
+    materials,
     employees,
     taxDocs,
     loading, setLoading,
