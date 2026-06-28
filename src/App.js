@@ -269,6 +269,9 @@ export default function App() {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [draggingClothingId, setDraggingClothingId] = useState(null); // 🖱️ ลากจัดลำดับรุ่น
   const [dragOverClothingId, setDragOverClothingId] = useState(null);
+  // 📐 BOM template modal
+  const [bomModal, setBomModal] = useState(null); // {clothingItem, variants, activeVariantIdx, saving}
+  const [bomMaterialPickerOpen, setBomMaterialPickerOpen] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(null);
   const [showCatModal, setShowCatModal] = useState(false);
   const [showImgModal, setShowImgModal] = useState(null);
@@ -993,6 +996,134 @@ export default function App() {
       arr.forEach((id, idx) => batch.update(doc(db, "clothing", id), { sortIndex: idx }));
       await batch.commit();
     } catch (e) { alert("จัดลำดับไม่สำเร็จ: " + (e.message || e)); }
+  };
+
+  // 📐 ─── BOM template (สูตรวัตถุดิบต่อรุ่นเสื้อ) ───
+  const openBomModal = (clothingItem) => {
+    const existing = boms.find(b => b.id === clothingItem.id || b.clothingId === clothingItem.id);
+    const sizes = sizesFor(clothingItem) || [];
+    const blankVariant = (name="ปกติ") => ({ name, materials: [] });
+    const variants = existing?.variants?.length
+      ? existing.variants.map(v => ({
+          name: v.name || "ปกติ",
+          materials: (v.materials||[]).map(m => ({
+            productId: m.productId,
+            productName: m.productName || "",
+            unit: m.unit || "",
+            isCostOnly: !!m.isCostOnly,
+            mode: m.mode === "flat" ? "flat" : "perSize",
+            flat: Number(m.flat)||0,
+            perSize: { ...(m.perSize||{}) },
+          })),
+        }))
+      : [blankVariant("ปกติ")];
+    setBomModal({ clothingItem, variants, activeVariantIdx: 0, sizes, saving: false });
+  };
+  const updateBom = (updater) => setBomModal(b => b ? updater({...b}) : b);
+  const addBomVariant = () => {
+    const name = window.prompt("ชื่อ variant (เช่น แขนสั้น, แขนยาว):");
+    if (!name?.trim()) return;
+    updateBom(b => { b.variants = [...b.variants, { name: name.trim(), materials: [] }]; b.activeVariantIdx = b.variants.length - 1; return b; });
+  };
+  const renameBomVariant = (idx) => {
+    const cur = bomModal?.variants[idx]?.name || "";
+    const name = window.prompt("เปลี่ยนชื่อ variant:", cur);
+    if (!name?.trim()) return;
+    updateBom(b => { b.variants = b.variants.map((v,i) => i===idx ? {...v, name:name.trim()} : v); return b; });
+  };
+  const removeBomVariant = (idx) => {
+    if (!window.confirm(`ลบ variant "${bomModal.variants[idx].name}"?`)) return;
+    updateBom(b => {
+      const newVars = b.variants.filter((_,i)=>i!==idx);
+      if (newVars.length === 0) newVars.push({ name:"ปกติ", materials:[] });
+      b.variants = newVars; b.activeVariantIdx = Math.max(0, Math.min(idx, newVars.length-1));
+      return b;
+    });
+  };
+  const addBomMaterial = (product) => {
+    updateBom(b => {
+      const v = b.variants[b.activeVariantIdx];
+      if (v.materials.some(m => m.productId === product.id)) { alert("วัตถุดิบนี้มีในสูตรแล้ว"); return b; }
+      const emptyPerSize = {}; (b.sizes||[]).forEach(s => emptyPerSize[s] = 0);
+      v.materials = [...v.materials, {
+        productId: product.id,
+        productName: product.name || "",
+        unit: product.unit || "",
+        isCostOnly: !!product.isCostOnly,
+        mode: "perSize", flat: 0, perSize: emptyPerSize,
+      }];
+      b.variants = b.variants.map((vv,i) => i===b.activeVariantIdx ? v : vv);
+      return b;
+    });
+    setBomMaterialPickerOpen(false);
+  };
+  const removeBomMaterial = (matIdx) => {
+    updateBom(b => {
+      const v = b.variants[b.activeVariantIdx];
+      v.materials = v.materials.filter((_,i)=>i!==matIdx);
+      b.variants = b.variants.map((vv,i) => i===b.activeVariantIdx ? v : vv);
+      return b;
+    });
+  };
+  const setBomMaterialField = (matIdx, field, value) => {
+    updateBom(b => {
+      const v = b.variants[b.activeVariantIdx];
+      v.materials = v.materials.map((m,i) => i===matIdx ? {...m, [field]:value} : m);
+      b.variants = b.variants.map((vv,i) => i===b.activeVariantIdx ? v : vv);
+      return b;
+    });
+  };
+  const setBomMaterialSizeQty = (matIdx, size, value) => {
+    updateBom(b => {
+      const v = b.variants[b.activeVariantIdx];
+      v.materials = v.materials.map((m,i) => i===matIdx ? {...m, perSize:{...m.perSize, [size]:value}} : m);
+      b.variants = b.variants.map((vv,i) => i===b.activeVariantIdx ? v : vv);
+      return b;
+    });
+  };
+  // เติมค่าทุกไซส์จากค่าใดค่าหนึ่ง
+  const fillBomRow = (matIdx, value) => {
+    updateBom(b => {
+      const v = b.variants[b.activeVariantIdx];
+      const sz = b.sizes || [];
+      v.materials = v.materials.map((m,i) => {
+        if (i!==matIdx) return m;
+        const ps = {}; sz.forEach(s => ps[s] = value);
+        return {...m, perSize: ps};
+      });
+      b.variants = b.variants.map((vv,i) => i===b.activeVariantIdx ? v : vv);
+      return b;
+    });
+  };
+  const saveBom = async () => {
+    if (!bomModal) return;
+    const { clothingItem, variants } = bomModal;
+    setBomModal(b => ({...b, saving:true}));
+    try {
+      const cleanVariants = variants.map(v => ({
+        name: v.name || "ปกติ",
+        materials: (v.materials||[]).map(m => ({
+          productId: m.productId,
+          productName: m.productName,
+          unit: m.unit,
+          isCostOnly: !!m.isCostOnly,
+          mode: m.mode,
+          flat: Number(m.flat)||0,
+          perSize: Object.fromEntries(Object.entries(m.perSize||{}).map(([k,v])=>[k, Number(v)||0])),
+        })),
+      }));
+      await setDoc(doc(db, "boms", clothingItem.id), {
+        clothingId: clothingItem.id,
+        clothingName: clothingItem.model || "",
+        variants: cleanVariants,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user?.name || "",
+      });
+      setBomModal(null);
+    } catch (e) {
+      alert("บันทึกสูตรไม่สำเร็จ: " + (e.message||e));
+      setBomModal(b => b ? {...b, saving:false} : b);
+    }
   };
 
   const handleDeleteClothingColor = async (itemId, colorIdx) => {
@@ -2628,6 +2759,10 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                       <div style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
                         <button onClick={()=>setShowAddColor(item.id)} style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(59,91,139,0.25)",background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:500}}>️ สี</button>
                         {(item.colors||[]).length>0&&<button onClick={()=>openMix(item)} title="ขายคละสีคละไซส์" style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(184,134,0,0.3)",background:"rgba(184,134,0,0.08)",color:T.amber,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:600}}>🧺 ขายคละ</button>}
+                        {item.sizeType!=="shoe"&&role.canAdd&&(()=>{
+                          const hasBom = boms.some(b => (b.id===item.id || b.clothingId===item.id) && (b.variants||[]).some(v=>(v.materials||[]).length>0));
+                          return <button onClick={()=>openBomModal(item)} title="ตั้งสูตรวัตถุดิบ (BOM)" style={{padding:"7px 14px",borderRadius:8,border:`1px solid ${hasBom?"rgba(22,163,74,0.35)":"rgba(124,58,237,0.3)"}`,background:hasBom?"rgba(22,163,74,0.08)":"rgba(124,58,237,0.08)",color:hasBom?"#16a34a":"#7c3aed",cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:600}}>📐 {hasBom?"BOM ✓":"ตั้งสูตร BOM"}</button>;
+                        })()}
                         {role.canDelete&&<button onClick={()=>{setDeleteClothingTarget(item);setDeleteConfirmText("");}} style={{padding:"7px 12px",borderRadius:8,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:12}}>✕</button>}
                       </div>
                     </div>
@@ -3867,6 +4002,20 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
             </div>
             <Input label="บาร์โค้ด (ว่าง = อัตโนมัติ)" placeholder="หรือเว้นว่างไว้" value={newProduct.barcode} onChange={e=>setNewProduct(p=>({...p,barcode:e.target.value}))}/>
           </div>
+          {/* 🧱 ใช้เป็นวัตถุดิบ */}
+          <div style={{marginTop:14,padding:"12px 14px",background:"#f1f5f9",border:`1px solid ${T.border}`,borderRadius:9}}>
+            <div style={{fontSize:11,color:T.muted,fontWeight:600,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>🧱 การใช้งานในการผลิต</div>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer",padding:"4px 0"}}>
+              <input type="checkbox" checked={!!newProduct.usedAsMaterial} onChange={e=>setNewProduct(p=>({...p,usedAsMaterial:e.target.checked}))}/>
+              <span>🧱 ใช้รายการนี้เป็น "วัตถุดิบ" ในสูตร BOM</span>
+            </label>
+            {newProduct.usedAsMaterial&&(
+              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.sub,cursor:"pointer",padding:"4px 0",marginLeft:24}}>
+                <input type="checkbox" checked={!!newProduct.isCostOnly} onChange={e=>setNewProduct(p=>({...p,isCostOnly:e.target.checked}))}/>
+                <span>💡 ต้นทุนเท่านั้น — คำนวณค่าใช้จ่ายแต่ไม่ตัดสต็อก (เช่น ค่าไฟ)</span>
+              </label>
+            )}
+          </div>
           <div style={{display:"flex",gap:10,marginTop:20}}>
             <BtnGhost onClick={()=>setShowAddModal(false)} style={{flex:1}}>ยกเลิก</BtnGhost>
             <BtnPrimary onClick={handleAddProduct} disabled={addProductSaving||!newProduct.code||!newProduct.name||newProduct.qty===""||!newProduct.unit} style={{flex:1}}>{addProductSaving?"⏳ กำลังบันทึก...":"✅ บันทึกสินค้า"}</BtnPrimary>
@@ -3905,6 +4054,20 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
               </select>
             </div>
             <Input label="บาร์โค้ด" value={editingProduct.barcode||""} onChange={e=>setEditingProduct(p=>({...p,barcode:e.target.value}))}/>
+          </div>
+          {/* 🧱 ใช้เป็นวัตถุดิบ */}
+          <div style={{marginTop:14,padding:"12px 14px",background:"#f1f5f9",border:`1px solid ${T.border}`,borderRadius:9}}>
+            <div style={{fontSize:11,color:T.muted,fontWeight:600,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>🧱 การใช้งานในการผลิต</div>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text,cursor:"pointer",padding:"4px 0"}}>
+              <input type="checkbox" checked={!!editingProduct.usedAsMaterial} onChange={e=>setEditingProduct(p=>({...p,usedAsMaterial:e.target.checked}))}/>
+              <span>🧱 ใช้รายการนี้เป็น "วัตถุดิบ" ในสูตร BOM</span>
+            </label>
+            {editingProduct.usedAsMaterial&&(
+              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.sub,cursor:"pointer",padding:"4px 0",marginLeft:24}}>
+                <input type="checkbox" checked={!!editingProduct.isCostOnly} onChange={e=>setEditingProduct(p=>({...p,isCostOnly:e.target.checked}))}/>
+                <span>💡 ต้นทุนเท่านั้น — คำนวณค่าใช้จ่ายแต่ไม่ตัดสต็อก (เช่น ค่าไฟ)</span>
+              </label>
+            )}
           </div>
           {editingProduct.costPrice&&editingProduct.salePrice&&Number(editingProduct.costPrice)>0&&(
             <div style={{marginTop:12,padding:"10px 14px",borderRadius:8,background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)"}}>
@@ -4161,6 +4324,118 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
           <div style={{display:"flex",gap:10}}>
             <BtnGhost onClick={()=>setDeleteClothingTarget(null)} style={{flex:1}}>ยกเลิก</BtnGhost>
             <BtnDanger onClick={async()=>{await handleDeleteClothingItem(it.id);setDeleteClothingTarget(null);setDeleteConfirmText("");}} disabled={!matched} style={{flex:1,opacity:matched?1:0.45,cursor:matched?"pointer":"not-allowed"}}>🗑 ลบถาวร</BtnDanger>
+          </div>
+        </Modal>
+        );
+      })()}
+
+      {/* ── 📐 MODAL: ตั้งสูตร BOM (วัตถุดิบต่อรุ่น) ── */}
+      {bomModal&&(()=>{
+        const { clothingItem, variants, activeVariantIdx, sizes, saving } = bomModal;
+        const v = variants[activeVariantIdx];
+        const materialProducts = products.filter(p => p.usedAsMaterial).sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+        const sizeCount = (sizes||[]).length;
+        return (
+        <Modal onClose={()=>setBomModal(null)} w={Math.max(720, 380 + sizeCount*68)}>
+          <MHead title={`📐 สูตรวัตถุดิบ — ${clothingItem.model}`} sub={`${v.materials.length} วัตถุดิบ · ${variants.length} variant`} onClose={()=>setBomModal(null)} color="#7c3aed"/>
+
+          {/* Variant tabs */}
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:14,padding:"6px",background:"#f1f5f9",borderRadius:9,flexWrap:"wrap"}}>
+            {variants.map((vv,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center"}}>
+                <button onClick={()=>updateBom(b=>{b.activeVariantIdx=i;return b;})} style={{padding:"6px 14px",borderRadius:7,border:"none",background:i===activeVariantIdx?"linear-gradient(135deg,#7c3aed,#7c3aed)":"transparent",color:i===activeVariantIdx?"white":T.sub,fontSize:12,fontWeight:i===activeVariantIdx?700:500,cursor:"pointer",fontFamily:"inherit"}}>{vv.name} <span style={{opacity:0.7,fontSize:10}}>({(vv.materials||[]).length})</span></button>
+                {i===activeVariantIdx&&<>
+                  <button onClick={()=>renameBomVariant(i)} title="เปลี่ยนชื่อ" style={{padding:"4px 6px",border:"none",background:"transparent",color:"white",cursor:"pointer",fontSize:10,opacity:0.85,marginLeft:-4,position:"relative",top:0}}>✏️</button>
+                  {variants.length>1&&<button onClick={()=>removeBomVariant(i)} title="ลบ variant นี้" style={{padding:"4px 6px",border:"none",background:"transparent",color:"white",cursor:"pointer",fontSize:10,opacity:0.85}}>✕</button>}
+                </>}
+              </div>
+            ))}
+            <button onClick={addBomVariant} style={{padding:"6px 12px",borderRadius:7,border:`1px dashed ${T.border}`,background:"white",color:T.sub,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>＋ variant</button>
+          </div>
+
+          {/* Materials table */}
+          {sizeCount===0&&<div style={{padding:"10px 12px",background:"#fef3c7",border:"1px solid #fde68a",borderRadius:8,fontSize:12,color:"#92400e",marginBottom:10}}>⚠️ รุ่นนี้ยังไม่มีไซส์ — ไปเพิ่มสีก่อนเพื่อกำหนดไซส์</div>}
+          <div style={{border:`1px solid ${T.border}`,borderRadius:9,overflow:"auto",maxHeight:"50vh"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead style={{position:"sticky",top:0,background:"#f8fafc",zIndex:2}}>
+                <tr>
+                  <th style={{padding:"8px 10px",textAlign:"left",fontWeight:700,color:T.sub,borderBottom:`1px solid ${T.border}`,minWidth:180}}>วัตถุดิบ</th>
+                  <th style={{padding:"8px 6px",textAlign:"center",fontWeight:700,color:T.sub,borderBottom:`1px solid ${T.border}`,width:90}}>หน่วย</th>
+                  <th style={{padding:"8px 6px",textAlign:"center",fontWeight:700,color:T.sub,borderBottom:`1px solid ${T.border}`,width:90}}>ใช้ทุกไซส์เท่ากัน?</th>
+                  {(sizes||[]).map(s=>(
+                    <th key={s} style={{padding:"8px 4px",textAlign:"center",fontWeight:700,color:T.accent,borderBottom:`1px solid ${T.border}`,minWidth:56,fontFamily:"monospace"}}>{s}</th>
+                  ))}
+                  <th style={{padding:"8px 6px",borderBottom:`1px solid ${T.border}`,width:36}}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {v.materials.length===0?(
+                  <tr><td colSpan={3+sizeCount+1} style={{padding:"30px 20px",textAlign:"center",color:T.muted,fontSize:12}}>— ยังไม่มีวัตถุดิบ — กด "＋ เพิ่มวัตถุดิบ" ด้านล่าง —</td></tr>
+                ):v.materials.map((m,mi)=>(
+                  <tr key={mi} style={{borderBottom:`1px solid ${T.border}`,background:m.isCostOnly?"#fffbeb":"transparent"}}>
+                    <td style={{padding:"8px 10px"}}>
+                      <div style={{fontWeight:600,color:T.text,fontSize:12}}>{m.productName}</div>
+                      {m.isCostOnly&&<div style={{fontSize:9,color:"#92400e",marginTop:2}}>💡 ต้นทุนเท่านั้น</div>}
+                    </td>
+                    <td style={{padding:"8px 6px",textAlign:"center",color:T.sub,fontSize:11}}>{m.unit}</td>
+                    <td style={{padding:"8px 6px",textAlign:"center"}}>
+                      <input type="checkbox" checked={m.mode==="flat"} onChange={e=>setBomMaterialField(mi,"mode",e.target.checked?"flat":"perSize")}/>
+                    </td>
+                    {m.mode==="flat"?(
+                      <td colSpan={sizeCount} style={{padding:"6px 8px",textAlign:"center",background:"rgba(124,58,237,0.04)"}}>
+                        <input type="number" step="0.001" value={m.flat} onChange={e=>setBomMaterialField(mi,"flat",e.target.value)} placeholder="0" style={{width:120,padding:"5px 8px",border:`1px solid ${T.inputBorder}`,borderRadius:6,fontSize:13,fontFamily:"monospace",textAlign:"center",outline:"none",fontWeight:700}}/>
+                        <span style={{marginLeft:6,fontSize:11,color:T.sub}}>{m.unit}/ตัว · ทุกไซส์</span>
+                      </td>
+                    ):(sizes||[]).map((s,si)=>(
+                      <td key={s} style={{padding:"4px 3px",textAlign:"center"}}>
+                        <input type="number" step="0.001" value={m.perSize?.[s]??""} onChange={e=>setBomMaterialSizeQty(mi,s,e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&si===0&&Number(m.perSize?.[s])>0){if(window.confirm(`เติม ${m.perSize[s]} ลงทุกไซส์?`))fillBomRow(mi,m.perSize[s]);}}} placeholder="0" style={{width:54,padding:"5px 4px",border:`1px solid ${T.inputBorder}`,borderRadius:5,fontSize:12,fontFamily:"monospace",textAlign:"center",outline:"none"}}/>
+                      </td>
+                    ))}
+                    <td style={{padding:"4px 6px",textAlign:"center"}}>
+                      <button onClick={()=>removeBomMaterial(mi)} title="ลบ" style={{width:24,height:24,padding:0,border:"none",background:"transparent",color:"#dc2626",cursor:"pointer",fontSize:14}}>✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Add material */}
+          <div style={{marginTop:10,position:"relative"}}>
+            <button onClick={()=>setBomMaterialPickerOpen(o=>!o)} disabled={sizeCount===0} style={{padding:"8px 14px",borderRadius:8,border:`1px dashed ${T.border}`,background:"white",color:T.accent,cursor:sizeCount===0?"not-allowed":"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",opacity:sizeCount===0?0.4:1}}>＋ เพิ่มวัตถุดิบ</button>
+            {bomMaterialPickerOpen&&(
+              <div style={{position:"absolute",top:"100%",left:0,marginTop:4,background:"white",border:`1px solid ${T.border}`,borderRadius:9,boxShadow:"0 12px 32px rgba(0,0,0,0.15)",zIndex:10,minWidth:340,maxHeight:280,overflowY:"auto"}}>
+                {materialProducts.length===0?(
+                  <div style={{padding:"20px",textAlign:"center",fontSize:12,color:T.muted}}>
+                    ยังไม่มีสินค้าที่ติ๊ก "🧱 ใช้เป็นวัตถุดิบ"<br/>
+                    <span style={{fontSize:10}}>ไปแก้สินค้าทั่วไป → ติ๊กช่อง 🧱</span>
+                  </div>
+                ):materialProducts.map(p=>{
+                  const used = v.materials.some(m=>m.productId===p.id);
+                  return (
+                    <div key={p.id} onClick={()=>!used&&addBomMaterial(p)} style={{padding:"8px 12px",borderBottom:`1px solid ${T.border}`,cursor:used?"not-allowed":"pointer",opacity:used?0.4:1,fontSize:12}}
+                      onMouseEnter={e=>{if(!used)e.currentTarget.style.background="#f1f5f9";}}
+                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <span style={{fontWeight:600,color:T.text}}>{p.name}{p.isCostOnly&&<span style={{marginLeft:6,fontSize:9,padding:"1px 5px",background:"#fef3c7",color:"#92400e",borderRadius:6}}>ต้นทุน</span>}</span>
+                        <span style={{fontSize:10,color:T.sub,fontFamily:"monospace"}}>{p.unit} · ฿{Number(p.costPrice||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</span>
+                      </div>
+                      {used&&<div style={{fontSize:9,color:T.muted,marginTop:2}}>มีในสูตรแล้ว</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div style={{marginTop:12,padding:"8px 12px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,fontSize:11,color:"#1e40af",lineHeight:1.6}}>
+            💡 <b>ใช้ทุกไซส์เท่ากัน?</b> ติ๊กเพื่อกรอกค่าเดียว (เช่น ป้าย, ถุง = 1 ชุด/ตัว)<br/>
+            💡 <b>กด Enter</b> ที่ช่องไซส์แรกเพื่อเติมค่านั้นลงทุกไซส์
+          </div>
+
+          <div style={{display:"flex",gap:10,marginTop:16}}>
+            <BtnGhost onClick={()=>setBomModal(null)} style={{flex:1}} disabled={saving}>ยกเลิก</BtnGhost>
+            <BtnPrimary onClick={saveBom} disabled={saving} style={{flex:1}}>{saving?"⏳ กำลังบันทึก...":"💾 บันทึกสูตร"}</BtnPrimary>
           </div>
         </Modal>
         );
