@@ -109,10 +109,9 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
             return (
               <table style={{width:"100%",borderCollapse:"collapse",marginBottom:10,fontSize:fs,tableLayout:"fixed"}}>
                 <colgroup>
-                  <col style={{width:landscape?"11%":"10%"}}/>
-                  <col style={{width:landscape?"11%":"12%"}}/>
+                  <col style={{width:landscape?"12%":"12%"}}/>
+                  <col style={{width:landscape?"13%":"14%"}}/>
                   {allSizes.map(sz => <col key={`cg-${sz}`}/>)}
-                  <col style={{width:landscape?"9%":"10%"}}/>
                 </colgroup>
                 <thead>
                   <tr style={{background:"#f1f5f9",color:"#000"}}>
@@ -121,12 +120,10 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                     {allSizes.map(sz => (
                       <th key={`h-${sz}`} style={{padding:pad,textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:fs,fontFamily:"monospace",whiteSpace:"nowrap",minWidth:mw}}>{sz}</th>
                     ))}
-                    <th style={{padding:pad,textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:fs,whiteSpace:"nowrap",minWidth:nSz>9?44:64}}>รวม</th>
                   </tr>
                 </thead>
                 <tbody>
                   {groups.map((g, gi) => {
-                    const rowTotal = allSizes.reduce((s,sz)=>s+(g.qtyBySize[sz]||0), 0);
                     return (
                       <tr key={gi} style={{background: gi%2===0?"white":"#f8fafc"}}>
                         <td style={{padding:pad,fontWeight:700,color:"#000",border:"1px solid #000",fontSize:fs,verticalAlign:"middle",wordBreak:"break-word",overflow:"hidden"}}>{order.clothingName || "-"}</td>
@@ -143,23 +140,10 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                             <td key={`c-${gi}-${sz}`} style={{padding:pad,textAlign:"center",fontFamily:"monospace",fontWeight:700,border:"1px solid #000",fontSize:fs,color:q===0?"#cbd5e1":"#000",whiteSpace:"nowrap"}}>{q===0?"—":fmtInt(q)}</td>
                           );
                         })}
-                        <td style={{padding:pad,textAlign:"center",fontFamily:"monospace",fontWeight:800,fontSize:fs+1,color:"#000",border:"1px solid #000",verticalAlign:"middle",whiteSpace:"nowrap"}}>{fmtInt(rowTotal)}</td>
                       </tr>
                     );
                   })}
                 </tbody>
-                <tfoot>
-                  <tr style={{background:"#f1f5f9",fontWeight:700}}>
-                    <td colSpan={2} style={{padding:pad,textAlign:"right",color:"#000",fontSize:fs+1,border:"2px solid #000",whiteSpace:"nowrap"}}>รวมทั้งหมด</td>
-                    {allSizes.map(sz => {
-                      const colSum = groups.reduce((s,g)=>s+(g.qtyBySize[sz]||0), 0);
-                      return (
-                        <td key={`f-${sz}`} style={{padding:pad,textAlign:"center",fontFamily:"monospace",fontSize:fs,fontWeight:700,color:"#000",border:"2px solid #000",whiteSpace:"nowrap"}}>{colSum===0?"—":fmtInt(colSum)}</td>
-                      );
-                    })}
-                    <td style={{padding:pad,textAlign:"center",fontFamily:"monospace",fontSize:fs+1,color:"#000",border:"2px solid #000",fontWeight:800,overflow:"hidden"}}>{fmtInt(order.totalQty)} ตัว</td>
-                  </tr>
-                </tfoot>
               </table>
             );
           })()}
