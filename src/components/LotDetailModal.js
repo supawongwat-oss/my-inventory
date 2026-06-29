@@ -529,6 +529,8 @@ export default function LotDetailModal({
         map.set(key, row); flat.push(row);
       }
     });
+    // 🔄 กลับลำดับ — พิมพ์จากล่างขึ้นบน (สำหรับลำดับงาน)
+    flat.reverse();
     const rowsHtml = flat.map((r, i) => `
       <tr style="background:${i%2===0?"#fff":"#f8fafc"}">
         <td class="c"><span class="sw" style="background:${esc(r.colorHex)}"></span>${esc(r.colorName)}${r.variant ? ` <i class="v">(${esc(r.variant)})</i>` : ""}</td>
