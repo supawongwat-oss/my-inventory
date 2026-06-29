@@ -124,7 +124,7 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                             <td key={`s-${i}`} style={{padding:"4px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#0c4a6e",border:"1px solid #000",background:"#f0f9ff",fontSize:11}}>
                               {c.size}
                               {c.customerSize && c.customerSize !== c.size && (
-                                <div style={{fontSize:8,color:"#475569",fontWeight:500,marginTop:1,fontFamily:"inherit"}}>(ลูกค้า: {c.customerSize})</div>
+                                <div style={{fontSize:6,color:"#475569",fontWeight:500,marginTop:1,fontFamily:"inherit",lineHeight:1.1}}>(ลูกค้า: {c.customerSize})</div>
                               )}
                             </td>,
                             <td key={`q-${i}`} style={{padding:"4px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:11,width:38,minWidth:38,whiteSpace:"nowrap"}}>{fmtInt(c.qty)}</td>
