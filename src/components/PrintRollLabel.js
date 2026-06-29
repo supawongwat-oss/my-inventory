@@ -32,7 +32,8 @@ export default function PrintRollLabel({ order, lot, onClose, onPrint, companyIn
         });
       }
     });
-    return Array.from(map.values());
+    // 🔄 กลับลำดับ — ปริ้นจากข้างล่างขึ้นข้างบน (สำหรับลำดับงานจริง)
+    return Array.from(map.values()).reverse();
   })();
 
   return (
