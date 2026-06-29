@@ -98,7 +98,7 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                       <th key={`s${i}`} style={{padding:"5px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:10,minWidth:34,background:"#e0f2fe"}}>SIZE</th>,
                       <th key={`q${i}`} style={{padding:"5px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:10,minWidth:28}}></th>
                     ]))}
-                    <th style={{padding:"5px 8px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:11,minWidth:50}}>จำนวน</th>
+                    <th style={{padding:"5px 8px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:11,width:62,minWidth:62,whiteSpace:"nowrap"}}>จำนวน</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -133,7 +133,7 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                             <td key={`e1-${i}`} style={{border:"1px solid #000",background:"#fafafa"}}/>,
                             <td key={`e2-${i}`} style={{border:"1px solid #000",background:"#fafafa"}}/>
                           ]))}
-                          <td style={{padding:"4px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:800,fontSize:12,color:"#000",border:"1px solid #000",verticalAlign:"middle"}}>{fmtInt(rowQty)}</td>
+                          <td style={{padding:"4px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:800,fontSize:12,color:"#000",border:"1px solid #000",verticalAlign:"middle",width:62,minWidth:62,whiteSpace:"nowrap"}}>{fmtInt(rowQty)}</td>
                         </tr>
                       );
                     });
@@ -142,7 +142,7 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                 <tfoot>
                   <tr style={{background:"#f1f5f9",fontWeight:700}}>
                     <td colSpan={2 + MAX*2} style={{padding:"6px 10px",textAlign:"right",color:"#000",fontSize:12,border:"2px solid #000"}}>รวมทั้งหมด</td>
-                    <td style={{padding:"6px 10px",textAlign:"center",fontFamily:"monospace",fontSize:13,color:"#000",border:"2px solid #000",fontWeight:800}}>{fmtInt(order.totalQty)} ตัว</td>
+                    <td style={{padding:"6px 10px",textAlign:"center",fontFamily:"monospace",fontSize:13,color:"#000",border:"2px solid #000",fontWeight:800,width:62,minWidth:62,whiteSpace:"nowrap"}}>{fmtInt(order.totalQty)} ตัว</td>
                   </tr>
                 </tfoot>
               </table>
