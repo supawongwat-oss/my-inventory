@@ -4968,13 +4968,13 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
               <table style={{width:"100%",borderCollapse:"collapse",marginBottom:20,fontSize:14}}>
                 <thead>
                   <tr style={{background:"#3b5b8b",color:"white"}}>
-                    <th style={{padding:"5px 4px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:9,width:46,minWidth:46}}>รุ่น</th>
-                    <th style={{padding:"5px 4px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:9,width:68,minWidth:68}}>สี</th>
+                    <th style={{padding:"5px 4px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:8,width:38,minWidth:38,whiteSpace:"nowrap"}}>รุ่น</th>
+                    <th style={{padding:"5px 4px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:8,width:56,minWidth:56,whiteSpace:"nowrap"}}>สี</th>
                     {[1,2,3,4].flatMap(i=>[
-                      <th key={`sh${i}`} style={{padding:"8px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",background:"#166534",color:"#bbf7d0",minWidth:40,fontSize:12}}>SIZE</th>,
-                      <th key={`qh${i}`} style={{padding:"8px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",minWidth:32,fontSize:12}}></th>
+                      <th key={`sh${i}`} style={{padding:"8px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",background:"#166534",color:"#bbf7d0",width:44,minWidth:44,fontSize:12,whiteSpace:"nowrap"}}>SIZE</th>,
+                      <th key={`qh${i}`} style={{padding:"8px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",width:40,minWidth:40,fontSize:12,whiteSpace:"nowrap"}}></th>
                     ])}
-                    <th style={{padding:"9px 10px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",fontSize:13,width:80,minWidth:80}}>จำนวน</th>
+                    <th style={{padding:"9px 10px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",fontSize:13,width:72,minWidth:72,whiteSpace:"nowrap"}}>จำนวน</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -4996,22 +4996,22 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                     const lastIdx=rows.length-1;
                     return rows.map((chunk,ci)=>(
                       <tr key={`${gi}-${ci}`} style={{borderBottom:"1px solid #e2e8f0",background:gi%2===0?"white":"#f8fafc"}}>
-                        <td style={{padding:"5px 4px",fontWeight:600,color:"#1e293b",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:9,width:46}}>{ci===0&&<div><div>{group.clothingName}</div>{(group.fabricType||group.collarType||group.jobDescription)&&<div style={{fontSize:8,color:"#64748b",fontWeight:400,marginTop:2,display:"flex",flexWrap:"wrap",gap:2}}>{group.fabricType&&<span>🧵 {group.fabricType}</span>}{group.collarType&&<span>· 👔 {group.collarType}</span>}{group.jobDescription&&<span>· {group.jobDescription}</span>}</div>}</div>}</td>
-                        <td style={{padding:"5px 4px",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:9,width:68}}>
+                        <td style={{padding:"5px 4px",fontWeight:600,color:"#1e293b",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:8,width:38,whiteSpace:"nowrap"}}>{ci===0&&<div><div>{group.clothingName}</div>{(group.fabricType||group.collarType||group.jobDescription)&&<div style={{fontSize:7,color:"#64748b",fontWeight:400,marginTop:2,display:"flex",flexWrap:"wrap",gap:2}}>{group.fabricType&&<span>🧵 {group.fabricType}</span>}{group.collarType&&<span>· 👔 {group.collarType}</span>}{group.jobDescription&&<span>· {group.jobDescription}</span>}</div>}</div>}</td>
+                        <td style={{padding:"5px 4px",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:8,width:56,whiteSpace:"nowrap"}}>
                           {ci===0&&<div style={{display:"flex",alignItems:"center",gap:3}}>
-                            <div style={{width:7,height:7,borderRadius:2,background:group.colorHex,border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/>
+                            <div style={{width:6,height:6,borderRadius:2,background:group.colorHex,border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/>
                             <span>{group.colorName}{group.variant?` (${group.variant})`:""}</span>
                           </div>}
                         </td>
                         {chunk.map(oi=>[
-                          <td key={`s-${oi.size}`} style={{padding:"8px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#3b5b8b",border:"1px solid #e2e8f0",background:"rgba(219,234,254,0.4)",fontSize:14}}>{oi.size}</td>,
-                          <td key={`q-${oi.size}`} style={{padding:"8px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#059669",border:"1px solid #e2e8f0",fontSize:14}}>{oi.qty}</td>
+                          <td key={`s-${oi.size}`} style={{padding:"8px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#3b5b8b",border:"1px solid #e2e8f0",background:"rgba(219,234,254,0.4)",fontSize:14,width:44,minWidth:44,whiteSpace:"nowrap"}}>{oi.size}</td>,
+                          <td key={`q-${oi.size}`} style={{padding:"8px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#059669",border:"1px solid #e2e8f0",fontSize:14,width:40,minWidth:40,whiteSpace:"nowrap"}}>{oi.qty}</td>
                         ])}
                         {Array(4-chunk.length).fill(null).flatMap((_,i)=>[
                           <td key={`e1-${ci}-${i}`} style={{border:"1px solid #e2e8f0",background:"#fafafa"}}/>,
                           <td key={`e2-${ci}-${i}`} style={{border:"1px solid #e2e8f0",background:"#fafafa"}}/>
                         ])}
-                        <td style={{padding:"9px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:16,color:"#3b5b8b",verticalAlign:"middle",border:"1px solid #e2e8f0",width:80,minWidth:80}}>{ci===lastIdx?totalQty:""}</td>
+                        <td style={{padding:"9px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:16,color:"#3b5b8b",verticalAlign:"middle",border:"1px solid #e2e8f0",width:72,minWidth:72,whiteSpace:"nowrap"}}>{ci===lastIdx?totalQty:""}</td>
                       </tr>
                     ));
                   })}
@@ -5019,7 +5019,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 <tfoot>
                   <tr style={{background:"#f1f5f9",fontWeight:700}}>
                     <td colSpan={10} style={{padding:"11px 14px",textAlign:"right",color:"#475569",fontSize:13}}>รวมทั้งหมด</td>
-                    <td style={{padding:"11px 14px",textAlign:"center",fontFamily:"monospace",fontSize:16,color:"#3b5b8b",border:"1px solid #e2e8f0"}}>{(showPrintOrder.items||[]).reduce((s,i)=>s+i.qty,0)} ชิ้น</td>
+                    <td style={{padding:"11px 14px",textAlign:"center",fontFamily:"monospace",fontSize:16,color:"#3b5b8b",border:"1px solid #e2e8f0",width:72,minWidth:72,whiteSpace:"nowrap"}}>{(showPrintOrder.items||[]).reduce((s,i)=>s+i.qty,0)} ชิ้น</td>
                   </tr>
                 </tfoot>
               </table>
