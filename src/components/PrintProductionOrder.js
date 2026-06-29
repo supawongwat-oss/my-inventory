@@ -91,16 +91,21 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
               g.qtyBySize[pSize] = (g.qtyBySize[pSize]||0) + (Number(it.qty)||0);
             });
             const allSizes = Array.from(sizeSet).sort(compareSizes);
+            // 📐 ปรับฟอนต์/ความกว้างอัตโนมัติเมื่อไซส์เยอะ — กันตารางทะลุหน้ากระดาษ
+            const nSz = allSizes.length;
+            const fs = nSz > 12 ? 8 : nSz > 9 ? 9 : nSz > 7 ? 10 : 11;
+            const pad = nSz > 12 ? "3px 2px" : nSz > 9 ? "4px 3px" : "6px 4px";
+            const mw = nSz > 12 ? 22 : nSz > 9 ? 28 : nSz > 7 ? 34 : 42;
             return (
-              <table style={{width:"100%",borderCollapse:"collapse",marginBottom:10,fontSize:11}}>
+              <table style={{width:"100%",borderCollapse:"collapse",marginBottom:10,fontSize:fs,tableLayout:"fixed"}}>
                 <thead>
                   <tr style={{background:"#f1f5f9",color:"#000"}}>
-                    <th style={{padding:"6px 6px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,whiteSpace:"nowrap"}}>รุ่น</th>
-                    <th style={{padding:"6px 6px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,whiteSpace:"nowrap"}}>สี</th>
+                    <th style={{padding:pad,textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:fs,whiteSpace:"nowrap"}}>รุ่น</th>
+                    <th style={{padding:pad,textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:fs,whiteSpace:"nowrap"}}>สี</th>
                     {allSizes.map(sz => (
-                      <th key={`h-${sz}`} style={{padding:"6px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:11,fontFamily:"monospace",whiteSpace:"nowrap",minWidth:42}}>{sz}</th>
+                      <th key={`h-${sz}`} style={{padding:pad,textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:fs,fontFamily:"monospace",whiteSpace:"nowrap",minWidth:mw}}>{sz}</th>
                     ))}
-                    <th style={{padding:"6px 10px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:11,whiteSpace:"nowrap",minWidth:64}}>รวม</th>
+                    <th style={{padding:pad,textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:fs,whiteSpace:"nowrap",minWidth:nSz>9?44:64}}>รวม</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -108,35 +113,35 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                     const rowTotal = allSizes.reduce((s,sz)=>s+(g.qtyBySize[sz]||0), 0);
                     return (
                       <tr key={gi} style={{background: gi%2===0?"white":"#f8fafc"}}>
-                        <td style={{padding:"6px 6px",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:11,verticalAlign:"middle",whiteSpace:"nowrap"}}>{order.clothingName || "-"}</td>
-                        <td data-no-scale-tree="true" style={{padding:"6px 6px",color:"#000",border:"1px solid #000",fontSize:11,verticalAlign:"middle"}}>
-                          <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-                            <div style={{width:10,height:10,borderRadius:2,background:g.colorHex,border:"1px solid #000",flexShrink:0}}/>
+                        <td style={{padding:pad,fontWeight:700,color:"#000",border:"1px solid #000",fontSize:fs,verticalAlign:"middle",whiteSpace:"nowrap"}}>{order.clothingName || "-"}</td>
+                        <td data-no-scale-tree="true" style={{padding:pad,color:"#000",border:"1px solid #000",fontSize:fs,verticalAlign:"middle"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
+                            <div style={{width:nSz>9?7:10,height:nSz>9?7:10,borderRadius:2,background:g.colorHex,border:"1px solid #000",flexShrink:0}}/>
                             <span style={{whiteSpace:"nowrap"}}>{g.colorName}</span>
-                            {g.variant && <span style={{fontSize:10,color:"#475569",fontStyle:"italic",whiteSpace:"nowrap"}}>· {g.variant}</span>}
+                            {g.variant && <span style={{fontSize:fs-1,color:"#475569",fontStyle:"italic",whiteSpace:"nowrap"}}>· {g.variant}</span>}
                           </div>
                         </td>
                         {allSizes.map(sz => {
                           const q = g.qtyBySize[sz]||0;
                           return (
-                            <td key={`c-${gi}-${sz}`} style={{padding:"6px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,border:"1px solid #000",fontSize:11,color:q===0?"#cbd5e1":"#000",whiteSpace:"nowrap"}}>{q===0?"—":fmtInt(q)}</td>
+                            <td key={`c-${gi}-${sz}`} style={{padding:pad,textAlign:"center",fontFamily:"monospace",fontWeight:700,border:"1px solid #000",fontSize:fs,color:q===0?"#cbd5e1":"#000",whiteSpace:"nowrap"}}>{q===0?"—":fmtInt(q)}</td>
                           );
                         })}
-                        <td style={{padding:"6px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:800,fontSize:12,color:"#000",border:"1px solid #000",verticalAlign:"middle",whiteSpace:"nowrap"}}>{fmtInt(rowTotal)}</td>
+                        <td style={{padding:pad,textAlign:"center",fontFamily:"monospace",fontWeight:800,fontSize:fs+1,color:"#000",border:"1px solid #000",verticalAlign:"middle",whiteSpace:"nowrap"}}>{fmtInt(rowTotal)}</td>
                       </tr>
                     );
                   })}
                 </tbody>
                 <tfoot>
                   <tr style={{background:"#f1f5f9",fontWeight:700}}>
-                    <td colSpan={2} style={{padding:"6px 10px",textAlign:"right",color:"#000",fontSize:12,border:"2px solid #000",whiteSpace:"nowrap"}}>รวมทั้งหมด</td>
+                    <td colSpan={2} style={{padding:pad,textAlign:"right",color:"#000",fontSize:fs+1,border:"2px solid #000",whiteSpace:"nowrap"}}>รวมทั้งหมด</td>
                     {allSizes.map(sz => {
                       const colSum = groups.reduce((s,g)=>s+(g.qtyBySize[sz]||0), 0);
                       return (
-                        <td key={`f-${sz}`} style={{padding:"6px 4px",textAlign:"center",fontFamily:"monospace",fontSize:11,fontWeight:700,color:"#000",border:"2px solid #000",whiteSpace:"nowrap"}}>{colSum===0?"—":fmtInt(colSum)}</td>
+                        <td key={`f-${sz}`} style={{padding:pad,textAlign:"center",fontFamily:"monospace",fontSize:fs,fontWeight:700,color:"#000",border:"2px solid #000",whiteSpace:"nowrap"}}>{colSum===0?"—":fmtInt(colSum)}</td>
                       );
                     })}
-                    <td style={{padding:"6px 10px",textAlign:"center",fontFamily:"monospace",fontSize:13,color:"#000",border:"2px solid #000",fontWeight:800,whiteSpace:"nowrap"}}>{fmtInt(order.totalQty)} ตัว</td>
+                    <td style={{padding:pad,textAlign:"center",fontFamily:"monospace",fontSize:fs+2,color:"#000",border:"2px solid #000",fontWeight:800,whiteSpace:"nowrap"}}>{fmtInt(order.totalQty)} ตัว</td>
                   </tr>
                 </tfoot>
               </table>
