@@ -230,6 +230,7 @@ export default function App() {
   const [collapsedOrderDates, setCollapsedOrderDates] = useState({});
   const [collapsedInvoiceDates, setCollapsedInvoiceDates] = useState({});
   const [selectedInvoices, setSelectedInvoices] = useState(new Set()); // 🔗 เลือกบิลเพื่อรวม
+  const [selectedOrders, setSelectedOrders] = useState(new Set()); // 🔗 เลือกใบสั่งของเพื่อออกบิลรวม
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [showImportCustomers, setShowImportCustomers] = useState(false);
   const [showPrintOrder, setShowPrintOrder] = useState(null);
@@ -1358,6 +1359,55 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
     };
     setInvoiceForm(f=>({...f,items:[...f.items,newItem]}));
     setInvoiceItemForm({description:"",qty:"",unitPrice:"",unit:"ชิ้น",colorName:"",colorHex:"",size:""});
+  };
+
+  // 🔗 ดึงรวมหลายใบสั่งของ → เปิด modal ออกบิลพร้อม items ที่รวมแล้ว
+  const toggleOrderSelect = (id) => {
+    setSelectedOrders(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  };
+  const handleMergeOrdersToInvoice = () => {
+    const sel = orders.filter(o => selectedOrders.has(o.id));
+    if (sel.length === 0) return;
+    // เตือนถ้าลูกค้าต่างกัน
+    const customers = new Set(sel.map(o => (o.customerName||"").trim()));
+    if (customers.size > 1) {
+      if (!window.confirm(`⚠️ ใบสั่งของที่เลือกมีลูกค้าต่างกัน ${customers.size} ราย:\n${[...customers].join(", ")}\n\nต้องการรวมเป็นบิลเดียวจริงๆ? (จะใช้ข้อมูลลูกค้าจากใบแรก)`)) return;
+    }
+    // รวม items: ถ้า (clothingId+colorIdx+size+variant) ตรงกัน → บวก qty
+    const merged = new Map();
+    sel.forEach(o => {
+      (o.items||[]).forEach(i => {
+        const clothingItem = clothingItems.find(c=>c.id===i.clothingId);
+        const colorData = clothingItem?.colors?.[i.colorIdx];
+        const salePrice = getPriceForSize(colorData, i.size);
+        const key = [i.clothingId||"", i.colorIdx??"", i.size||"", i.variant||""].join("|");
+        if (merged.has(key)) {
+          merged.get(key).qty += Number(i.qty)||0;
+        } else {
+          merged.set(key, {
+            description: `${i.clothingName||""}${i.colorName?` (${i.colorName})`:""}${i.size?` ไซส์ ${i.size}`:""}`,
+            qty: Number(i.qty)||0, unitPrice: salePrice, unit: "ชิ้น",
+            clothingId: i.clothingId, clothingName: i.clothingName,
+            colorIdx: i.colorIdx, colorName: i.colorName, colorHex: i.colorHex,
+            size: i.size, variant: i.variant||"",
+          });
+        }
+      });
+    });
+    const first = sel[0];
+    const orderNos = sel.map(o => o.orderNo).filter(Boolean).join(", ");
+    setInvoiceForm(f => ({
+      ...f,
+      customerId: first.customerId||"",
+      customerName: first.customerName||"",
+      customerPhone: first.customerPhone||"",
+      customerAddress: first.customerAddress||"",
+      items: [...merged.values()],
+      note: f.note ? `${f.note}\n[รวมจากใบสั่ง: ${orderNos}]` : `รวมจากใบสั่ง: ${orderNos}`,
+      mergedFromOrderIds: sel.map(o=>o.id),
+    }));
+    setSelectedOrders(new Set());
+    setShowNewInvoice(true);
   };
 
   const handleImportFromOrder = (order) => {
@@ -3342,6 +3392,24 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                   ? <button onClick={()=>{setOrderForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",shipping:"",note:"",items:[]});setShowNewOrder(true);}} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>️ สร้างใบสั่งของ</button>
                   : <span style={{fontSize:11,color:T.muted,padding:"6px 12px",background:"rgba(241,243,246,0.4)",border:`1px solid ${T.border}`,borderRadius:8}}>👁️ โหมดดูเท่านั้น</span>}
               </div>
+              {/* 🔗 แถบรวมใบสั่งของ → ออกบิลรวม */}
+              {selectedOrders.size>0&&(()=>{
+                const sel = orders.filter(o => selectedOrders.has(o.id));
+                const cname = sel[0]?.customerName;
+                const sameCustomer = sel.every(o => o.customerName===cname);
+                const totalQty = sel.reduce((s,o)=>s+(o.items||[]).reduce((a,i)=>a+(Number(i.qty)||0),0),0);
+                return (
+                  <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",zIndex:200,display:"flex",alignItems:"center",gap:14,background:T.card,border:`1px solid ${T.accent}`,borderRadius:14,padding:"12px 18px",boxShadow:"0 10px 40px rgba(0,0,0,0.25)"}}>
+                    <div style={{fontSize:13,color:T.text}}>
+                      เลือก <b style={{color:T.accent}}>{sel.length}</b> ใบสั่ง · รวม <b>{totalQty.toLocaleString("th-TH")}</b> ชิ้น
+                      {sameCustomer?<> · <b>{cname}</b></>:<span style={{color:T.red,marginLeft:6}}>⚠️ คนละลูกค้า</span>}
+                    </div>
+                    <button onClick={handleMergeOrdersToInvoice} disabled={sel.length<1}
+                      style={{padding:"8px 16px",borderRadius:9,border:"none",cursor:sel.length<1?"not-allowed":"pointer",background:sel.length<1?"rgba(59,91,139,0.3)":T.accent,color:"white",fontSize:13,fontWeight:700,fontFamily:"'Sarabun',sans-serif"}}>🧾 ออกบิลรวม {sel.length>1?`(${sel.length} ใบ)`:""}</button>
+                    <button onClick={()=>setSelectedOrders(new Set())} style={{padding:"8px 12px",borderRadius:9,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif"}}>ยกเลิก</button>
+                  </div>
+                );
+              })()}
 
               {orders.length===0?(
                 <div style={{textAlign:"center",padding:60,background:T.card,borderRadius:16,border:`1px solid ${T.border}`}}>
@@ -3435,10 +3503,13 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                           </div>
                           {list.map((o,i)=>(
                             <div key={o.id} onClick={()=>setShowPrintOrder(o)} title="คลิกเพื่อดูใบสั่งของ"
-                              style={{display:"grid",gridTemplateColumns:"100px 1fr 120px 80px 80px 100px",alignItems:"center",padding:"13px 20px",borderBottom:i<list.length-1?`1px solid ${T.border}`:"none",cursor:"pointer"}}
-                              onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.08)"}
-                              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                              <div style={{fontFamily:"monospace",fontSize:11,color:T.accent,fontWeight:700}}>{o.orderNo}</div>
+                              style={{display:"grid",gridTemplateColumns:"100px 1fr 120px 80px 80px 100px",alignItems:"center",padding:"13px 20px",borderBottom:i<list.length-1?`1px solid ${T.border}`:"none",cursor:"pointer",background:selectedOrders.has(o.id)?"rgba(59,91,139,0.08)":"transparent"}}
+                              onMouseEnter={e=>{if(!selectedOrders.has(o.id))e.currentTarget.style.background="rgba(59,91,139,0.05)";}}
+                              onMouseLeave={e=>{if(!selectedOrders.has(o.id))e.currentTarget.style.background="transparent";}}>
+                              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                {role.canCreateOrder&&<input type="checkbox" checked={selectedOrders.has(o.id)} onClick={e=>e.stopPropagation()} onChange={()=>toggleOrderSelect(o.id)} title="เลือกเพื่อออกบิลรวม" style={{width:15,height:15,cursor:"pointer",accentColor:T.accent}}/>}
+                                <span style={{fontFamily:"monospace",fontSize:11,color:T.accent,fontWeight:700}}>{o.orderNo}</span>
+                              </div>
                               <div>
                                 <div style={{fontWeight:600,color:T.text,fontSize:13}}>{o.customerName}</div>
                                 <div style={{fontSize:10,color:T.muted,marginTop:1}}>{o.customerPhone} · {o.date}</div>
