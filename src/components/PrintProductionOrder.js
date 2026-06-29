@@ -94,23 +94,25 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
               g.qtyBySize[pSize] = (g.qtyBySize[pSize]||0) + (Number(it.qty)||0);
             });
             const allSizes = Array.from(sizeSet).sort(compareSizes);
-            // 📐 ปรับฟอนต์/ความกว้างอัตโนมัติเมื่อไซส์เยอะ — กันตารางทะลุหน้ากระดาษ
-            // แนวนอน → ขยายใหญ่ขึ้นทุกระดับ (มีที่กว้างกว่า)
+            // 📐 ปรับฟอนต์/ความกว้างอัตโนมัติตามจำนวนไซส์ — กันตารางทะลุหน้ากระดาษ
             const nSz = allSizes.length;
             const fs = landscape
-              ? (nSz > 14 ? 12 : nSz > 11 ? 13 : nSz > 8 ? 14 : 16)
+              ? (nSz > 14 ? 12 : nSz > 11 ? 13 : 14)
               : (nSz > 12 ? 8 : nSz > 9 ? 9 : nSz > 7 ? 10 : 11);
             const pad = landscape
-              ? (nSz > 14 ? "7px 5px" : nSz > 11 ? "8px 6px" : "10px 8px")
+              ? (nSz > 14 ? "5px 4px" : nSz > 11 ? "6px 5px" : "6px 6px")
               : (nSz > 12 ? "3px 2px" : nSz > 9 ? "4px 3px" : "6px 4px");
             const mw = landscape
-              ? (nSz > 14 ? 42 : nSz > 11 ? 50 : nSz > 8 ? 60 : 70)
+              ? (nSz > 14 ? 42 : nSz > 11 ? 50 : 60)
               : (nSz > 12 ? 22 : nSz > 9 ? 28 : nSz > 7 ? 34 : 42);
+            // 📏 รุ่น/สี ใช้ width คงที่ (px) — sizes แบ่งกันใน remaining ตาม table-layout:auto
+            const modelW = landscape ? 130 : 90;
+            const colorW = landscape ? 140 : 100;
             return (
               <table style={{width:"100%",borderCollapse:"collapse",marginBottom:10,fontSize:fs,tableLayout:"fixed"}}>
                 <colgroup>
-                  <col style={{width:landscape?"12%":"12%"}}/>
-                  <col style={{width:landscape?"13%":"14%"}}/>
+                  <col style={{width:modelW}}/>
+                  <col style={{width:colorW}}/>
                   {allSizes.map(sz => <col key={`cg-${sz}`}/>)}
                 </colgroup>
                 <thead>
