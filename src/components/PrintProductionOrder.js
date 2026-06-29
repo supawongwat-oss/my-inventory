@@ -82,6 +82,7 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
             const groups = [];
             const gmap = new Map();
             const sizeSet = new Set();
+            const customerByProd = {}; // 🎨 productionSize → Set ของ customerSize (สำหรับ custom order)
             (order.items||[]).forEach(it => {
               const key = (it.colorName||"-") + "|" + (it.colorHex||"#999") + "|" + (it.variant||"");
               if (!gmap.has(key)) {
@@ -92,8 +93,14 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
               sizeSet.add(pSize);
               const g = gmap.get(key);
               g.qtyBySize[pSize] = (g.qtyBySize[pSize]||0) + (Number(it.qty)||0);
+              // ถ้า productionSize ≠ ไซส์ของลูกค้า → เก็บไว้แสดงในหัวตาราง
+              if (it.size && it.size !== pSize) {
+                if (!customerByProd[pSize]) customerByProd[pSize] = new Set();
+                customerByProd[pSize].add(it.size);
+              }
             });
             const allSizes = Array.from(sizeSet).sort(compareSizes);
+            const isCustom = Object.keys(customerByProd).length > 0;
             // 📐 ปรับฟอนต์/ความกว้างอัตโนมัติตามจำนวนไซส์ — กันตารางทะลุหน้ากระดาษ
             const nSz = allSizes.length;
             const fs = landscape
@@ -119,9 +126,15 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                   <tr style={{background:"#f1f5f9",color:"#000"}}>
                     <th style={{padding:pad,textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:fs}}>รุ่น</th>
                     <th style={{padding:pad,textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:fs}}>สี</th>
-                    {allSizes.map(sz => (
-                      <th key={`h-${sz}`} style={{padding:pad,textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:fs,fontFamily:"monospace",whiteSpace:"nowrap",minWidth:mw}}>{sz}</th>
-                    ))}
+                    {allSizes.map(sz => {
+                      const cus = customerByProd[sz] ? Array.from(customerByProd[sz]).sort(compareSizes).join(",") : "";
+                      return (
+                        <th key={`h-${sz}`} style={{padding:pad,textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:fs,fontFamily:"monospace",whiteSpace:"nowrap",minWidth:mw}}>
+                          <div>{sz}</div>
+                          {cus && <div style={{fontSize:Math.max(7,fs-3),fontFamily:"'Sarabun',sans-serif",fontWeight:500,color:"#475569",lineHeight:1.1,marginTop:1}}>(ลูกค้า: {cus})</div>}
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
