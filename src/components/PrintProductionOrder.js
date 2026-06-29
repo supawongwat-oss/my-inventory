@@ -108,10 +108,16 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
               : (nSz > 12 ? 22 : nSz > 9 ? 28 : nSz > 7 ? 34 : 42);
             return (
               <table style={{width:"100%",borderCollapse:"collapse",marginBottom:10,fontSize:fs,tableLayout:"fixed"}}>
+                <colgroup>
+                  <col style={{width:landscape?"11%":"10%"}}/>
+                  <col style={{width:landscape?"11%":"12%"}}/>
+                  {allSizes.map(sz => <col key={`cg-${sz}`}/>)}
+                  <col style={{width:landscape?"9%":"10%"}}/>
+                </colgroup>
                 <thead>
                   <tr style={{background:"#f1f5f9",color:"#000"}}>
-                    <th style={{padding:pad,textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:fs,whiteSpace:"nowrap"}}>รุ่น</th>
-                    <th style={{padding:pad,textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:fs,whiteSpace:"nowrap"}}>สี</th>
+                    <th style={{padding:pad,textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:fs}}>รุ่น</th>
+                    <th style={{padding:pad,textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:fs}}>สี</th>
                     {allSizes.map(sz => (
                       <th key={`h-${sz}`} style={{padding:pad,textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:fs,fontFamily:"monospace",whiteSpace:"nowrap",minWidth:mw}}>{sz}</th>
                     ))}
@@ -123,12 +129,12 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                     const rowTotal = allSizes.reduce((s,sz)=>s+(g.qtyBySize[sz]||0), 0);
                     return (
                       <tr key={gi} style={{background: gi%2===0?"white":"#f8fafc"}}>
-                        <td style={{padding:pad,fontWeight:700,color:"#000",border:"1px solid #000",fontSize:fs,verticalAlign:"middle",whiteSpace:"nowrap"}}>{order.clothingName || "-"}</td>
-                        <td data-no-scale-tree="true" style={{padding:pad,color:"#000",border:"1px solid #000",fontSize:fs,verticalAlign:"middle"}}>
+                        <td style={{padding:pad,fontWeight:700,color:"#000",border:"1px solid #000",fontSize:fs,verticalAlign:"middle",wordBreak:"break-word",overflow:"hidden"}}>{order.clothingName || "-"}</td>
+                        <td data-no-scale-tree="true" style={{padding:pad,color:"#000",border:"1px solid #000",fontSize:fs,verticalAlign:"middle",overflow:"hidden"}}>
                           <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
                             <div style={{width:nSz>9?7:10,height:nSz>9?7:10,borderRadius:2,background:g.colorHex,border:"1px solid #000",flexShrink:0}}/>
-                            <span style={{whiteSpace:"nowrap"}}>{g.colorName}</span>
-                            {g.variant && <span style={{fontSize:fs-1,color:"#475569",fontStyle:"italic",whiteSpace:"nowrap"}}>· {g.variant}</span>}
+                            <span style={{wordBreak:"break-word"}}>{g.colorName}</span>
+                            {g.variant && <span style={{fontSize:fs-1,color:"#475569",fontStyle:"italic"}}>· {g.variant}</span>}
                           </div>
                         </td>
                         {allSizes.map(sz => {
@@ -151,7 +157,7 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                         <td key={`f-${sz}`} style={{padding:pad,textAlign:"center",fontFamily:"monospace",fontSize:fs,fontWeight:700,color:"#000",border:"2px solid #000",whiteSpace:"nowrap"}}>{colSum===0?"—":fmtInt(colSum)}</td>
                       );
                     })}
-                    <td style={{padding:pad,textAlign:"center",fontFamily:"monospace",fontSize:fs+2,color:"#000",border:"2px solid #000",fontWeight:800,whiteSpace:"nowrap"}}>{fmtInt(order.totalQty)} ตัว</td>
+                    <td style={{padding:pad,textAlign:"center",fontFamily:"monospace",fontSize:fs+1,color:"#000",border:"2px solid #000",fontWeight:800,overflow:"hidden"}}>{fmtInt(order.totalQty)} ตัว</td>
                   </tr>
                 </tfoot>
               </table>
