@@ -1,16 +1,19 @@
-import React from "react";
+import React, { useState } from "react";
 import { splitSizesIntoRows, compareSizes } from "../theme";
 
 const fmt = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtInt = (n) => Number(n || 0).toLocaleString("th-TH");
 
 export default function PrintProductionOrder({ order, companyInfo = {}, onClose, onPrint }) {
+  const [landscape, setLandscape] = useState(false);
   if (!order) return null;
   return (
     <div className="print-modal-overlay" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}}
       onMouseDown={e=>{if(e.target===e.currentTarget)onClose&&onClose();}}>
-      <div className="print-modal-card" onMouseDown={e=>e.stopPropagation()} style={{background:"white",borderRadius:16,padding:0,width:760,maxHeight:"94vh",overflowY:"auto",boxShadow:"0 24px 60px rgba(0,0,0,0.6)"}}>
+      <div className="print-modal-card" onMouseDown={e=>e.stopPropagation()} style={{background:"white",borderRadius:16,padding:0,width:landscape?960:760,maxHeight:"94vh",overflowY:"auto",boxShadow:"0 24px 60px rgba(0,0,0,0.6)"}}>
+        <style>{`@page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 8mm; }`}</style>
         <div id="prod-print-area" style={{padding:"14px 24px",fontFamily:"'Sarabun',sans-serif",color:"#1e293b"}}>
+          <style>{`@page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 8mm; }`}</style>
           {/* Header (เล็กลงอีก — 1 บรรทัด) */}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,paddingBottom:5,borderBottom:"2px solid #3b5b8b"}}>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -181,9 +184,17 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
         </div>
 
         {/* Action bar */}
-        <div style={{padding:"12px 24px",background:"#f8fafc",borderTop:"1px solid #e2e8f0",display:"flex",justifyContent:"flex-end",gap:10}}>
-          <button onClick={onClose} style={{padding:"9px 16px",borderRadius:9,border:"1px solid #e2e8f0",background:"white",color:"#64748b",fontSize:13,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>ปิด</button>
-          <button onClick={() => onPrint && onPrint("prod-print-area")} style={{padding:"9px 16px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>🖨️ พิมพ์</button>
+        <div style={{padding:"12px 24px",background:"#f8fafc",borderTop:"1px solid #e2e8f0",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:6,background:"#fff",border:"1px solid #e2e8f0",borderRadius:9,padding:3}}>
+            <button onClick={()=>setLandscape(false)}
+              style={{padding:"6px 12px",borderRadius:7,border:"none",background:!landscape?"#3b5b8b":"transparent",color:!landscape?"white":"#64748b",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>📄 แนวตั้ง</button>
+            <button onClick={()=>setLandscape(true)}
+              style={{padding:"6px 12px",borderRadius:7,border:"none",background:landscape?"#3b5b8b":"transparent",color:landscape?"white":"#64748b",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>📑 แนวนอน</button>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={onClose} style={{padding:"9px 16px",borderRadius:9,border:"1px solid #e2e8f0",background:"white",color:"#64748b",fontSize:13,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>ปิด</button>
+            <button onClick={() => onPrint && onPrint("prod-print-area", { landscape })} style={{padding:"9px 16px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>🖨️ พิมพ์ {landscape?"แนวนอน":"แนวตั้ง"}</button>
+          </div>
         </div>
       </div>
     </div>
