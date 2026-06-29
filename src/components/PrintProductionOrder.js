@@ -95,8 +95,8 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                     <th style={{padding:"5px 5px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,width:75,minWidth:75}}>รุ่น</th>
                     <th style={{padding:"5px 5px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,width:130,minWidth:130}}>สี</th>
                     {Array.from({length:MAX}).flatMap((_,i)=>([
-                      <th key={`s${i}`} style={{padding:"5px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:10,minWidth:34,background:"#e0f2fe"}}>SIZE</th>,
-                      <th key={`q${i}`} style={{padding:"5px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:10,minWidth:28}}></th>
+                      <th key={`s${i}`} style={{padding:"5px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:10,width:36,minWidth:36,background:"#e0f2fe",whiteSpace:"nowrap"}}>SIZE</th>,
+                      <th key={`q${i}`} style={{padding:"5px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:10,width:38,minWidth:38,whiteSpace:"nowrap"}}></th>
                     ]))}
                     <th style={{padding:"5px 8px",textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:11,width:62,minWidth:62,whiteSpace:"nowrap"}}>จำนวน</th>
                   </tr>
@@ -127,7 +127,7 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                                 <div style={{fontSize:8,color:"#475569",fontWeight:500,marginTop:1,fontFamily:"inherit"}}>(ลูกค้า: {c.customerSize})</div>
                               )}
                             </td>,
-                            <td key={`q-${i}`} style={{padding:"4px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:11}}>{fmtInt(c.qty)}</td>
+                            <td key={`q-${i}`} style={{padding:"4px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:11,width:38,minWidth:38,whiteSpace:"nowrap"}}>{fmtInt(c.qty)}</td>
                           ]))}
                           {Array(MAX - chunk.length).fill(null).flatMap((_,i)=>([
                             <td key={`e1-${i}`} style={{border:"1px solid #000",background:"#fafafa"}}/>,
