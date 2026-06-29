@@ -95,10 +95,17 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
             });
             const allSizes = Array.from(sizeSet).sort(compareSizes);
             // 📐 ปรับฟอนต์/ความกว้างอัตโนมัติเมื่อไซส์เยอะ — กันตารางทะลุหน้ากระดาษ
+            // แนวนอน → ขยายใหญ่ขึ้นทุกระดับ (มีที่กว้างกว่า)
             const nSz = allSizes.length;
-            const fs = nSz > 12 ? 8 : nSz > 9 ? 9 : nSz > 7 ? 10 : 11;
-            const pad = nSz > 12 ? "3px 2px" : nSz > 9 ? "4px 3px" : "6px 4px";
-            const mw = nSz > 12 ? 22 : nSz > 9 ? 28 : nSz > 7 ? 34 : 42;
+            const fs = landscape
+              ? (nSz > 14 ? 12 : nSz > 11 ? 13 : nSz > 8 ? 14 : 16)
+              : (nSz > 12 ? 8 : nSz > 9 ? 9 : nSz > 7 ? 10 : 11);
+            const pad = landscape
+              ? (nSz > 14 ? "7px 5px" : nSz > 11 ? "8px 6px" : "10px 8px")
+              : (nSz > 12 ? "3px 2px" : nSz > 9 ? "4px 3px" : "6px 4px");
+            const mw = landscape
+              ? (nSz > 14 ? 42 : nSz > 11 ? 50 : nSz > 8 ? 60 : 70)
+              : (nSz > 12 ? 22 : nSz > 9 ? 28 : nSz > 7 ? 34 : 42);
             return (
               <table style={{width:"100%",borderCollapse:"collapse",marginBottom:10,fontSize:fs,tableLayout:"fixed"}}>
                 <thead>
