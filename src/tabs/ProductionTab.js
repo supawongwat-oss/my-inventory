@@ -425,7 +425,7 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
           order={printOrder}
           companyInfo={companyInfo}
           onClose={()=>setPrintOrder(null)}
-          onPrint={(id)=>printElementById && printElementById(id)}
+          onPrint={(id, opts)=>printElementById && printElementById(id, `A4 ${opts?.landscape?"landscape":"portrait"}`)}
         />
       )}
       {editBom !== null && (
