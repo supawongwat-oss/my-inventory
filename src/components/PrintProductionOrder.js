@@ -129,9 +129,9 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                     {allSizes.map(sz => {
                       const cus = customerByProd[sz] ? Array.from(customerByProd[sz]).sort(compareSizes).join(",") : "";
                       return (
-                        <th key={`h-${sz}`} style={{padding:pad,textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:fs,fontFamily:"monospace",whiteSpace:"nowrap",minWidth:mw}}>
-                          <div>{sz}</div>
-                          {cus && <div style={{fontSize:Math.max(7,fs-3),fontFamily:"'Sarabun',sans-serif",fontWeight:500,color:"#475569",lineHeight:1.1,marginTop:1}}>(ลูกค้า: {cus})</div>}
+                        <th key={`h-${sz}`} style={{padding:pad,textAlign:"center",fontWeight:700,border:"1px solid #000",fontSize:fs,fontFamily:"monospace",minWidth:mw,overflow:"hidden"}}>
+                          <div style={{whiteSpace:"nowrap"}}>{sz}</div>
+                          {cus && <div style={{fontSize:Math.max(6,fs-3),fontFamily:"'Sarabun',sans-serif",fontWeight:500,color:"#475569",lineHeight:1.05,marginTop:1,wordBreak:"break-all"}}>ลก:{cus}</div>}
                         </th>
                       );
                     })}
