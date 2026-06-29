@@ -235,7 +235,7 @@ export default function App() {
   const [showPrintOrder, setShowPrintOrder] = useState(null);
   const [orderForm, setOrderForm] = useState({
     customerId: "", customerName: "", customerPhone: "", customerAddress: "",
-    note: "", items: []
+    shipping: "", note: "", items: []
   });
   const [newCustomerForm, setNewCustomerForm] = useState({ name:"", phone:"", address:"" });
   const [customerSearch, setCustomerSearch] = useState("");
@@ -1214,7 +1214,7 @@ export default function App() {
       targetLabel: `${orderNo} · ${orderForm.customerName}`,
       note: `${orderForm.items.length} รายการ · ${totalQty} ชิ้น`,
     });
-    setOrderForm({ customerId:"", customerName:"", customerPhone:"", customerAddress:"", note:"", items:[] });
+    setOrderForm({ customerId:"", customerName:"", customerPhone:"", customerAddress:"", shipping:"", note:"", items:[] });
     setShowNewOrder(false);
   };
 
@@ -3339,7 +3339,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
                 <div style={{fontSize:12,color:T.sub}}>ใบสั่งของทั้งหมด <b style={{color:T.accent}}>{orders.length} ใบ</b></div>
                 {role.canCreateOrder
-                  ? <button onClick={()=>{setOrderForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",note:"",items:[]});setShowNewOrder(true);}} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>️ สร้างใบสั่งของ</button>
+                  ? <button onClick={()=>{setOrderForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",shipping:"",note:"",items:[]});setShowNewOrder(true);}} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>️ สร้างใบสั่งของ</button>
                   : <span style={{fontSize:11,color:T.muted,padding:"6px 12px",background:"rgba(241,243,246,0.4)",border:`1px solid ${T.border}`,borderRadius:8}}>👁️ โหมดดูเท่านั้น</span>}
               </div>
 
@@ -4887,6 +4887,23 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
             </div>
           )}
 
+          <div style={{marginBottom:10}}>
+            <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:5,fontWeight:600}}>🚚 ขนส่ง</label>
+            <input list="shipping-presets" value={orderForm.shipping||""} onChange={e=>setOrderForm(f=>({...f,shipping:e.target.value}))} placeholder="เช่น Kerry, Flash, ไปรษณีย์, ลูกค้ารับเอง..."
+              style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+            <datalist id="shipping-presets">
+              <option value="Kerry Express"/>
+              <option value="Flash Express"/>
+              <option value="J&T Express"/>
+              <option value="ไปรษณีย์ไทย"/>
+              <option value="Best Express"/>
+              <option value="Ninja Van"/>
+              <option value="ลูกค้ามารับเอง"/>
+              <option value="ส่งเอง"/>
+              <option value="ลูกค้าจัดขนส่งเอง"/>
+            </datalist>
+          </div>
+
           <div>
             <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:5,fontWeight:600}}>หมายเหตุ</label>
             <input value={orderForm.note} onChange={e=>setOrderForm(f=>({...f,note:e.target.value}))} placeholder="หมายเหตุเพิ่มเติม..."
@@ -4961,6 +4978,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 <div>
                   <div style={{fontSize:12,color:"#64748b",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>ที่อยู่จัดส่ง</div>
                   <div style={{fontSize:14,color:"#475569",lineHeight:1.6}}>{showPrintOrder.customerAddress||"-"}</div>
+                  {showPrintOrder.shipping&&<div style={{fontSize:13,color:"#1e293b",marginTop:6,fontWeight:600}}>🚚 ขนส่ง: <span style={{color:"#3b5b8b"}}>{showPrintOrder.shipping}</span></div>}
                 </div>
               </div>
 
