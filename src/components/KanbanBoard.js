@@ -41,16 +41,31 @@ export default function KanbanBoard({
       }
       ordersMap.get(key).lotIdxsInStep.push(l.lotIdx);
     });
-    // กรองเฉพาะ order ที่ทุก lot อยู่ในนี้
+    // กรองเฉพาะ order ที่ทุก lot อยู่ในนี้ (ไม่นับ lot ที่ "ยกเลิก" แล้ว)
     const archivable = [];
     const partial = [];
     for (const [, info] of ordersMap) {
-      const totalLots = (info.orderRef.lots || []).length;
-      if (totalLots === info.lotIdxsInStep.length) archivable.push(info);
+      const activeLots = (info.orderRef.lots || []).filter(l => l.status !== "ยกเลิก");
+      if (activeLots.length === info.lotIdxsInStep.length) archivable.push(info);
       else partial.push(info);
     }
     if (archivable.length === 0) {
-      alert(`ไม่มีใบสั่งผลิตที่เก็บได้\n\nใบในช่องนี้ยังมี lot อื่นในขั้นอื่นอยู่ (${partial.length} ใบ)\nต้องให้ทุก lot ของใบเข้าช่องนี้ก่อนถึงจะเก็บได้`);
+      // 📋 แสดงรายละเอียดว่า lot อื่นอยู่ขั้นไหน — user จะได้รู้ว่าต้องไปดันขั้นไหน
+      const detailLines = partial.slice(0, 10).map(info => {
+        const activeLots = (info.orderRef.lots || []).filter(l => l.status !== "ยกเลิก");
+        const stuckStages = {};
+        activeLots.forEach(l => {
+          if (l.status !== step) stuckStages[l.status] = (stuckStages[l.status]||0) + 1;
+        });
+        const stageText = Object.entries(stuckStages).map(([s,n])=>`${s} (${n})`).join(", ");
+        return `• ${info.orderRef.orderNo || info.orderRef.id?.slice(0,6)}: lot ค้างที่ ${stageText}`;
+      }).join("\n");
+      const more = partial.length > 10 ? `\n... และอีก ${partial.length-10} ใบ` : "";
+      alert(
+        `ไม่มีใบสั่งผลิตที่เก็บได้\n\n`+
+        `ใบที่ค้าง (${partial.length} ใบ):\n${detailLines}${more}\n\n`+
+        `💡 ดัน lot ที่ค้างเข้าช่องนี้ก่อน แล้วลองใหม่`
+      );
       return;
     }
     const totalQty = archivable.reduce((s,a) => s + (a.orderRef.totalQty||0), 0);
