@@ -317,7 +317,7 @@ export default function App() {
   const [showScanner, setShowScanner] = useState(false); // โหมดสแกนกล้อง
   const [showBarcodePrint, setShowBarcodePrint] = useState(false); // ปริ้น barcode stickers
   const [showTxScanner, setShowTxScanner] = useState(false); // สแกนใน Tx modal
-  const [inventoryTab, setInventoryTab] = useState("general"); // "general" | "clothing"
+  const [inventoryTab, setInventoryTab] = useState("clothing"); // "clothing" | "sports" | "general"
   const [clothingTxModal, setClothingTxModal] = useState(null); // {item, colorIdx, size}
   const [clothingTxType, setClothingTxType] = useState("รับ");
   const [clothingTxQty, setClothingTxQty] = useState("");
@@ -2613,9 +2613,9 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
               {/* Sub-tabs */}
               <div style={{display:"flex",gap:6,marginBottom:20,padding:"4px",background:T.card,borderRadius:12,border:`1px solid ${T.border}`,width:"fit-content",flexWrap:"wrap"}}>
                 {[
-                  {id:"general",icon:"📦",label:"สินค้าทั่วไป"},
                   {id:"clothing",icon:"👕",label:"เสื้อผ้า"},
                   {id:"sports",icon:"👟",label:"รองเท้า & อุปกรณ์กีฬา",cats:["รองเท้า","อุปกรณ์กีฬา"]},
+                  {id:"general",icon:"📦",label:"สินค้าทั่วไป"},
                 ].map(t=>{
                   // นับสินค้าในหมวด (รองรับหลาย cats)
                   const count = t.cats ? products.filter(p=>t.cats.includes(p.category)).length
