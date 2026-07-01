@@ -2903,9 +2903,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                                       <button onClick={()=>{setClothingTxModal({item,colorIdx:ci,size:null});setClothingTxType("จ่าย");setClothingTxQty("");setClothingTxSizeQty({});setClothingTxNote("");}} style={{padding:"4px 8px",borderRadius:6,border:"1px solid rgba(248,113,113,0.3)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:10,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>⬆ จ่าย</button>
                                     </div>
                                   </td>
-                                  <td style={{textAlign:"center",padding:"4px 6px"}}>
-                                    {role.canDelete&&<button onClick={()=>handleDeleteClothingColor(item.id,ci)} style={{background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:5,padding:"2px 6px",cursor:"pointer",fontSize:10,color:"#f87171"}}>✕</button>}
-                                  </td>
+                                  <td style={{textAlign:"center",padding:"4px 6px"}}></td>
                                 </tr>
                               );
                             })}
@@ -3090,9 +3088,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                                 <td style={{textAlign:"center",padding:"4px 6px"}}>
                                   <span style={{fontFamily:"'DM Mono',monospace",fontWeight:700,fontSize:12,color:T.accent}}>{total}</span>
                                 </td>
-                                <td style={{textAlign:"center",padding:"4px 6px"}}>
-                                  {role.canDelete&&<button onClick={()=>handleDeleteClothingColor(item.id,ci)} style={{background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:5,padding:"2px 6px",cursor:"pointer",fontSize:10,color:"#f87171"}}>✕</button>}
-                                </td>
+                                <td style={{textAlign:"center",padding:"4px 6px"}}></td>
                               </tr>
                             );
                           })}
