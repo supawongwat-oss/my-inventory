@@ -993,6 +993,27 @@ function RollSplitModal({ lot, lots = [], lotIdx, busy, onClose, onConfirm, onCo
     return { ...roll, rows: arr };
   }));
   const addRoll = () => setMRolls(prev => [...prev, { jobLabel: "", rows: [{ itemIdx: "", qty: "" }] }]);
+  // 🖱️ คลิกช่องในตาราง "คงเหลือ" → เพิ่มแถวเข้าม้วนล่าสุด (ตามลำดับคลิก)
+  const clickCellToLastRoll = (itemIdx, defaultQty) => {
+    if (itemIdx == null || itemIdx < 0) return;
+    setMRolls(prev => {
+      const arr = [...prev];
+      const last = arr.length - 1;
+      const target = { ...arr[last] };
+      const newRow = { itemIdx: String(itemIdx), qty: String(defaultQty || "") };
+      // ถ้าแถวสุดท้ายว่าง (ยังไม่ได้เลือกอะไร) → แทน; ไม่งั้น append
+      const rows = [...(target.rows || [])];
+      const lastRow = rows[rows.length - 1];
+      if (lastRow && !lastRow.itemIdx && !lastRow.qty) {
+        rows[rows.length - 1] = newRow;
+      } else {
+        rows.push(newRow);
+      }
+      target.rows = rows;
+      arr[last] = target;
+      return arr;
+    });
+  };
   const removeRoll = (ri) => setMRolls(prev => prev.filter((_, i) => i !== ri));
   // เลื่อนม้วนขึ้น/ลง
   const moveRoll = (ri, dir) => setMRolls(prev => {
@@ -1031,7 +1052,10 @@ function RollSplitModal({ lot, lots = [], lotIdx, busy, onClose, onConfirm, onCo
         <>
           {/* คงเหลือ — ตารางกริด ไซส์เป็นคอลัมน์ตรงกันทุกสี */}
           {(() => {
-            const rem = lotItems.map((it, idx) => ({ ...it, sz: it.productionSize || it.size, remain: (Number(it.qty) || 0) - (usedByItem[idx] || 0) }));
+            const rem = lotItems.map((it, idx) => ({ ...it, idx, sz: it.productionSize || it.size, remain: (Number(it.qty) || 0) - (usedByItem[idx] || 0) }));
+            // 🗺️ map: colorName|colorHex|size → itemIdx (สำหรับคลิกเซลล์)
+            const cellIdx = {};
+            rem.forEach(it => { cellIdx[`${it.colorName||"-"}|${it.colorHex||"#999"}|${it.sz}`] = { idx: it.idx, remain: it.remain }; });
             // union ไซส์ทั้งหมด เรียงเล็ก→ใหญ่
             const allSizes = Array.from(new Set(rem.map(it => it.sz))).sort((a, b) => sizeRank(a) - sizeRank(b));
             // group by สี → { size: remain }
@@ -1046,7 +1070,10 @@ function RollSplitModal({ lot, lots = [], lotIdx, busy, onClose, onConfirm, onCo
             const th = { padding: "5px 4px", textAlign: "center", fontWeight: 700, fontSize: 11, fontFamily: "monospace", borderRight: `1px solid ${T.border}`, background: "#e0f2fe", color: "#0c4a6e", minWidth: 40 };
             return (
               <div style={{marginBottom:12,border:`1px solid ${T.border}`,borderRadius:8,overflow:"hidden"}}>
-                <div style={{padding:"5px 10px",background:"#f1f5fb",fontSize:11,fontWeight:700,color:T.sub}}>📦 คงเหลือ (ยังไม่ใส่ม้วน)</div>
+                <div style={{padding:"5px 10px",background:"#f1f5fb",fontSize:11,fontWeight:700,color:T.sub,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  <span>📦 คงเหลือ (ยังไม่ใส่ม้วน)</span>
+                  <span style={{fontSize:10,color:T.accent,fontWeight:600}}>💡 คลิกช่องสีน้ำเงินเพื่อเพิ่มเข้าม้วนล่าสุดเลย (ตามลำดับคลิก)</span>
+                </div>
                 <div style={{overflowX:"auto",maxHeight:200,overflowY:"auto"}}>
                   <table style={{borderCollapse:"collapse",fontSize:12,width:"100%"}}>
                     <thead>
@@ -1069,10 +1096,19 @@ function RollSplitModal({ lot, lots = [], lotIdx, busy, onClose, onConfirm, onCo
                             </td>
                             {allSizes.map(sz => {
                               const v = g.map[sz];
+                              const info = cellIdx[`${g.colorName}|${g.colorHex}|${sz}`];
+                              const clickable = v !== undefined && v > 0 && info;
                               return (
-                                <td key={sz} style={{padding:"4px 4px",textAlign:"center",fontFamily:"monospace",borderRight:`1px solid ${T.border}`,fontWeight:700,
-                                  background: v===undefined?"#fff":v<0?"#fef2f2":v===0?"#f0fdf4":"#fff",
-                                  color: v===undefined?"#cbd5e1":v<0?T.red:v===0?T.green:T.text}}>
+                                <td key={sz}
+                                  onClick={clickable ? () => clickCellToLastRoll(info.idx, info.remain) : undefined}
+                                  title={clickable ? `คลิกเพื่อเพิ่ม ${v} ตัวเข้าม้วนปัจจุบัน` : ""}
+                                  style={{padding:"4px 4px",textAlign:"center",fontFamily:"monospace",borderRight:`1px solid ${T.border}`,fontWeight:700,
+                                    background: v===undefined?"#fff":v<0?"#fef2f2":v===0?"#f0fdf4":clickable?"#eef2ff":"#fff",
+                                    color: v===undefined?"#cbd5e1":v<0?T.red:v===0?T.green:clickable?T.accent:T.text,
+                                    cursor: clickable?"pointer":"default",
+                                    transition:"background 0.15s"}}
+                                  onMouseEnter={clickable?e=>e.currentTarget.style.background="#c7d2fe":undefined}
+                                  onMouseLeave={clickable?e=>e.currentTarget.style.background="#eef2ff":undefined}>
                                   {v===undefined?"·":fmtInt(v)}
                                 </td>
                               );
