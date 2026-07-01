@@ -31,7 +31,22 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
     return [...new Set([...base, ...present])].sort(compareSizes);
   }, [clothing]);
 
-  const setCell = (ci, sz, val) => setGrid(g => ({ ...g, [ci]: { ...(g[ci] || {}), [sz]: val } }));
+  const [linkedColors, setLinkedColors] = useState(() => new Set()); // 🔗 สีที่ติ๊กไว้ → กรอกแล้วซิงก์ค่าเข้าทุกสีที่ติ๊ก
+  const toggleLink = (ci) => setLinkedColors(s => {
+    const next = new Set(s);
+    if (next.has(ci)) next.delete(ci); else next.add(ci);
+    return next;
+  });
+  const setCell = (ci, sz, val) => setGrid(g => {
+    const nextG = { ...g, [ci]: { ...(g[ci] || {}), [sz]: val } };
+    // 🔗 ถ้าสีนี้ถูกติ๊กไว้ → propagate ค่าไปยังทุกสีที่ติ๊กเหมือนกัน (ในไซส์เดียวกัน)
+    if (linkedColors.has(ci) && linkedColors.size > 1) {
+      linkedColors.forEach(otherCi => {
+        if (otherCi !== ci) nextG[otherCi] = { ...(nextG[otherCi] || {}), [sz]: val };
+      });
+    }
+    return nextG;
+  });
 
   const gridToItems = (g) => {
     const out = [];
@@ -192,10 +207,12 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
                     return (
                       <tr key={ci} style={{borderTop:`1px solid ${T.border}`}}>
                         <td style={{position:"sticky",left:0,background:"white",zIndex:1,padding:"6px 10px",borderRight:`1px solid ${T.border}`,whiteSpace:"nowrap"}}>
-                          <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
+                          <label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",userSelect:"none"}} title="🔗 ติ๊กหลายสี → กรอกสีเดียว ค่าจะซิงก์ไปทุกสีที่ติ๊ก">
+                            <input type="checkbox" checked={linkedColors.has(ci)} onChange={()=>toggleLink(ci)} style={{cursor:"pointer",accentColor:T.accent}}/>
                             <span style={{width:12,height:12,borderRadius:3,background:c.colorHex||c.hex||"#999",border:"1px solid rgba(0,0,0,0.15)"}}/>
                             <span style={{fontWeight:600,color:T.text}}>{c.colorName}</span>
-                          </span>
+                            {linkedColors.has(ci) && <span style={{fontSize:10,color:T.accent,marginLeft:2}}>🔗</span>}
+                          </label>
                         </td>
                         {gridSizes.map(sz => (
                           <td key={sz} style={{padding:"3px",borderRight:`1px solid ${T.border}`}}>
