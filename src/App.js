@@ -257,6 +257,7 @@ export default function App() {
   const [editingStock, setEditingStock] = useState(null);
   const [collapsedItems, setCollapsedItems] = useState({});
   const [manageColorMode, setManageColorMode] = useState({}); // 🔧 { [itemId]: true } → แสดง ✕ ลบสี
+  const [clothingSubTab, setClothingSubTab] = useState("all"); // "all" | "sleeveless" | "longsleeve" | "other"
   const toggleCollapse = (id) => setCollapsedItems(prev => ({...prev, [id]: !prev[id]}));
   const clothingImgRef = useRef(null);
   const [uploadingClothingId, setUploadingClothingId] = useState(null);
@@ -2746,12 +2747,39 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
               {(inventoryTab==="clothing"||inventoryTab==="sports")&&(()=>{
                 // 👕 clothing tab → apparel + รุ่นเก่าที่ไม่มี sizeType
                 // 👟 sports tab → shoe items only
-                const tabItems = clothingItems.filter(it =>
+                let tabItems = clothingItems.filter(it =>
                   inventoryTab==="sports" ? it.sizeType==="shoe" : it.sizeType!=="shoe"
                 ).sort((a,b)=>(a.sortIndex??9999)-(b.sortIndex??9999));
+                // 🏷️ sub-tab กรองตามชนิดแขน (เฉพาะ clothing) — อ่านจากชื่อรุ่น
+                const detectSleeve = (name="") => {
+                  const s = String(name).toLowerCase();
+                  if (s.includes("แขนกุด")) return "sleeveless";
+                  if (s.includes("แขนยาว")) return "longsleeve";
+                  return "other";
+                };
+                const subCounts = { all: tabItems.length, sleeveless: 0, longsleeve: 0, other: 0 };
+                tabItems.forEach(it => { subCounts[detectSleeve(it.model)]++; });
+                if (inventoryTab==="clothing" && clothingSubTab!=="all") {
+                  tabItems = tabItems.filter(it => detectSleeve(it.model) === clothingSubTab);
+                }
                 return (
                 <div style={{animation:"fadeUp 0.4s ease"}}>
                 <input ref={clothingImgRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleClothingImageUpload}/>
+                {inventoryTab==="clothing" && (
+                  <div style={{display:"flex",gap:5,marginBottom:14,padding:3,background:T.card,borderRadius:9,border:`1px solid ${T.border}`,width:"fit-content",flexWrap:"wrap"}}>
+                    {[
+                      {id:"all",icon:"👕",label:"ทั้งหมด"},
+                      {id:"sleeveless",icon:"🎽",label:"แขนกุด"},
+                      {id:"longsleeve",icon:"🧥",label:"แขนยาว"},
+                      {id:"other",icon:"📦",label:"อื่นๆ"},
+                    ].map(s=>(
+                      <button key={s.id} onClick={()=>setClothingSubTab(s.id)}
+                        style={{padding:"5px 12px",borderRadius:7,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"'Sarabun',sans-serif",background:clothingSubTab===s.id?T.accent:"transparent",color:clothingSubTab===s.id?"white":T.sub,transition:"all 0.15s"}}>
+                        {s.icon} {s.label} <span style={{opacity:0.7,fontSize:10,marginLeft:2}}>({subCounts[s.id]})</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {tabItems.length===0&&(
                   <div style={{textAlign:"center",padding:60,background:T.card,borderRadius:16,border:`1px solid ${T.border}`}}>
                     <div style={{fontSize:48,marginBottom:12,opacity:0.3}}>{inventoryTab==="sports"?"👟":"👕"}</div>
