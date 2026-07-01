@@ -36,7 +36,7 @@ export default function App() {
     authReady.then(() => setAuthChecked(true));
   }, []);
 
-  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs, catalogOrders, attendance, payrollRuns, customSizes, usersLoaded } = useFirestore();
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs, catalogOrders, attendance, payrollRuns, customSizes, pendingMixSales, usersLoaded } = useFirestore();
   // 📏 ไซส์ที่ใช้จริง = มาตรฐาน + ที่เพิ่มเอง
   const apparelSizes = useMemo(() => mergeSizes(SIZES, customSizes?.apparel), [customSizes]);
   const shoeSizes = useMemo(() => mergeSizes(SHOE_SIZES, customSizes?.shoe), [customSizes]);
@@ -323,7 +323,9 @@ export default function App() {
   const [clothingTxType, setClothingTxType] = useState("รับ");
   const [clothingTxQty, setClothingTxQty] = useState("");
   const [clothingTxSizeQty, setClothingTxSizeQty] = useState({}); // {S:"10", M:"5"} จ่าย/รับหลายไซส์พร้อมกัน
-  const [mixModal, setMixModal] = useState(null); // 🧺 {item} ขายคละสีคละไซส์
+  const [mixModal, setMixModal] = useState(null); // 🧺 {item, pendingId?} ขายคละสีคละไซส์
+  const [mixQuickQty, setMixQuickQty] = useState(""); // 🚀 ยอดรวมประมาณการ (โหมดบันทึกไว้ก่อน)
+  const [pendingMixListOpen, setPendingMixListOpen] = useState(false);
   const [mixRows, setMixRows] = useState([]); // [{colorIdx, size, qty}]
   const [mixNote, setMixNote] = useState("");
   const [showSizeManager, setShowSizeManager] = useState(false); // 📏 modal จัดการไซส์
@@ -836,6 +838,58 @@ export default function App() {
     setMixModal({ item });
     setMixRows([{ colorIdx: 0, size: "", qty: "" }]);
     setMixNote("");
+    setMixQuickQty("");
+  };
+  // 🕐 เปิด modal ต่อจาก pending — ให้กรอกรายละเอียดที่ค้าง
+  const openMixFromPending = (p) => {
+    const item = clothingItems.find(i => i.id === p.itemId);
+    if (!item) { alert("ไม่พบรุ่นสินค้าเดิม (อาจถูกลบ)"); return; }
+    setMixModal({ item, pendingId: p.id });
+    setMixRows(p.rows && p.rows.length > 0 ? p.rows : [{ colorIdx: 0, size: "", qty: "" }]);
+    setMixNote(p.note || "");
+    setMixQuickQty(p.quickQty ? String(p.quickQty) : "");
+    setPendingMixListOpen(false);
+  };
+  // 🚀 บันทึกไว้ก่อน — ยังไม่ตัดสต็อก, ให้กรอกรายละเอียดทีหลัง
+  const handleMixQuickSave = async () => {
+    if (txSaving || !mixModal) return;
+    const item = mixModal.item;
+    const qty = Number(mixQuickQty) || 0;
+    if (qty <= 0 && mixRows.every(r => !Number(r.qty))) {
+      alert("กรุณากรอกยอดรวมประมาณการ หรือใส่รายละเอียดอย่างน้อย 1 แถว");
+      return;
+    }
+    setTxSaving(true);
+    try {
+      const payload = {
+        itemId: item.id,
+        itemModel: item.model,
+        note: mixNote || "",
+        quickQty: qty,
+        rows: mixRows.filter(r => r.qty || r.size).map(r => ({ colorIdx: Number(r.colorIdx)||0, size: r.size||"", qty: Number(r.qty)||0 })),
+        status: "pending",
+        createdBy: user.name || "",
+        createdAt: serverTimestamp(),
+      };
+      if (mixModal.pendingId) {
+        await updateDoc(doc(db, "pendingMixSales", mixModal.pendingId), { ...payload, updatedAt: serverTimestamp() });
+      } else {
+        await addDoc(collection(db, "pendingMixSales"), payload);
+      }
+      logAudit(user, {
+        action: AUDIT_ACTIONS.STOCK, collection: "pendingMixSales", targetId: mixModal.pendingId || "-", targetLabel: item.model,
+        note: `🕐 บันทึกขายคละไว้ก่อน · ${qty || "?"} ตัว${mixNote ? ` · ${mixNote}` : ""}`,
+      });
+      setMixModal(null); setMixRows([]); setMixNote(""); setMixQuickQty("");
+      setTxSuccess(true); setTimeout(() => setTxSuccess(false), 1500);
+    } catch (e) {
+      alert("บันทึกไม่สำเร็จ: " + (e.message || e));
+    } finally { setTxSaving(false); }
+  };
+  // 🗑 ลบ pending
+  const handleDeletePending = async (id) => {
+    if (!window.confirm("ลบรายการที่รอระบุนี้?")) return;
+    try { await deleteDoc(doc(db, "pendingMixSales", id)); } catch (e) { alert("ลบไม่สำเร็จ: " + (e.message || e)); }
   };
 
   // 🧺 ตัดสต็อกแบบคละสีคละไซส์ (หลายแถวในครั้งเดียว)
@@ -883,7 +937,11 @@ export default function App() {
         action: AUDIT_ACTIONS.STOCK, collection: "clothing", targetId: item.id, targetLabel: item.model,
         note: `🧺 ขายคละ ${totalQty} ตัว [${rows.map(r => `${item.colors[r.colorIdx].colorName}/${r.size}:${r.qty}`).join(", ")}]${mixNote ? ` · ${mixNote}` : ""}`,
       });
-      setMixModal(null); setMixRows([]); setMixNote("");
+      // 🕐 ถ้ามาจาก pending → ลบทิ้ง (ตัดสต็อกเรียบร้อยแล้ว)
+      if (mixModal.pendingId) {
+        try { await deleteDoc(doc(db, "pendingMixSales", mixModal.pendingId)); } catch {}
+      }
+      setMixModal(null); setMixRows([]); setMixNote(""); setMixQuickQty("");
       setTxSuccess(true); setTimeout(() => setTxSuccess(false), 1500);
     } catch (e) {
       alert("บันทึกไม่สำเร็จ: " + (e.message || e));
@@ -2766,18 +2824,26 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 <div style={{animation:"fadeUp 0.4s ease"}}>
                 <input ref={clothingImgRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleClothingImageUpload}/>
                 {inventoryTab==="clothing" && (
-                  <div style={{display:"flex",gap:5,marginBottom:14,padding:3,background:T.card,borderRadius:9,border:`1px solid ${T.border}`,width:"fit-content",flexWrap:"wrap"}}>
-                    {[
-                      {id:"all",icon:"👕",label:"ทั้งหมด"},
-                      {id:"sleeveless",icon:"🎽",label:"แขนกุด"},
-                      {id:"longsleeve",icon:"🧥",label:"แขนยาว"},
-                      {id:"other",icon:"👔",label:"แขนสั้น"},
-                    ].map(s=>(
-                      <button key={s.id} onClick={()=>setClothingSubTab(s.id)}
-                        style={{padding:"5px 12px",borderRadius:7,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"'Sarabun',sans-serif",background:clothingSubTab===s.id?T.accent:"transparent",color:clothingSubTab===s.id?"white":T.sub,transition:"all 0.15s"}}>
-                        {s.icon} {s.label} <span style={{opacity:0.7,fontSize:10,marginLeft:2}}>({subCounts[s.id]})</span>
+                  <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+                    <div style={{display:"flex",gap:5,padding:3,background:T.card,borderRadius:9,border:`1px solid ${T.border}`,flexWrap:"wrap"}}>
+                      {[
+                        {id:"all",icon:"👕",label:"ทั้งหมด"},
+                        {id:"sleeveless",icon:"🎽",label:"แขนกุด"},
+                        {id:"longsleeve",icon:"🧥",label:"แขนยาว"},
+                        {id:"other",icon:"👔",label:"แขนสั้น"},
+                      ].map(s=>(
+                        <button key={s.id} onClick={()=>setClothingSubTab(s.id)}
+                          style={{padding:"5px 12px",borderRadius:7,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"'Sarabun',sans-serif",background:clothingSubTab===s.id?T.accent:"transparent",color:clothingSubTab===s.id?"white":T.sub,transition:"all 0.15s"}}>
+                          {s.icon} {s.label} <span style={{opacity:0.7,fontSize:10,marginLeft:2}}>({subCounts[s.id]})</span>
+                        </button>
+                      ))}
+                    </div>
+                    {(pendingMixSales||[]).length>0&&(
+                      <button onClick={()=>setPendingMixListOpen(true)}
+                        style={{padding:"7px 14px",borderRadius:9,border:"1px solid rgba(184,134,0,0.5)",background:"rgba(184,134,0,0.15)",color:T.amber,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"'Sarabun',sans-serif",display:"flex",alignItems:"center",gap:6}}>
+                        🕐 รอระบุรายละเอียด <span style={{background:T.amber,color:"white",padding:"1px 8px",borderRadius:10,fontSize:11}}>{pendingMixSales.length}</span>
                       </button>
-                    ))}
+                    )}
                   </div>
                 )}
                 {tabItems.length===0&&(
@@ -6274,6 +6340,39 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
         </Modal>
       )}
 
+      {/* ── MODAL: รายการรอระบุรายละเอียด (pending mix sales) ── */}
+      {pendingMixListOpen&&(
+        <Modal onClose={()=>setPendingMixListOpen(false)} w={720}>
+          <MHead title={`🕐 รายการขายคละที่รอระบุ (${(pendingMixSales||[]).length})`} sub="คลิกรายการ → กรอกสี/ไซส์ → ตัดสต็อกและออกบิลได้" onClose={()=>setPendingMixListOpen(false)} color={T.amber}/>
+          {(pendingMixSales||[]).length===0?(
+            <div style={{padding:40,textAlign:"center",color:T.muted,fontSize:13}}>ไม่มีรายการค้าง 🎉</div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"60vh",overflowY:"auto"}}>
+              {pendingMixSales.map(p=>{
+                const item = clothingItems.find(i=>i.id===p.itemId);
+                const total = (p.rows||[]).reduce((s,r)=>s+(Number(r.qty)||0),0);
+                const gone = !item;
+                return (
+                  <div key={p.id} style={{padding:"10px 14px",background:gone?"#fef2f2":"#fffbeb",border:`1px solid ${gone?"#fecaca":"#fde68a"}`,borderRadius:9,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                    <div style={{flex:"1 1 200px"}}>
+                      <div style={{fontSize:13,fontWeight:700,color:T.text}}>{p.itemModel||"?"}{gone&&<span style={{marginLeft:6,fontSize:10,color:T.red}}>· ไม่พบสินค้า</span>}</div>
+                      <div style={{fontSize:10,color:T.muted,marginTop:2}}>
+                        {p.note && <span>📝 {p.note} · </span>}
+                        ~{p.quickQty||total||"?"} ตัว
+                        {total>0&&<span> · กรอกแล้ว {total}</span>}
+                        · โดย {p.createdBy||"?"}
+                      </div>
+                    </div>
+                    {!gone&&<button onClick={()=>openMixFromPending(p)} style={{padding:"7px 14px",borderRadius:7,border:"none",background:T.accent,color:"white",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>✏️ กรอกต่อ</button>}
+                    <button onClick={()=>handleDeletePending(p.id)} title="ลบรายการนี้" style={{padding:"7px 10px",borderRadius:7,border:"1px solid rgba(248,113,113,0.3)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:12}}>🗑</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Modal>
+      )}
+
       {/* ── MODAL: ขายคละสีคละไซส์ ── */}
       {mixModal&&(()=>{
         const item = mixModal.item;
@@ -6288,11 +6387,17 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
         const stockOf=(ci,sz)=>((item.colors[ci]||{}).stock||{})[sz]||0;
         return (
         <Modal onClose={()=>setMixModal(null)} w={640}>
-          <MHead title="🧺 ขายคละสีคละไซส์" onClose={()=>setMixModal(null)} color={T.amber}/>
+          <MHead title={mixModal.pendingId?"✏️ กรอกรายละเอียดที่ค้าง":"🧺 ขายคละสีคละไซส์"} onClose={()=>setMixModal(null)} color={T.amber}/>
           {txSuccess&&<Toast msg="ตัดสต็อกคละสำเร็จ!"/>}
           <div style={{padding:12,background:"rgba(184,134,0,0.06)",border:`1px solid rgba(184,134,0,0.2)`,borderRadius:10,marginBottom:14}}>
-            <div style={{fontSize:13,fontWeight:700,color:T.text}}>{item.model}</div>
-            <div style={{fontSize:11,color:T.sub,marginTop:2}}>เลือกสี + ไซส์ + จำนวน แต่ละแถว · ตัดสต็อกตามจริง (บิลออกแยก)</div>
+            <div style={{fontSize:13,fontWeight:700,color:T.text}}>{item.model}{mixModal.pendingId&&<span style={{marginLeft:8,fontSize:10,color:T.amber,fontWeight:600}}>· กำลังกรอกต่อจาก "รอระบุ"</span>}</div>
+            <div style={{fontSize:11,color:T.sub,marginTop:2}}>💡 กรอกรายละเอียดครบ = ตัดสต็อก · กรอกไม่ครบ = บันทึกไว้ก่อน กรอกทีหลังได้</div>
+          </div>
+          <div style={{padding:10,background:"#f8fafc",border:`1px dashed ${T.border}`,borderRadius:9,marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
+            <label style={{fontSize:11,color:T.muted,fontWeight:600,whiteSpace:"nowrap"}}>🚀 ยอดรวมประมาณการ:</label>
+            <input type="number" placeholder="เช่น 20" value={mixQuickQty} onChange={e=>setMixQuickQty(e.target.value)}
+              style={{width:100,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"6px 10px",fontFamily:"monospace",fontSize:13,outline:"none",textAlign:"center"}}/>
+            <span style={{fontSize:10,color:T.muted}}>ตัว · ใช้ตอน "บันทึกไว้ก่อน" — ยังไม่ต้องเลือกสี/ไซส์</span>
           </div>
 
           <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
@@ -6341,9 +6446,13 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
             <div style={{fontSize:13,color:T.green,fontWeight:700}}>มูลค่า ~{totalValue.toLocaleString("th-TH")} ฿</div>
           </div>
 
-          <div style={{display:"flex",gap:10}}>
-            <BtnGhost onClick={()=>setMixModal(null)} disabled={txSaving} style={{flex:1}}>ยกเลิก</BtnGhost>
-            <BtnDanger onClick={handleMixDispatch} disabled={txSaving||totalQty<=0} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":`✅ ตัดสต็อก (${totalQty})`}</BtnDanger>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+            <BtnGhost onClick={()=>setMixModal(null)} disabled={txSaving} style={{flex:"1 1 100px",minWidth:100}}>ยกเลิก</BtnGhost>
+            <button onClick={handleMixQuickSave} disabled={txSaving}
+              style={{flex:"1 1 180px",minWidth:180,padding:"10px 14px",borderRadius:9,border:"1px solid rgba(184,134,0,0.4)",background:"rgba(184,134,0,0.12)",color:T.amber,cursor:txSaving?"not-allowed":"pointer",fontSize:13,fontWeight:700,fontFamily:"'Sarabun',sans-serif",opacity:txSaving?0.5:1}}>
+              🚀 บันทึกไว้ก่อน (กรอกทีหลัง)
+            </button>
+            <BtnDanger onClick={handleMixDispatch} disabled={txSaving||totalQty<=0} style={{flex:"1 1 180px",minWidth:180}}>{txSaving?"⏳ กำลังบันทึก...":`✅ ตัดสต็อก (${totalQty})`}</BtnDanger>
           </div>
         </Modal>
         );
