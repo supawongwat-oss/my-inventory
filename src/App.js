@@ -334,6 +334,8 @@ export default function App() {
   const [pendingMixListOpen, setPendingMixListOpen] = useState(false);
   // 🧺 mix-in-order: adder form
   const [orderMixForm, setOrderMixForm] = useState({ clothingId: "", qty: "" });
+  const [orderMixExpanded, setOrderMixExpanded] = useState(false); // พับเก็บ default
+  const [orderFreeExpanded, setOrderFreeExpanded] = useState(false); // พับเก็บ default
   // ✏️ modal สำหรับกรอกรายละเอียดใบสั่งของที่ค้าง
   const [fillOrderMix, setFillOrderMix] = useState(null); // { order }
   const [fillRowsByIdx, setFillRowsByIdx] = useState({}); // { [mixItemIdx]: [{colorIdx, size, qty}, ...] }
@@ -5044,21 +5046,26 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
           <div style={{fontSize:12,fontWeight:700,color:T.accent,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.06em"}}>เลือกสินค้า</div>
 
           {/* 🧺 คละ — เพิ่มรายการโดยระบุแค่รุ่น + จำนวน (สี/ไซส์ กรอกทีหลัง) */}
-          <div style={{marginBottom:14,padding:12,background:"rgba(184,134,0,0.06)",border:`1px dashed ${T.amber}`,borderRadius:10}}>
-            <div style={{fontSize:11,fontWeight:700,color:T.amber,marginBottom:8}}>🧺 เพิ่มแบบคละ (ระบุสี/ไซส์ทีหลัง — ยังไม่ตัดสต๊อก)</div>
-            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr auto",gap:8,alignItems:"end"}}>
-              <select value={orderMixForm.clothingId} onChange={e=>setOrderMixForm(f=>({...f,clothingId:e.target.value}))}
-                style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
-                <option value="">-- เลือกรุ่น --</option>
-                {clothingItems.map(i=><option key={i.id} value={i.id}>{i.model}</option>)}
-              </select>
-              <input type="number" placeholder="จำนวน" value={orderMixForm.qty} onChange={e=>setOrderMixForm(f=>({...f,qty:e.target.value}))}
-                style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 10px",fontFamily:"monospace",fontSize:13,outline:"none",textAlign:"center"}}/>
-              <button onClick={addOrderMixItem} disabled={!orderMixForm.clothingId||!(Number(orderMixForm.qty)>0)}
-                style={{padding:"8px 16px",borderRadius:8,border:"none",background:T.amber,color:"white",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"'Sarabun',sans-serif",whiteSpace:"nowrap",opacity:(!orderMixForm.clothingId||!(Number(orderMixForm.qty)>0))?0.4:1}}>
-                ➕ เพิ่มคละ
-              </button>
+          <div style={{marginBottom:10,background:"rgba(184,134,0,0.06)",border:`1px dashed ${T.amber}`,borderRadius:10,overflow:"hidden"}}>
+            <div onClick={()=>setOrderMixExpanded(v=>!v)} style={{padding:"8px 12px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",userSelect:"none"}}>
+              <div style={{fontSize:11,fontWeight:700,color:T.amber}}>🧺 เพิ่มแบบคละ (ระบุสี/ไซส์ทีหลัง — ยังไม่ตัดสต๊อก)</div>
+              <span style={{fontSize:10,color:T.amber,fontWeight:700}}>{orderMixExpanded?"▲ ย่อ":"▼ ขยาย"}</span>
             </div>
+            {orderMixExpanded && (
+              <div style={{padding:"0 12px 12px",display:"grid",gridTemplateColumns:"2fr 1fr auto",gap:8,alignItems:"end"}}>
+                <select value={orderMixForm.clothingId} onChange={e=>setOrderMixForm(f=>({...f,clothingId:e.target.value}))}
+                  style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
+                  <option value="">-- เลือกรุ่น --</option>
+                  {clothingItems.map(i=><option key={i.id} value={i.id}>{i.model}</option>)}
+                </select>
+                <input type="number" placeholder="จำนวน" value={orderMixForm.qty} onChange={e=>setOrderMixForm(f=>({...f,qty:e.target.value}))}
+                  style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 10px",fontFamily:"monospace",fontSize:13,outline:"none",textAlign:"center"}}/>
+                <button onClick={addOrderMixItem} disabled={!orderMixForm.clothingId||!(Number(orderMixForm.qty)>0)}
+                  style={{padding:"8px 16px",borderRadius:8,border:"none",background:T.amber,color:"white",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"'Sarabun',sans-serif",whiteSpace:"nowrap",opacity:(!orderMixForm.clothingId||!(Number(orderMixForm.qty)>0))?0.4:1}}>
+                  ➕ เพิ่มคละ
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Step 1: เลือกรุ่น + สี */}
@@ -5164,9 +5171,13 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
             const willLink = matched && freeItemCutStock;
             const stockShort = willLink && matched.stock < fqty;
             return (
-            <div style={{marginBottom:14,padding:12,background:"rgba(217,119,6,0.04)",border:"1px dashed rgba(217,119,6,0.35)",borderRadius:10}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:8,letterSpacing:"0.04em"}}>✍️ เพิ่มแถวอิสระ (พิมพ์เอง)</div>
-              <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 80px 80px",gap:6,alignItems:"end"}}>
+            <div style={{marginBottom:14,background:"rgba(217,119,6,0.04)",border:"1px dashed rgba(217,119,6,0.35)",borderRadius:10,overflow:"hidden"}}>
+              <div onClick={()=>setOrderFreeExpanded(v=>!v)} style={{padding:"8px 12px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",userSelect:"none"}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#92400e",letterSpacing:"0.04em"}}>✍️ เพิ่มแถวอิสระ (พิมพ์เอง)</div>
+                <span style={{fontSize:10,color:"#92400e",fontWeight:700}}>{orderFreeExpanded?"▲ ย่อ":"▼ ขยาย"}</span>
+              </div>
+              {orderFreeExpanded && <>
+              <div style={{padding:"0 12px",display:"grid",gridTemplateColumns:"2fr 1fr 1fr 80px 80px",gap:6,alignItems:"end"}}>
                 <input value={freeItemForm.name} onChange={e=>setFreeItemForm(f=>({...f,name:e.target.value}))} placeholder="รุ่น / ชื่อสินค้า"
                   style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}/>
                 <input value={freeItemForm.colorName} onChange={e=>setFreeItemForm(f=>({...f,colorName:e.target.value}))} placeholder="สี"
@@ -5202,6 +5213,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                 }} disabled={!freeItemForm.name.trim()||!Number(freeItemForm.qty)}
                   style={{padding:"7px 12px",borderRadius:7,border:"none",background:willLink?"#16a34a":"#d97706",color:"white",fontSize:12,fontWeight:700,cursor:freeItemForm.name.trim()&&Number(freeItemForm.qty)?"pointer":"not-allowed",opacity:freeItemForm.name.trim()&&Number(freeItemForm.qty)?1:0.4,fontFamily:"inherit"}}>{willLink?"+ ตัดสต๊อก":"+ เพิ่ม"}</button>
               </div>
+              <div style={{padding:"0 12px 12px"}}>
               {matched ? (
                 <div style={{marginTop:8,padding:"8px 10px",background:"rgba(22,163,74,0.08)",border:"1px solid rgba(22,163,74,0.25)",borderRadius:7,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                   <span style={{fontSize:11,color:"#15803d",fontWeight:700}}>✓ พบในระบบ:</span>
@@ -5216,6 +5228,8 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
               ) : (
                 <div style={{fontSize:10,color:"#92400e",marginTop:6,opacity:0.8}}>💡 กรอกครบ (รุ่น/สี/ไซส์) ระบบจะค้นในคลังให้อัตโนมัติ — ถ้าไม่เจอจะเป็นรายการอิสระ (ไม่ตัดสต๊อก)</div>
               )}
+              </div>
+              </>}
             </div>
             );
           })()}
