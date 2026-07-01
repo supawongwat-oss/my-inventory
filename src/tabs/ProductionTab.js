@@ -231,8 +231,15 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
 
       {/* ── CUSTOM ORDERS ── */}
       {subTab === "custom" && (() => {
-        const activeOrders = customOrders.filter(o => (o.status||"") !== "เข้าคลัง");
-        const doneOrders = customOrders.filter(o => (o.status||"") === "เข้าคลัง");
+        // 🔧 เช็คจาก lots — ใบจะ "เสร็จ" ก็ต่อเมื่อทุก lot (ที่ไม่ยกเลิก) อยู่ "เข้าคลัง"
+        // fallback: ถ้าใบไม่มี lots (legacy) ให้ดูที่ order.status
+        const isOrderDone = (o) => {
+          const lots = (o.lots || []).filter(l => l.status !== "ยกเลิก");
+          if (lots.length === 0) return (o.status||"") === "เข้าคลัง";
+          return lots.every(l => l.status === "เข้าคลัง");
+        };
+        const activeOrders = customOrders.filter(o => !isOrderDone(o));
+        const doneOrders = customOrders.filter(o => isOrderDone(o));
         const filteredCustom = customSubTab==="active" ? activeOrders : customSubTab==="done" ? doneOrders : customOrders;
         return (
         <>
