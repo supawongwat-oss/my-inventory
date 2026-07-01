@@ -256,6 +256,7 @@ export default function App() {
   const [newColorHex, setNewColorHex] = useState("#ffffff");
   const [editingStock, setEditingStock] = useState(null);
   const [collapsedItems, setCollapsedItems] = useState({});
+  const [manageColorMode, setManageColorMode] = useState({}); // 🔧 { [itemId]: true } → แสดง ✕ ลบสี
   const toggleCollapse = (id) => setCollapsedItems(prev => ({...prev, [id]: !prev[id]}));
   const clothingImgRef = useRef(null);
   const [uploadingClothingId, setUploadingClothingId] = useState(null);
@@ -2813,6 +2814,10 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                           const hasBom = boms.some(b => (b.id===item.id || b.clothingId===item.id) && (b.variants||[]).some(v=>(v.materials||[]).length>0));
                           return <button onClick={()=>openBomModal(item)} title="ตั้งสูตรวัตถุดิบ (BOM)" style={{padding:"7px 14px",borderRadius:8,border:`1px solid ${hasBom?"rgba(22,163,74,0.35)":"rgba(124,58,237,0.3)"}`,background:hasBom?"rgba(22,163,74,0.08)":"rgba(124,58,237,0.08)",color:hasBom?"#16a34a":"#7c3aed",cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:600}}>📐 {hasBom?"BOM ✓":"ตั้งสูตร BOM"}</button>;
                         })()}
+                        {role.canDelete&&(item.colors||[]).length>0&&
+                          <button onClick={()=>setManageColorMode(m=>({...m,[item.id]:!m[item.id]}))}
+                            title={manageColorMode[item.id]?"ปิดโหมดลบสี":"เปิดโหมดลบสี — ปุ่ม ✕ จะแสดงในแต่ละสี"}
+                            style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${manageColorMode[item.id]?"rgba(184,134,0,0.4)":"rgba(59,91,139,0.2)"}`,background:manageColorMode[item.id]?"rgba(184,134,0,0.15)":"transparent",color:manageColorMode[item.id]?T.amber:T.muted,cursor:"pointer",fontSize:12,fontWeight:600}}>🔧 {manageColorMode[item.id]?"ปิดจัดการสี":"จัดการสี"}</button>}
                         {role.canDelete&&<button onClick={()=>{setDeleteClothingTarget(item);setDeleteConfirmText("");}} style={{padding:"7px 12px",borderRadius:8,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:12}}>✕</button>}
                       </div>
                     </div>
@@ -2903,7 +2908,9 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                                       <button onClick={()=>{setClothingTxModal({item,colorIdx:ci,size:null});setClothingTxType("จ่าย");setClothingTxQty("");setClothingTxSizeQty({});setClothingTxNote("");}} style={{padding:"4px 8px",borderRadius:6,border:"1px solid rgba(248,113,113,0.3)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:10,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>⬆ จ่าย</button>
                                     </div>
                                   </td>
-                                  <td style={{textAlign:"center",padding:"4px 6px"}}></td>
+                                  <td style={{textAlign:"center",padding:"4px 6px"}}>
+                                    {role.canDelete&&manageColorMode[item.id]&&<button onClick={()=>handleDeleteClothingColor(item.id,ci)} title={`ลบสี ${col.colorName}`} style={{background:"rgba(248,113,113,0.15)",border:"1px solid rgba(248,113,113,0.4)",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#dc2626",fontWeight:700}}>✕</button>}
+                                  </td>
                                 </tr>
                               );
                             })}
@@ -3088,7 +3095,9 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                                 <td style={{textAlign:"center",padding:"4px 6px"}}>
                                   <span style={{fontFamily:"'DM Mono',monospace",fontWeight:700,fontSize:12,color:T.accent}}>{total}</span>
                                 </td>
-                                <td style={{textAlign:"center",padding:"4px 6px"}}></td>
+                                <td style={{textAlign:"center",padding:"4px 6px"}}>
+                                  {role.canDelete&&manageColorMode[item.id]&&<button onClick={()=>handleDeleteClothingColor(item.id,ci)} title={`ลบสี ${col.colorName}`} style={{background:"rgba(248,113,113,0.15)",border:"1px solid rgba(248,113,113,0.4)",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#dc2626",fontWeight:700}}>✕</button>}
+                                </td>
                               </tr>
                             );
                           })}
