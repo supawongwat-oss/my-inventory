@@ -63,9 +63,9 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                 {n > 0 && (() => {
                   // 🎨 CUSTOM order → รูปใหญ่ขึ้นเยอะ (ลูกค้าเห็นดีไซน์ชัด)
                   const isCustom = String(order.orderNo||"").startsWith("CUS") || order.isCustom;
-                  const boxMax = isCustom ? (landscape?520:420) : (landscape?360:280);
+                  const boxMax = isCustom ? (landscape?416:336) : (landscape?360:280);
                   const boxH = isCustom
-                    ? (n===1 ? (landscape?200:170) : (landscape?150:130))
+                    ? (n===1 ? (landscape?160:136) : (landscape?120:104))
                     : (n===1 ? (landscape?100:88)  : (landscape?80:70));
                   return (
                     <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap:6,maxWidth:boxMax,margin:"0 auto"}}>
