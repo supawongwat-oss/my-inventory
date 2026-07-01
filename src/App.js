@@ -1250,33 +1250,47 @@ export default function App() {
     }));
     setOrderMixForm({ clothingId: "", qty: "" });
   };
-  // ✏️ เปิด modal กรอกรายละเอียดของ order ที่ค้าง
+  // ✏️ เปิด modal กรอกรายละเอียดของ order ที่ค้าง (grid mode)
   const openFillOrderMix = (order) => {
     const init = {};
     (order.items||[]).forEach((it, idx) => {
-      if (it.isMix) init[idx] = [{ colorIdx: 0, size: "", qty: "" }];
+      if (it.isMix) init[idx] = {}; // { [colorIdx]: { [size]: qtyStr } }
     });
     setFillRowsByIdx(init);
     setFillOrderMix({ order });
+  };
+  // 🧩 helper: convert grid { [ci]: { [sz]: q } } → rows [{colorIdx, size, qty}]
+  const gridToRows = (grid) => {
+    const rows = [];
+    Object.entries(grid||{}).forEach(([ci, byS]) => {
+      Object.entries(byS||{}).forEach(([sz, q]) => {
+        const qn = Number(q)||0;
+        if (qn > 0) rows.push({ colorIdx: Number(ci), size: sz, qty: qn });
+      });
+    });
+    return rows;
   };
   // 💾 บันทึกรายละเอียดที่กรอก → แทน mix items ด้วยรายการจริง + ตัดสต็อก
   const handleSaveFillOrderMix = async () => {
     if (!fillOrderMix) return;
     const order = fillOrderMix.order;
     const items = [...(order.items||[])];
-    // ตรวจว่าแต่ละ mix item กรอกครบ (sum ของ rows === original qty)
-    for (const [idxStr, rows] of Object.entries(fillRowsByIdx)) {
+    // 🧩 แปลง grid → rows แล้วตรวจ
+    const rowsByIdx = {};
+    for (const [idxStr, grid] of Object.entries(fillRowsByIdx)) {
+      rowsByIdx[idxStr] = gridToRows(grid);
+    }
+    for (const [idxStr, rows] of Object.entries(rowsByIdx)) {
       const idx = Number(idxStr);
       const mixItem = items[idx];
       if (!mixItem || !mixItem.isMix) continue;
       const sum = rows.reduce((s,r)=>s+(Number(r.qty)||0), 0);
-      const valid = rows.every(r => r.size && Number(r.qty) > 0);
-      if (!valid) { alert(`รายการ "${mixItem.clothingName}" ยังกรอกไม่ครบ (ต้องมีสี/ไซส์/จำนวน ทุกแถว)`); return; }
+      if (rows.length === 0) { alert(`รายการ "${mixItem.clothingName}" ยังไม่ได้กรอกเลย`); return; }
       if (sum !== Number(mixItem.qty)) { alert(`รายการ "${mixItem.clothingName}" ผลรวม ${sum} ≠ ${mixItem.qty} ตัว`); return; }
     }
     // ตรวจสต็อกพอไหม (รวมทุก mix)
-    const stockNeed = new Map(); // key=`${clothingId}|${colorIdx}|${size}` → qty
-    for (const [idxStr, rows] of Object.entries(fillRowsByIdx)) {
+    const stockNeed = new Map();
+    for (const [idxStr, rows] of Object.entries(rowsByIdx)) {
       const idx = Number(idxStr);
       const mixItem = items[idx];
       for (const r of rows) {
@@ -1296,8 +1310,8 @@ export default function App() {
     // แทน mix items ด้วยรายการจริง
     const newItems = [];
     items.forEach((it, idx) => {
-      if (it.isMix && fillRowsByIdx[idx]) {
-        for (const r of fillRowsByIdx[idx]) {
+      if (it.isMix && rowsByIdx[idx]) {
+        for (const r of rowsByIdx[idx]) {
           const cItem = clothingItems.find(x => x.id === it.clothingId);
           const col = cItem?.colors?.[Number(r.colorIdx)];
           newItems.push({
@@ -6508,54 +6522,81 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
       {fillOrderMix&&(()=>{
         const order = fillOrderMix.order;
         const mixItems = (order.items||[]).map((it,idx)=>({it,idx})).filter(x=>x.it.isMix);
+        const setCell = (idx, ci, sz, val) => setFillRowsByIdx(m => ({
+          ...m,
+          [idx]: { ...(m[idx]||{}), [ci]: { ...((m[idx]||{})[ci]||{}), [sz]: val } }
+        }));
         return (
-        <Modal onClose={()=>{setFillOrderMix(null);setFillRowsByIdx({});}} w={760}>
+        <Modal onClose={()=>{setFillOrderMix(null);setFillRowsByIdx({});}} w={1000}>
           <MHead title={`✏️ กรอกรายละเอียด — ${order.orderNo}`} sub={`ลูกค้า: ${order.customerName} · รายการคละ ${mixItems.length} รายการ`} onClose={()=>{setFillOrderMix(null);setFillRowsByIdx({});}} color={T.amber}/>
-          <div style={{display:"flex",flexDirection:"column",gap:14,maxHeight:"70vh",overflowY:"auto"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:16,maxHeight:"72vh",overflowY:"auto"}}>
             {mixItems.map(({it,idx})=>{
               const cItem = clothingItems.find(c=>c.id===it.clothingId);
-              const rows = fillRowsByIdx[idx]||[];
-              const rowSum = rows.reduce((s,r)=>s+(Number(r.qty)||0),0);
+              const grid = fillRowsByIdx[idx]||{};
+              const gridSum = Object.values(grid).reduce((s,byS)=>s+Object.values(byS||{}).reduce((a,q)=>a+(Number(q)||0),0),0);
               const sizes = cItem ? sizesFor(cItem) : [];
-              const setRow = (ri, patch) => setFillRowsByIdx(m=>({...m, [idx]: (m[idx]||[]).map((r,i)=>i===ri?{...r,...patch}:r)}));
-              const addRow = () => setFillRowsByIdx(m=>({...m, [idx]: [...(m[idx]||[]), {colorIdx:0,size:"",qty:""}]}));
-              const delRow = (ri) => setFillRowsByIdx(m=>({...m, [idx]: (m[idx]||[]).filter((_,i)=>i!==ri)}));
+              const target = Number(it.qty)||0;
+              const done = gridSum===target;
               return (
-                <div key={idx} style={{padding:12,background:"#fffbeb",border:`1px solid ${rowSum===it.qty?"#86efac":"#fde68a"}`,borderRadius:10}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                    <div style={{fontSize:13,fontWeight:700,color:T.text}}>{it.clothingName} <span style={{color:T.amber,marginLeft:6}}>· {it.qty} ตัว</span></div>
-                    <div style={{fontSize:11,fontWeight:700,color:rowSum===it.qty?"#059669":T.amber}}>กรอกแล้ว {rowSum}/{it.qty}</div>
+                <div key={idx} style={{padding:12,background:"#fffbeb",border:`2px solid ${done?"#86efac":"#fde68a"}`,borderRadius:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>
+                    <div style={{fontSize:14,fontWeight:700,color:T.text}}>{it.clothingName} <span style={{color:T.amber,marginLeft:6,fontSize:13}}>· เป้าหมาย {target} ตัว</span></div>
+                    <div style={{fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:10,background:done?"#dcfce7":"#fef3c7",color:done?"#059669":T.amber}}>กรอกแล้ว {gridSum}/{target} {done?"✓":""}</div>
                   </div>
                   {!cItem && <div style={{fontSize:11,color:T.red,marginBottom:8}}>⚠️ ไม่พบรุ่นสินค้าเดิม</div>}
                   {cItem && (
-                    <>
-                      <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 30px",gap:6,fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,padding:"0 4px"}}>
-                        <div>สี</div><div>ไซส์</div><div>จำนวน</div><div/>
-                      </div>
-                      {rows.map((r,ri)=>{
-                        const stock = ((cItem.colors?.[Number(r.colorIdx)]||{}).stock||{})[r.size] || 0;
-                        return (
-                          <div key={ri} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 30px",gap:6,marginBottom:6}}>
-                            <select value={r.colorIdx} onChange={e=>setRow(ri,{colorIdx:Number(e.target.value)})}
-                              style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"6px 8px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}>
-                              {cItem.colors.map((c,ci)=><option key={ci} value={ci}>{c.colorName}</option>)}
-                            </select>
-                            <select value={r.size} onChange={e=>setRow(ri,{size:e.target.value})}
-                              style={{background:T.input,border:`1px solid ${r.size?T.inputBorder:"#fbbf24"}`,color:T.text,borderRadius:7,padding:"6px 8px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}>
-                              <option value="">— ไซส์ —</option>
-                              {sizes.map(sz=>{
-                                const s = ((cItem.colors?.[Number(r.colorIdx)]||{}).stock||{})[sz] || 0;
-                                return <option key={sz} value={sz}>{sz} (มี {s})</option>;
-                              })}
-                            </select>
-                            <input type="number" placeholder="0" value={r.qty} onChange={e=>setRow(ri,{qty:e.target.value})} title={r.size?`สต็อก ${stock}`:""}
-                              style={{background:T.input,border:`1px solid ${Number(r.qty)>stock?"#ef4444":T.inputBorder}`,color:T.text,borderRadius:7,padding:"6px 8px",fontFamily:"monospace",fontSize:13,outline:"none",textAlign:"center"}}/>
-                            <button onClick={()=>delRow(ri)} style={{border:"none",background:"transparent",color:T.red,cursor:"pointer",fontSize:13,padding:0}}>✕</button>
-                          </div>
-                        );
-                      })}
-                      <button onClick={addRow} style={{width:"100%",padding:"6px",borderRadius:7,border:`1px dashed ${T.accent}`,background:"rgba(59,91,139,0.05)",color:T.accent,cursor:"pointer",fontSize:11,fontWeight:600,marginTop:4}}>➕ เพิ่มแถว</button>
-                    </>
+                    <div style={{overflowX:"auto"}}>
+                      <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:520}}>
+                        <thead>
+                          <tr style={{background:"#f1f5fb"}}>
+                            <th style={{position:"sticky",left:0,background:"#f1f5fb",zIndex:2,padding:"7px 10px",textAlign:"left",color:T.sub,fontWeight:700,borderRight:`1px solid ${T.border}`,minWidth:120}}>สี \\ ไซส์</th>
+                            {sizes.map(sz=>(
+                              <th key={sz} style={{padding:"7px 3px",textAlign:"center",color:T.text,fontWeight:700,fontFamily:"monospace",minWidth:52,borderRight:`1px solid ${T.border}`}}>{sz}</th>
+                            ))}
+                            <th style={{padding:"7px 8px",textAlign:"center",color:T.accent,fontWeight:700,minWidth:54}}>รวม</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cItem.colors.map((c,ci)=>{
+                            const rowByS = grid[ci]||{};
+                            const rowTotal = Object.values(rowByS).reduce((a,q)=>a+(Number(q)||0),0);
+                            return (
+                              <tr key={ci} style={{borderTop:`1px solid ${T.border}`}}>
+                                <td style={{position:"sticky",left:0,background:"white",zIndex:1,padding:"5px 10px",borderRight:`1px solid ${T.border}`,whiteSpace:"nowrap"}}>
+                                  <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
+                                    <span style={{width:12,height:12,borderRadius:3,background:c.colorHex||c.hex||"#999",border:"1px solid rgba(0,0,0,0.15)"}}/>
+                                    <span style={{fontWeight:600,color:T.text,fontSize:12}}>{c.colorName}</span>
+                                  </span>
+                                </td>
+                                {sizes.map(sz=>{
+                                  const stock = (c.stock||{})[sz]||0;
+                                  const v = rowByS[sz] ?? "";
+                                  const over = Number(v) > stock;
+                                  return (
+                                    <td key={sz} style={{padding:"3px",borderRight:`1px solid ${T.border}`}}>
+                                      <input type="number" inputMode="numeric" value={v} onChange={e=>setCell(idx,ci,sz,e.target.value)} placeholder="·"
+                                        title={`สต็อก ${stock}`}
+                                        style={{width:"100%",minWidth:44,boxSizing:"border-box",textAlign:"center",background:over?"#fee2e2":(Number(v)>0?"#eff6ff":"white"),border:`1px solid ${over?"#ef4444":T.inputBorder}`,borderRadius:5,padding:"6px 2px",fontFamily:"monospace",fontSize:13,outline:"none",color:T.text}}/>
+                                    </td>
+                                  );
+                                })}
+                                <td style={{textAlign:"center",fontFamily:"monospace",fontWeight:700,color:rowTotal>0?T.accent:T.muted}}>{rowTotal||""}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{background:"#f8fafc",borderTop:`2px solid ${T.border}`}}>
+                            <td style={{position:"sticky",left:0,background:"#f8fafc",padding:"7px 10px",fontWeight:700,color:T.sub,borderRight:`1px solid ${T.border}`}}>รวมไซส์</td>
+                            {sizes.map(sz=>{
+                              const colSum = cItem.colors.reduce((s,_,ci)=>s+(Number((grid[ci]||{})[sz])||0),0);
+                              return <td key={sz} style={{padding:"7px 3px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:colSum>0?T.accent:T.muted,borderRight:`1px solid ${T.border}`}}>{colSum||"—"}</td>;
+                            })}
+                            <td style={{padding:"7px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:800,color:done?"#059669":T.amber,fontSize:13}}>{gridSum}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
                   )}
                 </div>
               );
