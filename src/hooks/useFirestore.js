@@ -27,6 +27,7 @@ export function useFirestore() {
   const [attendance, setAttendance] = useState([]);
   const [payrollRuns, setPayrollRuns] = useState([]);
   const [customSizes, setCustomSizes] = useState({ apparel: [], shoe: [] }); // 📏 ไซส์ที่ผู้ใช้เพิ่มเอง
+  const [pendingMixSales, setPendingMixSales] = useState([]); // 🕐 ขายคละที่รอระบุสี/ไซส์
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -193,6 +194,12 @@ export function useFirestore() {
 
   // 📏 Custom sizes — ไซส์เสื้อผ้า/รองเท้าที่ผู้ใช้เพิ่มเอง (settings/sizes)
   useEffect(() => {
+    const q = query(collection(db, "pendingMixSales"), orderBy("createdAt","desc"));
+    const unsub = onSnapshot(q, snap => setPendingMixSales(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
     const unsub = onSnapshot(doc(db, "settings", "sizes"), snap => {
       if (snap.exists()) {
         const d = snap.data();
@@ -223,6 +230,7 @@ export function useFirestore() {
     attendance,
     payrollRuns,
     customSizes,
+    pendingMixSales,
     employees,
     taxDocs,
     loading, setLoading,
