@@ -257,6 +257,12 @@ export default function App() {
   const [editingStock, setEditingStock] = useState(null);
   const [collapsedItems, setCollapsedItems] = useState({});
   const [manageColorMode, setManageColorMode] = useState({}); // 🔧 { [itemId]: true } → แสดง ✕ ลบสี
+  const [linkedInvColors, setLinkedInvColors] = useState({}); // 🔗 { [itemId]: {ci: true} } — ผูกสีในตารางสต๊อก
+  const toggleLinkInvColor = (itemId, ci) => setLinkedInvColors(m => {
+    const cur = { ...(m[itemId]||{}) };
+    if (cur[ci]) delete cur[ci]; else cur[ci] = true;
+    return { ...m, [itemId]: cur };
+  });
   const [clothingSubTab, setClothingSubTab] = useState("all"); // "all" | "sleeveless" | "longsleeve" | "other"
   const toggleCollapse = (id) => setCollapsedItems(prev => ({...prev, [id]: !prev[id]}));
   const clothingImgRef = useRef(null);
@@ -1024,15 +1030,22 @@ export default function App() {
     const col = item.colors?.[colorIdx];
     const oldQty = Number((col?.stock||{})[size]) || 0;
     const newQty = Math.max(0, Number(val)||0);
-    const newColors = item.colors.map((c,i) => i===colorIdx ? {...c, stock:{...c.stock,[size]:newQty}} : c);
+    // 🔗 ถ้าสีนี้ถูกผูก → ซิงก์ค่าไปยังทุกสีที่ผูกไว้ในไซส์เดียวกัน
+    const links = linkedInvColors[itemId] || {};
+    const targets = new Set([colorIdx]);
+    if (links[colorIdx]) {
+      Object.keys(links).forEach(ci => targets.add(Number(ci)));
+    }
+    const newColors = item.colors.map((c,i) => targets.has(i) ? {...c, stock:{...c.stock,[size]:newQty}} : c);
     await updateDoc(doc(db, "clothing", itemId), { colors: newColors });
     if (oldQty !== newQty) {
+      const targetNames = Array.from(targets).map(i => item.colors?.[i]?.colorName || "-").join(", ");
       logAudit(user, {
         action: AUDIT_ACTIONS.STOCK,
         collection: "clothing",
         targetId: itemId,
-        targetLabel: `${item.model} / ${col?.colorName||"-"} / ${size}`,
-        note: `แก้สต๊อก ${oldQty}→${newQty}`,
+        targetLabel: `${item.model} / ${targetNames} / ${size}`,
+        note: `แก้สต๊อก ${oldQty}→${newQty}${targets.size>1?` · ผูก ${targets.size} สี`:""}`,
       });
     }
     setEditingStock(null);
@@ -3096,10 +3109,12 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                                   onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.04)"}
                                   onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                                   <td style={{padding:"10px 14px",borderRight:`1px solid ${T.border}`}}>
-                                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                                    <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",userSelect:"none"}} title="🔗 ผูกสีนี้ — พิมพ์ค่าในไซส์เดียว จะซิงก์ไปทุกสีที่ผูก">
+                                      <input type="checkbox" checked={!!(linkedInvColors[item.id]||{})[ci]} onChange={()=>toggleLinkInvColor(item.id,ci)} onClick={e=>e.stopPropagation()} style={{cursor:"pointer",accentColor:T.accent,width:14,height:14}}/>
                                       <div style={{width:16,height:16,borderRadius:4,background:col.hex,border:"1px solid rgba(0,0,0,0.1)",flexShrink:0}}/>
                                       <span style={{color:T.text,fontWeight:600,fontSize:14}}>{col.colorName}</span>
-                                    </div>
+                                      {(linkedInvColors[item.id]||{})[ci] && <span style={{fontSize:10,color:T.accent}}>🔗</span>}
+                                    </label>
                                   </td>
                                   {sizesFor(item).map(sz=>{
                                     const isEd=editingStock?.itemId===item.id&&editingStock?.ci===ci&&editingStock?.size===sz;
@@ -3315,10 +3330,12 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                                 onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.04)"}
                                 onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                                 <td style={{padding:"8px 14px",borderRight:`1px solid ${T.border}`}}>
-                                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                  <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",userSelect:"none"}} title="🔗 ผูกสี — พิมพ์ค่าในไซส์เดียว จะซิงก์ไปทุกสีที่ผูก">
+                                    <input type="checkbox" checked={!!(linkedInvColors[item.id]||{})[ci]} onChange={()=>toggleLinkInvColor(item.id,ci)} onClick={e=>e.stopPropagation()} style={{cursor:"pointer",accentColor:T.accent,width:13,height:13}}/>
                                     <div style={{width:14,height:14,borderRadius:3,background:col.hex,border:"1px solid rgba(255,255,255,0.15)",flexShrink:0}}/>
                                     <span style={{color:T.text,fontWeight:500,fontSize:11,fontFamily:"'DM Sans','Sarabun',sans-serif"}}>{col.colorName}</span>
-                                  </div>
+                                    {(linkedInvColors[item.id]||{})[ci] && <span style={{fontSize:9,color:T.accent}}>🔗</span>}
+                                  </label>
                                 </td>
                                 {sizesFor(item).map(sz=>{
                                   const isEd=editingStock?.itemId===item.id&&editingStock?.ci===ci&&editingStock?.size===sz;
