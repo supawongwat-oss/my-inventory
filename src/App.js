@@ -326,6 +326,11 @@ export default function App() {
   const [mixModal, setMixModal] = useState(null); // 🧺 {item, pendingId?} ขายคละสีคละไซส์
   const [mixQuickQty, setMixQuickQty] = useState(""); // 🚀 ยอดรวมประมาณการ (โหมดบันทึกไว้ก่อน)
   const [pendingMixListOpen, setPendingMixListOpen] = useState(false);
+  // 🧺 mix-in-order: adder form
+  const [orderMixForm, setOrderMixForm] = useState({ clothingId: "", qty: "" });
+  // ✏️ modal สำหรับกรอกรายละเอียดใบสั่งของที่ค้าง
+  const [fillOrderMix, setFillOrderMix] = useState(null); // { order }
+  const [fillRowsByIdx, setFillRowsByIdx] = useState({}); // { [mixItemIdx]: [{colorIdx, size, qty}, ...] }
   const [mixRows, setMixRows] = useState([]); // [{colorIdx, size, qty}]
   const [mixNote, setMixNote] = useState("");
   const [showSizeManager, setShowSizeManager] = useState(false); // 📏 modal จัดการไซส์
@@ -1223,14 +1228,148 @@ export default function App() {
     setCustomerSearch("");
   };
 
-  // handleAddOrderItem removed — items now added via onBlur in multi-size table
+  // 🧺 เพิ่มรายการคละใน order (ยังไม่ระบุสี/ไซส์ → รอกรอกทีหลัง)
+  const addOrderMixItem = () => {
+    const clothingId = orderMixForm.clothingId;
+    const qty = Number(orderMixForm.qty) || 0;
+    if (!clothingId || qty <= 0) return;
+    const item = clothingItems.find(i => i.id === clothingId);
+    if (!item) return;
+    setOrderForm(f => ({
+      ...f,
+      items: [...(f.items||[]), {
+        clothingId,
+        clothingName: item.model || "",
+        colorIdx: -1,
+        colorName: "— คละ (รอระบุ) —",
+        colorHex: "#f59e0b",
+        size: "—",
+        qty,
+        isMix: true,
+      }],
+    }));
+    setOrderMixForm({ clothingId: "", qty: "" });
+  };
+  // ✏️ เปิด modal กรอกรายละเอียดของ order ที่ค้าง
+  const openFillOrderMix = (order) => {
+    const init = {};
+    (order.items||[]).forEach((it, idx) => {
+      if (it.isMix) init[idx] = [{ colorIdx: 0, size: "", qty: "" }];
+    });
+    setFillRowsByIdx(init);
+    setFillOrderMix({ order });
+  };
+  // 💾 บันทึกรายละเอียดที่กรอก → แทน mix items ด้วยรายการจริง + ตัดสต็อก
+  const handleSaveFillOrderMix = async () => {
+    if (!fillOrderMix) return;
+    const order = fillOrderMix.order;
+    const items = [...(order.items||[])];
+    // ตรวจว่าแต่ละ mix item กรอกครบ (sum ของ rows === original qty)
+    for (const [idxStr, rows] of Object.entries(fillRowsByIdx)) {
+      const idx = Number(idxStr);
+      const mixItem = items[idx];
+      if (!mixItem || !mixItem.isMix) continue;
+      const sum = rows.reduce((s,r)=>s+(Number(r.qty)||0), 0);
+      const valid = rows.every(r => r.size && Number(r.qty) > 0);
+      if (!valid) { alert(`รายการ "${mixItem.clothingName}" ยังกรอกไม่ครบ (ต้องมีสี/ไซส์/จำนวน ทุกแถว)`); return; }
+      if (sum !== Number(mixItem.qty)) { alert(`รายการ "${mixItem.clothingName}" ผลรวม ${sum} ≠ ${mixItem.qty} ตัว`); return; }
+    }
+    // ตรวจสต็อกพอไหม (รวมทุก mix)
+    const stockNeed = new Map(); // key=`${clothingId}|${colorIdx}|${size}` → qty
+    for (const [idxStr, rows] of Object.entries(fillRowsByIdx)) {
+      const idx = Number(idxStr);
+      const mixItem = items[idx];
+      for (const r of rows) {
+        const k = `${mixItem.clothingId}|${r.colorIdx}|${r.size}`;
+        stockNeed.set(k, (stockNeed.get(k)||0) + Number(r.qty));
+      }
+    }
+    for (const [k, need] of stockNeed) {
+      const [cid, ci, sz] = k.split("|");
+      const cItem = clothingItems.find(x => x.id === cid);
+      const stock = ((cItem?.colors?.[Number(ci)]||{}).stock||{})[sz] || 0;
+      if (need > stock) {
+        const cname = cItem?.colors?.[Number(ci)]?.colorName || "?";
+        if (!window.confirm(`⚠️ สต็อก ${cItem?.model}/${cname}/${sz} มี ${stock} แต่ต้องตัด ${need} — ตัดต่อไหม? (สต็อกจะเป็น 0)`)) return;
+      }
+    }
+    // แทน mix items ด้วยรายการจริง
+    const newItems = [];
+    items.forEach((it, idx) => {
+      if (it.isMix && fillRowsByIdx[idx]) {
+        for (const r of fillRowsByIdx[idx]) {
+          const cItem = clothingItems.find(x => x.id === it.clothingId);
+          const col = cItem?.colors?.[Number(r.colorIdx)];
+          newItems.push({
+            clothingId: it.clothingId, clothingName: it.clothingName,
+            colorIdx: Number(r.colorIdx),
+            colorName: col?.colorName || "?",
+            colorHex: col?.colorHex || col?.hex || "#999",
+            size: r.size, qty: Number(r.qty),
+          });
+        }
+      } else {
+        newItems.push(it);
+      }
+    });
+    // ตัดสต็อก
+    const byClothing = new Map();
+    for (const [k, need] of stockNeed) {
+      const [cid, ci, sz] = k.split("|");
+      if (!byClothing.has(cid)) byClothing.set(cid, []);
+      byClothing.get(cid).push({ colorIdx: Number(ci), size: sz, qty: need });
+    }
+    for (const [cid, cuts] of byClothing) {
+      const item = clothingItems.find(x => x.id === cid);
+      if (!item) continue;
+      const newColors = item.colors.map((c, i) => {
+        const forThis = cuts.filter(u => u.colorIdx === i);
+        if (forThis.length === 0) return c;
+        const st = { ...(c.stock || {}) };
+        for (const u of forThis) st[u.size] = Math.max(0, (st[u.size]||0) - u.qty);
+        return { ...c, stock: st };
+      });
+      await updateDoc(doc(db, "clothing", cid), { colors: newColors });
+    }
+    // บันทึก transactions สำหรับรายการที่เพิ่งกรอก
+    for (const it of newItems.filter(x => !x.isMix)) {
+      const wasMix = !(order.items||[]).some(o => !o.isMix && o.clothingId===it.clothingId && o.colorIdx===it.colorIdx && o.size===it.size && o.qty===it.qty);
+      if (!wasMix) continue; // ข้าม normal item เดิม
+      try {
+        await addDoc(collection(db, "transactions"), {
+          type: "จ่าย", code: it.clothingId,
+          name: `${it.clothingName} / ${it.colorName} / ${it.size}`,
+          qty: it.qty, by: user.name, date: now(),
+          note: `ใบสั่งของ (คละ→ระบุ): ${order.customerName}`,
+          stockAffected: true,
+          createdAt: serverTimestamp(), category: "เสื้อผ้า",
+        });
+      } catch {}
+    }
+    // อัพเดต order
+    await updateDoc(doc(db, "orders", order.id), {
+      items: newItems,
+      hasPendingMix: false,
+      status: "สำเร็จ",
+      filledAt: new Date().toISOString(),
+      filledBy: user.name || "",
+    });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.UPDATE, collection: "orders", targetId: order.id, targetLabel: `${order.orderNo} · ${order.customerName}`,
+      note: `✏️ กรอกรายละเอียดคละครบ · ${newItems.length} รายการ · ตัดสต็อกเรียบร้อย`,
+    });
+    setFillOrderMix(null); setFillRowsByIdx({});
+  };
 
   const handleConfirmOrder = async () => {
     if (!orderForm.customerName || orderForm.items.length === 0) return;
-    // จัดกลุ่ม items ตาม clothingId เพื่อรวมการตัดสต๊อกใน updateDoc เดียว
-    // (กันบั๊กเดิม: loop เขียนทับ colors ทั้งก้อนจาก snapshot เดิม ทำให้รอบหลังลบล้างรอบก่อน)
+    // 🧺 แยก mix items (ยังไม่ระบุสี/ไซส์) ออก — ไม่ตัดสต๊อกจนกว่าจะกรอกครบ
+    const mixItems = orderForm.items.filter(i => i.isMix);
+    const normalItems = orderForm.items.filter(i => !i.isMix);
+    const hasPendingMix = mixItems.length > 0;
+    // จัดกลุ่ม normal items ตาม clothingId เพื่อรวมการตัดสต๊อกใน updateDoc เดียว
     const byClothing = new Map();
-    for (const oi of orderForm.items) {
+    for (const oi of normalItems) {
       if (!clothingItems.find(i => i.id === oi.clothingId)) continue;
       if (!byClothing.has(oi.clothingId)) byClothing.set(oi.clothingId, []);
       byClothing.get(oi.clothingId).push(oi);
@@ -1248,7 +1387,7 @@ export default function App() {
       });
       await updateDoc(doc(db, "clothing", clothingId), { colors: newColors });
     }
-    for (const oi of orderForm.items) {
+    for (const oi of normalItems) {
       const isLinked = !!clothingItems.find(i => i.id === oi.clothingId);
       const isFree = typeof oi.clothingId === "string" && oi.clothingId.startsWith("free_");
       const isCustom = typeof oi.clothingId === "string" && oi.clothingId.startsWith("custom_");
@@ -1264,7 +1403,9 @@ export default function App() {
     }
     const orderNo = generateDocNo("ORD", orders, "orderNo");
     const ref = await addDoc(collection(db, "orders"), {
-      orderNo, ...orderForm, status: "สำเร็จ",
+      orderNo, ...orderForm,
+      status: hasPendingMix ? "รอระบุ" : "สำเร็จ",
+      hasPendingMix,
       by: user.name, date: now(), createdAt: serverTimestamp()
     });
     const totalQty = orderForm.items.reduce((s,i)=>s+i.qty,0);
@@ -1273,7 +1414,7 @@ export default function App() {
       collection: "orders",
       targetId: ref.id,
       targetLabel: `${orderNo} · ${orderForm.customerName}`,
-      note: `${orderForm.items.length} รายการ · ${totalQty} ชิ้น`,
+      note: `${orderForm.items.length} รายการ · ${totalQty} ชิ้น${hasPendingMix?` · 🕐 คละ ${mixItems.length} รายการ (รอระบุ)`:""}`,
     });
     setOrderForm({ customerId:"", customerName:"", customerPhone:"", customerAddress:"", shipping:"", note:"", items:[] });
     setShowNewOrder(false);
@@ -3615,8 +3756,13 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                               </div>
                               <div style={{fontSize:12,color:T.sub}}>{(o.items||[]).length} รายการ · {(o.items||[]).reduce((s,i)=>s+i.qty,0)} ชิ้น</div>
                               <div style={{fontSize:11,color:T.sub}}>{o.by}</div>
-                              <div><span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:600,background:"rgba(52,211,153,0.1)",color:"#34d399",border:"1px solid rgba(52,211,153,0.2)"}}>{o.status}</span></div>
+                              <div>
+                                {o.hasPendingMix
+                                  ? <span title="ยังไม่ได้ระบุสี/ไซส์ของรายการคละ — ยังไม่ตัดสต็อก" style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:"rgba(184,134,0,0.15)",color:T.amber,border:"1px solid rgba(184,134,0,0.4)"}}>🕐 รอระบุ</span>
+                                  : <span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:600,background:"rgba(52,211,153,0.1)",color:"#34d399",border:"1px solid rgba(52,211,153,0.2)"}}>{o.status}</span>}
+                              </div>
                               <div style={{display:"flex",gap:6,justifyContent:"center"}} onClick={e=>e.stopPropagation()}>
+                                {o.hasPendingMix && <button onClick={()=>openFillOrderMix(o)} title="กรอกรายละเอียดสี/ไซส์" style={{padding:"5px 10px",borderRadius:7,border:"1px solid rgba(184,134,0,0.4)",background:"rgba(184,134,0,0.12)",color:T.amber,cursor:"pointer",fontSize:11,fontWeight:700}}>✏️ กรอก</button>}
                                 <button onClick={()=>setShowPrintOrder(o)} style={{padding:"5px 10px",borderRadius:7,border:`1px solid rgba(59,91,139,0.25)`,background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:11,fontFamily:"'Sarabun',sans-serif"}}>🖨️ ปริ้น</button>
                                 {role.canDelete&&<button onClick={()=>handleDeleteOrder(o)} title="ยกเลิก + คืนสต๊อก" style={{padding:"5px 8px",borderRadius:7,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:11}}>✕</button>}
                               </div>
@@ -4865,6 +5011,24 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
 
           {/* Order items */}
           <div style={{fontSize:12,fontWeight:700,color:T.accent,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.06em"}}>เลือกสินค้า</div>
+
+          {/* 🧺 คละ — เพิ่มรายการโดยระบุแค่รุ่น + จำนวน (สี/ไซส์ กรอกทีหลัง) */}
+          <div style={{marginBottom:14,padding:12,background:"rgba(184,134,0,0.06)",border:`1px dashed ${T.amber}`,borderRadius:10}}>
+            <div style={{fontSize:11,fontWeight:700,color:T.amber,marginBottom:8}}>🧺 เพิ่มแบบคละ (ระบุสี/ไซส์ทีหลัง — ยังไม่ตัดสต๊อก)</div>
+            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr auto",gap:8,alignItems:"end"}}>
+              <select value={orderMixForm.clothingId} onChange={e=>setOrderMixForm(f=>({...f,clothingId:e.target.value}))}
+                style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
+                <option value="">-- เลือกรุ่น --</option>
+                {clothingItems.map(i=><option key={i.id} value={i.id}>{i.model}</option>)}
+              </select>
+              <input type="number" placeholder="จำนวน" value={orderMixForm.qty} onChange={e=>setOrderMixForm(f=>({...f,qty:e.target.value}))}
+                style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 10px",fontFamily:"monospace",fontSize:13,outline:"none",textAlign:"center"}}/>
+              <button onClick={addOrderMixItem} disabled={!orderMixForm.clothingId||!(Number(orderMixForm.qty)>0)}
+                style={{padding:"8px 16px",borderRadius:8,border:"none",background:T.amber,color:"white",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"'Sarabun',sans-serif",whiteSpace:"nowrap",opacity:(!orderMixForm.clothingId||!(Number(orderMixForm.qty)>0))?0.4:1}}>
+                ➕ เพิ่มคละ
+              </button>
+            </div>
+          </div>
 
           {/* Step 1: เลือกรุ่น + สี */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
@@ -6339,6 +6503,71 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
           </div>
         </Modal>
       )}
+
+      {/* ── MODAL: กรอกรายละเอียดใบสั่งของที่ค้าง (mix items) ── */}
+      {fillOrderMix&&(()=>{
+        const order = fillOrderMix.order;
+        const mixItems = (order.items||[]).map((it,idx)=>({it,idx})).filter(x=>x.it.isMix);
+        return (
+        <Modal onClose={()=>{setFillOrderMix(null);setFillRowsByIdx({});}} w={760}>
+          <MHead title={`✏️ กรอกรายละเอียด — ${order.orderNo}`} sub={`ลูกค้า: ${order.customerName} · รายการคละ ${mixItems.length} รายการ`} onClose={()=>{setFillOrderMix(null);setFillRowsByIdx({});}} color={T.amber}/>
+          <div style={{display:"flex",flexDirection:"column",gap:14,maxHeight:"70vh",overflowY:"auto"}}>
+            {mixItems.map(({it,idx})=>{
+              const cItem = clothingItems.find(c=>c.id===it.clothingId);
+              const rows = fillRowsByIdx[idx]||[];
+              const rowSum = rows.reduce((s,r)=>s+(Number(r.qty)||0),0);
+              const sizes = cItem ? sizesFor(cItem) : [];
+              const setRow = (ri, patch) => setFillRowsByIdx(m=>({...m, [idx]: (m[idx]||[]).map((r,i)=>i===ri?{...r,...patch}:r)}));
+              const addRow = () => setFillRowsByIdx(m=>({...m, [idx]: [...(m[idx]||[]), {colorIdx:0,size:"",qty:""}]}));
+              const delRow = (ri) => setFillRowsByIdx(m=>({...m, [idx]: (m[idx]||[]).filter((_,i)=>i!==ri)}));
+              return (
+                <div key={idx} style={{padding:12,background:"#fffbeb",border:`1px solid ${rowSum===it.qty?"#86efac":"#fde68a"}`,borderRadius:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                    <div style={{fontSize:13,fontWeight:700,color:T.text}}>{it.clothingName} <span style={{color:T.amber,marginLeft:6}}>· {it.qty} ตัว</span></div>
+                    <div style={{fontSize:11,fontWeight:700,color:rowSum===it.qty?"#059669":T.amber}}>กรอกแล้ว {rowSum}/{it.qty}</div>
+                  </div>
+                  {!cItem && <div style={{fontSize:11,color:T.red,marginBottom:8}}>⚠️ ไม่พบรุ่นสินค้าเดิม</div>}
+                  {cItem && (
+                    <>
+                      <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 30px",gap:6,fontSize:10,color:T.muted,fontWeight:700,marginBottom:4,padding:"0 4px"}}>
+                        <div>สี</div><div>ไซส์</div><div>จำนวน</div><div/>
+                      </div>
+                      {rows.map((r,ri)=>{
+                        const stock = ((cItem.colors?.[Number(r.colorIdx)]||{}).stock||{})[r.size] || 0;
+                        return (
+                          <div key={ri} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 30px",gap:6,marginBottom:6}}>
+                            <select value={r.colorIdx} onChange={e=>setRow(ri,{colorIdx:Number(e.target.value)})}
+                              style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"6px 8px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}>
+                              {cItem.colors.map((c,ci)=><option key={ci} value={ci}>{c.colorName}</option>)}
+                            </select>
+                            <select value={r.size} onChange={e=>setRow(ri,{size:e.target.value})}
+                              style={{background:T.input,border:`1px solid ${r.size?T.inputBorder:"#fbbf24"}`,color:T.text,borderRadius:7,padding:"6px 8px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}>
+                              <option value="">— ไซส์ —</option>
+                              {sizes.map(sz=>{
+                                const s = ((cItem.colors?.[Number(r.colorIdx)]||{}).stock||{})[sz] || 0;
+                                return <option key={sz} value={sz}>{sz} (มี {s})</option>;
+                              })}
+                            </select>
+                            <input type="number" placeholder="0" value={r.qty} onChange={e=>setRow(ri,{qty:e.target.value})} title={r.size?`สต็อก ${stock}`:""}
+                              style={{background:T.input,border:`1px solid ${Number(r.qty)>stock?"#ef4444":T.inputBorder}`,color:T.text,borderRadius:7,padding:"6px 8px",fontFamily:"monospace",fontSize:13,outline:"none",textAlign:"center"}}/>
+                            <button onClick={()=>delRow(ri)} style={{border:"none",background:"transparent",color:T.red,cursor:"pointer",fontSize:13,padding:0}}>✕</button>
+                          </div>
+                        );
+                      })}
+                      <button onClick={addRow} style={{width:"100%",padding:"6px",borderRadius:7,border:`1px dashed ${T.accent}`,background:"rgba(59,91,139,0.05)",color:T.accent,cursor:"pointer",fontSize:11,fontWeight:600,marginTop:4}}>➕ เพิ่มแถว</button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{display:"flex",gap:10,marginTop:14}}>
+            <BtnGhost onClick={()=>{setFillOrderMix(null);setFillRowsByIdx({});}} style={{flex:1}}>ยกเลิก</BtnGhost>
+            <BtnPrimary onClick={handleSaveFillOrderMix} style={{flex:2}}>✅ บันทึก + ตัดสต็อก</BtnPrimary>
+          </div>
+        </Modal>
+        );
+      })()}
 
       {/* ── MODAL: รายการรอระบุรายละเอียด (pending mix sales) ── */}
       {pendingMixListOpen&&(
