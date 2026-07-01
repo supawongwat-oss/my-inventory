@@ -61,13 +61,13 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                   </div>
                 </div>
                 {n > 0 && (
-                  <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap:8}}>
+                  <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap:6,maxWidth:landscape?360:280,margin:"0 auto"}}>
                     {imgs.map((im, i) => (
                       <div key={i} style={{textAlign:"center"}}>
-                        <div style={{width:"100%",height:n===1?208:176,background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+                        <div style={{width:"100%",height:n===1?(landscape?100:88):(landscape?80:70),background:"#fff",border:"1px solid #e2e8f0",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
                           <img src={im.dataUrl} alt="" style={{maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",objectFit:"contain",display:"block"}}/>
                         </div>
-                        {im.label && <div style={{fontSize:11,color:"#1e293b",fontWeight:700,marginTop:4}}>{im.label}</div>}
+                        {im.label && <div style={{fontSize:9,color:"#1e293b",fontWeight:700,marginTop:2}}>{im.label}</div>}
                       </div>
                     ))}
                   </div>
