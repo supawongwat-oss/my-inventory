@@ -113,7 +113,10 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
               ? (nSz > 14 ? 42 : nSz > 11 ? 50 : 60)
               : (nSz > 12 ? 22 : nSz > 9 ? 28 : nSz > 7 ? 34 : 42);
             // 📏 รุ่น/สี ใช้ width คงที่ (px) — sizes แบ่งกันใน remaining ตาม table-layout:auto
-            const modelW = landscape ? 130 : 90;
+            // 🏷️ auto ขยาย modelW ตามชื่อรุ่นที่ยาว (ไทย ~9px/ตัวอักษร)
+            const modelName = String(order.clothingName || "");
+            const estModel = Math.max(landscape?130:110, Math.min(landscape?200:180, modelName.length * 9 + 12));
+            const modelW = estModel;
             const colorW = landscape ? 140 : 100;
             return (
               <table style={{width:"100%",borderCollapse:"collapse",marginBottom:10,fontSize:fs,tableLayout:"fixed"}}>
