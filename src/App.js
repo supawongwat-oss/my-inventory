@@ -2771,7 +2771,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                       {id:"all",icon:"👕",label:"ทั้งหมด"},
                       {id:"sleeveless",icon:"🎽",label:"แขนกุด"},
                       {id:"longsleeve",icon:"🧥",label:"แขนยาว"},
-                      {id:"other",icon:"📦",label:"อื่นๆ"},
+                      {id:"other",icon:"👔",label:"แขนสั้น"},
                     ].map(s=>(
                       <button key={s.id} onClick={()=>setClothingSubTab(s.id)}
                         style={{padding:"5px 12px",borderRadius:7,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"'Sarabun',sans-serif",background:clothingSubTab===s.id?T.accent:"transparent",color:clothingSubTab===s.id?"white":T.sub,transition:"all 0.15s"}}>
