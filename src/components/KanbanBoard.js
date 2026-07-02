@@ -370,11 +370,37 @@ export default function KanbanBoard({
   );
 }
 
-// 🎨 palette สำหรับ auto-สี ตาม prodNo (ทุกล็อตของใบเดียวกัน = สีเดียว)
-export const ORDER_PALETTE = ["#3b5b8b","#d97706","#16a34a","#dc2626","#7c3aed","#ea580c","#0891b2","#db2777","#65a30d","#facc15","#0d9488","#4338ca"];
+// 🎨 palette สำหรับ auto-สี ตาม prodNo — 16 สีกระจายรอบวงจร HSL ให้แยกได้ชัด
+// เรียงแบบสลับข้าม (ไม่ให้ 2 ใบติดกันได้สีใกล้กัน) → เห็นต่างในสายตาแม้อยู่ใกล้กัน
+export const ORDER_PALETTE = [
+  "#ef4444", // red
+  "#0ea5e9", // sky
+  "#84cc16", // lime
+  "#a855f7", // purple
+  "#f97316", // orange
+  "#06b6d4", // cyan
+  "#eab308", // yellow
+  "#ec4899", // pink
+  "#10b981", // emerald
+  "#3b82f6", // blue
+  "#d946ef", // fuchsia
+  "#22c55e", // green
+  "#f43f5e", // rose
+  "#6366f1", // indigo
+  "#f59e0b", // amber
+  "#0d9488", // teal
+];
 export function autoOrderColor(prodNo) {
-  const s = String(prodNo||"L1"); let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h*31 + s.charCodeAt(i)) & 0xffffff;
+  // ใช้ FNV-1a hash แล้ว mixing เพิ่มให้กระจายกว่า simple polynomial
+  const s = String(prodNo||"L1");
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  h ^= h >>> 13;
+  h = Math.imul(h, 0x5bd1e995);
+  h ^= h >>> 15;
   return ORDER_PALETTE[Math.abs(h) % ORDER_PALETTE.length];
 }
 
