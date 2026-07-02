@@ -16,6 +16,7 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
   const [grid, setGrid] = useState({}); // { [colorIdx]: { [size]: qtyStr } } — โหมดตาราง
   const [inputMode, setInputMode] = useState("grid"); // "grid" | "rows"
   const [note, setNote] = useState("");
+  const [setNo, setSetNo] = useState(""); // 🎽 ชุดที่ (เช่น "ชุด3", "ชุดผู้ใหญ่", "รอบ2/2026")
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -135,6 +136,7 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
       finishedStocked: false,
       bomId: bom?.id || null,
       note: note || "",
+      setNo: setNo || "",
       by: user?.name || "",
       date: now(),
       createdAt: serverTimestamp(),
@@ -297,7 +299,10 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
             </div>
           )}
 
-          <Input label="หมายเหตุ" value={note} onChange={e => setNote(e.target.value)} style={{marginBottom:12}}/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 2fr",gap:8,marginBottom:12}}>
+            <Input label="🎽 ชุดที่ (option)" placeholder="เช่น ชุด3, รอบ2" value={setNo} onChange={e => setSetNo(e.target.value)}/>
+            <Input label="หมายเหตุ" value={note} onChange={e => setNote(e.target.value)}/>
+          </div>
           {/* spacer */}
           <div style={{height:2}}/>
 
