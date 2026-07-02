@@ -186,9 +186,27 @@ export default function LotDetailModal({
       const needsConsume = !isCustom && lot.status === "พิมพ์ลาย" && !order.materialsConsumed;
       if (needsConsume) await consumeMaterials();
 
-      // ตอนเข้าคลัง — เพิ่ม clothing stock เฉพาะล็อตนี้
+      // ตอนเข้าคลัง — ยืนยันก่อน + เพิ่ม clothing stock เฉพาะล็อตนี้
       const willEnterStock = targetStatus === "เข้าคลัง" && !lot.finishedStocked;
-      if (willEnterStock) await stockFinishedForLot(lot);
+      if (willEnterStock) {
+        // 📋 สรุปสำหรับ confirm
+        const items = lot.items || [];
+        const totalQty = items.reduce((s,it)=>s+(Number(it.qty)||0),0);
+        const lines = items.map(it => `• ${it.colorName||"?"} / ${it.size||"?"} × ${Number(it.qty)||0}`).slice(0,12).join("\n");
+        const moreCount = items.length - 12;
+        const moreText = moreCount>0 ? `\n... และอีก ${moreCount} รายการ` : "";
+        const isCustomOrder = !!isCustom;
+        const targetName = isCustomOrder ? "(custom — ไม่บวกสต็อก)" : (order.clothingName || "เสื้อผ้า");
+        const ok = window.confirm(
+          `✅ ยืนยันเข้าคลัง — ${lot.lotId || "ล็อตนี้"}\n\n`+
+          `${lines}${moreText}\n\n`+
+          `รวม ${totalQty} ตัว → ${targetName}\n\n`+
+          `⚠️ ตรวจว่าตัวเลขถูกต้องก่อนกด OK\n`+
+          `(กด Cancel ถ้ายังมี lot อื่นที่ต้องเข้าคลังพร้อมกัน)`
+        );
+        if (!ok) { setBusy(false); return; }
+        await stockFinishedForLot(lot);
+      }
 
       let newLots = moveLot(lots, lotIdx, targetStatus, user?.name || "");
       if (willEnterStock) {
