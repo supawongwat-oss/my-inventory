@@ -1708,7 +1708,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       customerName:order.customerName||"",
       customerPhone:order.customerPhone||"",
       customerAddress:order.customerAddress||"",
-      items
+      items,
+      mergedFromOrderIds:[order.id], // 🔗 track ว่ามาจากใบสั่งไหน → order จะได้ mark "ออกบิลแล้ว"
     }));
   };
 
@@ -3780,9 +3781,15 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                     ))}
                     <div style={{flex:1}}/>
                     <div style={{fontSize:11,color:T.muted}}>
-                      พบ <b style={{color:T.accent}}>{filteredOrders.length}</b> / {orders.length} ใบ
-                      <span style={{margin:"0 6px",color:T.border}}>·</span>
-                      รวม <b style={{color:"#16a34a"}}>{totalQtyAll.toLocaleString("th-TH")}</b> ชิ้น
+                      {(()=>{
+                        const notInvoiced = filteredOrders.filter(o => !invoices.some(inv => (inv.mergedFromOrderIds||[]).includes(o.id))).length;
+                        return (<>
+                          พบ <b style={{color:T.accent}}>{filteredOrders.length}</b> / {orders.length} ใบ
+                          {notInvoiced>0 && <><span style={{margin:"0 6px",color:T.border}}>·</span>⏳ ยังไม่ออกบิล <b style={{color:"#dc2626"}}>{notInvoiced}</b> ใบ</>}
+                          <span style={{margin:"0 6px",color:T.border}}>·</span>
+                          รวม <b style={{color:"#16a34a"}}>{totalQtyAll.toLocaleString("th-TH")}</b> ชิ้น
+                        </>);
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -3843,6 +3850,12 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                                   ? <span title="ยังไม่ได้ระบุสี/ไซส์ของรายการคละ — ยังไม่ตัดสต็อก" style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:"rgba(184,134,0,0.15)",color:T.amber,border:"1px solid rgba(184,134,0,0.4)"}}>🕐 รอระบุ</span>
                                   : <span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:600,background:"rgba(52,211,153,0.1)",color:"#34d399",border:"1px solid rgba(52,211,153,0.2)"}}>{o.status}</span>}
                                 {o.deferStockCut && <span title="ขายก่อน ไม่ตัดสต๊อก — คลิก 'ตัดสต๊อก' เมื่อพร้อม" style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:"rgba(124,58,237,0.12)",color:"#7c3aed",border:"1px solid rgba(124,58,237,0.35)"}}>🔓 ไม่ตัดสต๊อก</span>}
+                                {(()=>{
+                                  const invoiced = invoices.some(inv => (inv.mergedFromOrderIds||[]).includes(o.id));
+                                  return invoiced
+                                    ? <span title="ออกบิลแล้ว" style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:600,background:"rgba(59,91,139,0.1)",color:T.accent,border:"1px solid rgba(59,91,139,0.25)"}}>🧾 ออกบิลแล้ว</span>
+                                    : <span title="ยังไม่ออกบิล — เลือกใบและกด '🧾 ออกบิลรวม' หรือใช้ 'ดึงจากใบสั่งของ' ในหน้าออกบิล" style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:"rgba(220,38,38,0.08)",color:"#dc2626",border:"1px solid rgba(220,38,38,0.3)"}}>⏳ ยังไม่ออกบิล</span>;
+                                })()}
                               </div>
                               <div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"wrap"}} onClick={e=>e.stopPropagation()}>
                                 {o.hasPendingMix && <button onClick={()=>openFillOrderMix(o)} title="กรอกรายละเอียดสี/ไซส์" style={{padding:"5px 10px",borderRadius:7,border:"1px solid rgba(184,134,0,0.4)",background:"rgba(184,134,0,0.12)",color:T.amber,cursor:"pointer",fontSize:11,fontWeight:700}}>✏️ กรอก</button>}
