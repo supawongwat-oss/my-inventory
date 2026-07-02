@@ -236,7 +236,7 @@ export default function App() {
   const [showPrintOrder, setShowPrintOrder] = useState(null);
   const [orderForm, setOrderForm] = useState({
     customerId: "", customerName: "", customerPhone: "", customerAddress: "",
-    shipping: "", note: "", items: []
+    shipping: "", note: "", items: [], deferStockCut: false
   });
   const [newCustomerForm, setNewCustomerForm] = useState({ name:"", phone:"", address:"" });
   const [customerSearch, setCustomerSearch] = useState("");
@@ -853,6 +853,46 @@ export default function App() {
     setMixNote("");
     setMixQuickQty("");
   };
+  // 🔓→📦 ตัดสต๊อกทีหลัง สำหรับใบที่ deferStockCut = true
+  const handleCutStockNow = async (o) => {
+    if (!o || !o.deferStockCut) return;
+    const items = (o.items || []).filter(i => !i.isMix && !!clothingItems.find(c => c.id === i.clothingId));
+    if (items.length === 0) { alert("ใบนี้ไม่มีรายการที่จะตัดสต๊อกได้ (อาจเป็นรายการอิสระ/custom ทั้งหมด)"); return; }
+    const totalQty = items.reduce((s,i)=>s+(Number(i.qty)||0),0);
+    if (!window.confirm(`📦 ตัดสต๊อก ${o.orderNo}?\n\nลูกค้า: ${o.customerName}\nจะตัด ${items.length} รายการ · ${totalQty} ตัว\n\n⚠️ สต๊อกอาจติดลบถ้าไม่พอ`)) return;
+    // จัดกลุ่ม + ตัด
+    const byClothing = new Map();
+    for (const oi of items) {
+      if (!byClothing.has(oi.clothingId)) byClothing.set(oi.clothingId, []);
+      byClothing.get(oi.clothingId).push(oi);
+    }
+    try {
+      for (const [clothingId, ois] of byClothing) {
+        const item = clothingItems.find(i => i.id === clothingId);
+        const newColors = item.colors.map((c, i) => {
+          const cuts = ois.filter(oi => oi.colorIdx === i);
+          if (cuts.length === 0) return c;
+          const stock = { ...(c.stock || {}) };
+          for (const oi of cuts) stock[oi.size] = Math.max(0, (stock[oi.size]||0) - (Number(oi.qty)||0));
+          return { ...c, stock };
+        });
+        await updateDoc(doc(db, "clothing", clothingId), { colors: newColors });
+      }
+      await updateDoc(doc(db, "orders", o.id), {
+        deferStockCut: false,
+        stockCutAt: new Date().toISOString(),
+        stockCutBy: user?.name || "",
+      });
+      logAudit(user, {
+        action: AUDIT_ACTIONS.STOCK, collection: "orders", targetId: o.id,
+        targetLabel: `${o.orderNo} · ${o.customerName}`,
+        note: `🔓→📦 ตัดสต๊อกทีหลัง ${items.length} รายการ · ${totalQty} ตัว`,
+      });
+      alert(`✅ ตัดสต๊อก ${totalQty} ตัวเรียบร้อย`);
+    } catch (e) {
+      alert("ตัดสต๊อกไม่สำเร็จ: " + (e.message || e));
+    }
+  };
   // 🕐 เปิด modal ต่อจาก pending — ให้กรอกรายละเอียดที่ค้าง
   const openMixFromPending = (p) => {
     const item = clothingItems.find(i => i.id === p.itemId);
@@ -1403,30 +1443,34 @@ export default function App() {
       if (!byClothing.has(oi.clothingId)) byClothing.set(oi.clothingId, []);
       byClothing.get(oi.clothingId).push(oi);
     }
-    for (const [clothingId, ois] of byClothing) {
-      const item = clothingItems.find(i => i.id === clothingId);
-      const newColors = item.colors.map((c, i) => {
-        const cuts = ois.filter(oi => oi.colorIdx === i);
-        if (cuts.length === 0) return c;
-        const newStock = { ...(c.stock || {}) };
-        for (const oi of cuts) {
-          newStock[oi.size] = Math.max(0, (newStock[oi.size] || 0) - oi.qty);
-        }
-        return { ...c, stock: newStock };
-      });
-      await updateDoc(doc(db, "clothing", clothingId), { colors: newColors });
+    // 🔓 ถ้าเลือก "ขายก่อน ไม่ตัดสต๊อก" → ข้ามการตัดสต๊อก (ยังคงบันทึกใบและ transactions)
+    const deferStockCut = !!orderForm.deferStockCut;
+    if (!deferStockCut) {
+      for (const [clothingId, ois] of byClothing) {
+        const item = clothingItems.find(i => i.id === clothingId);
+        const newColors = item.colors.map((c, i) => {
+          const cuts = ois.filter(oi => oi.colorIdx === i);
+          if (cuts.length === 0) return c;
+          const newStock = { ...(c.stock || {}) };
+          for (const oi of cuts) {
+            newStock[oi.size] = Math.max(0, (newStock[oi.size] || 0) - oi.qty);
+          }
+          return { ...c, stock: newStock };
+        });
+        await updateDoc(doc(db, "clothing", clothingId), { colors: newColors });
+      }
     }
     for (const oi of normalItems) {
       const isLinked = !!clothingItems.find(i => i.id === oi.clothingId);
       const isFree = typeof oi.clothingId === "string" && oi.clothingId.startsWith("free_");
       const isCustom = typeof oi.clothingId === "string" && oi.clothingId.startsWith("custom_");
-      const noteSuffix = isFree ? " (รายการอิสระ — ไม่ตัดสต๊อก)" : isCustom ? " (custom order — ไม่ตัดสต๊อก)" : "";
+      const noteSuffix = isFree ? " (รายการอิสระ — ไม่ตัดสต๊อก)" : isCustom ? " (custom order — ไม่ตัดสต๊อก)" : deferStockCut ? " (🔓 ขายก่อน ไม่ตัดสต๊อก)" : "";
       await addDoc(collection(db, "transactions"), {
         type: "จ่าย", code: oi.clothingId,
         name: `${oi.clothingName} / ${oi.colorName} / ${oi.size}`,
         qty: oi.qty, by: user.name, date: now(),
         note: `ใบสั่งของ: ${orderForm.customerName}${noteSuffix}`,
-        stockAffected: isLinked,
+        stockAffected: isLinked && !deferStockCut,
         createdAt: serverTimestamp(), category: "เสื้อผ้า"
       });
     }
@@ -1449,35 +1493,40 @@ export default function App() {
     setShowNewOrder(false);
   };
 
-  // ยกเลิก/ลบใบสั่งของ — คืนสต๊อกกลับ clothing ก่อนลบ
+  // ยกเลิก/ลบใบสั่งของ — คืนสต๊อกกลับ clothing ก่อนลบ (ข้ามถ้าใบนี้เป็น deferStockCut / hasPendingMix)
   const handleDeleteOrder = async (o) => {
     if (!o) return;
     const totalQty = (o.items || []).reduce((s,i) => s + (Number(i.qty)||0), 0);
+    const skipRestock = !!o.deferStockCut || !!o.hasPendingMix;
     if (!window.confirm(`ยกเลิกใบสั่งของ ${o.orderNo}?
 ลูกค้า: ${o.customerName}
 ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
 
-⚠️ สินค้าจะถูกคืนกลับสต๊อก`)) return;
+${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดสต๊อก — ยกเลิกไม่คืนสต๊อก" : "⚠️ สินค้าจะถูกคืนกลับสต๊อก"}`)) return;
 
-    // จัดกลุ่ม items ตาม clothingId เพื่อ updateDoc ครั้งเดียวต่อเสื้อ
-    const byClothing = new Map();
-    for (const oi of (o.items || [])) {
-      if (!clothingItems.find(i => i.id === oi.clothingId)) continue; // ข้าม free_/custom_
-      if (!byClothing.has(oi.clothingId)) byClothing.set(oi.clothingId, []);
-      byClothing.get(oi.clothingId).push(oi);
-    }
-    for (const [clothingId, ois] of byClothing) {
-      const item = clothingItems.find(i => i.id === clothingId);
-      const newColors = item.colors.map((c, i) => {
-        const adds = ois.filter(oi => oi.colorIdx === i);
-        if (adds.length === 0) return c;
-        const newStock = { ...(c.stock || {}) };
-        for (const oi of adds) {
-          newStock[oi.size] = (newStock[oi.size] || 0) + (Number(oi.qty) || 0);
-        }
-        return { ...c, stock: newStock };
-      });
-      await updateDoc(doc(db, "clothing", clothingId), { colors: newColors });
+    // 🔓 ถ้าใบนี้ยังไม่ตัดสต๊อก → ไม่ต้องคืน
+    if (!skipRestock) {
+      // จัดกลุ่ม items ตาม clothingId เพื่อ updateDoc ครั้งเดียวต่อเสื้อ
+      const byClothing = new Map();
+      for (const oi of (o.items || [])) {
+        if (oi.isMix) continue; // ข้าม mix items ที่ยังไม่ระบุ
+        if (!clothingItems.find(i => i.id === oi.clothingId)) continue; // ข้าม free_/custom_
+        if (!byClothing.has(oi.clothingId)) byClothing.set(oi.clothingId, []);
+        byClothing.get(oi.clothingId).push(oi);
+      }
+      for (const [clothingId, ois] of byClothing) {
+        const item = clothingItems.find(i => i.id === clothingId);
+        const newColors = item.colors.map((c, i) => {
+          const adds = ois.filter(oi => oi.colorIdx === i);
+          if (adds.length === 0) return c;
+          const newStock = { ...(c.stock || {}) };
+          for (const oi of adds) {
+            newStock[oi.size] = (newStock[oi.size] || 0) + (Number(oi.qty) || 0);
+          }
+          return { ...c, stock: newStock };
+        });
+        await updateDoc(doc(db, "clothing", clothingId), { colors: newColors });
+      }
     }
     // บันทึก transaction "รับ" ทีละ item (รวม free_/custom_ — note ว่า no-stock)
     for (const oi of (o.items || [])) {
@@ -3662,7 +3711,7 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
                 <div style={{fontSize:12,color:T.sub}}>ใบสั่งของทั้งหมด <b style={{color:T.accent}}>{orders.length} ใบ</b></div>
                 {role.canCreateOrder
-                  ? <button onClick={()=>{setOrderForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",shipping:"",note:"",items:[]});setShowNewOrder(true);}} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>️ สร้างใบสั่งของ</button>
+                  ? <button onClick={()=>{setOrderForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",shipping:"",note:"",items:[],deferStockCut:false});setShowNewOrder(true);}} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>️ สร้างใบสั่งของ</button>
                   : <span style={{fontSize:11,color:T.muted,padding:"6px 12px",background:"rgba(241,243,246,0.4)",border:`1px solid ${T.border}`,borderRadius:8}}>👁️ โหมดดูเท่านั้น</span>}
               </div>
               {/* 🔗 แถบรวมใบสั่งของ → ออกบิลรวม */}
@@ -3789,13 +3838,15 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
                               </div>
                               <div style={{fontSize:12,color:T.sub}}>{(o.items||[]).length} รายการ · {(o.items||[]).reduce((s,i)=>s+i.qty,0)} ชิ้น</div>
                               <div style={{fontSize:11,color:T.sub}}>{o.by}</div>
-                              <div>
+                              <div style={{display:"flex",flexDirection:"column",gap:3,alignItems:"flex-start"}}>
                                 {o.hasPendingMix
                                   ? <span title="ยังไม่ได้ระบุสี/ไซส์ของรายการคละ — ยังไม่ตัดสต็อก" style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:"rgba(184,134,0,0.15)",color:T.amber,border:"1px solid rgba(184,134,0,0.4)"}}>🕐 รอระบุ</span>
                                   : <span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:600,background:"rgba(52,211,153,0.1)",color:"#34d399",border:"1px solid rgba(52,211,153,0.2)"}}>{o.status}</span>}
+                                {o.deferStockCut && <span title="ขายก่อน ไม่ตัดสต๊อก — คลิก 'ตัดสต๊อก' เมื่อพร้อม" style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:"rgba(124,58,237,0.12)",color:"#7c3aed",border:"1px solid rgba(124,58,237,0.35)"}}>🔓 ไม่ตัดสต๊อก</span>}
                               </div>
-                              <div style={{display:"flex",gap:6,justifyContent:"center"}} onClick={e=>e.stopPropagation()}>
+                              <div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"wrap"}} onClick={e=>e.stopPropagation()}>
                                 {o.hasPendingMix && <button onClick={()=>openFillOrderMix(o)} title="กรอกรายละเอียดสี/ไซส์" style={{padding:"5px 10px",borderRadius:7,border:"1px solid rgba(184,134,0,0.4)",background:"rgba(184,134,0,0.12)",color:T.amber,cursor:"pointer",fontSize:11,fontWeight:700}}>✏️ กรอก</button>}
+                                {o.deferStockCut && !o.hasPendingMix && <button onClick={()=>handleCutStockNow(o)} title="ตัดสต๊อกใบนี้ตอนนี้เลย" style={{padding:"5px 10px",borderRadius:7,border:"1px solid rgba(124,58,237,0.4)",background:"rgba(124,58,237,0.12)",color:"#7c3aed",cursor:"pointer",fontSize:11,fontWeight:700}}>📦 ตัดสต๊อก</button>}
                                 <button onClick={()=>setShowPrintOrder(o)} style={{padding:"5px 10px",borderRadius:7,border:`1px solid rgba(59,91,139,0.25)`,background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:11,fontFamily:"'Sarabun',sans-serif"}}>🖨️ ปริ้น</button>
                                 {role.canDelete&&<button onClick={()=>handleDeleteOrder(o)} title="ยกเลิก + คืนสต๊อก" style={{padding:"5px 8px",borderRadius:7,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:11}}>✕</button>}
                               </div>
@@ -5281,6 +5332,17 @@ ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
               <option value="ส่งเอง"/>
               <option value="ลูกค้าจัดขนส่งเอง"/>
             </datalist>
+          </div>
+
+          {/* 🔓 ขายก่อน ไม่ตัดสต๊อก — สำหรับกรณียังไม่ได้นับสต๊อก / ขายคนสนิท */}
+          <div style={{marginBottom:10,padding:"9px 12px",background:orderForm.deferStockCut?"rgba(124,58,237,0.08)":"rgba(241,243,246,0.5)",border:`1px solid ${orderForm.deferStockCut?"rgba(124,58,237,0.35)":T.border}`,borderRadius:9,transition:"all 0.15s"}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",userSelect:"none"}}>
+              <input type="checkbox" checked={!!orderForm.deferStockCut} onChange={e=>setOrderForm(f=>({...f,deferStockCut:e.target.checked}))} style={{cursor:"pointer",accentColor:"#7c3aed",width:16,height:16}}/>
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:orderForm.deferStockCut?"#7c3aed":T.text}}>🔓 ขายก่อน — ไม่ตัดสต๊อก</div>
+                <div style={{fontSize:10,color:T.muted,marginTop:1}}>เหมาะกรณียังไม่ได้นับสต๊อก / ขายให้คนสนิท · จะออกใบขายได้ทันที ค่อยไปแก้สต๊อกเมื่อนับเสร็จ</div>
+              </div>
+            </label>
           </div>
 
           <div>
