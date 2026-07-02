@@ -257,7 +257,10 @@ export default function App() {
   const [newColorSale, setNewColorSale] = useState("");
   const [newColorHex, setNewColorHex] = useState("#ffffff");
   const [editingStock, setEditingStock] = useState(null);
-  const [collapsedItems, setCollapsedItems] = useState({});
+  const [collapsedItems, setCollapsedItems] = useState(() => {
+    // 💾 restore จาก localStorage — จำสถานะสุดท้ายที่พับไว้
+    try { return JSON.parse(localStorage.getItem("cpu_erp_collapsed_clothing") || "{}"); } catch { return {}; }
+  });
   const [manageColorMode, setManageColorMode] = useState({}); // 🔧 { [itemId]: true } → แสดง ✕ ลบสี
   const [linkedInvColors, setLinkedInvColors] = useState({}); // 🔗 { [itemId]: {ci: true} } — ผูกสีในตารางสต๊อก
   const toggleLinkInvColor = (itemId, ci) => setLinkedInvColors(m => {
@@ -266,7 +269,33 @@ export default function App() {
     return { ...m, [itemId]: cur };
   });
   const [clothingSubTab, setClothingSubTab] = useState("all"); // "all" | "sleeveless" | "longsleeve" | "other"
-  const toggleCollapse = (id) => setCollapsedItems(prev => ({...prev, [id]: !prev[id]}));
+  const toggleCollapse = (id) => setCollapsedItems(prev => {
+    const next = { ...prev, [id]: !prev[id] };
+    try { localStorage.setItem("cpu_erp_collapsed_clothing", JSON.stringify(next)); } catch {}
+    return next;
+  });
+  // 🗂 พับทั้งหมด / กางทั้งหมด — ใช้กับ inventoryTab ปัจจุบัน (clothing หรือ sports)
+  const collapseAllClothing = (collapse) => {
+    const relevant = clothingItems.filter(it => inventoryTab==="sports" ? it.sizeType==="shoe" : it.sizeType!=="shoe");
+    setCollapsedItems(prev => {
+      const next = { ...prev };
+      relevant.forEach(it => { next[it.id] = collapse; });
+      try { localStorage.setItem("cpu_erp_collapsed_clothing", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+  // 🔮 auto-collapse ครั้งแรก: ถ้ามีรุ่น > 5 และยังไม่เคยตั้งค่าเลย → พับให้อัตโนมัติ
+  useEffect(() => {
+    if (clothingItems.length <= 5) return;
+    const key = "cpu_erp_collapsed_clothing_initialized";
+    if (localStorage.getItem(key)) return;
+    setCollapsedItems(prev => {
+      const next = { ...prev };
+      clothingItems.forEach(it => { if (next[it.id] === undefined) next[it.id] = true; });
+      try { localStorage.setItem("cpu_erp_collapsed_clothing", JSON.stringify(next)); localStorage.setItem(key,"1"); } catch {}
+      return next;
+    });
+  }, [clothingItems]);
   const clothingImgRef = useRef(null);
   const [uploadingClothingId, setUploadingClothingId] = useState(null);
 
@@ -2801,6 +2830,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             {activeTab==="inventory"&&inventoryTab==="general"&&role.canManageCats&&<BtnGhost onClick={()=>setShowCatModal(true)}>📦 หมวดหมู่</BtnGhost>}
             {activeTab==="inventory"&&inventoryTab==="general"&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddModal(true)}>️ เพิ่มสินค้า</BtnPrimary>}
+            {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&<BtnGhost onClick={()=>collapseAllClothing(true)} title="พับทุกรุ่น">▶ พับทั้งหมด</BtnGhost>}
+            {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&<BtnGhost onClick={()=>collapseAllClothing(false)} title="กางทุกรุ่น">▼ กางทั้งหมด</BtnGhost>}
             {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&<BtnGhost onClick={()=>{setSalesDate(new Date().toISOString().slice(0,10));setShowSalesToday(true);}}>📊 ขายวันนี้</BtnGhost>}
             {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&role.canAdd&&<BtnGhost onClick={()=>setShowSizeManager(true)}>📏 จัดการไซส์</BtnGhost>}
             {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddClothing(true)}>{inventoryTab==="sports"?"👟":"️"} เพิ่มรุ่นใหม่</BtnPrimary>}
