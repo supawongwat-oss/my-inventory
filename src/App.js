@@ -228,7 +228,9 @@ export default function App() {
   const [freeItemForm, setFreeItemForm] = useState({ name:"", colorName:"", size:"", qty:"" });
   const [freeItemCutStock, setFreeItemCutStock] = useState(true);
   const [collapsedOrderDates, setCollapsedOrderDates] = useState({});
+  const [collapsedOrderMonths, setCollapsedOrderMonths] = useState({}); // 📅 พับเดือน
   const [collapsedInvoiceDates, setCollapsedInvoiceDates] = useState({});
+  const [collapsedInvoiceMonths, setCollapsedInvoiceMonths] = useState({});
   const [selectedInvoices, setSelectedInvoices] = useState(new Set()); // 🔗 เลือกบิลเพื่อรวม
   const [selectedOrders, setSelectedOrders] = useState(new Set()); // 🔗 เลือกใบสั่งของเพื่อออกบิลรวม
   const [showNewCustomer, setShowNewCustomer] = useState(false);
@@ -3545,9 +3547,39 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   const p=(s)=>{const [d,m,y]=s.split("/");return `${y}${m}${d}`;};
                   return p(b).localeCompare(p(a));
                 });
+                // 📅 group by month
+                const monthGroups = {};
+                sortedDates.forEach(d => {
+                  const parts = d.split("/");
+                  const mk = parts.length>=3 ? `${parts[1]}/${parts[2]}` : d;
+                  if (!monthGroups[mk]) monthGroups[mk] = [];
+                  monthGroups[mk].push(d);
+                });
+                const sortedMonths = Object.keys(monthGroups).sort((a,b)=>{
+                  const p=(s)=>{const [m,y]=s.split("/");return `${y}${m}`;};
+                  return p(b).localeCompare(p(a));
+                });
+                const THAI_MONTHS = ["","ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
                 return (
-                  <div style={{display:"flex",flexDirection:"column",gap:14}}>
-                    {sortedDates.map(date=>{
+                  <div style={{display:"flex",flexDirection:"column",gap:16}}>
+                    {sortedMonths.map(mk=>{
+                      const daysInMonth = monthGroups[mk];
+                      const monthInvs = daysInMonth.flatMap(d => groups[d]);
+                      const monthTotal = monthInvs.reduce((s,inv)=>s+(inv.mergedInto?0:(inv.total||0)),0);
+                      const monthCollapsed = collapsedInvoiceMonths[mk];
+                      const [mm,yyyy] = mk.split("/");
+                      const monthLabel = `${THAI_MONTHS[Number(mm)]||mm} ${yyyy}`;
+                      return (
+                        <div key={mk}>
+                          <div onClick={()=>setCollapsedInvoiceMonths(p=>({...p,[mk]:!p[mk]}))} style={{padding:"8px 14px",background:"linear-gradient(90deg,#3b5b8b,#5b7ba8)",borderRadius:10,display:"flex",alignItems:"center",gap:10,cursor:"pointer",userSelect:"none",marginBottom:monthCollapsed?0:10}}>
+                            <div style={{width:20,height:20,color:"white",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",transition:"transform 0.2s",transform:monthCollapsed?"rotate(-90deg)":"rotate(0deg)"}}>▼</div>
+                            <div style={{fontSize:14,fontWeight:700,color:"white",letterSpacing:0.3}}>📅 {monthLabel}</div>
+                            <div style={{fontSize:11,color:"rgba(255,255,255,0.85)"}}>{monthInvs.length} ใบ · {daysInMonth.length} วัน</div>
+                            <div style={{marginLeft:"auto",fontSize:12,color:"white",fontFamily:"monospace",fontWeight:700}}>฿{monthTotal.toLocaleString("th-TH",{minimumFractionDigits:2})}</div>
+                          </div>
+                          {!monthCollapsed&&(
+                          <div style={{display:"flex",flexDirection:"column",gap:10,marginLeft:8}}>
+                    {daysInMonth.map(date=>{
                       const list=groups[date];
                       // ไม่นับยอดบิลที่ถูกรวมไปแล้ว (กันนับซ้ำกับบิลรวม)
                       const totalAmount=list.reduce((s,inv)=>s+(inv.mergedInto?0:(inv.total||0)),0);
@@ -3619,6 +3651,11 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                             </div>);
                           })}
                           </>}
+                        </div>
+                      );
+                    })}
+                          </div>
+                          )}
                         </div>
                       );
                     })}
@@ -3782,7 +3819,13 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                     <div style={{flex:1}}/>
                     <div style={{fontSize:11,color:T.muted}}>
                       {(()=>{
-                        const notInvoiced = filteredOrders.filter(o => !invoices.some(inv => (inv.mergedFromOrderIds||[]).includes(o.id))).length;
+                        const isInvoicedOrder = (o) => {
+                          if (invoices.some(inv => (inv.mergedFromOrderIds||[]).includes(o.id))) return true;
+                          if (!o.customerName || !o.date) return false;
+                          const day = String(o.date).slice(0,10);
+                          return invoices.some(inv => (inv.customerName||"").trim()===o.customerName.trim() && String(inv.date||"").slice(0,10)===day);
+                        };
+                        const notInvoiced = filteredOrders.filter(o => !isInvoicedOrder(o)).length;
                         return (<>
                           พบ <b style={{color:T.accent}}>{filteredOrders.length}</b> / {orders.length} ใบ
                           {notInvoiced>0 && <><span style={{margin:"0 6px",color:T.border}}>·</span>⏳ ยังไม่ออกบิล <b style={{color:"#dc2626"}}>{notInvoiced}</b> ใบ</>}
@@ -3811,9 +3854,38 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   const p=(s)=>{const [d,m,y]=s.split("/");return `${y}${m}${d}`;};
                   return p(b).localeCompare(p(a));
                 });
+                // 📅 group by month (MM/YYYY)
+                const monthGroups = {};
+                sortedDates.forEach(d => {
+                  const parts = d.split("/");
+                  const mk = parts.length>=3 ? `${parts[1]}/${parts[2]}` : d;
+                  if (!monthGroups[mk]) monthGroups[mk] = [];
+                  monthGroups[mk].push(d);
+                });
+                const sortedMonths = Object.keys(monthGroups).sort((a,b)=>{
+                  const p=(s)=>{const [m,y]=s.split("/");return `${y}${m}`;};
+                  return p(b).localeCompare(p(a));
+                });
+                const THAI_MONTHS = ["","ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
                 return (
-                  <div style={{display:"flex",flexDirection:"column",gap:14}}>
-                    {sortedDates.map(date=>{
+                  <div style={{display:"flex",flexDirection:"column",gap:16}}>
+                    {sortedMonths.map(mk=>{
+                      const daysInMonth = monthGroups[mk];
+                      const monthOrders = daysInMonth.flatMap(d => groups[d]);
+                      const monthTotalQty = monthOrders.reduce((s,o)=>s+(o.items||[]).reduce((a,i)=>a+(Number(i.qty)||0),0),0);
+                      const monthCollapsed = collapsedOrderMonths[mk];
+                      const [mm,yyyy] = mk.split("/");
+                      const monthLabel = `${THAI_MONTHS[Number(mm)]||mm} ${yyyy}`;
+                      return (
+                        <div key={mk}>
+                          <div onClick={()=>setCollapsedOrderMonths(p=>({...p,[mk]:!p[mk]}))} style={{padding:"8px 14px",background:"linear-gradient(90deg,#3b5b8b,#5b7ba8)",borderRadius:10,display:"flex",alignItems:"center",gap:10,cursor:"pointer",userSelect:"none",marginBottom:monthCollapsed?0:10}}>
+                            <div style={{width:20,height:20,color:"white",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",transition:"transform 0.2s",transform:monthCollapsed?"rotate(-90deg)":"rotate(0deg)"}}>▼</div>
+                            <div style={{fontSize:14,fontWeight:700,color:"white",letterSpacing:0.3}}>📅 {monthLabel}</div>
+                            <div style={{fontSize:11,color:"rgba(255,255,255,0.85)"}}>{monthOrders.length} ใบ · {monthTotalQty.toLocaleString("th-TH")} ชิ้น · {daysInMonth.length} วัน</div>
+                          </div>
+                          {!monthCollapsed&&(
+                          <div style={{display:"flex",flexDirection:"column",gap:10,marginLeft:8}}>
+                    {daysInMonth.map(date=>{
                       const list=groups[date];
                       const totalQty=list.reduce((s,o)=>s+(o.items||[]).reduce((a,i)=>a+i.qty,0),0);
                       const collapsed=collapsedOrderDates[date];
@@ -3845,16 +3917,22 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                               </div>
                               <div style={{fontSize:12,color:T.sub}}>{(o.items||[]).length} รายการ · {(o.items||[]).reduce((s,i)=>s+i.qty,0)} ชิ้น</div>
                               <div style={{fontSize:11,color:T.sub}}>{o.by}</div>
-                              <div style={{display:"flex",flexDirection:"column",gap:3,alignItems:"flex-start"}}>
+                              <div style={{display:"flex",flexDirection:"row",gap:4,alignItems:"center",flexWrap:"wrap"}}>
                                 {o.hasPendingMix
                                   ? <span title="ยังไม่ได้ระบุสี/ไซส์ของรายการคละ — ยังไม่ตัดสต็อก" style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:"rgba(184,134,0,0.15)",color:T.amber,border:"1px solid rgba(184,134,0,0.4)"}}>🕐 รอระบุ</span>
                                   : <span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:600,background:"rgba(52,211,153,0.1)",color:"#34d399",border:"1px solid rgba(52,211,153,0.2)"}}>{o.status}</span>}
                                 {o.deferStockCut && <span title="ขายก่อน ไม่ตัดสต๊อก — คลิก 'ตัดสต๊อก' เมื่อพร้อม" style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:"rgba(124,58,237,0.12)",color:"#7c3aed",border:"1px solid rgba(124,58,237,0.35)"}}>🔓 ไม่ตัดสต๊อก</span>}
                                 {(()=>{
-                                  const invoiced = invoices.some(inv => (inv.mergedFromOrderIds||[]).includes(o.id));
+                                  // เช็คตรง ๆ ก่อน (ใบใหม่)
+                                  let invoiced = invoices.some(inv => (inv.mergedFromOrderIds||[]).includes(o.id));
+                                  // fallback สำหรับใบเก่า — customer+date เดียวกัน (ไม่ track ตรง)
+                                  if (!invoiced && o.customerName && o.date) {
+                                    const day = String(o.date).slice(0,10);
+                                    invoiced = invoices.some(inv => (inv.customerName||"").trim()===o.customerName.trim() && String(inv.date||"").slice(0,10)===day);
+                                  }
                                   return invoiced
-                                    ? <span title="ออกบิลแล้ว" style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:600,background:"rgba(59,91,139,0.1)",color:T.accent,border:"1px solid rgba(59,91,139,0.25)"}}>🧾 ออกบิลแล้ว</span>
-                                    : <span title="ยังไม่ออกบิล — เลือกใบและกด '🧾 ออกบิลรวม' หรือใช้ 'ดึงจากใบสั่งของ' ในหน้าออกบิล" style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:"rgba(220,38,38,0.08)",color:"#dc2626",border:"1px solid rgba(220,38,38,0.3)"}}>⏳ ยังไม่ออกบิล</span>;
+                                    ? <span title="ออกบิลแล้ว" style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:600,background:"rgba(59,91,139,0.1)",color:T.accent,border:"1px solid rgba(59,91,139,0.25)",whiteSpace:"nowrap"}}>🧾 ออกบิลแล้ว</span>
+                                    : <span title="ยังไม่ออกบิล — เลือกใบและกด '🧾 ออกบิลรวม' หรือใช้ 'ดึงจากใบสั่งของ' ในหน้าออกบิล" style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:"rgba(220,38,38,0.08)",color:"#dc2626",border:"1px solid rgba(220,38,38,0.3)",whiteSpace:"nowrap"}}>⏳ ยังไม่ออกบิล</span>;
                                 })()}
                               </div>
                               <div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"wrap"}} onClick={e=>e.stopPropagation()}>
@@ -3866,6 +3944,11 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                             </div>
                           ))}
                           </>}
+                        </div>
+                      );
+                    })}
+                          </div>
+                          )}
                         </div>
                       );
                     })}
