@@ -5159,19 +5159,23 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                       {row.map(sz=>{
                         const stock=(col.stock||{})[sz]||0;
                         const curVal=orderForm.items.find(i=>i.clothingId===orderItemForm.clothingId&&i.colorIdx===Number(orderItemForm.colorIdx)&&i.size===sz)?.qty||0;
+                        // 🔓 ถ้าโหมด "ขายก่อน ไม่ตัดสต๊อก" — ไม่บังคับตรวจสต๊อก
+                        const defer = !!orderForm.deferStockCut;
+                        const noStock = stock===0 && !defer;
                         return (
-                          <div key={sz} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:stock===0?"rgba(203,210,217,0.25)":"rgba(241,243,246,0.5)",borderRadius:7,border:`1px solid ${stock===0?"rgba(203,210,217,0.5)":"rgba(59,91,139,0.18)"}`}}>
+                          <div key={sz} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:noStock?"rgba(203,210,217,0.25)":stock===0&&defer?"rgba(124,58,237,0.06)":"rgba(241,243,246,0.5)",borderRadius:7,border:`1px solid ${noStock?"rgba(203,210,217,0.5)":stock===0&&defer?"rgba(124,58,237,0.25)":"rgba(59,91,139,0.18)"}`}}>
                             <div style={{minWidth:38,display:"flex",flexDirection:"column"}}>
-                              <span style={{fontFamily:"monospace",fontWeight:700,fontSize:13,color:stock===0?"#9aa5b1":T.accent}}>{sz}</span>
-                              <span style={{fontSize:9,color:stock===0?"#9aa5b1":stock<5?"#fbbf24":"#22d3ee",fontFamily:"monospace"}}>มี {stock}</span>
+                              <span style={{fontFamily:"monospace",fontWeight:700,fontSize:13,color:noStock?"#9aa5b1":T.accent}}>{sz}</span>
+                              <span style={{fontSize:9,color:noStock?"#9aa5b1":stock===0&&defer?"#7c3aed":stock<5?"#fbbf24":"#22d3ee",fontFamily:"monospace"}}>{stock===0&&defer?"🔓":"มี "+stock}</span>
                             </div>
-                            <input type="number" min="0" max={stock}
+                            <input type="number" min="0" {...(defer?{}:{max:stock})}
                               defaultValue={curVal||""}
                               placeholder="0"
-                              disabled={stock===0}
+                              disabled={noStock}
                               key={`${orderItemForm.clothingId}-${orderItemForm.colorIdx}-${sz}`}
                               onBlur={e=>{
-                                const val=Math.min(Math.max(0,Number(e.target.value)||0),stock);
+                                const raw=Math.max(0,Number(e.target.value)||0);
+                                const val=defer?raw:Math.min(raw,stock);
                                 if(val>0){
                                   setOrderForm(f=>{
                                     const idx=f.items.findIndex(i=>i.clothingId===orderItemForm.clothingId&&i.colorIdx===Number(orderItemForm.colorIdx)&&i.size===sz);
@@ -5184,7 +5188,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                                   setOrderForm(f=>({...f,items:f.items.filter(i=>!(i.clothingId===orderItemForm.clothingId&&i.colorIdx===Number(orderItemForm.colorIdx)&&i.size===sz))}));
                                 }
                               }}
-                              style={{flex:1,minWidth:0,textAlign:"center",background:stock===0?"rgba(203,210,217,0.3)":"rgba(59,91,139,0.1)",border:`1px solid ${stock===0?"rgba(203,210,217,0.5)":"rgba(59,91,139,0.25)"}`,borderRadius:6,color:stock===0?"#9aa5b1":"#3b5b8b",fontFamily:"monospace",fontSize:13,fontWeight:600,padding:"6px 4px",outline:"none",cursor:stock===0?"not-allowed":"text"}}
+                              style={{flex:1,minWidth:0,textAlign:"center",background:noStock?"rgba(203,210,217,0.3)":stock===0&&defer?"rgba(124,58,237,0.08)":"rgba(59,91,139,0.1)",border:`1px solid ${noStock?"rgba(203,210,217,0.5)":stock===0&&defer?"rgba(124,58,237,0.35)":"rgba(59,91,139,0.25)"}`,borderRadius:6,color:noStock?"#9aa5b1":stock===0&&defer?"#7c3aed":"#3b5b8b",fontFamily:"monospace",fontSize:13,fontWeight:600,padding:"6px 4px",outline:"none",cursor:noStock?"not-allowed":"text"}}
                             />
                           </div>
                         );
