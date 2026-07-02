@@ -222,6 +222,23 @@ export default function KanbanBoard({
     return out;
   }, [visibleOrders]);
 
+  // 🎨 map สี ต่อ prodNo — ใบที่อยู่บนบอร์ดพร้อมกัน "ไม่ชนสี" (คุมด้วย index ของใบทั้งหมด)
+  //   ถ้า order ตั้ง .color ไว้เอง → ใช้ค่านั้น
+  //   ที่เหลือ: จัด sequential ตาม prodNo (asc) เพื่อให้เสถียร + ไม่ชนกันจนกว่าจะเกิน 16 ใบ
+  const orderColorByProdNo = useMemo(() => {
+    const map = new Map();
+    // เรียง prodNo เสถียร → เปิดครั้งต่อไปสีของใบเดิมไม่เปลี่ยน
+    const uniq = [...new Set(visibleOrders.map(o => o.prodNo || o.id).filter(Boolean))].sort();
+    let idx = 0;
+    uniq.forEach(pn => {
+      const o = visibleOrders.find(oo => (oo.prodNo || oo.id) === pn);
+      if (o?.color) { map.set(pn, o.color); return; } // ใช้สีที่ user ตั้งเอง
+      map.set(pn, ORDER_PALETTE[idx % ORDER_PALETTE.length]);
+      idx++;
+    });
+    return map;
+  }, [visibleOrders]);
+
   // group by status
   const byStatus = useMemo(() => {
     const m = {};
@@ -321,6 +338,7 @@ export default function KanbanBoard({
                     <div style={{padding:20,textAlign:"center",fontSize:11,color:T.muted,fontStyle:"italic"}}>— ว่าง —</div>
                   ) : col.map(lot => (
                     <KanbanCard key={`${lot.orderId}-${lot.lotId}`} lot={lot} compact={compact}
+                      overrideColor={orderColorByProdNo.get(lot.prodNo || lot.orderId)}
                       onClick={() => setSelected({ order: lot.orderRef, lotIdx: lot.lotIdx })}
                       onDragStart={()=>setDraggingLot(lot)}
                       onDragEnd={()=>{ setDraggingLot(null); setDragOverStatus(null); }}
@@ -342,7 +360,7 @@ export default function KanbanBoard({
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:6,overflowY:"auto",flex:1}}>
               {cancelledLots.map(lot => (
-                <KanbanCard key={`${lot.orderId}-${lot.lotId}`} lot={lot} onClick={() => setSelected({ order: lot.orderRef, lotIdx: lot.lotIdx })}/>
+                <KanbanCard key={`${lot.orderId}-${lot.lotId}`} lot={lot} overrideColor={orderColorByProdNo.get(lot.prodNo || lot.orderId)} onClick={() => setSelected({ order: lot.orderRef, lotIdx: lot.lotIdx })}/>
               ))}
             </div>
           </div>
@@ -404,13 +422,15 @@ export function autoOrderColor(prodNo) {
   return ORDER_PALETTE[Math.abs(h) % ORDER_PALETTE.length];
 }
 
-function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag = true, compact = false }) {
+function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag = true, compact = false, overrideColor }) {
   const total = totalQtyOfLot(lot);
   const colors = Array.from(new Set((lot.items || []).map(it => it.colorName)));
   const isCustom = lot.orderRef?.__isCustom;
-  // 🎨 order color — ใช้ order.color ถ้าตั้งไว้ ไม่งั้น auto-hash จาก prodNo
-  //   → ทุกม้วนที่แบ่งจากใบเดียวกันจะเป็นสีเดียวกัน กวาดตาแยกงานได้ทันที
-  const orderColor = lot.orderRef?.color || autoOrderColor(lot.prodNo);
+  // 🎨 order color:
+  //   1. overrideColor จาก parent (คุมไม่ให้สีชนกันบนบอร์ด)
+  //   2. order.color ถ้า user ตั้งเอง (fallback สำหรับกรณีเรียกที่อื่น)
+  //   3. hash จาก prodNo (fallback ท้ายสุด)
+  const orderColor = overrideColor || lot.orderRef?.color || autoOrderColor(lot.prodNo);
   const accentColor = orderColor || (isCustom ? "#d97706" : T.accent);
   // 🖼️ thumbnail — รูปแรกจาก clothingImages (ใหม่) หรือ clothingImage (เก่า)
   const ord = lot.orderRef || {};
