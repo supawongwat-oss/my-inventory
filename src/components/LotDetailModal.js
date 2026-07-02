@@ -986,74 +986,108 @@ export default function LotDetailModal({
         <BtnGhost onClick={onClose} style={{flex:1}}>ปิด</BtnGhost>
       </div>
 
-      {/* 📦 Partial stock-in modal */}
+      {/* 📦 Partial stock-in modal (grid: color × size) */}
       {partialStockOpen && (() => {
         const items = lot.items || [];
-        const takes = items.map((_, idx) => Number(partialValues[idx]) || 0);
-        const totalTake = takes.reduce((s,v)=>s+v, 0);
-        const totalRemain = items.reduce((s,it,idx)=>s+((Number(it.qty)||0)-takes[idx]), 0);
+        // 🧩 สร้าง grid: color+variant rows, size cols; แต่ละ cell → itemIdx
+        const rowKey = (it) => `${it.colorName||"-"}|${it.colorHex||"#999"}|${it.variant||""}`;
+        const rowsMap = new Map();
+        const sizeSet = new Set();
+        items.forEach((it, idx) => {
+          const key = rowKey(it);
+          if (!rowsMap.has(key)) rowsMap.set(key, { colorName: it.colorName, colorHex: it.colorHex, variant: it.variant, cells: {} });
+          const sz = it.size || "-";
+          rowsMap.get(key).cells[sz] = idx;
+          sizeSet.add(sz);
+        });
+        const rows = Array.from(rowsMap.values());
+        const allSizes = Array.from(sizeSet).sort((a,b) => sizeRank(a) - sizeRank(b));
+        const takeOf = (idx) => Math.max(0, Number(partialValues[idx]) || 0);
         const setVal = (idx, v) => setPartialValues(m=>({...m,[idx]:v}));
         const setAllMax = () => { const n={}; items.forEach((it,idx)=>n[idx]=String(Number(it.qty)||0)); setPartialValues(n); };
         const setAllZero = () => { const n={}; items.forEach((_,idx)=>n[idx]="0"); setPartialValues(n); };
+        const totalTake = items.reduce((s,_,idx)=>s+takeOf(idx), 0);
+        const totalRemain = items.reduce((s,it,idx)=>s+((Number(it.qty)||0)-takeOf(idx)), 0);
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:600,backdropFilter:"blur(6px)"}}
             onMouseDown={e=>{if(e.target===e.currentTarget)setPartialStockOpen(false);}}>
-            <div onMouseDown={e=>e.stopPropagation()} style={{background:"white",borderRadius:14,width:640,maxWidth:"92vw",maxHeight:"90vh",overflowY:"auto",padding:18,boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+            <div onMouseDown={e=>e.stopPropagation()} style={{background:"white",borderRadius:14,width:920,maxWidth:"96vw",maxHeight:"92vh",overflowY:"auto",padding:18,boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
                 <div>
                   <div style={{fontSize:16,fontWeight:800,color:T.text}}>📦 เข้าคลังบางส่วน · {lot.lotId}</div>
-                  <div style={{fontSize:11,color:T.sub,marginTop:2}}>{order.clothingName} · กรอกจำนวนที่ทำเสร็จจริง (ที่เหลือค้างในล็อตต่อ)</div>
+                  <div style={{fontSize:11,color:T.sub,marginTop:2}}>{order.clothingName} · ตัวเลขเล็ก = มีในล็อต · กรอกช่องล่าง = เข้าคลัง</div>
                 </div>
                 <button onClick={()=>setPartialStockOpen(false)} style={{border:"none",background:"transparent",cursor:"pointer",fontSize:18,color:T.muted}}>✕</button>
               </div>
               <div style={{display:"flex",gap:6,marginBottom:8}}>
-                <button onClick={setAllMax} style={{padding:"4px 10px",border:`1px solid ${T.border}`,background:"transparent",borderRadius:6,fontSize:11,cursor:"pointer",color:T.accent}}>✓ เลือกเต็มทุกรายการ</button>
+                <button onClick={setAllMax} style={{padding:"4px 10px",border:`1px solid ${T.border}`,background:"transparent",borderRadius:6,fontSize:11,cursor:"pointer",color:T.accent}}>✓ เลือกเต็มทุกช่อง</button>
                 <button onClick={setAllZero} style={{padding:"4px 10px",border:`1px solid ${T.border}`,background:"transparent",borderRadius:6,fontSize:11,cursor:"pointer",color:T.muted}}>✕ ล้างทั้งหมด</button>
               </div>
-              <div style={{border:`1px solid ${T.border}`,borderRadius:8,overflow:"hidden",marginBottom:12}}>
+              <div style={{border:`1px solid ${T.border}`,borderRadius:8,overflow:"auto",marginBottom:12,maxHeight:"55vh"}}>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                   <thead>
                     <tr style={{background:"#f1f5fb",fontSize:11,color:T.sub}}>
-                      <th style={{padding:"7px 10px",textAlign:"left",fontWeight:700}}>สี</th>
-                      <th style={{padding:"7px 6px",textAlign:"center",fontWeight:700}}>ไซส์</th>
-                      <th style={{padding:"7px 6px",textAlign:"center",fontWeight:700}}>มีในล็อต</th>
-                      <th style={{padding:"7px 6px",textAlign:"center",fontWeight:700}}>เข้าเท่าไหร่?</th>
-                      <th style={{padding:"7px 6px",textAlign:"center",fontWeight:700,color:T.accent}}>เหลือ</th>
+                      <th style={{position:"sticky",left:0,background:"#f1f5fb",zIndex:2,padding:"7px 10px",textAlign:"left",fontWeight:700,borderRight:`1px solid ${T.border}`,minWidth:110}}>สี</th>
+                      {allSizes.map(sz => (
+                        <th key={sz} style={{padding:"7px 4px",textAlign:"center",fontWeight:700,fontFamily:"monospace",color:T.accent,fontSize:12,borderRight:`1px solid ${T.border}`,minWidth:64}}>{sz}</th>
+                      ))}
+                      <th style={{padding:"7px 8px",textAlign:"center",fontWeight:700,color:T.green,minWidth:56}}>รวมเข้า</th>
+                      <th style={{padding:"7px 8px",textAlign:"center",fontWeight:700,color:T.sub,minWidth:56}}>เหลือ</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((it, idx) => {
-                      const have = Number(it.qty) || 0;
-                      const take = takes[idx];
-                      const remain = have - take;
-                      const over = take > have;
+                    {rows.map((r,ri) => {
+                      let rowTake=0, rowRemain=0;
                       return (
-                        <tr key={idx} style={{borderTop:`1px solid ${T.border}`,background:take>0?"#f0fdf4":"transparent"}}>
-                          <td style={{padding:"6px 10px"}}>
+                        <tr key={ri} style={{borderTop:`1px solid ${T.border}`}}>
+                          <td style={{position:"sticky",left:0,background:"white",zIndex:1,padding:"6px 10px",whiteSpace:"nowrap",borderRight:`1px solid ${T.border}`}}>
                             <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
-                              <span style={{width:11,height:11,borderRadius:2,background:it.colorHex||"#999",border:"1px solid rgba(0,0,0,0.15)"}}/>
-                              <b style={{color:T.text}}>{it.colorName||"?"}</b>
-                              {it.variant && <span style={{fontSize:10,color:T.muted}}>· {it.variant}</span>}
+                              <span style={{width:12,height:12,borderRadius:2,background:r.colorHex||"#999",border:"1px solid rgba(0,0,0,0.15)"}}/>
+                              <b style={{color:T.text}}>{r.colorName||"?"}</b>
+                              {r.variant && <span style={{fontSize:10,color:T.muted}}>· {r.variant}</span>}
                             </span>
                           </td>
-                          <td style={{padding:"6px 6px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:T.accent}}>{it.size||"?"}</td>
-                          <td style={{padding:"6px 6px",textAlign:"center",fontFamily:"monospace"}}>{have}</td>
-                          <td style={{padding:"4px 6px",textAlign:"center"}}>
-                            <input type="number" min="0" max={have} value={partialValues[idx]??""}
-                              onChange={e=>setVal(idx, e.target.value)}
-                              onFocus={e=>e.target.select()}
-                              style={{width:70,padding:"5px 6px",border:`1px solid ${over?T.red:T.border}`,borderRadius:6,textAlign:"center",fontFamily:"monospace",fontSize:13,fontWeight:700,outline:"none",background:over?"#fef2f2":"white",color:over?T.red:T.text}}/>
-                          </td>
-                          <td style={{padding:"6px 6px",textAlign:"center",fontFamily:"monospace",color:remain>0?T.sub:remain===0?T.green:T.red}}>{remain}</td>
+                          {allSizes.map(sz => {
+                            const idx = r.cells[sz];
+                            if (idx == null) {
+                              return <td key={sz} style={{padding:"4px",textAlign:"center",borderRight:`1px solid ${T.border}`,background:"#f8fafc",color:"#cbd5e1"}}>—</td>;
+                            }
+                            const have = Number(items[idx].qty)||0;
+                            const take = takeOf(idx);
+                            const remain = have - take;
+                            const over = take > have;
+                            rowTake += take; rowRemain += remain;
+                            return (
+                              <td key={sz} style={{padding:"3px",borderRight:`1px solid ${T.border}`,background:take>0?"#f0fdf4":"white",verticalAlign:"middle"}}>
+                                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                                  <div style={{fontSize:9,color:T.muted,fontFamily:"monospace"}}>มี {have}</div>
+                                  <input type="number" min="0" max={have} value={partialValues[idx]??""}
+                                    onChange={e=>setVal(idx, e.target.value)}
+                                    onFocus={e=>e.target.select()}
+                                    style={{width:56,padding:"4px 4px",border:`1px solid ${over?T.red:T.border}`,borderRadius:5,textAlign:"center",fontFamily:"monospace",fontSize:12,fontWeight:700,outline:"none",background:over?"#fef2f2":"white",color:over?T.red:T.text}}/>
+                                  <div style={{fontSize:8,color:remain===0?T.green:remain>0?T.muted:T.red,fontFamily:"monospace"}}>เหลือ {remain}</div>
+                                </div>
+                              </td>
+                            );
+                          })}
+                          <td style={{padding:"6px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:800,color:T.green,fontSize:13}}>{rowTake}</td>
+                          <td style={{padding:"6px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:800,color:rowRemain>0?T.sub:T.green,fontSize:13}}>{rowRemain}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                   <tfoot>
                     <tr style={{background:"#f8fafc",borderTop:`2px solid ${T.border}`,fontWeight:800}}>
-                      <td colSpan={3} style={{padding:"7px 10px",textAlign:"right",color:T.sub}}>รวม</td>
-                      <td style={{padding:"7px 6px",textAlign:"center",fontFamily:"monospace",color:T.green,fontSize:13}}>{totalTake}</td>
-                      <td style={{padding:"7px 6px",textAlign:"center",fontFamily:"monospace",color:totalRemain>0?T.sub:T.green,fontSize:13}}>{totalRemain}</td>
+                      <td style={{position:"sticky",left:0,background:"#f8fafc",padding:"8px 10px",textAlign:"right",color:T.sub,borderRight:`1px solid ${T.border}`}}>รวมไซส์</td>
+                      {allSizes.map(sz => {
+                        const col = rows.reduce((s,r) => {
+                          const idx = r.cells[sz];
+                          return idx == null ? s : s + takeOf(idx);
+                        }, 0);
+                        return <td key={sz} style={{padding:"8px 4px",textAlign:"center",fontFamily:"monospace",color:col>0?T.green:T.muted,borderRight:`1px solid ${T.border}`}}>{col||"—"}</td>;
+                      })}
+                      <td style={{padding:"8px 8px",textAlign:"center",fontFamily:"monospace",color:T.green,fontSize:14}}>{totalTake}</td>
+                      <td style={{padding:"8px 8px",textAlign:"center",fontFamily:"monospace",color:totalRemain>0?T.sub:T.green,fontSize:14}}>{totalRemain}</td>
                     </tr>
                   </tfoot>
                 </table>
