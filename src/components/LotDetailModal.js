@@ -28,6 +28,8 @@ export default function LotDetailModal({
   const [toast, setToast] = useState("");
   const [showSplit, setShowSplit] = useState(false);
   const [showRollSplit, setShowRollSplit] = useState(false);
+  const [partialStockOpen, setPartialStockOpen] = useState(false);
+  const [partialValues, setPartialValues] = useState({}); // { [itemIdx]: qtyStr }
   const [noteText, setNoteText] = useState("");
   const [pendingPhotos, setPendingPhotos] = useState([]); // [{dataUrl, sizeKB}]
   const [photoCache, setPhotoCache] = useState({}); // {photoId: dataUrl}
@@ -171,6 +173,80 @@ export default function LotDetailModal({
         createdAt: serverTimestamp(),
       });
     }
+  };
+
+  // 📦 เข้าคลังบางส่วน — บวก stock ตามที่กรอก + หัก qty ในล็อต
+  const openPartialStock = () => {
+    const init = {};
+    (lot.items || []).forEach((it, idx) => { init[idx] = String(Number(it.qty) || 0); });
+    setPartialValues(init);
+    setPartialStockOpen(true);
+  };
+  const handlePartialStockIn = async () => {
+    if (busy || isCustom) return;
+    const items = lot.items || [];
+    const takes = items.map((it, idx) => Math.max(0, Math.min(Number(partialValues[idx]) || 0, Number(it.qty) || 0)));
+    const totalTake = takes.reduce((s,v)=>s+v, 0);
+    if (totalTake <= 0) { alert("ยังไม่ได้กรอกจำนวนที่จะเข้าคลัง"); return; }
+    // ยืนยัน
+    const remain = items.reduce((s,it,idx)=>s+((Number(it.qty)||0)-takes[idx]), 0);
+    const lines = items.map((it, idx) => takes[idx] > 0 ? `• ${it.colorName||"?"} / ${it.size||"?"} × ${takes[idx]}` : "").filter(Boolean).slice(0, 12).join("\n");
+    if (!window.confirm(`📦 เข้าคลังบางส่วน — ${lot.lotId}\n\n${lines}\n\nรวมเข้าคลัง: ${totalTake} ตัว\nเหลือในล็อต: ${remain} ตัว\n\nตรวจแล้วกด OK`)) return;
+    setBusy(true);
+    try {
+      const clothing = clothingItems.find(c => c.id === order.clothingId);
+      // เพิ่ม stock ตาม takes
+      if (clothing) {
+        const addMap = {};
+        items.forEach((it, idx) => {
+          if (takes[idx] <= 0) return;
+          const ci = Number(it.colorIdx) || 0;
+          if (!addMap[ci]) addMap[ci] = {};
+          addMap[ci][it.size] = (addMap[ci][it.size] || 0) + takes[idx];
+        });
+        const newColors = (clothing.colors || []).map((c, idx) => {
+          const adds = addMap[idx];
+          if (!adds) return c;
+          const stock = { ...(c.stock || {}) };
+          Object.entries(adds).forEach(([size, qty]) => { stock[size] = (Number(stock[size]) || 0) + qty; });
+          return { ...c, stock };
+        });
+        await updateDoc(doc(db, "clothing", clothing.id), { colors: newColors });
+        for (const [idx, take] of takes.entries()) {
+          if (take <= 0) continue;
+          const it = items[idx];
+          await addDoc(collection(db, "transactions"), {
+            type: "ผลิต-รับเข้าคลัง",
+            code: clothing.id,
+            name: `${clothing.model} / ${it.colorName} / ${it.size}`,
+            qty: take, by: user?.name || "", date: nowStr(),
+            note: `${order.prodNo} · ${lot.lotId} · บางส่วน`,
+            category: "เสื้อผ้า",
+            createdAt: serverTimestamp(),
+          });
+        }
+      }
+      // หัก qty ในล็อต + ถ้าครบ → mark finishedStocked + ย้ายเป็น "เข้าคลัง"
+      const newItems = items.map((it, idx) => ({ ...it, qty: (Number(it.qty)||0) - takes[idx] })).filter(it => (Number(it.qty)||0) > 0);
+      const allDone = newItems.length === 0;
+      const newLots = lots.map((l, i) => {
+        if (i !== lotIdx) return l;
+        if (allDone) {
+          return { ...l, items: [], status: "เข้าคลัง", finishedStocked: true, statusHistory: [...(l.statusHistory||[]), { status: "เข้าคลัง", at: nowStr(), by: user?.name || "", note: "เข้าคลังบางส่วน · ครบทุกตัว" }] };
+        }
+        return { ...l, items: newItems, statusHistory: [...(l.statusHistory||[]), { status: l.status, at: nowStr(), by: user?.name || "", note: `เข้าคลังบางส่วน ${totalTake} ตัว · เหลือ ${remain}` }] };
+      });
+      await persistLots(newLots, allDone ? { status: "เข้าคลัง" } : {});
+      logAudit(user, {
+        action: AUDIT_ACTIONS.PRODUCTION_STATUS, collection: collectionName,
+        targetId: order.id, targetLabel: `${order.prodNo} · ${lot.lotId}`,
+        note: `📦 เข้าคลังบางส่วน ${totalTake} ตัว${allDone ? " (ครบ → เข้าคลัง)" : ` · เหลือ ${remain}`}`,
+      });
+      setPartialStockOpen(false);
+      setToast(allDone ? `เข้าคลังครบ ${totalTake} ตัว` : `เข้าคลังบางส่วน ${totalTake} ตัว · เหลือ ${remain}`);
+    } catch (e) {
+      console.error(e); alert("เข้าคลังไม่สำเร็จ: " + (e.message || e));
+    } finally { setBusy(false); }
   };
 
   // ── move ──
@@ -794,6 +870,9 @@ export default function LotDetailModal({
           {(lot.items || []).length > 0 && lotTotal > 1 && (
             <BtnGhost onClick={() => setShowSplit(true)} disabled={busy} style={{flex:1,minWidth:140}}>✂️ แยกล็อตย่อย</BtnGhost>
           )}
+          {!isCustom && !isFinal && (lot.items || []).length > 0 && (
+            <BtnGhost onClick={openPartialStock} disabled={busy} style={{flex:1,minWidth:160,background:"rgba(22,163,74,0.06)",borderColor:"rgba(22,163,74,0.3)",color:T.green}}>📦 เข้าคลังบางส่วน</BtnGhost>
+          )}
           {lotTotal > 0 && (
             <BtnGhost onClick={() => setShowRollSplit(true)} disabled={busy} style={{flex:1,minWidth:150}}>🧵 แบ่งม้วน</BtnGhost>
           )}
@@ -906,6 +985,90 @@ export default function LotDetailModal({
       <div style={{display:"flex",gap:8}}>
         <BtnGhost onClick={onClose} style={{flex:1}}>ปิด</BtnGhost>
       </div>
+
+      {/* 📦 Partial stock-in modal */}
+      {partialStockOpen && (() => {
+        const items = lot.items || [];
+        const takes = items.map((_, idx) => Number(partialValues[idx]) || 0);
+        const totalTake = takes.reduce((s,v)=>s+v, 0);
+        const totalRemain = items.reduce((s,it,idx)=>s+((Number(it.qty)||0)-takes[idx]), 0);
+        const setVal = (idx, v) => setPartialValues(m=>({...m,[idx]:v}));
+        const setAllMax = () => { const n={}; items.forEach((it,idx)=>n[idx]=String(Number(it.qty)||0)); setPartialValues(n); };
+        const setAllZero = () => { const n={}; items.forEach((_,idx)=>n[idx]="0"); setPartialValues(n); };
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:600,backdropFilter:"blur(6px)"}}
+            onMouseDown={e=>{if(e.target===e.currentTarget)setPartialStockOpen(false);}}>
+            <div onMouseDown={e=>e.stopPropagation()} style={{background:"white",borderRadius:14,width:640,maxWidth:"92vw",maxHeight:"90vh",overflowY:"auto",padding:18,boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                <div>
+                  <div style={{fontSize:16,fontWeight:800,color:T.text}}>📦 เข้าคลังบางส่วน · {lot.lotId}</div>
+                  <div style={{fontSize:11,color:T.sub,marginTop:2}}>{order.clothingName} · กรอกจำนวนที่ทำเสร็จจริง (ที่เหลือค้างในล็อตต่อ)</div>
+                </div>
+                <button onClick={()=>setPartialStockOpen(false)} style={{border:"none",background:"transparent",cursor:"pointer",fontSize:18,color:T.muted}}>✕</button>
+              </div>
+              <div style={{display:"flex",gap:6,marginBottom:8}}>
+                <button onClick={setAllMax} style={{padding:"4px 10px",border:`1px solid ${T.border}`,background:"transparent",borderRadius:6,fontSize:11,cursor:"pointer",color:T.accent}}>✓ เลือกเต็มทุกรายการ</button>
+                <button onClick={setAllZero} style={{padding:"4px 10px",border:`1px solid ${T.border}`,background:"transparent",borderRadius:6,fontSize:11,cursor:"pointer",color:T.muted}}>✕ ล้างทั้งหมด</button>
+              </div>
+              <div style={{border:`1px solid ${T.border}`,borderRadius:8,overflow:"hidden",marginBottom:12}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                  <thead>
+                    <tr style={{background:"#f1f5fb",fontSize:11,color:T.sub}}>
+                      <th style={{padding:"7px 10px",textAlign:"left",fontWeight:700}}>สี</th>
+                      <th style={{padding:"7px 6px",textAlign:"center",fontWeight:700}}>ไซส์</th>
+                      <th style={{padding:"7px 6px",textAlign:"center",fontWeight:700}}>มีในล็อต</th>
+                      <th style={{padding:"7px 6px",textAlign:"center",fontWeight:700}}>เข้าเท่าไหร่?</th>
+                      <th style={{padding:"7px 6px",textAlign:"center",fontWeight:700,color:T.accent}}>เหลือ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((it, idx) => {
+                      const have = Number(it.qty) || 0;
+                      const take = takes[idx];
+                      const remain = have - take;
+                      const over = take > have;
+                      return (
+                        <tr key={idx} style={{borderTop:`1px solid ${T.border}`,background:take>0?"#f0fdf4":"transparent"}}>
+                          <td style={{padding:"6px 10px"}}>
+                            <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
+                              <span style={{width:11,height:11,borderRadius:2,background:it.colorHex||"#999",border:"1px solid rgba(0,0,0,0.15)"}}/>
+                              <b style={{color:T.text}}>{it.colorName||"?"}</b>
+                              {it.variant && <span style={{fontSize:10,color:T.muted}}>· {it.variant}</span>}
+                            </span>
+                          </td>
+                          <td style={{padding:"6px 6px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:T.accent}}>{it.size||"?"}</td>
+                          <td style={{padding:"6px 6px",textAlign:"center",fontFamily:"monospace"}}>{have}</td>
+                          <td style={{padding:"4px 6px",textAlign:"center"}}>
+                            <input type="number" min="0" max={have} value={partialValues[idx]??""}
+                              onChange={e=>setVal(idx, e.target.value)}
+                              onFocus={e=>e.target.select()}
+                              style={{width:70,padding:"5px 6px",border:`1px solid ${over?T.red:T.border}`,borderRadius:6,textAlign:"center",fontFamily:"monospace",fontSize:13,fontWeight:700,outline:"none",background:over?"#fef2f2":"white",color:over?T.red:T.text}}/>
+                          </td>
+                          <td style={{padding:"6px 6px",textAlign:"center",fontFamily:"monospace",color:remain>0?T.sub:remain===0?T.green:T.red}}>{remain}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{background:"#f8fafc",borderTop:`2px solid ${T.border}`,fontWeight:800}}>
+                      <td colSpan={3} style={{padding:"7px 10px",textAlign:"right",color:T.sub}}>รวม</td>
+                      <td style={{padding:"7px 6px",textAlign:"center",fontFamily:"monospace",color:T.green,fontSize:13}}>{totalTake}</td>
+                      <td style={{padding:"7px 6px",textAlign:"center",fontFamily:"monospace",color:totalRemain>0?T.sub:T.green,fontSize:13}}>{totalRemain}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              <div style={{padding:"8px 10px",background:totalRemain===0?"#dcfce7":"#fef3c7",border:`1px solid ${totalRemain===0?"#86efac":"#fde68a"}`,borderRadius:8,marginBottom:12,fontSize:11,color:totalRemain===0?"#166534":"#92400e",fontWeight:600}}>
+                {totalRemain===0 ? `✅ ครบทั้งล็อต — จะย้ายไปสถานะ "เข้าคลัง" อัตโนมัติ` : `⏸ ยังเหลือ ${totalRemain} ตัวในล็อต — ล็อตยังอยู่สถานะ "${lot.status}" รอทำต่อ`}
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>setPartialStockOpen(false)} disabled={busy} style={{flex:1,padding:"10px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>ยกเลิก</button>
+                <button onClick={handlePartialStockIn} disabled={busy||totalTake<=0} style={{flex:2,padding:"10px",borderRadius:8,border:"none",background:totalTake>0?"#16a34a":"#94a3b8",color:"white",cursor:totalTake>0?"pointer":"not-allowed",fontSize:13,fontWeight:700,fontFamily:"inherit",opacity:busy?0.5:1}}>{busy?"⏳ กำลังบันทึก...":`✅ เข้าคลัง ${totalTake} ตัว`}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Split modal */}
       {showSplit && (
