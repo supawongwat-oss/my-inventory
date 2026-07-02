@@ -194,7 +194,7 @@ export default function KanbanBoard({
     return orders.filter(o => {
       if (o.archived) return false; // 📦 ซ่อน archived
       if (q) {
-        const hit = (o.prodNo||"").toLowerCase().includes(q) || (o.clothingName||"").toLowerCase().includes(q);
+        const hit = (o.prodNo||"").toLowerCase().includes(q) || (o.clothingName||"").toLowerCase().includes(q) || (o.setNo||"").toLowerCase().includes(q);
         if (!hit) return false;
       }
       return true;
@@ -214,6 +214,7 @@ export default function KanbanBoard({
           lotIdx,
           prodNo: o.prodNo,
           clothingName: o.clothingName,
+          setNo: o.setNo,
           clothingImage: o.clothingImage,
         });
       });
@@ -392,6 +393,7 @@ function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag 
         onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
         onMouseLeave={e=>e.currentTarget.style.background="white"}>
         {lot.rollNo&&<span style={{color:"#15803d",fontWeight:700,flexShrink:0}}>🧵{lot.rollNo}</span>}
+        {lot.setNo&&<span style={{color:"#7c3aed",fontWeight:700,flexShrink:0,fontSize:10}}>🎽{lot.setNo}</span>}
         <span style={{fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lot.jobLabel||lot.clothingName||lot.prodNo}</span>
         <span style={{marginLeft:"auto",fontFamily:"monospace",fontWeight:700,color:T.text,flexShrink:0}}>{fmtInt(total)}</span>
       </div>
@@ -412,6 +414,7 @@ function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag 
         )}
         <span style={{fontFamily:"monospace",fontSize:10,color:accentColor,fontWeight:700}}>{lot.prodNo}</span>
         <span style={{fontSize:10,color:T.muted}}>· {lot.lotId}</span>
+        {lot.setNo && <span title="ชุดที่" style={{padding:"1px 7px",fontSize:10,background:"rgba(124,58,237,0.12)",color:"#7c3aed",borderRadius:6,border:"1px solid rgba(124,58,237,0.3)",fontWeight:700}}>🎽 {lot.setNo}</span>}
         <span style={{marginLeft:"auto",fontFamily:"monospace",fontWeight:700,color:T.text,fontSize:13}}>{fmtInt(total)}</span>
       </div>
       {(lot.machine || lot.rollNo) && (
