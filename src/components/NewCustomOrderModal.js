@@ -6,6 +6,7 @@ import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { generateDocNo } from "../utils/docNumber";
 import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
 import { PRESET_COLORS, getProductionSize, isProductionSizeCapped, SIZES, compareSizes } from "../theme";
+import { ORDER_PALETTE } from "./KanbanBoard";
 
 const T = { border:"#e3e8ef", sub:"#5b6b85", text:"#1f2a44", muted:"#8a9bb3", accent:"#3b5b8b", input:"#f6f8fb", inputBorder:"#d8dee9", red:"#dc2626" };
 const fmt = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -62,6 +63,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const [costPerPiece, setCostPerPiece] = useState("");
   const [laborCostPerPiece, setLaborCostPerPiece] = useState("");
   const [note, setNote] = useState("");
+  const [color, setColor] = useState(""); // 🎨 สีชุดงาน
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const fileRef = useRef(null);
@@ -186,6 +188,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
       finishedStocked: false,
       bomId: null,
       note: note || "",
+      color: color || "",
       by: user?.name || "",
       date: nowStr(),
       createdAt: serverTimestamp(),
@@ -561,6 +564,21 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
           <input value={note} onChange={e => setNote(e.target.value)}
             placeholder="เช่น ส่งภายใน 7 วัน"
             style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:6,padding:"5px 8px",fontFamily:"inherit",fontSize:11,outline:"none"}}/>
+        </div>
+      </div>
+
+      {/* 🎨 สีชุดงาน */}
+      <div style={{marginBottom:10,padding:"8px 10px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:8}}>
+        <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span>🎨 สีชุดงาน (แยกให้ต่างจากใบอื่นบนบอร์ด Kanban)</span>
+          {color&&<button onClick={()=>setColor("")} style={{padding:"1px 6px",border:"none",background:"transparent",color:T.sub,fontSize:9,cursor:"pointer",fontFamily:"inherit"}}>รีเซ็ต</button>}
+        </div>
+        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+          {ORDER_PALETTE.map(c=>(
+            <button key={c} onClick={()=>setColor(c)} title={c}
+              style={{width:26,height:26,borderRadius:6,border:color===c?`3px solid ${c}`:`1px solid ${T.border}`,background:c,cursor:"pointer",padding:0,boxShadow:color===c?`0 2px 6px ${c}55`:"none"}}/>
+          ))}
+          <div style={{fontSize:9,color:T.muted,alignSelf:"center",marginLeft:4}}>{color?"":"ไม่เลือก = auto"}</div>
         </div>
       </div>
 

@@ -370,11 +370,22 @@ export default function KanbanBoard({
   );
 }
 
+// 🎨 palette สำหรับ auto-สี ตาม prodNo (ทุกล็อตของใบเดียวกัน = สีเดียว)
+export const ORDER_PALETTE = ["#3b5b8b","#d97706","#16a34a","#dc2626","#7c3aed","#ea580c","#0891b2","#db2777","#65a30d","#facc15","#0d9488","#4338ca"];
+export function autoOrderColor(prodNo) {
+  const s = String(prodNo||"L1"); let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h*31 + s.charCodeAt(i)) & 0xffffff;
+  return ORDER_PALETTE[Math.abs(h) % ORDER_PALETTE.length];
+}
+
 function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag = true, compact = false }) {
   const total = totalQtyOfLot(lot);
   const colors = Array.from(new Set((lot.items || []).map(it => it.colorName)));
   const isCustom = lot.orderRef?.__isCustom;
-  const accentColor = isCustom ? "#d97706" : T.accent;
+  // 🎨 order color — ใช้ order.color ถ้าตั้งไว้ ไม่งั้น auto-hash จาก prodNo
+  //   → ทุกม้วนที่แบ่งจากใบเดียวกันจะเป็นสีเดียวกัน กวาดตาแยกงานได้ทันที
+  const orderColor = lot.orderRef?.color || autoOrderColor(lot.prodNo);
+  const accentColor = orderColor || (isCustom ? "#d97706" : T.accent);
   // 🖼️ thumbnail — รูปแรกจาก clothingImages (ใหม่) หรือ clothingImage (เก่า)
   const ord = lot.orderRef || {};
   const thumb = (Array.isArray(ord.clothingImages) && ord.clothingImages[0]?.dataUrl)
@@ -389,7 +400,7 @@ function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag 
         onDragStart={e=>{ if (!canDrag) return; e.dataTransfer.effectAllowed="move"; e.dataTransfer.setData("text/plain", lot.lotId); onDragStart && onDragStart(); }}
         onDragEnd={onDragEnd}
         title={`${lot.prodNo} · ${lot.jobLabel||lot.clothingName||""}`}
-        style={{display:"flex",alignItems:"center",gap:6,padding:"5px 9px",background:"white",border:`1px solid ${T.border}`,borderLeft:`3px solid ${accentColor}`,borderRadius:6,cursor:canDrag?"grab":"pointer",opacity:isDragging?0.5:1,fontSize:11}}
+        style={{display:"flex",alignItems:"center",gap:6,padding:"5px 9px",background:"white",border:`1px solid ${T.border}`,borderLeft:`5px solid ${accentColor}`,borderRadius:6,cursor:canDrag?"grab":"pointer",opacity:isDragging?0.5:1,fontSize:11}}
         onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
         onMouseLeave={e=>e.currentTarget.style.background="white"}>
         {lot.rollNo&&<span style={{color:"#15803d",fontWeight:700,flexShrink:0}}>🧵{lot.rollNo}</span>}
@@ -405,7 +416,7 @@ function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag 
       draggable={canDrag}
       onDragStart={e=>{ if (!canDrag) return; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", lot.lotId); onDragStart && onDragStart(); }}
       onDragEnd={onDragEnd}
-      style={{padding:"10px 12px",background:"white",border:`1px solid ${T.border}`,borderRadius:8,cursor:canDrag?"grab":"pointer",boxShadow:isDragging?`0 8px 20px ${accentColor}55`:"0 1px 3px rgba(0,0,0,0.04)",transition:"all 0.15s",borderLeft:`3px solid ${accentColor}`,opacity:isDragging?0.5:1}}
+      style={{padding:"10px 12px",background:"white",border:`1px solid ${T.border}`,borderRadius:8,cursor:canDrag?"grab":"pointer",boxShadow:isDragging?`0 8px 20px ${accentColor}55`:"0 1px 3px rgba(0,0,0,0.04)",transition:"all 0.15s",borderLeft:`5px solid ${accentColor}`,opacity:isDragging?0.5:1}}
       onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 4px 12px ${accentColor}25`;e.currentTarget.style.borderColor=accentColor;e.currentTarget.style.borderLeftColor=accentColor;}}
       onMouseLeave={e=>{e.currentTarget.style.boxShadow=isDragging?`0 8px 20px ${accentColor}55`:"0 1px 3px rgba(0,0,0,0.04)";e.currentTarget.style.borderColor=T.border;e.currentTarget.style.borderLeftColor=accentColor;}}>
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>

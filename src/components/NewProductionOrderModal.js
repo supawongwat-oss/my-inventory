@@ -5,6 +5,7 @@ import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { generateDocNo } from "../utils/docNumber";
 import { SIZES, SHOE_SIZES, compareSizes } from "../theme";
+import { ORDER_PALETTE } from "./KanbanBoard";
 
 const T = { border:"#e3e8ef", sub:"#5b6b85", text:"#1f2a44", muted:"#8a9bb3", accent:"#3b5b8b", input:"#f6f8fb", inputBorder:"#d8dee9", red:"#dc2626", green:"#16a34a", amber:"#d97706" };
 const fmt = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -17,6 +18,7 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
   const [inputMode, setInputMode] = useState("grid"); // "grid" | "rows"
   const [note, setNote] = useState("");
   const [setNo, setSetNo] = useState(""); // 🎽 ชุดที่ (เช่น "ชุด3", "ชุดผู้ใหญ่", "รอบ2/2026")
+  const [color, setColor] = useState(""); // 🎨 สีชุดงาน (ว่าง = auto จาก prodNo)
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -137,6 +139,7 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
       bomId: bom?.id || null,
       note: note || "",
       setNo: setNo || "",
+      color: color || "", // 🎨 ว่าง = ใช้ auto-สีจาก prodNo
       by: user?.name || "",
       date: now(),
       createdAt: serverTimestamp(),
@@ -303,6 +306,22 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
             <Input label="🎽 ชุดที่ (option)" placeholder="เช่น ชุด3, รอบ2" value={setNo} onChange={e => setSetNo(e.target.value)}/>
             <Input label="หมายเหตุ" value={note} onChange={e => setNote(e.target.value)}/>
           </div>
+
+          {/* 🎨 สีชุดงาน — ทุกล็อต/ม้วนของใบนี้จะเป็นสีเดียวกันบน Kanban */}
+          <div style={{marginBottom:12,padding:"10px 12px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:9}}>
+            <div style={{fontSize:11,color:T.sub,fontWeight:600,marginBottom:7,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <span>🎨 สีชุดงาน (แยกให้ต่างจากใบอื่นบนบอร์ด)</span>
+              {color&&<button onClick={()=>setColor("")} style={{padding:"2px 8px",border:"none",background:"transparent",color:T.sub,fontSize:10,cursor:"pointer",fontFamily:"inherit"}}>รีเซ็ต (auto)</button>}
+            </div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {ORDER_PALETTE.map(c=>(
+                <button key={c} onClick={()=>setColor(c)} title={c}
+                  style={{width:30,height:30,borderRadius:8,border:color===c?`3px solid ${c}`:`1px solid ${T.border}`,background:c,cursor:"pointer",padding:0,boxShadow:color===c?`0 2px 8px ${c}55`:"none"}}/>
+              ))}
+              <div style={{fontSize:10,color:T.muted,alignSelf:"center",marginLeft:6}}>{color?"เลือกแล้ว":"ไม่เลือก = auto ตามเลขใบ"}</div>
+            </div>
+          </div>
+
           {/* spacer */}
           <div style={{height:2}}/>
 
