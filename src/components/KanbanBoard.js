@@ -42,17 +42,18 @@ export default function KanbanBoard({
       ordersMap.get(key).lotIdxsInStep.push(l.lotIdx);
     });
     // กรองเฉพาะ order ที่ทุก lot อยู่ในนี้ (ไม่นับ lot ที่ "ยกเลิก" แล้ว)
+    // 🔧 ใช้ getLots() ครอบ — รองรับ order รุ่นเก่าที่ไม่มี .lots[] array (จะสร้าง virtual L1 ให้)
     const archivable = [];
     const partial = [];
     for (const [, info] of ordersMap) {
-      const activeLots = (info.orderRef.lots || []).filter(l => l.status !== "ยกเลิก");
+      const activeLots = getLots(info.orderRef).filter(l => l.status !== "ยกเลิก");
       if (activeLots.length === info.lotIdxsInStep.length) archivable.push(info);
       else partial.push(info);
     }
     if (archivable.length === 0) {
       // 📋 แสดงรายละเอียดว่า lot อื่นอยู่ขั้นไหน — user จะได้รู้ว่าต้องไปดันขั้นไหน
       const detailLines = partial.slice(0, 10).map(info => {
-        const activeLots = (info.orderRef.lots || []).filter(l => l.status !== "ยกเลิก");
+        const activeLots = getLots(info.orderRef).filter(l => l.status !== "ยกเลิก");
         const stuckStages = {};
         activeLots.forEach(l => {
           if (l.status !== step) stuckStages[l.status] = (stuckStages[l.status]||0) + 1;
