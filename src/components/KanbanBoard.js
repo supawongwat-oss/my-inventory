@@ -400,9 +400,9 @@ function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag 
         onDragStart={e=>{ if (!canDrag) return; e.dataTransfer.effectAllowed="move"; e.dataTransfer.setData("text/plain", lot.lotId); onDragStart && onDragStart(); }}
         onDragEnd={onDragEnd}
         title={`${lot.prodNo} · ${lot.jobLabel||lot.clothingName||""}`}
-        style={{display:"flex",alignItems:"center",gap:6,padding:"5px 9px",background:"white",border:`1px solid ${T.border}`,borderLeft:`5px solid ${accentColor}`,borderRadius:6,cursor:canDrag?"grab":"pointer",opacity:isDragging?0.5:1,fontSize:11}}
-        onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
-        onMouseLeave={e=>e.currentTarget.style.background="white"}>
+        style={{display:"flex",alignItems:"center",gap:6,padding:"5px 9px",background:`${accentColor}12`,border:`1px solid ${accentColor}55`,borderLeft:`7px solid ${accentColor}`,borderRadius:6,cursor:canDrag?"grab":"pointer",opacity:isDragging?0.5:1,fontSize:11}}
+        onMouseEnter={e=>e.currentTarget.style.background=`${accentColor}22`}
+        onMouseLeave={e=>e.currentTarget.style.background=`${accentColor}12`}>
         {lot.rollNo&&<span style={{color:"#15803d",fontWeight:700,flexShrink:0}}>🧵{lot.rollNo}</span>}
         {lot.setNo&&<span style={{color:"#7c3aed",fontWeight:700,flexShrink:0,fontSize:10}}>🎽{lot.setNo}</span>}
         <span style={{fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lot.jobLabel||lot.clothingName||lot.prodNo}</span>
@@ -416,9 +416,9 @@ function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag 
       draggable={canDrag}
       onDragStart={e=>{ if (!canDrag) return; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", lot.lotId); onDragStart && onDragStart(); }}
       onDragEnd={onDragEnd}
-      style={{padding:"10px 12px",background:"white",border:`1px solid ${T.border}`,borderRadius:8,cursor:canDrag?"grab":"pointer",boxShadow:isDragging?`0 8px 20px ${accentColor}55`:"0 1px 3px rgba(0,0,0,0.04)",transition:"all 0.15s",borderLeft:`5px solid ${accentColor}`,opacity:isDragging?0.5:1}}
-      onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 4px 12px ${accentColor}25`;e.currentTarget.style.borderColor=accentColor;e.currentTarget.style.borderLeftColor=accentColor;}}
-      onMouseLeave={e=>{e.currentTarget.style.boxShadow=isDragging?`0 8px 20px ${accentColor}55`:"0 1px 3px rgba(0,0,0,0.04)";e.currentTarget.style.borderColor=T.border;e.currentTarget.style.borderLeftColor=accentColor;}}>
+      style={{padding:"10px 12px",background:`linear-gradient(180deg, ${accentColor}18 0%, ${accentColor}08 40%, white 100%)`,border:`1px solid ${accentColor}55`,borderRadius:8,cursor:canDrag?"grab":"pointer",boxShadow:isDragging?`0 8px 20px ${accentColor}55`:`0 1px 3px ${accentColor}22`,transition:"all 0.15s",borderLeft:`7px solid ${accentColor}`,borderTop:`3px solid ${accentColor}`,opacity:isDragging?0.5:1,position:"relative"}}
+      onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 6px 16px ${accentColor}44`;e.currentTarget.style.borderColor=accentColor;e.currentTarget.style.borderLeftColor=accentColor;e.currentTarget.style.borderTopColor=accentColor;}}
+      onMouseLeave={e=>{e.currentTarget.style.boxShadow=isDragging?`0 8px 20px ${accentColor}55`:`0 1px 3px ${accentColor}22`;e.currentTarget.style.borderColor=`${accentColor}55`;e.currentTarget.style.borderLeftColor=accentColor;e.currentTarget.style.borderTopColor=accentColor;}}>
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
         {isCustom && (
           <span style={{padding:"1px 6px",fontSize:9,background:"rgba(217,119,6,0.12)",color:"#d97706",borderRadius:6,border:"1px solid rgba(217,119,6,0.3)",fontWeight:700,letterSpacing:0.3}}>🎨 Custom</span>
