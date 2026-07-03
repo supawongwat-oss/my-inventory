@@ -589,7 +589,8 @@ function StatementPrintLayout({ statement, companyInfo }) {
       </div>
 
       {/* Items table — ย่อเล็กมาก */}
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 10, fontSize: 9 }}>
+      <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:10}}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 9, minWidth:640 }}>
         <thead>
           <tr style={{ background: "#f1f5f9", color: "#000" }}>
             <th style={{ padding: "4px 6px", textAlign: "left", fontWeight: 700, width: 95, border: "1px solid #000", fontSize: 9 }}>เลขที่บิล</th>
@@ -620,6 +621,7 @@ function StatementPrintLayout({ statement, companyInfo }) {
           </tr>
         </tfoot>
       </table>
+      </div>
 
       {/* Note + bank — เล็กลง */}
       {statement.note && (
