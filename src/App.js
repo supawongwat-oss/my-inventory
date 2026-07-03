@@ -5557,7 +5557,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               </div>
 
               {/* Items table — Model | Color | SIZE+qty ×4 | จำนวน | ราคา(หน้าจอเท่านั้น) */}
-              <table style={{width:"100%",borderCollapse:"collapse",marginBottom:20,fontSize:14}}>
+              <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:20}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:14,minWidth:640}}>
                 <thead>
                   <tr style={{background:"#3b5b8b",color:"white"}}>
                     <th style={{padding:"5px 4px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:8,width:38,minWidth:38,whiteSpace:"nowrap"}}>รุ่น</th>
@@ -5615,6 +5616,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   </tr>
                 </tfoot>
               </table>
+              </div>
 
               {showPrintOrder.note&&<div style={{padding:12,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,fontSize:12,color:"#92400e",marginBottom:16}}>📝 หมายเหตุ: {showPrintOrder.note}</div>}
 
@@ -6336,7 +6338,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   return acc;
                 },{}));
                 return (
-                  <table style={{width:"100%",borderCollapse:"collapse",marginBottom:10,fontSize:15}}>
+                  <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:10}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:15,minWidth:640}}>
                     <thead>
                       <tr style={{background:"#f1f5f9",color:"#000"}}>
                         <th style={{padding:"9px 8px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:14,color:"#000"}}>รุ่น</th>
@@ -6461,6 +6464,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                       </tr>
                     </tfoot>
                   </table>
+                  </div>
                 );
               })()}
 
