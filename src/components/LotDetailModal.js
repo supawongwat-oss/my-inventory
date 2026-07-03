@@ -711,23 +711,34 @@ export default function LotDetailModal({
       {/* 🏭 เครื่อง/ทีม ที่กำลังทำม้วนนี้ใน stage ปัจจุบัน */}
       {(()=>{
         const currentStage = lot?.status || "";
-        const choices = MACHINES_BY_STAGE[currentStage] || [];
-        if (choices.length === 0) return null; // stage ที่ไม่ต้องเลือกเครื่อง (ตัดผ้ารวม, แพ๊ค, เข้าคลัง)
+        const presets = MACHINES_BY_STAGE[currentStage] || [];
+        if (presets.length === 0) return null; // แพ๊ค/QC, เข้าคลัง ฯลฯ ไม่ต้องระบุเครื่อง
         const current = (lot?.machineByStage || {})[currentStage] || "";
+        const saveVal = async (v) => {
+          const newLots = lots.map((l,i) => i === lotIdx ? { ...l, machineByStage: { ...(l.machineByStage||{}), [currentStage]: v } } : l);
+          await persistLots(newLots);
+          setToast(v ? `อัพเดท: ${v}` : "ล้างเครื่อง/ทีมแล้ว");
+        };
+        const listId = `machines-${currentStage.replace(/[^\w]/g,"")}`;
         return (
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,padding:"10px 14px",background:"rgba(59,91,139,0.06)",border:`1px solid ${T.border}`,borderRadius:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,padding:"10px 14px",background:"rgba(59,91,139,0.06)",border:`1px solid ${T.border}`,borderRadius:10,flexWrap:"wrap"}}>
             <span style={{fontSize:11,color:T.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em"}}>🏭 {currentStage} — เครื่อง/ทีม:</span>
-            <select value={current} disabled={!userRole || isCancelled} onChange={async e=>{
-              const v = e.target.value;
-              const newLots = lots.map((l,i) => i === lotIdx ? { ...l, machineByStage: { ...(l.machineByStage||{}), [currentStage]: v } } : l);
-              await persistLots(newLots);
-              setToast(v ? `อัพเดท: ${v}` : "ล้างเครื่อง/ทีมแล้ว");
-            }}
-              style={{background:"white",border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"6px 12px",fontSize:12,outline:"none",cursor:"pointer",fontFamily:"inherit",minWidth:140}}>
-              <option value="">— ยังไม่ระบุ —</option>
-              {choices.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-            {current && <span style={{fontSize:11,padding:"3px 9px",borderRadius:10,background:`${STATUS_COLORS[currentStage]||"#64748b"}18`,color:STATUS_COLORS[currentStage]||"#64748b",fontWeight:700,border:`1px solid ${STATUS_COLORS[currentStage]||"#64748b"}40`}}>✓ {current}</span>}
+            <input list={listId} defaultValue={current} disabled={!userRole || isCancelled}
+              placeholder={presets.length>0?`เลือกหรือพิมพ์ (${presets[0]}, ${presets[1]||presets[0]}, ...)`:"พิมพ์ชื่อเครื่อง/ทีม"}
+              onBlur={e=>{ const v = e.target.value.trim(); if (v !== current) saveVal(v); }}
+              onKeyDown={e=>{ if (e.key === "Enter") e.target.blur(); }}
+              style={{background:"white",border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:7,padding:"6px 12px",fontSize:12,outline:"none",fontFamily:"inherit",minWidth:180}}/>
+            {presets.length > 0 && (
+              <datalist id={listId}>
+                {presets.map(m => <option key={m} value={m}/>)}
+              </datalist>
+            )}
+            {current && (
+              <>
+                <span style={{fontSize:11,padding:"3px 9px",borderRadius:10,background:`${STATUS_COLORS[currentStage]||"#64748b"}18`,color:STATUS_COLORS[currentStage]||"#64748b",fontWeight:700,border:`1px solid ${STATUS_COLORS[currentStage]||"#64748b"}40`}}>✓ {current}</span>
+                <button onClick={()=>saveVal("")} title="ล้าง" style={{padding:"3px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:"white",color:T.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>✕</button>
+              </>
+            )}
           </div>
         );
       })()}
@@ -1521,16 +1532,13 @@ function SplitLotModal({ lot, steps = PRODUCTION_STEPS, onClose, onConfirm }) {
         </div>
         <div style={{flex:"1 1 160px"}}>
           <label style={{fontSize:11,color:T.sub,display:"block",marginBottom:3,fontWeight:600}}>🏭 ทีม/เครื่อง</label>
-          {stageTeamChoices.length > 0 ? (
-            <select value={team} onChange={e=>setTeam(e.target.value)}
-              style={{width:"100%",boxSizing:"border-box",padding:"7px 10px",border:`1px solid ${T.border}`,borderRadius:7,fontSize:12,outline:"none",fontFamily:"inherit",background:"white"}}>
-              <option value="">— ยังไม่ระบุ —</option>
-              {stageTeamChoices.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          ) : (
-            <input value={team} onChange={e=>setTeam(e.target.value)} placeholder={targetStage?"พิมพ์ทีม/เครื่อง":"เลือกขั้นก่อน"} disabled={!targetStage}
-              style={{width:"100%",boxSizing:"border-box",padding:"7px 10px",border:`1px solid ${T.border}`,borderRadius:7,fontSize:12,outline:"none",fontFamily:"inherit",background:targetStage?"white":"#f1f5f9"}}/>
-          )}
+          <input list="split-team-list" value={team} onChange={e=>setTeam(e.target.value)}
+            placeholder={targetStage ? (stageTeamChoices.length>0 ? `เลือกหรือพิมพ์ (${stageTeamChoices.slice(0,2).join(", ")}, ...)` : "พิมพ์ทีม/เครื่อง") : "เลือกขั้นก่อน"}
+            disabled={!targetStage}
+            style={{width:"100%",boxSizing:"border-box",padding:"7px 10px",border:`1px solid ${T.border}`,borderRadius:7,fontSize:12,outline:"none",fontFamily:"inherit",background:targetStage?"white":"#f1f5f9"}}/>
+          <datalist id="split-team-list">
+            {stageTeamChoices.map(m => <option key={m} value={m}/>)}
+          </datalist>
         </div>
       </div>
 
