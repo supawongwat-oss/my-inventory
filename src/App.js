@@ -18,6 +18,7 @@ import PayrollTab from "./tabs/PayrollTab";
 import ProductionHistoryTab from "./tabs/ProductionHistoryTab";
 import OrdersTab from "./tabs/OrdersTab";
 import InvoiceTab from "./tabs/InvoiceTab";
+import ClothingInventoryTab from "./tabs/ClothingInventoryTab";
 import BarcodePrintModal from "./components/BarcodePrintModal";
 import ImportCustomersModal from "./components/ImportCustomersModal";
 import BackupRestore, { shouldRemindBackup, getLastBackupDate } from "./components/BackupRestore";
@@ -3065,221 +3066,25 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               </div>} {/* end general tab */}
 
               {/* Clothing tab content */}
-              {(inventoryTab==="clothing"||inventoryTab==="sports")&&(()=>{
-                // 👕 clothing tab → apparel + รุ่นเก่าที่ไม่มี sizeType
-                // 👟 sports tab → shoe items only
-                let tabItems = clothingItems.filter(it =>
-                  inventoryTab==="sports" ? it.sizeType==="shoe" : it.sizeType!=="shoe"
-                ).sort((a,b)=>(a.sortIndex??9999)-(b.sortIndex??9999));
-                // 🏷️ sub-tab กรองตามชนิดแขน (เฉพาะ clothing) — อ่านจากชื่อรุ่น
-                const detectSleeve = (name="") => {
-                  const s = String(name).toLowerCase();
-                  if (s.includes("แขนกุด")) return "sleeveless";
-                  if (s.includes("แขนยาว")) return "longsleeve";
-                  return "other";
-                };
-                const subCounts = { all: tabItems.length, sleeveless: 0, longsleeve: 0, other: 0 };
-                tabItems.forEach(it => { subCounts[detectSleeve(it.model)]++; });
-                if (inventoryTab==="clothing" && clothingSubTab!=="all") {
-                  tabItems = tabItems.filter(it => detectSleeve(it.model) === clothingSubTab);
-                }
-                return (
-                <div style={{animation:"fadeUp 0.4s ease"}}>
-                <input ref={clothingImgRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleClothingImageUpload}/>
-                {inventoryTab==="clothing" && (
-                  <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
-                    <div style={{display:"flex",gap:5,padding:3,background:T.card,borderRadius:9,border:`1px solid ${T.border}`,flexWrap:"wrap"}}>
-                      {[
-                        {id:"all",icon:"👕",label:"ทั้งหมด"},
-                        {id:"sleeveless",icon:"🎽",label:"แขนกุด"},
-                        {id:"longsleeve",icon:"🧥",label:"แขนยาว"},
-                        {id:"other",icon:"👔",label:"แขนสั้น"},
-                      ].map(s=>(
-                        <button key={s.id} onClick={()=>setClothingSubTab(s.id)}
-                          style={{padding:"5px 12px",borderRadius:7,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"'Sarabun',sans-serif",background:clothingSubTab===s.id?T.accent:"transparent",color:clothingSubTab===s.id?"white":T.sub,transition:"all 0.15s"}}>
-                          {s.icon} {s.label} <span style={{opacity:0.7,fontSize:10,marginLeft:2}}>({subCounts[s.id]})</span>
-                        </button>
-                      ))}
-                    </div>
-                    {(pendingMixSales||[]).length>0&&(
-                      <button onClick={()=>setPendingMixListOpen(true)}
-                        style={{padding:"7px 14px",borderRadius:9,border:"1px solid rgba(184,134,0,0.5)",background:"rgba(184,134,0,0.15)",color:T.amber,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"'Sarabun',sans-serif",display:"flex",alignItems:"center",gap:6}}>
-                        🕐 รอระบุรายละเอียด <span style={{background:T.amber,color:"white",padding:"1px 8px",borderRadius:10,fontSize:11}}>{pendingMixSales.length}</span>
-                      </button>
-                    )}
-                  </div>
-                )}
-                {tabItems.length===0&&(
-                  <div style={{textAlign:"center",padding:60,background:T.card,borderRadius:16,border:`1px solid ${T.border}`}}>
-                    <div style={{fontSize:48,marginBottom:12,opacity:0.3}}>{inventoryTab==="sports"?"👟":"👕"}</div>
-                    <div style={{fontSize:14,fontWeight:600,color:T.accent,marginBottom:6}}>ยังไม่มีรุ่นสินค้า</div>
-                    <div style={{fontSize:11,color:T.muted}}>กด "{inventoryTab==="sports"?"👟":"️"} เพิ่มรุ่นใหม่" เพื่อเริ่มต้น</div>
-                  </div>
-                )}
-                {tabItems.map((item,idx)=>(
-                  <div key={item.id}
-                    onDragOver={role.canAdd?(e=>{e.preventDefault();if(dragOverClothingId!==item.id)setDragOverClothingId(item.id);}):undefined}
-                    onDrop={role.canAdd?(e=>{e.preventDefault();reorderClothing(draggingClothingId,item.id,tabItems);setDraggingClothingId(null);setDragOverClothingId(null);}):undefined}
-                    style={{background:T.card,border:`1px solid ${dragOverClothingId===item.id&&draggingClothingId&&draggingClothingId!==item.id?T.accent:T.border}`,borderRadius:16,marginBottom:16,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.3)",opacity:draggingClothingId===item.id?0.4:1,transition:"opacity 0.15s"}}>
-                    <div onClick={()=>toggleCollapse(item.id)} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 20px",borderBottom:collapsedItems[item.id]?"none":`1px solid ${T.border}`,cursor:"pointer",userSelect:"none",transition:"background 0.2s"}}
-                      onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.04)"}
-                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                      {/* 🖱️ Drag handle — จัดลำดับ */}
-                      {role.canAdd&&(
-                        <div draggable
-                          onDragStart={e=>{e.stopPropagation();setDraggingClothingId(item.id);e.dataTransfer.effectAllowed="move";}}
-                          onDragEnd={()=>{setDraggingClothingId(null);setDragOverClothingId(null);}}
-                          onClick={e=>e.stopPropagation()}
-                          title="ลากเพื่อจัดลำดับ"
-                          style={{cursor:"grab",color:T.muted,fontSize:16,flexShrink:0,padding:"0 2px",lineHeight:1,userSelect:"none"}}>⠿</div>
-                      )}
-                      {/* Collapse arrow */}
-                      <div style={{width:24,height:24,borderRadius:6,background:"rgba(59,91,139,0.1)",border:"1px solid rgba(59,91,139,0.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"transform 0.2s",transform:collapsedItems[item.id]?"rotate(-90deg)":"rotate(0deg)",fontSize:11,color:T.accent}}>▼</div>
-                      <div onClick={e=>{e.stopPropagation();setUploadingClothingId(item.id);setTimeout(()=>clothingImgRef.current?.click(),50);}}
-                        title={item.image?"คลิกเพื่อเปลี่ยนรูป":"คลิกเพื่อเพิ่มรูป"}
-                        style={{width:65,height:65,borderRadius:10,background:"rgba(59,91,139,0.08)",border:"2px dashed rgba(59,91,139,0.3)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",overflow:"hidden",position:"relative"}}
-                        onMouseEnter={e=>{const o=e.currentTarget.querySelector(".img-overlay");if(o)o.style.opacity="1";}}
-                        onMouseLeave={e=>{const o=e.currentTarget.querySelector(".img-overlay");if(o)o.style.opacity="0";}}>
-                        {item.image?<img src={item.image} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<><span style={{fontSize:20}}>👕</span><span style={{fontSize:8,color:T.muted}}>รูป</span></>}
-                        {item.image&&(
-                          <div className="img-overlay" style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.65)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity 0.15s",color:"#fff",fontSize:9,fontWeight:600,gap:2}}>
-                            <span style={{fontSize:16}}>📷</span>
-                            <span>เปลี่ยนรูป</span>
-                          </div>
-                        )}
-                      </div>
-                      <div style={{flex:1}}>
-                        <div style={{fontSize:14,fontWeight:700,color:T.text}}>{item.model}</div>
-                        <div style={{fontSize:11,color:T.muted,marginTop:3,display:"flex",alignItems:"center",gap:10}}>
-                          <span>{(item.colors||[]).length} สี</span>
-                          <span style={{color:"rgba(59,91,139,0.3)"}}>·</span>
-                          <span>รวม <b style={{color:T.accent}}>{(item.colors||[]).reduce((s,c)=>s+Object.values(c.stock||{}).reduce((a,b)=>a+b,0),0)}</b> ชิ้น</span>
-                          {collapsedItems[item.id]&&(item.colors||[]).length>0&&(
-                            <div style={{display:"flex",gap:4,marginLeft:4}}>
-                              {(item.colors||[]).slice(0,5).map((c,i)=>(
-                                <div key={i} title={c.colorName} style={{width:10,height:10,borderRadius:2,background:c.hex,border:"1px solid rgba(255,255,255,0.15)"}}/>
-                              ))}
-                              {(item.colors||[]).length>5&&<span style={{fontSize:10,color:T.muted}}>+{(item.colors||[]).length-5}</span>}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
-                        <button onClick={()=>setShowAddColor(item.id)} style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(59,91,139,0.25)",background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:500}}>️ สี</button>
-                        {(item.colors||[]).length>0&&<button onClick={()=>openMix(item)} title="ขายคละสีคละไซส์" style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(184,134,0,0.3)",background:"rgba(184,134,0,0.08)",color:T.amber,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:600}}>🧺 ขายคละ</button>}
-                        {item.sizeType!=="shoe"&&role.canAdd&&(()=>{
-                          const hasBom = boms.some(b => (b.id===item.id || b.clothingId===item.id) && (b.variants||[]).some(v=>(v.materials||[]).length>0));
-                          return <button onClick={()=>openBomModal(item)} title="ตั้งสูตรวัตถุดิบ (BOM)" style={{padding:"7px 14px",borderRadius:8,border:`1px solid ${hasBom?"rgba(22,163,74,0.35)":"rgba(124,58,237,0.3)"}`,background:hasBom?"rgba(22,163,74,0.08)":"rgba(124,58,237,0.08)",color:hasBom?"#16a34a":"#7c3aed",cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:600}}>📐 {hasBom?"BOM ✓":"ตั้งสูตร BOM"}</button>;
-                        })()}
-                        {role.canDelete&&(item.colors||[]).length>0&&
-                          <button onClick={()=>setManageColorMode(m=>({...m,[item.id]:!m[item.id]}))}
-                            title={manageColorMode[item.id]?"ปิดโหมดลบสี":"เปิดโหมดลบสี — ปุ่ม ✕ จะแสดงในแต่ละสี"}
-                            style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${manageColorMode[item.id]?"rgba(184,134,0,0.4)":"rgba(59,91,139,0.2)"}`,background:manageColorMode[item.id]?"rgba(184,134,0,0.15)":"transparent",color:manageColorMode[item.id]?T.amber:T.muted,cursor:"pointer",fontSize:12,fontWeight:600}}>🔧 {manageColorMode[item.id]?"ปิดจัดการสี":"จัดการสี"}</button>}
-                        {role.canDelete&&<button onClick={()=>{setDeleteClothingTarget(item);setDeleteConfirmText("");}} style={{padding:"7px 12px",borderRadius:8,border:"1px solid rgba(248,113,113,0.25)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:12}}>✕</button>}
-                      </div>
-                    </div>
-
-                    {/* Collapsed state */}
-                    {collapsedItems[item.id]?null:(item.colors||[]).length===0?(
-                      <div style={{padding:"20px",textAlign:"center",color:T.muted,fontSize:12}}>ยังไม่มีสี — กด "️ สี"</div>
-                    ):(
-                      <div style={{overflowX:"auto"}}>
-                        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
-                          <thead>
-                            <tr style={{background:"rgba(241,243,246,0.8)"}}>
-                              <th style={{padding:"10px 14px",textAlign:"left",color:T.sub,fontWeight:700,fontSize:12,textTransform:"uppercase",letterSpacing:"0.06em",width:120,borderRight:`1px solid ${T.border}`}}>สี</th>
-                              {sizesFor(item).map(sz=>(
-                                <th key={sz} style={{padding:"10px 4px",textAlign:"center",color:T.text,fontWeight:700,fontSize:13,borderRight:"1px solid rgba(203,210,217,0.4)",fontFamily:"monospace",minWidth:46}}>{sz}</th>
-                              ))}
-                              <th style={{padding:"10px 10px",textAlign:"center",color:T.sub,fontWeight:700,fontSize:12,minWidth:60}}>รวม</th>
-                              <th style={{padding:"10px 10px",textAlign:"center",color:T.sub,fontWeight:700,fontSize:12,minWidth:100}}>รับ/จ่าย</th>
-                              <th style={{width:30}}/>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(item.colors||[]).map((col,ci)=>{
-                              const total=Object.values(col.stock||{}).reduce((a,b)=>a+b,0);
-                              return (
-                                <tr key={ci} style={{borderBottom:"1px solid rgba(203,210,217,0.5)"}}
-                                  onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.04)"}
-                                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                                  <td style={{padding:"10px 14px",borderRight:`1px solid ${T.border}`}}>
-                                    <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",userSelect:"none"}} title="🔗 ผูกสีนี้ — พิมพ์ค่าในไซส์เดียว จะซิงก์ไปทุกสีที่ผูก">
-                                      <input type="checkbox" checked={!!(linkedInvColors[item.id]||{})[ci]} onChange={()=>toggleLinkInvColor(item.id,ci)} onClick={e=>e.stopPropagation()} style={{cursor:"pointer",accentColor:T.accent,width:14,height:14}}/>
-                                      <div style={{width:16,height:16,borderRadius:4,background:col.hex,border:"1px solid rgba(0,0,0,0.1)",flexShrink:0}}/>
-                                      <span style={{color:T.text,fontWeight:600,fontSize:14}}>{col.colorName}</span>
-                                      {(linkedInvColors[item.id]||{})[ci] && <span style={{fontSize:10,color:T.accent}}>🔗</span>}
-                                    </label>
-                                  </td>
-                                  {sizesFor(item).map(sz=>{
-                                    const isEd=editingStock?.itemId===item.id&&editingStock?.ci===ci&&editingStock?.size===sz;
-                                    const val=(col.stock||{})[sz]||0;
-                                    return (
-                                      <td key={sz} style={{padding:"3px 2px",textAlign:"center",borderRight:"1px solid rgba(203,210,217,0.4)"}}>
-                                        {isEd?(
-                                          <input autoFocus type="number" defaultValue={val}
-                                            onFocus={e=>e.target.select()}
-                                            onBlur={e=>handleUpdateClothingStock(item.id,ci,sz,e.target.value)}
-                                            onKeyDown={e=>{if(e.key==="Enter"||e.key==="Escape")e.target.blur();}}
-                                            style={{width:48,textAlign:"center",background:"rgba(59,91,139,0.12)",border:"1.5px solid #3b5b8b",borderRadius:6,color:"#1f2933",fontFamily:"monospace",fontSize:15,fontWeight:700,padding:"5px 4px",outline:"none"}}/>
-                                        ):(
-                                          <div onClick={()=>setEditingStock({itemId:item.id,ci,size:sz})}
-                                            style={{padding:"5px 4px",borderRadius:6,cursor:"pointer",fontFamily:"monospace",fontWeight:700,fontSize:15,color:val===0?"#9aa5b1":val<5?"#b88600":"#1f2933",minWidth:46,display:"inline-block",transition:"all 0.15s"}}
-                                            onMouseEnter={e=>{e.currentTarget.style.background="rgba(59,91,139,0.10)";}}
-                                            onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}>
-                                            {val===0?"—":val}
-                                          </div>
-                                        )}
-                                      </td>
-                                    );
-                                  })}
-                                  <td colSpan={2} style={{padding:"4px 6px",textAlign:"center"}}>
-                                    {(() => {
-                                      const sp = col.salePrices || {};
-                                      const hasAny = SIZE_GROUPS.some(g => sp[g.key] != null && sp[g.key] !== "" && Number(sp[g.key]) > 0) || Number(col.salePrice) > 0;
-                                      const cost = Number(col.costPrice) || 0;
-                                      return (
-                                        <button onClick={() => {
-                                          setPriceForm({
-                                            costPrice: col.costPrice || "",
-                                            kids: sp.kids ?? col.salePrice ?? "",
-                                            reg:  sp.reg  ?? col.salePrice ?? "",
-                                            "2XL": sp["2XL"] ?? col.salePrice ?? "",
-                                            "3XL": sp["3XL"] ?? col.salePrice ?? "",
-                                            "4XL": sp["4XL"] ?? col.salePrice ?? "",
-                                            "5XL": sp["5XL"] ?? col.salePrice ?? "",
-                                          });
-                                          setPriceModal({ itemId: item.id, ci });
-                                        }}
-                                        style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${hasAny?"rgba(52,211,153,0.3)":T.border}`,background:hasAny?"rgba(52,211,153,0.08)":"rgba(59,91,139,0.05)",color:hasAny?"#34d399":T.sub,cursor:"pointer",fontSize:10,fontWeight:600,fontFamily:"'Sarabun',sans-serif",whiteSpace:"nowrap"}}>
-                                          💰 {hasAny ? "แก้ไขราคา" : "ตั้งราคา"}
-                                          {cost > 0 && <span style={{marginLeft:4,fontSize:9,opacity:0.7,fontFamily:"monospace"}}>ทุน {cost}</span>}
-                                        </button>
-                                      );
-                                    })()}
-                                  </td>
-                                  <td style={{textAlign:"center",padding:"4px 6px"}}>
-                                    <span style={{fontFamily:"monospace",fontWeight:700,fontSize:16,color:T.text}}>{total}</span>
-                                  </td>
-                                  <td style={{textAlign:"center",padding:"4px 8px"}}>
-                                    <div style={{display:"flex",gap:4,justifyContent:"center"}}>
-                                      <button onClick={()=>{setClothingTxModal({item,colorIdx:ci,size:null});setClothingTxType("รับ");setClothingTxQty("");setClothingTxSizeQty({});setClothingTxNote("");}} style={{padding:"4px 8px",borderRadius:6,border:"1px solid rgba(52,211,153,0.3)",background:"rgba(52,211,153,0.08)",color:"#34d399",cursor:"pointer",fontSize:10,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>⬇ รับ</button>
-                                      <button onClick={()=>{setClothingTxModal({item,colorIdx:ci,size:null});setClothingTxType("จ่าย");setClothingTxQty("");setClothingTxSizeQty({});setClothingTxNote("");}} style={{padding:"4px 8px",borderRadius:6,border:"1px solid rgba(248,113,113,0.3)",background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:10,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>⬆ จ่าย</button>
-                                    </div>
-                                  </td>
-                                  <td style={{textAlign:"center",padding:"4px 6px"}}>
-                                    {role.canDelete&&manageColorMode[item.id]&&<button onClick={()=>handleDeleteClothingColor(item.id,ci)} title={`ลบสี ${col.colorName}`} style={{background:"rgba(248,113,113,0.15)",border:"1px solid rgba(248,113,113,0.4)",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#dc2626",fontWeight:700}}>✕</button>}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>);})()}
+              {(inventoryTab==="clothing"||inventoryTab==="sports")&&(
+                <ClothingInventoryTab
+                  inventoryTab={inventoryTab} clothingItems={clothingItems} boms={boms} role={role} sizesFor={sizesFor}
+                  clothingSubTab={clothingSubTab} setClothingSubTab={setClothingSubTab}
+                  pendingMixSales={pendingMixSales} setPendingMixListOpen={setPendingMixListOpen}
+                  clothingImgRef={clothingImgRef} handleClothingImageUpload={handleClothingImageUpload} setUploadingClothingId={setUploadingClothingId}
+                  draggingClothingId={draggingClothingId} setDraggingClothingId={setDraggingClothingId}
+                  dragOverClothingId={dragOverClothingId} setDragOverClothingId={setDragOverClothingId} reorderClothing={reorderClothing}
+                  collapsedItems={collapsedItems} toggleCollapse={toggleCollapse}
+                  setShowAddColor={setShowAddColor} openMix={openMix} openBomModal={openBomModal}
+                  manageColorMode={manageColorMode} setManageColorMode={setManageColorMode}
+                  setDeleteClothingTarget={setDeleteClothingTarget} setDeleteConfirmText={setDeleteConfirmText}
+                  linkedInvColors={linkedInvColors} toggleLinkInvColor={toggleLinkInvColor}
+                  editingStock={editingStock} setEditingStock={setEditingStock} handleUpdateClothingStock={handleUpdateClothingStock}
+                  setPriceForm={setPriceForm} setPriceModal={setPriceModal}
+                  setClothingTxModal={setClothingTxModal} setClothingTxType={setClothingTxType} setClothingTxQty={setClothingTxQty} setClothingTxSizeQty={setClothingTxSizeQty} setClothingTxNote={setClothingTxNote}
+                  handleDeleteClothingColor={handleDeleteClothingColor}
+                />
+              )}
             </div>
           )}
 
