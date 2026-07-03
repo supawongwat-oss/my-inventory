@@ -329,6 +329,7 @@ export default function App() {
   const [invoiceDocType, setInvoiceDocType] = useState("receipt"); // receipt | tax | quotation
   const [invoiceVat, setInvoiceVat] = useState(false);
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState("ทั้งหมด");
+  const [invoiceSearch, setInvoiceSearch] = useState(""); // 🔍 ค้นหาบิล (ชื่อลูกค้า/เบอร์/เลขที่/เลขภาษี)
   const [invoiceForm, setInvoiceForm] = useState({
     customerId:"", customerName:"", customerPhone:"", customerAddress:"", customerTaxId:"",
     items:[], note:"", dueDate:"", vatRate:7,
@@ -3541,6 +3542,13 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                       style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>＋ ออกบิลใหม่</button>
                   : <span style={{fontSize:11,color:T.muted,padding:"6px 12px",background:"rgba(241,243,246,0.4)",border:`1px solid ${T.border}`,borderRadius:8}}>👁️ โหมดดูเท่านั้น</span>}
               </div>
+              {/* 🔍 ค้นหาบิล */}
+              <div style={{marginBottom:12,position:"relative"}}>
+                <input value={invoiceSearch} onChange={e=>setInvoiceSearch(e.target.value)}
+                  placeholder="🔍 ค้นหาบิล — ชื่อลูกค้า / เบอร์โทร / เลขที่บิล / เลขผู้เสียภาษี / ที่อยู่ / โน้ต"
+                  style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${invoiceSearch?T.accent:T.inputBorder}`,color:T.text,borderRadius:10,padding:"10px 40px 10px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+                {invoiceSearch&&<button onClick={()=>setInvoiceSearch("")} title="ล้าง" style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",padding:"3px 9px",borderRadius:6,border:"none",background:"rgba(59,91,139,0.1)",color:T.sub,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>✕</button>}
+              </div>
               {/* 🔗 แถบรวมบิล (ลอย) */}
               {selectedInvoices.size>0&&(()=>{
                 const sel=invoices.filter(i=>selectedInvoices.has(i.id));
@@ -3566,8 +3574,18 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   <div style={{fontSize:11,color:T.muted}}>กด "＋ ออกบิลใหม่" เพื่อเริ่มต้น</div>
                 </div>
               ):(()=>{
-                const fInv=invoiceStatusFilter==="ทั้งหมด"?invoices:invoices.filter(x=>(x.status||"ออกแล้ว")===invoiceStatusFilter);
-                if(fInv.length===0) return <div style={{textAlign:"center",padding:40,color:T.muted,fontSize:13}}>ไม่พบบิลตามสถานะนี้</div>;
+                const norm = (s) => String(s||"").normalize("NFC").toLowerCase().replace(/\s+/g," ").trim();
+                const q = norm(invoiceSearch);
+                let fInv=invoiceStatusFilter==="ทั้งหมด"?invoices:invoices.filter(x=>(x.status||"ออกแล้ว")===invoiceStatusFilter);
+                if (q) fInv = fInv.filter(inv =>
+                  norm(inv.customerName).includes(q)
+                  || norm(inv.customerPhone).includes(q)
+                  || norm(inv.invoiceNo).includes(q)
+                  || norm(inv.customerTaxId).includes(q)
+                  || norm(inv.customerAddress).includes(q)
+                  || norm(inv.note).includes(q)
+                );
+                if(fInv.length===0) return <div style={{textAlign:"center",padding:40,color:T.muted,fontSize:13}}>{q?`ไม่พบบิลที่ตรงกับ "${invoiceSearch}"`:"ไม่พบบิลตามสถานะนี้"}</div>;
                 const groups=fInv.reduce((acc,inv)=>{
                   const d=(inv.date||"").slice(0,10)||"ไม่ระบุวันที่";
                   if(!acc[d]) acc[d]=[];
