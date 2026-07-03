@@ -485,7 +485,7 @@ function RunPayroll({ employees, monthAttendance, wdInMonth, runResult, setRunRe
         </button>
       </div>
 
-      <div className="table-scroll">
+      <div className="table-scroll" style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
         <table style={{ width: "100%", minWidth: 1200, borderCollapse: "collapse", background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, overflow: "hidden" }}>
           <thead>
             <tr style={{ background: "#f8fafc", fontSize: 11, color: T.sub, textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -593,7 +593,7 @@ function PayrollHistory({ payrollRuns, printElementById }) {
             <div style={{ fontSize: 16, fontWeight: 800, color: T.text }}>📅 รอบจ่ายเงินเดือน {selectedRun.month}/{selectedRun.year}</div>
             <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>พนักงาน {selectedRun.employeeCount} คน · ยอดรับรวม ฿{fmt(selectedRun.totalGross)} · ยอดหักรวม ฿{fmt(selectedRun.totalDeductions)} · <b style={{color:T.blue}}>สุทธิ ฿{fmt(selectedRun.totalNet)}</b></div>
           </div>
-          <div className="table-scroll">
+          <div className="table-scroll" style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
             <table style={{ width: "100%", minWidth: 900, borderCollapse: "collapse", background: T.card, border: `1px solid ${T.border}`, borderRadius: 10 }}>
               <thead>
                 <tr style={{ background: "#f8fafc", fontSize: 11, color: T.sub }}>
