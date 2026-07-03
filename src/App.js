@@ -3830,7 +3830,18 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                 // ── filter helpers ──
                 const parseThaiDate=(s)=>{if(!s)return null;const [d,m,y]=String(s).slice(0,10).split("/");if(!d||!m||!y)return null;return new Date(`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`);};
                 const filteredOrders=orders.filter(o=>{
-                  if(orderSearch){const q=orderSearch.toLowerCase().trim();const hit=(o.orderNo||"").toLowerCase().includes(q)||(o.customerName||"").toLowerCase().includes(q)||(o.customerPhone||"").toLowerCase().includes(q);if(!hit)return false;}
+                  if(orderSearch){
+                    const norm = (s) => String(s||"").normalize("NFC").toLowerCase().replace(/\s+/g," ").trim();
+                    const q = norm(orderSearch);
+                    const hit = norm(o.orderNo).includes(q)
+                      || norm(o.customerName).includes(q)
+                      || norm(o.customerPhone).includes(q)
+                      || norm(o.customerAddress).includes(q)
+                      || norm(o.customerTaxId).includes(q)
+                      || norm(o.note).includes(q)
+                      || (o.items||[]).some(it => norm(it.clothingName).includes(q) || norm(it.colorName).includes(q) || norm(it.description).includes(q));
+                    if(!hit) return false;
+                  }
                   const od=parseThaiDate(o.date);
                   if(orderDateFrom){const f=new Date(orderDateFrom);if(!od||od<f)return false;}
                   if(orderDateTo){const t=new Date(orderDateTo);t.setHours(23,59,59);if(!od||od>t)return false;}
@@ -3852,8 +3863,11 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                 {/* ── FILTER BAR ── */}
                 <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:14,marginBottom:14}}>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
-                    <input value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} placeholder="🔍 ค้นหาเลขที่ใบสั่ง / ชื่อลูกค้า / เบอร์โทร"
-                      style={{flex:"1 1 240px",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+                    <div style={{flex:"1 1 240px",position:"relative"}}>
+                      <input value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} placeholder="🔍 ค้นหา — เลขที่ใบ / ชื่อลูกค้า / เบอร์ / ที่อยู่ / เลขภาษี / รายการสินค้า"
+                        style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${orderSearch?T.accent:T.inputBorder}`,color:T.text,borderRadius:9,padding:"8px 36px 8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+                      {orderSearch&&<button onClick={()=>setOrderSearch("")} title="ล้าง" style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",padding:"2px 8px",borderRadius:6,border:"none",background:"rgba(59,91,139,0.1)",color:T.sub,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>✕</button>}
+                    </div>
                     <input type="date" value={orderDateFrom} onChange={e=>setOrderDateFrom(e.target.value)}
                       style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"8px 10px",fontSize:12,fontFamily:"'Sarabun',sans-serif"}}/>
                     <span style={{alignSelf:"center",color:T.muted,fontSize:12}}>ถึง</span>
