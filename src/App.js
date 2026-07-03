@@ -5280,9 +5280,10 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   <span style={{fontSize:12,color:T.accent,fontWeight:600}}>{item.model} · {col.colorName}</span>
                   <span style={{fontSize:10,color:T.muted,marginLeft:"auto"}}>กรอกจำนวนที่ต้องการสั่ง</span>
                 </div>
-                <div style={{padding:10,display:"flex",flexDirection:"column",gap:8}}>
+                <div style={{padding:10,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+                  <div style={{display:"flex",flexDirection:"column",gap:8,minWidth:480}}>
                   {[["6","8","10","12"],["S","M","L","XL"],["2XL","3XL","4XL","5XL"]].map((row,ri)=>(
-                    <div key={ri} style={{display:"grid",gridTemplateColumns:`repeat(${row.length},1fr)`,gap:6}}>
+                    <div key={ri} style={{display:"grid",gridTemplateColumns:`repeat(${row.length},1fr)`,gap:6,minWidth:480}}>
                       {row.map(sz=>{
                         const stock=(col.stock||{})[sz]||0;
                         const curVal=orderForm.items.find(i=>i.clothingId===orderItemForm.clothingId&&i.colorIdx===Number(orderItemForm.colorIdx)&&i.size===sz)?.qty||0;
@@ -5322,9 +5323,10 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                       })}
                     </div>
                   ))}
+                  </div>
                 </div>
                 <div style={{padding:"8px 14px",borderTop:"1px solid rgba(203,210,217,0.5)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <span style={{fontSize:11,color:T.muted}}>💡 กรอกจำนวน แล้วคลิกออกจากช่องเพื่อบันทึก</span>
+                  <span style={{fontSize:11,color:T.muted}}>💡 กรอกจำนวน แล้วคลิกออกจากช่องเพื่อบันทึก (บน tablet เลื่อนซ้าย-ขวาได้)</span>
                   <span style={{fontSize:12,color:T.accent,fontFamily:"monospace",fontWeight:700}}>
                     สั่ง {orderForm.items.filter(i=>i.clothingId===orderItemForm.clothingId&&i.colorIdx===Number(orderItemForm.colorIdx)).reduce((s,i)=>s+i.qty,0)} ชิ้น
                   </span>
