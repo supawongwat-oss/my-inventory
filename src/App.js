@@ -4717,6 +4717,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           handleAddInvoiceItem={handleAddInvoiceItem}
           handleConfirmInvoice={handleConfirmInvoice}
           handleImportFromOrder={handleImportFromOrder}
+          docTypeLabel={docTypeLabel}
+          calcInvoice={calcInvoice}
         />
       )}
 
