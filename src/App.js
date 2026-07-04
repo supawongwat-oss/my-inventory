@@ -40,6 +40,8 @@ const OrdersTab = lazy(() => import("./tabs/OrdersTab"));
 const InvoiceTab = lazy(() => import("./tabs/InvoiceTab"));
 const ClothingInventoryTab = lazy(() => import("./tabs/ClothingInventoryTab"));
 const ProductionTab = lazy(() => import("./tabs/ProductionTab"));
+// 🎨 วงล้อสี — lazy load เฉพาะตอนเปิด modal เพิ่มสี
+const HexColorPicker = lazy(() => import("react-colorful").then(m => ({ default: m.HexColorPicker })));
 // ── MAIN APP ───────────────────────────────────────────────────
 export default function App() {
   // ── รอ Firebase Anonymous Auth พร้อมก่อน — เพื่อให้ Security Rules ผ่าน ──
@@ -4852,14 +4854,33 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
             })}
           </div>
 
-          {/* Custom color → เพิ่มเข้า buffer */}
-          <div style={{padding:12,background:"rgba(4,18,44,0.6)",borderRadius:10,border:`1px solid ${T.border}`,marginBottom:14}}>
-            <div style={{fontSize:11,color:T.muted,marginBottom:8,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>หรือเพิ่มสีเอง</div>
-            <div style={{display:"flex",gap:10,alignItems:"center"}}>
-              <input type="color" value={newColorHex} onChange={e=>setNewColorHex(e.target.value)} style={{width:40,height:36,borderRadius:8,border:`1px solid ${T.border}`,cursor:"pointer",background:"transparent",padding:2}}/>
-              <input value={customColorName} onChange={e=>setCustomColorName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addPickedFromCustom()} placeholder="ชื่อสี เช่น เทา, กรมท่า..."
-                style={{flex:1,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
-              <BtnPrimary onClick={addPickedFromCustom} disabled={!customColorName.trim()}>+ เพิ่มในรายการ</BtnPrimary>
+          {/* Custom color → วงล้อสี + เพิ่มเข้า buffer */}
+          <div style={{padding:14,background:"#f8fafc",borderRadius:10,border:`1px solid ${T.border}`,marginBottom:14}}>
+            <div style={{fontSize:11,color:T.muted,marginBottom:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>🎨 หรือเพิ่มสีเอง — เลื่อนวงล้อ / ใส่รหัส HEX</div>
+            <div style={{display:"flex",gap:14,alignItems:"flex-start",flexWrap:"wrap"}}>
+              {/* วงล้อสี (lazy load) */}
+              <div style={{flexShrink:0}}>
+                <Suspense fallback={<div style={{width:180,height:180,borderRadius:8,background:"#f1f5f9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:T.muted}}>⏳ กำลังโหลดวงล้อสี...</div>}>
+                  <HexColorPicker color={newColorHex} onChange={setNewColorHex} style={{width:180,height:180}}/>
+                </Suspense>
+              </div>
+              {/* Preview + inputs */}
+              <div style={{flex:"1 1 200px",display:"flex",flexDirection:"column",gap:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{width:52,height:52,borderRadius:10,background:newColorHex,border:"2px solid rgba(0,0,0,0.15)",boxShadow:"inset 0 2px 4px rgba(0,0,0,0.1)"}}/>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:3}}>HEX</div>
+                    <input value={newColorHex} onChange={e=>{const v=e.target.value.trim(); if(/^#?[0-9a-fA-F]{0,6}$/.test(v)) setNewColorHex(v.startsWith("#")?v:"#"+v);}}
+                      style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"7px 10px",fontFamily:"monospace",fontSize:13,fontWeight:700,outline:"none",textTransform:"uppercase"}}/>
+                  </div>
+                </div>
+                <div>
+                  <div style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:3}}>ชื่อสี</div>
+                  <input value={customColorName} onChange={e=>setCustomColorName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addPickedFromCustom()} placeholder="เช่น เทาอ่อน, กรมท่า..."
+                    style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+                </div>
+                <BtnPrimary onClick={addPickedFromCustom} disabled={!customColorName.trim()} style={{width:"100%"}}>➕ เพิ่มในรายการ</BtnPrimary>
+              </div>
             </div>
           </div>
 
