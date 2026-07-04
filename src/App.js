@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+﻿import React, { useState, useRef, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import { db, authReady } from "./firebase";
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, serverTimestamp, query, orderBy } from "firebase/firestore";
 import { T, SIZES, SHOE_SIZES, getSizesFor, mergeSizes, PRESET_COLORS, MASTER_KEY, SIZE_GROUPS, getPriceForSize, compareSizes, splitSizesIntoRows } from "./theme";
@@ -6,19 +6,6 @@ import { INIT_USERS, ROLES, INIT_CATS } from "./constants";
 import { BarcodeDisplay, Modal, MHead, Toast, Input, BtnPrimary, BtnSuccess, BtnDanger, BtnGhost, Badge, CardBox } from "./components/ui";
 import LoginPage, { CompanyEditor } from "./components/LoginPage";
 import { useFirestore } from "./hooks/useFirestore";
-import ReportsTab from "./tabs/ReportsTab";
-import SuppliersTab from "./tabs/SuppliersTab";
-import StatementTab from "./tabs/StatementTab";
-import AuditLogTab from "./tabs/AuditLogTab";
-import StocktakeTab from "./tabs/StocktakeTab";
-import EmployeeTab from "./tabs/EmployeeTab";
-import TaxDocsTab from "./tabs/TaxDocsTab";
-import CatalogInboxTab from "./tabs/CatalogInboxTab";
-import PayrollTab from "./tabs/PayrollTab";
-import ProductionHistoryTab from "./tabs/ProductionHistoryTab";
-import OrdersTab from "./tabs/OrdersTab";
-import InvoiceTab from "./tabs/InvoiceTab";
-import ClothingInventoryTab from "./tabs/ClothingInventoryTab";
 import BarcodePrintModal from "./components/BarcodePrintModal";
 import ImportCustomersModal from "./components/ImportCustomersModal";
 import BackupRestore, { shouldRemindBackup, getLastBackupDate } from "./components/BackupRestore";
@@ -31,13 +18,28 @@ import NewOrderModal from "./components/NewOrderModal";
 import PrintOrderModal from "./components/PrintOrderModal";
 import PaymentModal from "./components/PaymentModal";
 import DeleteClothingConfirm from "./components/DeleteClothingConfirm";
-import ProductionTab from "./tabs/ProductionTab";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
 import { PRINT_FONT_SCALE, INVOICE_FONT_SCALE, scaleFontInElement, printElementById, printInvoiceCopies, downloadInvoicePdf } from "./utils/print";
 import { PAYMENT_METHODS, docTypeLabel, docTypeLabelEn, itemLineTotal, calcInvoice, getPaidTotal, getRemaining, getPaidPct } from "./utils/invoice";
 import { compressImage } from "./utils/imageCompress";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiRegion";
 import { generateDocNo } from "./utils/docNumber";
+
+// 🚀 Code splitting — tabs โหลดเฉพาะตอนคลิกใช้งาน (ลด first-load bundle)
+const ReportsTab = lazy(() => import("./tabs/ReportsTab"));
+const SuppliersTab = lazy(() => import("./tabs/SuppliersTab"));
+const StatementTab = lazy(() => import("./tabs/StatementTab"));
+const AuditLogTab = lazy(() => import("./tabs/AuditLogTab"));
+const StocktakeTab = lazy(() => import("./tabs/StocktakeTab"));
+const EmployeeTab = lazy(() => import("./tabs/EmployeeTab"));
+const TaxDocsTab = lazy(() => import("./tabs/TaxDocsTab"));
+const CatalogInboxTab = lazy(() => import("./tabs/CatalogInboxTab"));
+const PayrollTab = lazy(() => import("./tabs/PayrollTab"));
+const ProductionHistoryTab = lazy(() => import("./tabs/ProductionHistoryTab"));
+const OrdersTab = lazy(() => import("./tabs/OrdersTab"));
+const InvoiceTab = lazy(() => import("./tabs/InvoiceTab"));
+const ClothingInventoryTab = lazy(() => import("./tabs/ClothingInventoryTab"));
+const ProductionTab = lazy(() => import("./tabs/ProductionTab"));
 // ── MAIN APP ───────────────────────────────────────────────────
 export default function App() {
   // ── รอ Firebase Anonymous Auth พร้อมก่อน — เพื่อให้ Security Rules ผ่าน ──
@@ -2409,6 +2411,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
             </div>
           )}
 
+          <Suspense fallback={<div style={{padding:"40px",textAlign:"center",color:T.muted,fontSize:14}}>⏳ กำลังโหลด...</div>}>
           {/* DASHBOARD */}
           {activeTab==="dashboard"&&(
             <div>
@@ -3480,6 +3483,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               printElementById={printElementById}
             />
           )}
+          </Suspense>
 
 
         </div>
