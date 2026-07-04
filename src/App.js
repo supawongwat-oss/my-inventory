@@ -370,6 +370,7 @@ export default function App() {
   const [showTxScanner, setShowTxScanner] = useState(false); // สแกนใน Tx modal
   const [inventoryTab, setInventoryTab] = useState("clothing"); // "clothing" | "sports" | "general"
   const [clothingTxModal, setClothingTxModal] = useState(null); // {item, colorIdx, size}
+  const [clothingTxExtraColors, setClothingTxExtraColors] = useState(new Set()); // 🔗 สีเพิ่มเติมที่ทำ tx เดียวกัน
   const [clothingTxType, setClothingTxType] = useState("รับ");
   const [clothingTxQty, setClothingTxQty] = useState("");
   const [clothingTxSizeQty, setClothingTxSizeQty] = useState({}); // {S:"10", M:"5"} จ่าย/รับหลายไซส์พร้อมกัน
@@ -1608,41 +1609,46 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     setTxSaving(true);
     try {
       const { item, colorIdx } = clothingTxModal;
-      const col = item.colors[colorIdx];
-      // คำนวณสต็อกใหม่ทุกไซส์ในครั้งเดียว
-      const newStock = { ...(col.stock || {}) };
-      const changes = []; // เก็บไว้ทำ transaction + audit
-      for (const [sz, q] of entries) {
-        const curQty = newStock[sz] || 0;
-        const newQty = clothingTxType === "รับ" ? curQty + q : Math.max(0, curQty - q);
-        newStock[sz] = newQty;
-        changes.push({ sz, q, curQty, newQty });
-      }
-      const newColors = item.colors.map((c, i) =>
-        i === colorIdx ? { ...c, stock: newStock } : c
-      );
+      // 🔗 รวมทุกสีที่เลือก (สีปัจจุบัน + สีที่ติ๊กเพิ่ม)
+      const allColorIdxs = new Set([colorIdx, ...clothingTxExtraColors]);
+      // คำนวณสต็อกใหม่ทุกไซส์สำหรับทุกสีที่เลือก
+      const newColors = item.colors.map((c, i) => {
+        if (!allColorIdxs.has(i)) return c;
+        const newStock = { ...(c.stock || {}) };
+        for (const [sz, q] of entries) {
+          const curQty = newStock[sz] || 0;
+          const newQty = clothingTxType === "รับ" ? curQty + q : Math.max(0, curQty - q);
+          newStock[sz] = newQty;
+        }
+        return { ...c, stock: newStock };
+      });
       await updateDoc(doc(db, "clothing", item.id), { colors: newColors });
-      // 1 transaction ต่อ 1 ไซส์ (เพื่อให้รายงานแยกไซส์ได้)
-      for (const { sz, q } of changes) {
-        await addDoc(collection(db, "transactions"), {
-          type: clothingTxType, code: item.id,
-          name: `${item.model} / ${col.colorName} / ${sz}`,
-          qty: q, by: user.name,
-          date: now(), note: clothingTxNote || "", createdAt: serverTimestamp(),
-          category: "เสื้อผ้า"
-        });
+      // 1 transaction ต่อ 1 สี × 1 ไซส์
+      for (const ci of allColorIdxs) {
+        const c = item.colors[ci];
+        for (const [sz, q] of entries) {
+          await addDoc(collection(db, "transactions"), {
+            type: clothingTxType, code: item.id,
+            name: `${item.model} / ${c.colorName} / ${sz}`,
+            qty: q, by: user.name,
+            date: now(), note: clothingTxNote || "", createdAt: serverTimestamp(),
+            category: "เสื้อผ้า"
+          });
+        }
       }
-      const totalQty = changes.reduce((s, c) => s + c.q, 0);
+      const totalQty = entries.reduce((s, [, q]) => s + q, 0) * allColorIdxs.size;
+      const colorNames = Array.from(allColorIdxs).map(i => item.colors[i]?.colorName).join(", ");
       logAudit(user, {
         action: AUDIT_ACTIONS.STOCK,
         collection: "clothing",
         targetId: item.id,
-        targetLabel: `${item.model} / ${col.colorName}`,
-        note: `${clothingTxType} ${totalQty} ชิ้น [${changes.map(c => `${c.sz}:${c.q}(${c.curQty}→${c.newQty})`).join(", ")}]${clothingTxNote ? ` · ${clothingTxNote}` : ""}`,
+        targetLabel: `${item.model} / ${colorNames}`,
+        note: `${clothingTxType} ${totalQty} ชิ้น [${entries.map(([sz,q]) => `${sz}:${q}`).join(", ")}]${allColorIdxs.size>1?` · ${allColorIdxs.size} สี`:""}${clothingTxNote ? ` · ${clothingTxNote}` : ""}`,
       });
       // ปิด modal + reset ทันที — กันกดซ้ำ
       setClothingTxModal(null);
       setClothingTxQty(""); setClothingTxSizeQty({}); setClothingTxNote("");
+      setClothingTxExtraColors(new Set());
       setTxSuccess(true);
       setTimeout(() => setTxSuccess(false), 1500);
     } catch (e) {
@@ -4885,15 +4891,36 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       {/* ── MODAL: รับ/จ่ายเสื้อผ้า ── */}
       {clothingTxModal&&(
         <Modal onClose={()=>setClothingTxModal(null)} w={540}>
-          <MHead title={clothingTxType==="รับ"?"⬇️ รับเสื้อผ้าเข้าคลัง":"⬆️ จ่ายเสื้อผ้าออกคลัง"} onClose={()=>setClothingTxModal(null)} color={clothingTxType==="รับ"?T.green:T.red}/>
+          <MHead title={clothingTxType==="รับ"?"⬇️ รับเสื้อผ้าเข้าคลัง":"⬆️ จ่ายเสื้อผ้าออกคลัง"} onClose={()=>{setClothingTxModal(null);setClothingTxExtraColors(new Set());}} color={clothingTxType==="รับ"?T.green:T.red}/>
           {clothingTxSuccess&&<Toast msg="บันทึกสำเร็จ! ตัดสต็อกแล้ว"/>}
-          <div style={{padding:14,background:"rgba(59,91,139,0.06)",border:`1px solid rgba(59,91,139,0.2)`,borderRadius:10,marginBottom:16}}>
+          <div style={{padding:14,background:"rgba(59,91,139,0.06)",border:`1px solid rgba(59,91,139,0.2)`,borderRadius:10,marginBottom:12}}>
             <div style={{fontSize:12,color:T.accent,fontWeight:600}}>{clothingTxModal.item.model}</div>
             <div style={{fontSize:11,color:T.sub,marginTop:2,display:"flex",alignItems:"center",gap:8}}>
               <div style={{width:10,height:10,borderRadius:2,background:(clothingTxModal.item.colors[clothingTxModal.colorIdx]||{}).hex}}/>
               {(clothingTxModal.item.colors[clothingTxModal.colorIdx]||{}).colorName}
+              {clothingTxExtraColors.size > 0 && <span style={{marginLeft:6,fontSize:11,color:T.accent,fontWeight:700}}>+ อีก {clothingTxExtraColors.size} สี</span>}
             </div>
           </div>
+          {/* 🔗 เลือกสีเพิ่ม — ทำ tx เดียวกันกับหลายสีพร้อมกัน */}
+          {(clothingTxModal.item.colors||[]).length > 1 && (
+            <div style={{marginBottom:14,padding:"8px 12px",background:"#fef3c7",border:"1px dashed #fbbf24",borderRadius:9}}>
+              <div style={{fontSize:11,fontWeight:700,color:T.amber,marginBottom:6}}>🔗 ทำพร้อมกันกับสีอื่น (คลิกติ๊กเพื่อเพิ่ม)</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                {(clothingTxModal.item.colors||[]).map((c,ci)=>{
+                  if (ci === clothingTxModal.colorIdx) return null; // สีปัจจุบันไม่ต้องแสดง (ต้องเลือกอยู่แล้ว)
+                  const on = clothingTxExtraColors.has(ci);
+                  return (
+                    <button key={ci} onClick={()=>setClothingTxExtraColors(s=>{const n=new Set(s); if(on)n.delete(ci);else n.add(ci); return n;})}
+                      style={{padding:"4px 10px",borderRadius:7,border:`1px solid ${on?"#d97706":"rgba(0,0,0,0.15)"}`,background:on?"#fef3c7":"white",cursor:"pointer",fontSize:11,fontWeight:on?700:500,color:T.text,display:"inline-flex",alignItems:"center",gap:5}}>
+                      <span style={{width:9,height:9,borderRadius:2,background:c.hex,border:"1px solid rgba(0,0,0,0.15)"}}/>
+                      {c.colorName}
+                      {on && <span style={{fontSize:10,color:T.amber}}>✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div>
               <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>เลือกไซส์ * <span style={{textTransform:"none",fontWeight:400,color:T.muted}}>(กดเพื่อเลือก/ยกเลิก — เลือกได้หลายไซส์)</span></label>
@@ -4950,10 +4977,13 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               <BtnGhost onClick={()=>setClothingTxModal(null)} disabled={txSaving} style={{flex:1}}>ยกเลิก</BtnGhost>
               {(() => {
                 const totalQty = Object.values(clothingTxSizeQty).reduce((s,q)=>s+(Number(q)||0),0);
+                const nColors = 1 + clothingTxExtraColors.size;
+                const grand = totalQty * nColors;
                 const disabled = txSaving || totalQty <= 0;
+                const suffix = totalQty > 0 ? ` (${grand}${nColors > 1 ? ` = ${totalQty}×${nColors} สี` : ""})` : "";
                 return clothingTxType==="รับ"
-                  ?<BtnSuccess onClick={handleClothingTx} disabled={disabled} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":`✅ ยืนยันรับสินค้า${totalQty>0?` (${totalQty})`:""}`}</BtnSuccess>
-                  :<BtnDanger onClick={handleClothingTx} disabled={disabled} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":`✅ ยืนยันจ่ายสินค้า${totalQty>0?` (${totalQty})`:""}`}</BtnDanger>;
+                  ?<BtnSuccess onClick={handleClothingTx} disabled={disabled} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":`✅ ยืนยันรับสินค้า${suffix}`}</BtnSuccess>
+                  :<BtnDanger onClick={handleClothingTx} disabled={disabled} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":`✅ ยืนยันจ่ายสินค้า${suffix}`}</BtnDanger>;
               })()}
             </div>
           </div>
