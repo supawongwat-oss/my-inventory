@@ -155,8 +155,8 @@ export default function PrintInvoiceModal({
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:15,minWidth:560}}>
                     <thead>
                       <tr style={{background:"#f1f5f9",color:"#000"}}>
-                        <th style={{padding:"9px 6px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:14,color:"#000"}}>รุ่น</th>
-                        <th style={{padding:"9px 6px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:14,color:"#000"}}>สี</th>
+                        <th style={{padding:"9px 4px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,color:"#000",width:72}}>รุ่น</th>
+                        <th style={{padding:"9px 8px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:15,color:"#000"}}>สี</th>
                         {[1,2,3,4].flatMap(i=>[
                           <th key={`sh${i}`} style={{padding:"9px 2px",textAlign:"center",fontWeight:700,border:"1px solid #000",background:"#f1f5f9",color:"#000",minWidth:36,fontSize:13}}>SIZE</th>,
                           <th key={`qh${i}`} style={{padding:"9px 2px",textAlign:"center",fontWeight:700,border:"1px solid #000",minWidth:26,fontSize:13,color:"#000"}}></th>
@@ -179,13 +179,13 @@ export default function PrintInvoiceModal({
                           const rowSub=chunk.reduce((s,i)=>s+(Number(i.unitPrice)||0)*i.qty,0);
                           return (
                             <tr key={`${gi}-${ci}`} style={{background:gi%2===0?"white":"#f8fafc"}}>
-                              <td style={{padding:"8px 10px",fontWeight:600,color:"#000",verticalAlign:"middle",border:"1px solid #000",fontSize:13,textAlign:"center",whiteSpace:"nowrap"}}>
+                              <td style={{padding:"8px 4px",fontWeight:600,color:"#000",verticalAlign:"middle",border:"1px solid #000",fontSize:11,textAlign:"center",whiteSpace:"nowrap",width:72}}>
                                 {ci===0 ? group.clothingName : " "}
                               </td>
-                              <td style={{padding:"8px 10px",verticalAlign:"middle",border:"1px solid #000",fontSize:13,color:"#000",whiteSpace:"nowrap"}}>
+                              <td style={{padding:"8px 8px",verticalAlign:"middle",border:"1px solid #000",fontSize:15,color:"#000",whiteSpace:"nowrap"}}>
                                 {ci===0 ? (
-                                  <div style={{display:"flex",alignItems:"center",gap:4,justifyContent:"center"}}>
-                                    <div style={{width:9,height:9,borderRadius:2,background:group.colorHex,border:"1px solid #000",flexShrink:0}}/>
+                                  <div style={{display:"flex",alignItems:"center",gap:5,justifyContent:"center"}}>
+                                    <div style={{width:11,height:11,borderRadius:2,background:group.colorHex,border:"1px solid #000",flexShrink:0}}/>
                                     <span>{group.colorName}{group.variant?` (${group.variant})`:""}</span>
                                   </div>
                                 ) : " "}
