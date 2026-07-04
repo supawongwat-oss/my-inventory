@@ -5,6 +5,8 @@
 export const PRINT_FONT_SCALE = 1.3;
 // ใบบิล: A4 มีพื้นที่พอ → พิมพ์ที่ขนาดเกือบเต็ม (0.95) ให้ตารางอ่านง่าย
 export const INVOICE_FONT_SCALE = 1.0;
+// ใบบิล PDF: ย่อลงให้พอดีหน้า A4 มีขอบเหลือ (ฟอนต์ base ตารางใหญ่ → ต้องย่อกว่า print ปกติ)
+export const INVOICE_PDF_FONT_SCALE = 0.72;
 export const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
   // ต้อง attach root เข้า DOM ชั่วคราวเพื่ออ่าน computed style
   const holder = document.createElement("div");
@@ -421,7 +423,7 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
       const clone = el.cloneNode(true);
       const tag = clone.querySelector("[data-doc-label]");
       if (tag) tag.textContent = label;
-      scaleFontInElement(clone, INVOICE_FONT_SCALE);
+      scaleFontInElement(clone, INVOICE_PDF_FONT_SCALE);
       const pageWrap = document.createElement("div");
       if (i < labels.length - 1) pageWrap.style.pageBreakAfter = "always";
       pageWrap.appendChild(clone);
@@ -429,7 +431,7 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
     });
     source = wrap;
   } else {
-    source = scaleFontInElement(el.cloneNode(true), INVOICE_FONT_SCALE);
+    source = scaleFontInElement(el.cloneNode(true), INVOICE_PDF_FONT_SCALE);
   }
   // 📐 บังคับความกว้าง = A4 content (~190mm ≈ 718px @96dpi) → html2canvas จับภาพเท่าหน้าจริง ไม่ล้นขอบ
   source.style.width = "718px";
