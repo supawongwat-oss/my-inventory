@@ -421,7 +421,7 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
       const clone = el.cloneNode(true);
       const tag = clone.querySelector("[data-doc-label]");
       if (tag) tag.textContent = label;
-      scaleFontInElement(clone);
+      scaleFontInElement(clone, INVOICE_FONT_SCALE);
       const pageWrap = document.createElement("div");
       if (i < labels.length - 1) pageWrap.style.pageBreakAfter = "always";
       pageWrap.appendChild(clone);
@@ -429,8 +429,11 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
     });
     source = wrap;
   } else {
-    source = scaleFontInElement(el.cloneNode(true));
+    source = scaleFontInElement(el.cloneNode(true), INVOICE_FONT_SCALE);
   }
+  // 📐 บังคับความกว้าง = A4 content (~190mm ≈ 718px @96dpi) → html2canvas จับภาพเท่าหน้าจริง ไม่ล้นขอบ
+  source.style.width = "718px";
+  source.style.boxSizing = "border-box";
   // 🚀 lazy import — โหลด html2pdf.js เฉพาะตอนกดปุ่มนี้เท่านั้น (~400KB)
   const { default: html2pdf } = await import("html2pdf.js");
   html2pdf().set({
