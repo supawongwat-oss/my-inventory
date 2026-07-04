@@ -13,6 +13,7 @@
     "html2pdf.js": "^0.14.0",
     "jsbarcode": "^3.12.3",
     "react": "^19.2.6",
+    "react-colorful": "^5.7.0",
     "react-dom": "^19.2.6",
     "react-scripts": "5.0.1",
     "web-vitals": "^2.1.4",
