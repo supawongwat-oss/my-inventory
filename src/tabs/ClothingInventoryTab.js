@@ -80,7 +80,7 @@ export default function ClothingInventoryTab({
           onDragOver={role.canAdd ? (e => { e.preventDefault(); if (dragOverClothingId !== item.id) setDragOverClothingId(item.id); }) : undefined}
           onDrop={role.canAdd ? (e => { e.preventDefault(); reorderClothing(draggingClothingId, item.id, tabItems); setDraggingClothingId(null); setDragOverClothingId(null); }) : undefined}
           style={{ background: T.card, border: `1px solid ${dragOverClothingId === item.id && draggingClothingId && draggingClothingId !== item.id ? T.accent : T.border}`, borderRadius: 16, marginBottom: 16, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.3)", opacity: draggingClothingId === item.id ? 0.4 : 1, transition: "opacity 0.15s" }}>
-          <div onClick={() => toggleCollapse(item.id)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 20px", borderBottom: collapsedItems[item.id] ? "none" : `1px solid ${T.border}`, cursor: "pointer", userSelect: "none", transition: "background 0.2s" }}
+          <div onClick={() => toggleCollapse(item.id)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 20px", borderBottom: (collapsedItems[item.id]!==false) ? "none" : `1px solid ${T.border}`, cursor: "pointer", userSelect: "none", transition: "background 0.2s" }}
             onMouseEnter={e => e.currentTarget.style.background = "rgba(59,91,139,0.04)"}
             onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
             {/* 🖱️ Drag handle — จัดลำดับ */}
@@ -93,7 +93,7 @@ export default function ClothingInventoryTab({
                 style={{ cursor: "grab", color: T.muted, fontSize: 16, flexShrink: 0, padding: "0 2px", lineHeight: 1, userSelect: "none" }}>⠿</div>
             )}
             {/* Collapse arrow */}
-            <div style={{ width: 24, height: 24, borderRadius: 6, background: "rgba(59,91,139,0.1)", border: "1px solid rgba(59,91,139,0.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "transform 0.2s", transform: collapsedItems[item.id] ? "rotate(-90deg)" : "rotate(0deg)", fontSize: 11, color: T.accent }}>▼</div>
+            <div style={{ width: 24, height: 24, borderRadius: 6, background: "rgba(59,91,139,0.1)", border: "1px solid rgba(59,91,139,0.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "transform 0.2s", transform: (collapsedItems[item.id]!==false) ? "rotate(-90deg)" : "rotate(0deg)", fontSize: 11, color: T.accent }}>▼</div>
             <div onClick={e => { e.stopPropagation(); setUploadingClothingId(item.id); setTimeout(() => clothingImgRef.current?.click(), 50); }}
               title={item.image ? "คลิกเพื่อเปลี่ยนรูป" : "คลิกเพื่อเพิ่มรูป"}
               style={{ width: 65, height: 65, borderRadius: 10, background: "rgba(59,91,139,0.08)", border: "2px dashed rgba(59,91,139,0.3)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer", overflow: "hidden", position: "relative" }}
@@ -113,7 +113,7 @@ export default function ClothingInventoryTab({
                 <span>{(item.colors || []).length} สี</span>
                 <span style={{ color: "rgba(59,91,139,0.3)" }}>·</span>
                 <span>รวม <b style={{ color: T.accent }}>{(item.colors || []).reduce((s, c) => s + Object.values(c.stock || {}).reduce((a, b) => a + b, 0), 0)}</b> ชิ้น</span>
-                {collapsedItems[item.id] && (item.colors || []).length > 0 && (
+                {(collapsedItems[item.id]!==false) && (item.colors || []).length > 0 && (
                   <div style={{ display: "flex", gap: 4, marginLeft: 4 }}>
                     {(item.colors || []).slice(0, 5).map((c, i) => (
                       <div key={i} title={c.colorName} style={{ width: 10, height: 10, borderRadius: 2, background: c.hex, border: "1px solid rgba(255,255,255,0.15)" }} />
@@ -139,7 +139,7 @@ export default function ClothingInventoryTab({
           </div>
 
           {/* Collapsed state */}
-          {collapsedItems[item.id] ? null : (item.colors || []).length === 0 ? (
+          {(collapsedItems[item.id]!==false) ? null : (item.colors || []).length === 0 ? (
             <div style={{ padding: "20px", textAlign: "center", color: T.muted, fontSize: 12 }}>ยังไม่มีสี — กด "️ สี"</div>
           ) : (
             <div style={{ overflowX: "auto" }}>

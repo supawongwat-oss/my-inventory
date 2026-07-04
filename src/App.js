@@ -286,8 +286,11 @@ export default function App() {
     return { ...m, [itemId]: cur };
   });
   const [clothingSubTab, setClothingSubTab] = useState("all"); // "all" | "sleeveless" | "longsleeve" | "other"
+  // 🗂 ค่าเริ่มต้น = "พับ" ทุกรุ่น — รุ่นจะกางก็ต่อเมื่อ collapsedItems[id] === false (กดกางเอง)
+  //    → รุ่นใหม่ที่เพิ่มมาก็พับอัตโนมัติ ไม่ต้อง init
   const toggleCollapse = (id) => setCollapsedItems(prev => {
-    const next = { ...prev, [id]: !prev[id] };
+    const isCollapsed = prev[id] !== false; // default = พับ
+    const next = { ...prev, [id]: isCollapsed ? false : true }; // สลับ พับ↔กาง
     try { localStorage.setItem("cpu_erp_collapsed_clothing", JSON.stringify(next)); } catch {}
     return next;
   });
@@ -301,18 +304,6 @@ export default function App() {
       return next;
     });
   };
-  // 🔮 auto-collapse ครั้งแรก: ถ้ามีรุ่น > 5 และยังไม่เคยตั้งค่าเลย → พับให้อัตโนมัติ
-  useEffect(() => {
-    if (clothingItems.length <= 5) return;
-    const key = "cpu_erp_collapsed_clothing_initialized";
-    if (localStorage.getItem(key)) return;
-    setCollapsedItems(prev => {
-      const next = { ...prev };
-      clothingItems.forEach(it => { if (next[it.id] === undefined) next[it.id] = true; });
-      try { localStorage.setItem("cpu_erp_collapsed_clothing", JSON.stringify(next)); localStorage.setItem(key,"1"); } catch {}
-      return next;
-    });
-  }, [clothingItems]);
   const clothingImgRef = useRef(null);
   const [uploadingClothingId, setUploadingClothingId] = useState(null);
 
