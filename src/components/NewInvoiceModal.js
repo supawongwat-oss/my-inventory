@@ -1,5 +1,5 @@
 import React from "react";
-import { T, SIZE_GROUPS } from "../theme";
+import { T, SIZE_GROUPS, PRESET_COLORS, splitSizesIntoRows } from "../theme";
 import { Modal, MHead, BtnPrimary, BtnGhost, BtnDanger } from "./ui";
 
 export default function NewInvoiceModal({
@@ -17,6 +17,8 @@ export default function NewInvoiceModal({
   handleAddInvoiceItem,
   handleConfirmInvoice,
   handleImportFromOrder,
+  docTypeLabel,
+  calcInvoice,
 }) {
   return (
         <Modal onClose={()=>{onClose();}} w={1100}>
