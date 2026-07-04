@@ -1,5 +1,5 @@
 // 🖨️ Print & PDF utilities — extracted from App.js
-import html2pdf from "html2pdf.js";
+// 🚀 html2pdf.js (~400KB) → lazy load เฉพาะตอนกดปุ่ม PDF เท่านั้น
 
 // scale fontSize ของทุก element ใน clone (ใช้ก่อนพิมพ์/PDF) — ค่าเริ่มต้น 1.3 = ใหญ่ขึ้น 30%
 export const PRINT_FONT_SCALE = 1.3;
@@ -398,8 +398,8 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
   });
 };
 
-// ดาวน์โหลดเอกสารเป็น PDF (ใช้ html2pdf.js)
-export const downloadInvoicePdf = (inv, copies = false) => {
+// ดาวน์โหลดเอกสารเป็น PDF (ใช้ html2pdf.js — lazy load)
+export const downloadInvoicePdf = async (inv, copies = false) => {
   const el = document.getElementById("invoice-print-area");
   if (!el || !inv) return;
   const safeName = (inv.customerName || "ลูกค้า").replace(/[\\/:*?"<>|]/g, "_").slice(0, 30);
@@ -422,6 +422,8 @@ export const downloadInvoicePdf = (inv, copies = false) => {
   } else {
     source = scaleFontInElement(el.cloneNode(true));
   }
+  // 🚀 lazy import — โหลด html2pdf.js เฉพาะตอนกดปุ่มนี้เท่านั้น (~400KB)
+  const { default: html2pdf } = await import("html2pdf.js");
   html2pdf().set({
     margin: 10,
     filename,
