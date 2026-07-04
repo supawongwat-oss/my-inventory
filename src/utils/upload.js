@@ -57,6 +57,33 @@ export async function listFiles(folder) {
   return items;
 }
 
+// แปลง dataUrl (base64) → Blob เพื่ออัปโหลด
+function dataUrlToBlob(dataUrl) {
+  const [head, body] = String(dataUrl).split(",");
+  const mime = (head.match(/data:(.*?);base64/) || [])[1] || "image/jpeg";
+  const bin = atob(body);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
+/**
+ * อัปโหลดรูป (dataUrl ที่ compress แล้ว) → Firebase Storage
+ * คืน { url, path } เพื่อเก็บใน Firestore doc แทน base64 (doc เล็กลง โหลดเร็ว)
+ */
+export async function uploadImage(dataUrl, folder = "images") {
+  if (!dataUrl || !String(dataUrl).startsWith("data:")) {
+    return { url: dataUrl || "", path: "" }; // ไม่ใช่ base64 → คืนตามเดิม
+  }
+  const blob = dataUrlToBlob(dataUrl);
+  const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
+  const path = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const fileRef = ref(storage, path);
+  const snap = await uploadBytes(fileRef, blob, { contentType: blob.type });
+  const url = await getDownloadURL(snap.ref);
+  return { url, path };
+}
+
 // format bytes → human readable
 export function fmtBytes(bytes) {
   if (!bytes) return "0 B";

@@ -22,6 +22,7 @@ import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
 import { PRINT_FONT_SCALE, INVOICE_FONT_SCALE, scaleFontInElement, printElementById, printInvoiceCopies, downloadInvoicePdf } from "./utils/print";
 import { PAYMENT_METHODS, docTypeLabel, docTypeLabelEn, itemLineTotal, calcInvoice, getPaidTotal, getRemaining, getPaidPct } from "./utils/invoice";
 import { compressImage } from "./utils/imageCompress";
+import { uploadImage, deleteFile } from "./utils/upload";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiRegion";
 import { generateDocNo } from "./utils/docNumber";
 
@@ -442,13 +443,18 @@ export default function App() {
 
   const handleProductImageUpload = async (e) => {
     const file = e.target.files[0]; if (!file || !uploadingForProduct) return;
-    const r = new FileReader();
-    r.onload = async ev => {
-      await updateDoc(doc(db, "products", uploadingForProduct), { image: ev.target.result, lastUpdate: now() });
+    try {
+      const dataUrl = await compressImage(file, { maxDim: 1000, quality: 0.75 });
+      const { url, path } = await uploadImage(dataUrl, "products");
+      const prod = products.find(p => p.id === uploadingForProduct);
+      if (prod?.imagePath) deleteFile(prod.imagePath); // ลบรูปเก่าใน Storage
+      await updateDoc(doc(db, "products", uploadingForProduct), { image: url, imagePath: path, lastUpdate: now() });
+    } catch (err) {
+      alert("อัปโหลดรูปไม่สำเร็จ: " + (err?.message || err));
+    } finally {
       setUploadingForProduct(null);
-    };
-    r.readAsDataURL(file);
-    e.target.value = "";
+      if (e.target) e.target.value = "";
+    }
   };
   const barcodeInputRef = useRef(null);
 
@@ -480,10 +486,11 @@ export default function App() {
     const file = e.target.files[0]; if (!file) return;
     try {
       const dataUrl = await compressImage(file, { maxDim: 1000, quality: 0.75 });
-      setNewProduct(p => ({...p, image: dataUrl}));
+      const { url, path } = await uploadImage(dataUrl, "products");
+      setNewProduct(p => ({...p, image: url, imagePath: path}));
     } catch (err) {
-      console.error("[handleImageUpload] compress failed:", err);
-      alert("โหลดรูปไม่สำเร็จ: " + (err?.message || err));
+      console.error("[handleImageUpload] upload failed:", err);
+      alert("อัปโหลดรูปไม่สำเร็จ: " + (err?.message || err));
     } finally {
       if (e.target) e.target.value = "";
     }
@@ -1665,12 +1672,18 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
   const handleClothingImageUpload = async (e) => {
     const file = e.target.files[0]; if (!file || !uploadingClothingId) return;
-    const r = new FileReader();
-    r.onload = async ev => {
-      await updateDoc(doc(db, "clothing", uploadingClothingId), { image: ev.target.result });
+    try {
+      const dataUrl = await compressImage(file, { maxDim: 1200, quality: 0.78 });
+      const { url, path } = await uploadImage(dataUrl, "clothing");
+      const it = clothingItems.find(c => c.id === uploadingClothingId);
+      if (it?.imagePath) deleteFile(it.imagePath); // ลบรูปเก่า
+      await updateDoc(doc(db, "clothing", uploadingClothingId), { image: url, imagePath: path });
+    } catch (err) {
+      alert("อัปโหลดรูปไม่สำเร็จ: " + (err?.message || err));
+    } finally {
       setUploadingClothingId(null);
-    };
-    r.readAsDataURL(file); e.target.value = "";
+      if (e.target) e.target.value = "";
+    }
   };
 
 
@@ -3269,7 +3282,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               <div style={{fontSize:12,color:T.sub,marginBottom:8,fontWeight:500}}>📸 รูปสินค้า</div>
               <BtnGhost onClick={()=>{
                 const inp=document.createElement("input");inp.type="file";inp.accept="image/*";
-                inp.onchange=async (e)=>{const f=e.target.files?.[0];if(!f)return;try{const dataUrl=await compressImage(f,{maxDim:1000,quality:0.75});setEditingProduct(p=>({...p,image:dataUrl}));}catch(err){alert("โหลดรูปไม่สำเร็จ: "+(err?.message||err));}};
+                inp.onchange=async (e)=>{const f=e.target.files?.[0];if(!f)return;try{const dataUrl=await compressImage(f,{maxDim:1000,quality:0.75});const {url,path}=await uploadImage(dataUrl,"products");setEditingProduct(p=>{if(p?.imagePath)deleteFile(p.imagePath);return {...p,image:url,imagePath:path};});}catch(err){alert("อัปโหลดรูปไม่สำเร็จ: "+(err?.message||err));}};
                 inp.click();
               }} style={{fontSize:12,padding:"6px 14px"}}>📁 เปลี่ยนรูป</BtnGhost>
               {editingProduct.image&&<BtnGhost onClick={()=>setEditingProduct(p=>({...p,image:""}))} style={{fontSize:12,padding:"6px 14px",marginLeft:6,color:T.red}}>✕ ลบรูป</BtnGhost>}
@@ -3463,8 +3476,10 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
             const file=e.target.files[0]; if(!file) return;
             try {
               const dataUrl = await compressImage(file, { maxDim: 1000, quality: 0.75 });
-              await updateDoc(doc(db,"products",showImgModal.id),{image:dataUrl,lastUpdate:now()});
-              setShowImgModal(p=>({...p,image:dataUrl}));
+              const { url, path } = await uploadImage(dataUrl, "products");
+              if (showImgModal.imagePath) deleteFile(showImgModal.imagePath);
+              await updateDoc(doc(db,"products",showImgModal.id),{image:url,imagePath:path,lastUpdate:now()});
+              setShowImgModal(p=>({...p,image:url,imagePath:path}));
             } catch (err) {
               alert("อัปโหลดรูปไม่สำเร็จ: " + (err?.message || err));
             } finally {
