@@ -61,16 +61,25 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
     const cssPageSizeM = sizeMapM[pageSize] || pageSize;
     const cloneM = el.cloneNode(true);
     cloneM.removeAttribute("id");
-    const finalElM = isThermal ? cloneM : scaleFontInElement(cloneM, fontScale);
+    // 🩹 Samsung/mobile: ลด fontScale ลง (default 1.3 มักทำให้ตกขอบ)
+    const mobileFontScale = Math.min(fontScale, 1.0);
+    const finalElM = isThermal ? cloneM : scaleFontInElement(cloneM, mobileFontScale);
+    // 🩹 ลด padding รอบ ๆ print-area — เดิม 32px 40px กว้างเกินไป
+    finalElM.style.padding = "6mm 8mm";
+    finalElM.style.boxSizing = "border-box";
+    finalElM.style.width = "100%";
+    finalElM.style.maxWidth = "100%";
     // ดึง <style>/<link> ที่จำเป็นจาก parent (สำหรับให้สไตล์ inline ของ React ทำงานเหมือนเดิม)
     const html = `<!doctype html><html><head><meta charset="utf-8"/>
       <title>พิมพ์เอกสาร</title>
       <link rel="icon" href="data:,">
       <style>
-        @page { size: ${cssPageSizeM}; margin: ${pageMargin}; }
-        html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun','Sukhumvit Set','Noto Sans Thai',sans-serif; }
-        table { border-collapse: collapse; width: 100%; }
-        tr, td, th { page-break-inside: avoid; }
+        @page { size: ${cssPageSizeM}; margin: 6mm; }
+        html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun','Sukhumvit Set','Noto Sans Thai',sans-serif; width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden; }
+        * { box-sizing: border-box; }
+        body > * { max-width: 100% !important; }
+        table { border-collapse: collapse; width: 100% !important; max-width: 100% !important; }
+        tr, td, th { page-break-inside: avoid; word-break: break-word; }
         thead { display: table-header-group; }
         tfoot { display: table-footer-group; }
         img { max-width: 100%; height: auto; }
