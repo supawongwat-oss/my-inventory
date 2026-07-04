@@ -1,6 +1,6 @@
 // 🏷️ Print Barcode Stickers — ปริ้น barcode หลายๆ ใบใน 1 หน้า A4
 import { useState, useMemo } from "react";
-import html2pdf from "html2pdf.js";
+// 🚀 html2pdf.js (~400KB) → lazy load เฉพาะตอนกดปุ่ม PDF
 import { T } from "../theme";
 import { Modal, MHead, BtnPrimary, BtnGhost } from "./ui";
 import { BarcodeDisplay } from "./ui";
@@ -82,7 +82,7 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], o
     }
   };
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
     if (printList.length === 0) { alert("เลือกสินค้าอย่างน้อย 1 รายการ"); return; }
     const el = document.getElementById("barcode-sticker-area");
     if (!el) return;
@@ -91,6 +91,8 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], o
     const filename = layout.thermal
       ? `stickers-${printList.length}x-${w}x${h}mm.pdf`
       : `stickers-${printList.length}x-A4.pdf`;
+    // 🚀 lazy import html2pdf.js (~400KB) เฉพาะตอนกด PDF
+    const { default: html2pdf } = await import("html2pdf.js");
     html2pdf().set({
       margin: 0,
       filename,
