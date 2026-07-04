@@ -19,6 +19,8 @@ export default function NewInvoiceModal({
   handleImportFromOrder,
   docTypeLabel,
   calcInvoice,
+  apparelSizes = [],
+  shoeSizes = [],
 }) {
   return (
         <Modal onClose={()=>{onClose();}} w={1100}>
