@@ -4719,6 +4719,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           handleImportFromOrder={handleImportFromOrder}
           docTypeLabel={docTypeLabel}
           calcInvoice={calcInvoice}
+          apparelSizes={apparelSizes}
+          shoeSizes={shoeSizes}
         />
       )}
 
