@@ -152,18 +152,18 @@ export default function PrintInvoiceModal({
                 },{}));
                 return (
                   <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:10}}>
-                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:15,minWidth:640}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:15,minWidth:560}}>
                     <thead>
                       <tr style={{background:"#f1f5f9",color:"#000"}}>
-                        <th style={{padding:"9px 8px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:14,color:"#000"}}>รุ่น</th>
-                        <th style={{padding:"9px 8px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:14,color:"#000"}}>สี</th>
+                        <th style={{padding:"9px 6px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:14,color:"#000"}}>รุ่น</th>
+                        <th style={{padding:"9px 6px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:14,color:"#000"}}>สี</th>
                         {[1,2,3,4].flatMap(i=>[
-                          <th key={`sh${i}`} style={{padding:"9px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",background:"#f1f5f9",color:"#000",minWidth:44,fontSize:13}}>SIZE</th>,
-                          <th key={`qh${i}`} style={{padding:"9px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",minWidth:34,fontSize:13,color:"#000"}}></th>
+                          <th key={`sh${i}`} style={{padding:"9px 2px",textAlign:"center",fontWeight:700,border:"1px solid #000",background:"#f1f5f9",color:"#000",minWidth:36,fontSize:13}}>SIZE</th>,
+                          <th key={`qh${i}`} style={{padding:"9px 2px",textAlign:"center",fontWeight:700,border:"1px solid #000",minWidth:26,fontSize:13,color:"#000"}}></th>
                         ])}
-                        <th style={{padding:"9px 8px",textAlign:"center",fontWeight:700,border:"1px solid #000",width:60,fontSize:14,color:"#000"}}>จำนวน</th>
-                        <th style={{padding:"9px 6px",textAlign:"right",fontWeight:700,border:"1px solid #000",width:82,fontSize:13,color:"#000"}}>ราคา/หน่วย</th>
-                        <th style={{padding:"9px 8px",textAlign:"right",fontWeight:700,border:"1px solid #000",width:100,fontSize:14,color:"#000"}}>ราคารวม (฿)</th>
+                        <th style={{padding:"9px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",width:48,fontSize:14,color:"#000"}}>จำนวน</th>
+                        <th style={{padding:"9px 4px",textAlign:"right",fontWeight:700,border:"1px solid #000",width:66,fontSize:12,color:"#000"}}>ราคา/หน่วย</th>
+                        <th style={{padding:"9px 6px",textAlign:"right",fontWeight:700,border:"1px solid #000",width:90,fontSize:13,color:"#000"}}>ราคารวม (฿)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -250,30 +250,30 @@ export default function PrintInvoiceModal({
                       )}
                       {invoice.billDiscount>0&&(
                         <tr style={{background:"#fffbeb"}}>
-                          <td colSpan={12} style={{padding:"6px 10px",textAlign:"right",fontSize:12,color:"#000",border:"1px solid #000"}}>ส่วนลดท้ายบิล{invoice.discountType==="percent"?` (${invoice.discount}%)`:""}</td>
-                          <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#000",border:"1px solid #000",fontSize:12}}>-{(invoice.billDiscount||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                          <td colSpan={12} style={{padding:"6px 10px",textAlign:"right",fontSize:12,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>ส่วนลดท้ายบิล{invoice.discountType==="percent"?` (${invoice.discount}%)`:""}</td>
+                          <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#000",border:"1px solid #000",fontSize:12,whiteSpace:"nowrap"}}>-{(invoice.billDiscount||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                         </tr>
                       )}
                       <tr style={{background:"#f1f5f9"}}>
-                        <td colSpan={12} style={{padding:"7px 10px",textAlign:"right",fontWeight:600,fontSize:12,color:"#000",border:"1px solid #000"}}>ยอดรวมก่อนภาษี</td>
-                        <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#000",fontSize:13,border:"1px solid #000"}}>{(invoice.subtotal||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                        <td colSpan={12} style={{padding:"7px 10px",textAlign:"right",fontWeight:600,fontSize:12,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>ยอดรวมก่อนภาษี</td>
+                        <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#000",fontSize:13,border:"1px solid #000",whiteSpace:"nowrap"}}>{(invoice.subtotal||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                       </tr>
                       {invoice.useVat&&(
                         <tr style={{background:"#f1f5f9"}}>
-                          <td colSpan={12} style={{padding:"6px 10px",textAlign:"right",fontSize:12,color:"#000",border:"1px solid #000"}}>ภาษีมูลค่าเพิ่ม (VAT {invoice.vatRate}%)</td>
-                          <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#000",border:"1px solid #000",fontSize:12}}>{(invoice.vat||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                          <td colSpan={12} style={{padding:"6px 10px",textAlign:"right",fontSize:12,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>ภาษีมูลค่าเพิ่ม (VAT {invoice.vatRate}%)</td>
+                          <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#000",border:"1px solid #000",fontSize:12,whiteSpace:"nowrap"}}>{(invoice.vat||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                         </tr>
                       )}
                       {(invoice.shipping>0||invoice.useShipping)&&(
                         <tr style={{background:"#f1f5f9"}}>
-                          <td colSpan={12} style={{padding:"6px 10px",textAlign:"right",fontSize:12,color:"#000",border:"1px solid #000"}}>ค่าจัดส่ง</td>
-                          <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#000",border:"1px solid #000",fontSize:12}}>{(invoice.shipping||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                          <td colSpan={12} style={{padding:"6px 10px",textAlign:"right",fontSize:12,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>ค่าจัดส่ง</td>
+                          <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#000",border:"1px solid #000",fontSize:12,whiteSpace:"nowrap"}}>{(invoice.shipping||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                         </tr>
                       )}
                       {/* ── ยอดรวมทั้งสิ้น (สีดำ + กรอบหนา) ── */}
                       <tr style={{background:"#fff"}}>
-                        <td colSpan={12} style={{padding:"9px 12px",textAlign:"right",fontWeight:800,fontSize:15,color:"#000",border:"2px solid #000"}}>ยอดรวมทั้งสิ้น</td>
-                        <td style={{padding:"9px 12px",textAlign:"right",fontFamily:"monospace",fontWeight:800,fontSize:17,color:"#000",border:"2px solid #000"}}>{(invoice.total||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                        <td colSpan={12} style={{padding:"9px 12px",textAlign:"right",fontWeight:800,fontSize:15,color:"#000",border:"2px solid #000",whiteSpace:"nowrap"}}>ยอดรวมทั้งสิ้น</td>
+                        <td style={{padding:"9px 12px",textAlign:"right",fontFamily:"monospace",fontWeight:800,fontSize:17,color:"#000",border:"2px solid #000",whiteSpace:"nowrap"}}>{(invoice.total||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                       </tr>
                     </tfoot>
                   </table>
