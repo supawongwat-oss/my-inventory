@@ -3,6 +3,21 @@ import { db } from "../firebase";
 import { collection, onSnapshot, doc, query, orderBy, limit, writeBatch, setDoc } from "firebase/firestore";
 import { INIT_USERS, INIT_CATS } from "../constants";
 
+// 🚀 จำกัดจำนวน doc ที่ subscribe real-time — โหลดเร็วขึ้น + ประหยัด Firestore reads
+// ใช้ rolling window (เรียงใหม่→เก่า) — พอสำหรับงานประจำวัน + รายงาน 30 วัน
+// ⚙️ ปรับตัวเลขตรงนี้ได้ทันที ถ้าอยากเห็นย้อนหลังมากขึ้น
+const LIMITS = {
+  transactions: 2000,      // รับ/จ่าย/ขาย — รายงานใช้แค่กราฟ 30 วัน
+  invoices: 1000,          // บิล
+  orders: 1000,            // ใบสั่งของ
+  productionOrders: 1000,  // ใบสั่งผลิต
+  customOrders: 800,       // ใบสั่งผลิต custom
+  catalogOrders: 400,      // สั่งจากหน้า catalog
+  statements: 500,         // ใบแจ้งยอด
+  payrollRuns: 200,        // รอบเงินเดือน
+  pendingMixSales: 300,    // ขายคละที่รอระบุ
+};
+
 export function useFirestore() {
   const [users, setUsers] = useState(INIT_USERS);
   const [usersLoaded, setUsersLoaded] = useState(false); // 🔐 true เมื่อ Firestore ตอบกลับจริง (กัน race "ไม่พบบัญชี")
@@ -69,7 +84,7 @@ export function useFirestore() {
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, "transactions"), orderBy("createdAt", "desc"));
+    const q = query(collection(db, "transactions"), orderBy("createdAt", "desc"), limit(LIMITS.transactions));
     const unsub = onSnapshot(q, snap => setTransactions(snap.docs.map(d => ({ ...d.data(), id: d.id }))));
     return () => unsub();
   }, []);
@@ -89,7 +104,7 @@ export function useFirestore() {
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, "orders"), orderBy("createdAt","desc"));
+    const q = query(collection(db, "orders"), orderBy("createdAt","desc"), limit(LIMITS.orders));
     const unsub = onSnapshot(q, snap => setOrders(snap.docs.map(d => ({...d.data(), id:d.id}))));
     return () => unsub();
   }, []);
@@ -105,13 +120,13 @@ export function useFirestore() {
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, "invoices"), orderBy("createdAt","desc"));
+    const q = query(collection(db, "invoices"), orderBy("createdAt","desc"), limit(LIMITS.invoices));
     const unsub = onSnapshot(q, snap => setInvoices(snap.docs.map(d=>({...d.data(),id:d.id}))), ()=>{});
     return () => unsub();
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, "statements"), orderBy("createdAt","desc"));
+    const q = query(collection(db, "statements"), orderBy("createdAt","desc"), limit(LIMITS.statements));
     const unsub = onSnapshot(q, snap => setStatements(snap.docs.map(d=>({...d.data(),id:d.id}))), ()=>{});
     return () => unsub();
   }, []);
@@ -152,7 +167,7 @@ export function useFirestore() {
 
   // Production orders
   useEffect(() => {
-    const q = query(collection(db, "productionOrders"), orderBy("createdAt","desc"));
+    const q = query(collection(db, "productionOrders"), orderBy("createdAt","desc"), limit(LIMITS.productionOrders));
     const unsub = onSnapshot(q, snap => setProductionOrders(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
     return () => unsub();
   }, []);
@@ -165,14 +180,14 @@ export function useFirestore() {
 
   // Custom orders (ผลิตเฉพาะแบบ — ไม่ตัดสต็อกวัตถุดิบ/สินค้า)
   useEffect(() => {
-    const q = query(collection(db, "customOrders"), orderBy("createdAt","desc"));
+    const q = query(collection(db, "customOrders"), orderBy("createdAt","desc"), limit(LIMITS.customOrders));
     const unsub = onSnapshot(q, snap => setCustomOrders(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
     return () => unsub();
   }, []);
 
   // Catalog orders — สั่งจาก /catalog (public)
   useEffect(() => {
-    const q = query(collection(db, "catalogOrders"), orderBy("createdAt","desc"));
+    const q = query(collection(db, "catalogOrders"), orderBy("createdAt","desc"), limit(LIMITS.catalogOrders));
     const unsub = onSnapshot(q, snap => setCatalogOrders(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
     return () => unsub();
   }, []);
@@ -187,14 +202,14 @@ export function useFirestore() {
 
   // 💰 Payroll runs — รอบจ่ายเงินเดือน
   useEffect(() => {
-    const q = query(collection(db, "payrollRuns"), orderBy("createdAt","desc"));
+    const q = query(collection(db, "payrollRuns"), orderBy("createdAt","desc"), limit(LIMITS.payrollRuns));
     const unsub = onSnapshot(q, snap => setPayrollRuns(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
     return () => unsub();
   }, []);
 
   // 📏 Custom sizes — ไซส์เสื้อผ้า/รองเท้าที่ผู้ใช้เพิ่มเอง (settings/sizes)
   useEffect(() => {
-    const q = query(collection(db, "pendingMixSales"), orderBy("createdAt","desc"));
+    const q = query(collection(db, "pendingMixSales"), orderBy("createdAt","desc"), limit(LIMITS.pendingMixSales));
     const unsub = onSnapshot(q, snap => setPendingMixSales(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
     return () => unsub();
   }, []);
