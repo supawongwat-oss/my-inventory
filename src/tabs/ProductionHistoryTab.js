@@ -141,6 +141,7 @@ export default function ProductionHistoryTab({ productionOrders = [], customOrde
                       const lots = getLots(order);
                       const colors = Array.from(new Set(lots.flatMap(l => (l.items||[]).map(i => i.colorName))));
                       const archivedDate = order.archivedAt ? new Date(order.archivedAt).toLocaleDateString("th-TH") : "—";
+                      const thumb = order.clothingImages?.[0]?.dataUrl || order.clothingImage || "";
                       return (
                         <div key={rowKey} style={{ borderBottom: i < items.length - 1 ? `1px solid ${T.border}` : "none" }}>
                           <div onClick={() => setExpandedId(isOpen ? null : rowKey)}
@@ -157,26 +158,35 @@ export default function ProductionHistoryTab({ productionOrders = [], customOrde
                             <span style={{ fontFamily: "monospace", fontWeight: 700, color: T.text, fontSize: 13, flexShrink: 0 }}>{fmtInt(order.totalQty||0)}</span>
                           </div>
                           {isOpen && (
-                            <div style={{ padding: "0 14px 12px 38px" }}>
-                              {colors.length > 0 && (
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginBottom: 8 }}>
-                                  {colors.map((c,ci) => (
-                                    <span key={ci} style={{ padding: "1px 6px", fontSize: 10, background: "rgba(59,91,139,0.08)", color: T.accent, borderRadius: 6 }}>{c}</span>
-                                  ))}
+                            <div style={{ padding: "0 14px 12px 38px", display: "flex", gap: 12 }}>
+                              {thumb ? (
+                                <img src={thumb} alt="" style={{ width: 72, height: 72, borderRadius: 8, objectFit: "cover", border: `1px solid ${T.border}`, flexShrink: 0 }}/>
+                              ) : (
+                                <div style={{ width: 72, height: 72, borderRadius: 8, border: `1px dashed ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, color: T.muted, flexShrink: 0 }}>
+                                  {order.__isCustom ? "🎨" : "👕"}
                                 </div>
                               )}
-                              <div style={{ fontSize: 10, color: T.muted, marginBottom: 8, padding: "4px 8px", background: "#f8fafc", borderRadius: 5 }}>
-                                📦 เก็บเมื่อ {archivedDate}
-                                {order.archivedBy && <> · โดย {order.archivedBy}</>}
-                                {order.archivedFromStep && <> · จากช่อง <b>{order.archivedFromStep}</b></>}
-                              </div>
-                              <div style={{ display: "flex", gap: 6 }} onClick={e => e.stopPropagation()}>
-                                <button onClick={()=>restore(order)}
-                                  style={{ background: "#eff6ff", color: T.blue, border: `1px solid ${T.blue}`, padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600 }}>↩️ คืนกลับ Kanban</button>
-                                {user?.role === "admin" && (
-                                  <button onClick={()=>permanentDelete(order)} title="ลบถาวร (admin only)"
-                                    style={{ background: "#fef2f2", color: T.red, border: `1px solid #fecaca`, padding: "6px 10px", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", fontSize: 12 }}>🗑 ลบถาวร</button>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                {colors.length > 0 && (
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginBottom: 8 }}>
+                                    {colors.map((c,ci) => (
+                                      <span key={ci} style={{ padding: "1px 6px", fontSize: 10, background: "rgba(59,91,139,0.08)", color: T.accent, borderRadius: 6 }}>{c}</span>
+                                    ))}
+                                  </div>
                                 )}
+                                <div style={{ fontSize: 10, color: T.muted, marginBottom: 8, padding: "4px 8px", background: "#f8fafc", borderRadius: 5 }}>
+                                  📦 เก็บเมื่อ {archivedDate}
+                                  {order.archivedBy && <> · โดย {order.archivedBy}</>}
+                                  {order.archivedFromStep && <> · จากช่อง <b>{order.archivedFromStep}</b></>}
+                                </div>
+                                <div style={{ display: "flex", gap: 6 }} onClick={e => e.stopPropagation()}>
+                                  <button onClick={()=>restore(order)}
+                                    style={{ background: "#eff6ff", color: T.blue, border: `1px solid ${T.blue}`, padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600 }}>↩️ คืนกลับ Kanban</button>
+                                  {user?.role === "admin" && (
+                                    <button onClick={()=>permanentDelete(order)} title="ลบถาวร (admin only)"
+                                      style={{ background: "#fef2f2", color: T.red, border: `1px solid #fecaca`, padding: "6px 10px", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", fontSize: 12 }}>🗑 ลบถาวร</button>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           )}
