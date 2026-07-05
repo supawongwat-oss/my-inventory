@@ -172,14 +172,14 @@ export default function InvoiceTab({
                               <div style={{ marginLeft: "auto", fontSize: 12, color: "#34d399", fontFamily: "monospace", fontWeight: 700 }}>฿{totalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
                             </div>
                             {!collapsed && <>
-                              <div style={{ display: "grid", gridTemplateColumns: "90px 80px 1fr 120px 100px 140px 100px", alignItems: "center", padding: "8px 20px", background: "rgba(241,243,246,0.5)", borderBottom: `1px solid ${T.border}`, color: T.muted, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                              <div style={{ display: "grid", gridTemplateColumns: "84px 60px 1fr 108px 96px 104px 168px", alignItems: "center", padding: "8px 20px", background: "rgba(241,243,246,0.5)", borderBottom: `1px solid ${T.border}`, color: T.muted, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                                 <div>เลขที่</div><div>ประเภท</div><div>ลูกค้า</div><div style={{ textAlign: "right" }}>ยอดรวม</div><div>วันที่</div><div>สถานะชำระ</div><div style={{ textAlign: "center" }}>จัดการ</div>
                               </div>
                               {list.map((inv, i) => {
                                 const st = paymentStatusStyle(inv.status || "ออกแล้ว");
                                 return (
                                   <div key={inv.id} onClick={() => setShowPrintInvoice(inv)} title="คลิกเพื่อดูใบบิล"
-                                    style={{ display: "grid", gridTemplateColumns: "90px 80px 1fr 120px 100px 140px 100px", alignItems: "center", padding: "13px 20px", borderBottom: i < list.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s", cursor: "pointer", opacity: inv.mergedInto ? 0.5 : 1, background: selectedInvoices.has(inv.id) ? "rgba(184,134,0,0.08)" : "transparent" }}
+                                    style={{ display: "grid", gridTemplateColumns: "84px 60px 1fr 108px 96px 104px 168px", alignItems: "center", padding: "13px 20px", borderBottom: i < list.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s", cursor: "pointer", opacity: inv.mergedInto ? 0.5 : 1, background: selectedInvoices.has(inv.id) ? "rgba(184,134,0,0.08)" : "transparent" }}
                                     onMouseEnter={e => { if (!selectedInvoices.has(inv.id)) e.currentTarget.style.background = "rgba(59,91,139,0.08)"; }}
                                     onMouseLeave={e => { if (!selectedInvoices.has(inv.id)) e.currentTarget.style.background = "transparent"; }}>
                                     <div style={{ display: "flex", alignItems: "center", gap: 6 }} onClick={e => e.stopPropagation()}>
@@ -209,20 +209,20 @@ export default function InvoiceTab({
                                         {PAYMENT_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                                       </select>
                                     </div>
-                                    <div style={{ display: "flex", gap: 5, justifyContent: "center", flexWrap: "wrap" }} onClick={e => e.stopPropagation()}>
-                                      <button onClick={() => openPaymentModal(inv)} title="จัดการการชำระเงิน" style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.08)", color: T.green, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>💵</button>
-                                      <button onClick={() => setShowPrintInvoice(inv)} title="พิมพ์" style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid rgba(59,91,139,0.25)", background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>🖨️</button>
+                                    <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", flexWrap: "nowrap" }} onClick={e => e.stopPropagation()}>
+                                      <button onClick={() => openPaymentModal(inv)} title="จัดการการชำระเงิน" style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.08)", color: T.green, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>💵</button>
+                                      <button onClick={() => setShowPrintInvoice(inv)} title="พิมพ์" style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(59,91,139,0.25)", background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>🖨️</button>
                                       {role.canIssueInvoice !== false && inv.docType === "quotation" && !inv.convertedTo && (
-                                        <button onClick={() => handleConvertQuotation(inv, "receipt")} title="แปลงเป็นใบเสร็จ" style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid rgba(58,122,82,0.3)", background: "rgba(58,122,82,0.08)", color: T.green, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>🔄</button>
+                                        <button onClick={() => handleConvertQuotation(inv, "receipt")} title="แปลงเป็นใบเสร็จ" style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(58,122,82,0.3)", background: "rgba(58,122,82,0.08)", color: T.green, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>🔄</button>
                                       )}
                                       {inv.convertedTo && (
-                                        <span title={`แปลงเป็น ${inv.convertedTo.invoiceNo} แล้ว`} style={{ padding: "5px 8px", borderRadius: 7, background: "rgba(58,122,82,0.06)", color: T.green, fontSize: 10, fontFamily: "'Sarabun',sans-serif" }}>✓ แปลงแล้ว</span>
+                                        <span title={`แปลงเป็น ${inv.convertedTo.invoiceNo} แล้ว`} style={{ padding: "4px 6px", borderRadius: 7, background: "rgba(58,122,82,0.06)", color: T.green, fontSize: 10, fontFamily: "'Sarabun',sans-serif" }}>✓ แปลงแล้ว</span>
                                       )}
                                       {inv.mergedFrom?.length > 0 && role.canDelete && (
-                                        <button onClick={() => handleUnmergeInvoice(inv)} title="ยกเลิกการรวม — คืนบิลเดิม" style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid rgba(184,134,0,0.3)", background: "rgba(184,134,0,0.08)", color: T.amber, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>🔓</button>
+                                        <button onClick={() => handleUnmergeInvoice(inv)} title="ยกเลิกการรวม — คืนบิลเดิม" style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(184,134,0,0.3)", background: "rgba(184,134,0,0.08)", color: T.amber, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>🔓</button>
                                       )}
-                                      {role.canIssueInvoice !== false && <button onClick={() => handleEditInvoice(inv)} title="แก้ไข" style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid rgba(184,134,0,0.3)", background: "rgba(184,134,0,0.08)", color: T.amber, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>✏️</button>}
-                                      {role.canDelete && <button onClick={() => handleDeleteInvoice(inv)} title="ลบ" style={{ padding: "5px 8px", borderRadius: 7, border: "1px solid rgba(248,113,113,0.25)", background: "rgba(248,113,113,0.08)", color: "#f87171", cursor: "pointer", fontSize: 11 }}>✕</button>}
+                                      {role.canIssueInvoice !== false && <button onClick={() => handleEditInvoice(inv)} title="แก้ไข" style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(184,134,0,0.3)", background: "rgba(184,134,0,0.08)", color: T.amber, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>✏️</button>}
+                                      {role.canDelete && <button onClick={() => handleDeleteInvoice(inv)} title="ลบ" style={{ padding: "4px 6px", borderRadius: 7, border: "1px solid rgba(248,113,113,0.25)", background: "rgba(248,113,113,0.08)", color: "#f87171", cursor: "pointer", fontSize: 11 }}>✕</button>}
                                     </div>
                                   </div>
                                 );
