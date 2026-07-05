@@ -198,14 +198,14 @@ export default function OrdersTab({
                                 <div style={{ fontSize: 11, color: T.muted }}>{list.length} ใบ · {totalQty} ชิ้น</div>
                               </div>
                               {!collapsed && <>
-                                <div style={{ display: "grid", gridTemplateColumns: "100px 1fr 120px 80px 80px 100px", alignItems: "center", padding: "8px 20px", background: "rgba(241,243,246,0.5)", borderBottom: `1px solid ${T.border}`, color: T.muted, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                                <div style={{ display: "grid", gridTemplateColumns: "88px 1fr 90px 52px 200px 124px", alignItems: "center", padding: "8px 20px", background: "rgba(241,243,246,0.5)", borderBottom: `1px solid ${T.border}`, color: T.muted, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                                   <div>เลขที่</div><div>ลูกค้า</div><div>รายการ</div><div>โดย</div><div>สถานะ</div><div style={{ textAlign: "center" }}>จัดการ</div>
                                 </div>
                                 {list.map((o, i) => {
                                   const invoiced = isOrderInvoiced(o, invoices);
                                   return (
                                     <div key={o.id} onClick={() => setShowPrintOrder(o)} title="คลิกเพื่อดูใบสั่งของ"
-                                      style={{ display: "grid", gridTemplateColumns: "100px 1fr 120px 80px 80px 100px", alignItems: "center", padding: "13px 20px", borderBottom: i < list.length - 1 ? `1px solid ${T.border}` : "none", cursor: "pointer", background: selectedOrders.has(o.id) ? "rgba(59,91,139,0.08)" : "transparent" }}
+                                      style={{ display: "grid", gridTemplateColumns: "88px 1fr 90px 52px 200px 124px", alignItems: "center", padding: "13px 20px", borderBottom: i < list.length - 1 ? `1px solid ${T.border}` : "none", cursor: "pointer", background: selectedOrders.has(o.id) ? "rgba(59,91,139,0.08)" : "transparent" }}
                                       onMouseEnter={e => { if (!selectedOrders.has(o.id)) e.currentTarget.style.background = "rgba(59,91,139,0.05)"; }}
                                       onMouseLeave={e => { if (!selectedOrders.has(o.id)) e.currentTarget.style.background = "transparent"; }}>
                                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -218,19 +218,19 @@ export default function OrdersTab({
                                       </div>
                                       <div style={{ fontSize: 12, color: T.sub }}>{(o.items || []).length} รายการ · {(o.items || []).reduce((s, i) => s + i.qty, 0)} ชิ้น</div>
                                       <div style={{ fontSize: 11, color: T.sub }}>{o.by}</div>
-                                      <div style={{ display: "flex", flexDirection: "row", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+                                      <div style={{ display: "flex", flexDirection: "row", gap: 3, alignItems: "center", flexWrap: "nowrap", overflow: "hidden" }}>
                                         {o.hasPendingMix
-                                          ? <span title="ยังไม่ได้ระบุสี/ไซส์ของรายการคละ — ยังไม่ตัดสต็อก" style={{ padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: "rgba(184,134,0,0.15)", color: T.amber, border: "1px solid rgba(184,134,0,0.4)" }}>🕐 รอระบุ</span>
-                                          : <span style={{ padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600, background: "rgba(52,211,153,0.1)", color: "#34d399", border: "1px solid rgba(52,211,153,0.2)" }}>{o.status}</span>}
-                                        {o.deferStockCut && <span title="ขายก่อน ไม่ตัดสต๊อก" style={{ padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700, background: "rgba(124,58,237,0.12)", color: "#7c3aed", border: "1px solid rgba(124,58,237,0.35)" }}>🔓 ไม่ตัดสต๊อก</span>}
+                                          ? <span title="ยังไม่ได้ระบุสี/ไซส์ของรายการคละ — ยังไม่ตัดสต็อก" style={{ padding: "2px 7px", borderRadius: 20, fontSize: 10, fontWeight: 700, background: "rgba(184,134,0,0.15)", color: T.amber, border: "1px solid rgba(184,134,0,0.4)", whiteSpace: "nowrap" }}>🕐 รอระบุ</span>
+                                          : <span style={{ padding: "2px 7px", borderRadius: 20, fontSize: 10, fontWeight: 600, background: "rgba(52,211,153,0.1)", color: "#34d399", border: "1px solid rgba(52,211,153,0.2)", whiteSpace: "nowrap" }}>{o.status}</span>}
+                                        {o.deferStockCut && <span title="ขายก่อน ไม่ตัดสต๊อก" style={{ padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700, background: "rgba(124,58,237,0.12)", color: "#7c3aed", border: "1px solid rgba(124,58,237,0.35)", whiteSpace: "nowrap" }}>🔓 ไม่ตัด</span>}
                                         {invoiced
                                           ? <span title="ออกบิลแล้ว" style={{ padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 600, background: "rgba(59,91,139,0.1)", color: T.accent, border: "1px solid rgba(59,91,139,0.25)", whiteSpace: "nowrap" }}>🧾 ออกบิลแล้ว</span>
                                           : <span title="ยังไม่ออกบิล" style={{ padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700, background: "rgba(220,38,38,0.08)", color: "#dc2626", border: "1px solid rgba(220,38,38,0.3)", whiteSpace: "nowrap" }}>⏳ ยังไม่ออกบิล</span>}
                                       </div>
-                                      <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }} onClick={e => e.stopPropagation()}>
-                                        {o.hasPendingMix && <button onClick={() => openFillOrderMix(o)} title="กรอกรายละเอียดสี/ไซส์" style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid rgba(184,134,0,0.4)", background: "rgba(184,134,0,0.12)", color: T.amber, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>✏️ กรอก</button>}
-                                        {o.deferStockCut && !o.hasPendingMix && <button onClick={() => handleCutStockNow(o)} title="ตัดสต๊อกใบนี้ตอนนี้เลย" style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid rgba(124,58,237,0.4)", background: "rgba(124,58,237,0.12)", color: "#7c3aed", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>📦 ตัดสต๊อก</button>}
-                                        <button onClick={() => setShowPrintOrder(o)} style={{ padding: "5px 10px", borderRadius: 7, border: `1px solid rgba(59,91,139,0.25)`, background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>🖨️ ปริ้น</button>
+                                      <div style={{ display: "flex", gap: 5, justifyContent: "flex-end", flexWrap: "nowrap" }} onClick={e => e.stopPropagation()}>
+                                        {o.hasPendingMix && <button onClick={() => openFillOrderMix(o)} title="กรอกรายละเอียดสี/ไซส์" style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(184,134,0,0.4)", background: "rgba(184,134,0,0.12)", color: T.amber, cursor: "pointer", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>✏️ กรอก</button>}
+                                        {o.deferStockCut && !o.hasPendingMix && <button onClick={() => handleCutStockNow(o)} title="ตัดสต๊อกใบนี้ตอนนี้เลย" style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(124,58,237,0.4)", background: "rgba(124,58,237,0.12)", color: "#7c3aed", cursor: "pointer", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>📦 ตัด</button>}
+                                        <button onClick={() => setShowPrintOrder(o)} style={{ padding: "4px 7px", borderRadius: 7, border: `1px solid rgba(59,91,139,0.25)`, background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 10, fontFamily: "'Sarabun',sans-serif", whiteSpace: "nowrap" }}>🖨️ ปริ้น</button>
                                         {role.canDelete && <button onClick={() => handleDeleteOrder(o)} title="ยกเลิก + คืนสต๊อก" style={{ padding: "5px 8px", borderRadius: 7, border: "1px solid rgba(248,113,113,0.25)", background: "rgba(248,113,113,0.08)", color: "#f87171", cursor: "pointer", fontSize: 11 }}>✕</button>}
                                       </div>
                                     </div>
