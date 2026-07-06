@@ -4,13 +4,12 @@ import { deleteDoc, doc } from "firebase/firestore";
 import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { CardBox } from "../components/ui";
+import { matchTokens } from "../utils/search";
 
 const T = {
   card:"#ffffff", border:"#e3e8ef", text:"#1f2a44", sub:"#5b6b85", muted:"#8a9bb3",
   accent:"#3b5b8b", input:"#f6f8fb", inputBorder:"#d8dee9",
 };
-
-const norm = (s) => String(s || "").normalize("NFC").toLowerCase().replace(/\s+/g, " ").trim();
 
 export default function CustomersTab({
   customers, orders, role, user,
@@ -26,14 +25,8 @@ export default function CustomersTab({
   const filtered = enriched.filter(c => {
     if (customerRegion !== "ทั้งหมด" && c._region !== customerRegion) return false;
     if (customerSearch) {
-      const q = norm(customerSearch);
-      return norm(c.name).includes(q)
-        || norm(c.phone).includes(q)
-        || norm(c.address).includes(q)
-        || norm(c.email).includes(q)
-        || norm(c._province).includes(q)
-        || norm(c.taxId).includes(q)
-        || norm(c.note).includes(q);
+      // 🔍 token search — เว้นวรรคแยกคำ ไม่สนลำดับ ("ดี สม" เจอ "สมชาย ใจดี")
+      return matchTokens(customerSearch, c.name, c.phone, c.address, c.email, c._province, c.taxId, c.note);
     }
     return true;
   });

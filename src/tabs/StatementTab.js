@@ -3,6 +3,7 @@ import { db } from "../firebase";
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { T } from "../theme";
 import { Modal, MHead, Input, BtnPrimary, BtnGhost, CardBox } from "../components/ui";
+import { matchTokens } from "../utils/search";
 
 // ── helpers ────────────────────────────────────────────────
 const pad2 = n => String(n).padStart(2, "0");
@@ -139,12 +140,9 @@ export default function StatementTab({ statements, invoices, customers, companyI
 
   // === Customer search dropdown (case-insensitive) ===
   const customerMatches = useMemo(() => {
-    const q = (form.customerSearch || "").toLowerCase().trim();
+    const q = (form.customerSearch || "").trim();
     if (!q) return [];
-    return customers.filter(c =>
-      (c.name || "").toLowerCase().includes(q)
-      || (c.phone || "").toLowerCase().includes(q)
-    ).slice(0, 6);
+    return customers.filter(c => matchTokens(q, c.name, c.phone)).slice(0, 6);
   }, [customers, form.customerSearch]);
 
   const handleSelectCustomer = (c) => {

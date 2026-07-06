@@ -2,6 +2,7 @@
 import { useState, useMemo } from "react";
 import { T } from "../theme";
 import { CardBox } from "../components/ui";
+import { matchTokens } from "../utils/search";
 
 // ────────── helpers ──────────
 const fmtBaht = (n) => `฿${Number(n||0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}`;
@@ -237,9 +238,9 @@ function AgingTab({ invoices }) {
 
   // filter dropdown ตามคำค้น
   const filteredCustomerOptions = useMemo(() => {
-    const q = customerSearch.toLowerCase().trim();
+    const q = (customerSearch || "").trim();
     if (!q) return customerOptions;
-    return customerOptions.filter(c => c.displayName.toLowerCase().includes(q));
+    return customerOptions.filter(c => matchTokens(q, c.displayName));
   }, [customerOptions, customerSearch]);
 
   // ชื่อ display ของ customer ที่กำลังเลือก
@@ -830,9 +831,9 @@ function VATTab({ invoices }) {
   }, [allVatInvoices]);
 
   const filteredCustomerOptions = useMemo(() => {
-    const q = customerSearch.toLowerCase().trim();
+    const q = (customerSearch || "").trim();
     if (!q) return customerOptions;
-    return customerOptions.filter(c => c.displayName.toLowerCase().includes(q));
+    return customerOptions.filter(c => matchTokens(q, c.displayName));
   }, [customerOptions, customerSearch]);
 
   const selectedCustomerDisplay = useMemo(() => {

@@ -7,6 +7,7 @@ import { generateDocNo } from "../utils/docNumber";
 import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
 import { PRESET_COLORS, getProductionSize, isProductionSizeCapped, SIZES, compareSizes } from "../theme";
 import { ORDER_PALETTE } from "./KanbanBoard";
+import { matchTokens } from "../utils/search";
 
 const T = { border:"#e3e8ef", sub:"#5b6b85", text:"#1f2a44", muted:"#8a9bb3", accent:"#3b5b8b", input:"#f6f8fb", inputBorder:"#d8dee9", red:"#dc2626" };
 const fmt = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -227,11 +228,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
           placeholder="🔍 ค้นหาลูกค้าเดิม หรือพิมพ์ชื่อใหม่"
           style={{width:"100%",background:T.input,border:`1px solid ${customerId?"#16a34a":T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 12px",fontFamily:"inherit",fontSize:13,outline:"none"}}/>
         {customerSearch && !customerId && (() => {
-          const norm = (s) => String(s||"").normalize("NFC").toLowerCase().replace(/\s+/g," ").trim();
-          const q = norm(customerSearch);
-          const matches = customers.filter(c =>
-            norm(c.name).includes(q) || norm(c.phone).includes(q) || norm(c.address).includes(q)
-          );
+          const matches = customers.filter(c => matchTokens(customerSearch, c.name, c.phone, c.address));
           return (
           <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,zIndex:50,maxHeight:280,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.15)",marginTop:2}}>
             {matches.length > 0 && (
