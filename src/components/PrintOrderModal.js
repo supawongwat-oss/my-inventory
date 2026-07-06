@@ -15,44 +15,44 @@ export default function PrintOrderModal({
             {/* Print content */}
             <div id="print-area" style={{padding:"32px 40px",fontFamily:"'Sarabun',sans-serif",color:"#1e293b"}}>
               {/* Header */}
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,paddingBottom:16,borderBottom:"2px solid #3b5b8b"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,paddingBottom:8,borderBottom:"2px solid #3b5b8b"}}>
                 <div>
-                  <div style={{fontSize:28,fontWeight:800,color:"#3b5b8b",letterSpacing:3,fontFamily:"monospace"}}>CPU</div>
-                  <div style={{fontSize:11,color:"#64748b"}}>ระบบบริหารคลังสินค้า</div>
+                  <div style={{fontSize:18,fontWeight:800,color:"#3b5b8b",letterSpacing:2,fontFamily:"monospace"}}>CPU</div>
+                  <div style={{fontSize:9,color:"#64748b"}}>ระบบบริหารคลังสินค้า</div>
                 </div>
                 <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:20,fontWeight:700,color:"#1e293b"}}>ใบสั่งของ</div>
-                  <div style={{fontSize:14,color:"#3b5b8b",fontFamily:"monospace",fontWeight:700}}>{order.orderNo}</div>
-                  <div style={{fontSize:11,color:"#64748b",marginTop:4}}>{order.date}</div>
+                  <div style={{fontSize:14,fontWeight:700,color:"#1e293b"}}>ใบสั่งของ</div>
+                  <div style={{fontSize:11,color:"#3b5b8b",fontFamily:"monospace",fontWeight:700}}>{order.orderNo}</div>
+                  <div style={{fontSize:9,color:"#64748b",marginTop:2}}>{order.date}</div>
                 </div>
               </div>
 
               {/* Customer info */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:24,padding:18,background:"#f8fafc",borderRadius:10,border:"1px solid #e2e8f0"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10,padding:8,background:"#f8fafc",borderRadius:8,border:"1px solid #e2e8f0"}}>
                 <div>
-                  <div style={{fontSize:12,color:"#64748b",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>ลูกค้า</div>
-                  <div style={{fontSize:17,fontWeight:700,color:"#1e293b"}}>{order.customerName}</div>
-                  <div style={{fontSize:14,color:"#475569",marginTop:4}}>📞 {order.customerPhone||"-"}</div>
+                  <div style={{fontSize:9,color:"#64748b",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>ลูกค้า</div>
+                  <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{order.customerName}</div>
+                  <div style={{fontSize:11,color:"#475569",marginTop:2}}>📞 {order.customerPhone||"-"}</div>
                 </div>
                 <div>
-                  <div style={{fontSize:12,color:"#64748b",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>ที่อยู่จัดส่ง</div>
-                  <div style={{fontSize:14,color:"#475569",lineHeight:1.6}}>{order.customerAddress||"-"}</div>
-                  {order.shipping&&<div style={{fontSize:13,color:"#1e293b",marginTop:6,fontWeight:600}}>🚚 ขนส่ง: <span style={{color:"#3b5b8b"}}>{order.shipping}</span></div>}
+                  <div style={{fontSize:9,color:"#64748b",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>ที่อยู่จัดส่ง</div>
+                  <div style={{fontSize:11,color:"#475569",lineHeight:1.4}}>{order.customerAddress||"-"}</div>
+                  {order.shipping&&<div style={{fontSize:10,color:"#1e293b",marginTop:3,fontWeight:600}}>🚚 ขนส่ง: <span style={{color:"#3b5b8b"}}>{order.shipping}</span></div>}
                 </div>
               </div>
 
               {/* Items table — Model | Color | SIZE+qty ×4 | จำนวน | ราคา(หน้าจอเท่านั้น) */}
               <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:20}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:14,minWidth:640}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:640}}>
                 <thead>
                   <tr style={{background:"#3b5b8b",color:"white"}}>
                     <th style={{padding:"5px 4px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:8,width:38,minWidth:38,whiteSpace:"nowrap"}}>รุ่น</th>
                     <th style={{padding:"5px 4px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:8,width:56,minWidth:56,whiteSpace:"nowrap"}}>สี</th>
                     {[1,2,3,4].flatMap(i=>[
-                      <th key={`sh${i}`} style={{padding:"8px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",background:"#166534",color:"#bbf7d0",width:44,minWidth:44,fontSize:12,whiteSpace:"nowrap"}}>SIZE</th>,
-                      <th key={`qh${i}`} style={{padding:"8px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",width:40,minWidth:40,fontSize:12,whiteSpace:"nowrap"}}></th>
+                      <th key={`sh${i}`} style={{padding:"6px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",background:"#166534",color:"#bbf7d0",width:44,minWidth:44,fontSize:11,whiteSpace:"nowrap"}}>SIZE</th>,
+                      <th key={`qh${i}`} style={{padding:"6px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",width:40,minWidth:40,fontSize:11,whiteSpace:"nowrap"}}></th>
                     ])}
-                    <th style={{padding:"9px 10px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",fontSize:13,width:72,minWidth:72,whiteSpace:"nowrap"}}>จำนวน</th>
+                    <th style={{padding:"7px 10px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",fontSize:12,width:72,minWidth:72,whiteSpace:"nowrap"}}>จำนวน</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -82,30 +82,30 @@ export default function PrintOrderModal({
                           </div>}
                         </td>
                         {chunk.map(oi=>[
-                          <td key={`s-${oi.size}`} style={{padding:"8px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#3b5b8b",border:"1px solid #e2e8f0",background:"rgba(219,234,254,0.4)",fontSize:14,width:44,minWidth:44,whiteSpace:"nowrap"}}>{oi.size}</td>,
-                          <td key={`q-${oi.size}`} style={{padding:"8px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#059669",border:"1px solid #e2e8f0",fontSize:14,width:40,minWidth:40,whiteSpace:"nowrap"}}>{oi.qty}</td>
+                          <td key={`s-${oi.size}`} style={{padding:"6px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#3b5b8b",border:"1px solid #e2e8f0",background:"rgba(219,234,254,0.4)",fontSize:12,width:44,minWidth:44,whiteSpace:"nowrap"}}>{oi.size}</td>,
+                          <td key={`q-${oi.size}`} style={{padding:"6px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#059669",border:"1px solid #e2e8f0",fontSize:12,width:40,minWidth:40,whiteSpace:"nowrap"}}>{oi.qty}</td>
                         ])}
                         {Array(4-chunk.length).fill(null).flatMap((_,i)=>[
                           <td key={`e1-${ci}-${i}`} style={{border:"1px solid #e2e8f0",background:"#fafafa"}}/>,
                           <td key={`e2-${ci}-${i}`} style={{border:"1px solid #e2e8f0",background:"#fafafa"}}/>
                         ])}
-                        <td style={{padding:"9px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:16,color:"#3b5b8b",verticalAlign:"middle",border:"1px solid #e2e8f0",width:72,minWidth:72,whiteSpace:"nowrap"}}>{ci===lastIdx?totalQty:""}</td>
+                        <td style={{padding:"7px 10px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:14,color:"#3b5b8b",verticalAlign:"middle",border:"1px solid #e2e8f0",width:72,minWidth:72,whiteSpace:"nowrap"}}>{ci===lastIdx?totalQty:""}</td>
                       </tr>
                     ));
                   })}
                 </tbody>
                 <tfoot>
                   <tr style={{background:"#f1f5f9",fontWeight:700}}>
-                    <td colSpan={10} style={{padding:"11px 14px",textAlign:"right",color:"#475569",fontSize:13}}>รวมทั้งหมด</td>
-                    <td style={{padding:"11px 14px",textAlign:"center",fontFamily:"monospace",fontSize:16,color:"#3b5b8b",border:"1px solid #e2e8f0",width:72,minWidth:72,whiteSpace:"nowrap"}}>{(order.items||[]).reduce((s,i)=>s+i.qty,0)} ชิ้น</td>
+                    <td colSpan={10} style={{padding:"8px 14px",textAlign:"right",color:"#475569",fontSize:11}}>รวมทั้งหมด</td>
+                    <td style={{padding:"8px 14px",textAlign:"center",fontFamily:"monospace",fontSize:14,color:"#3b5b8b",border:"1px solid #e2e8f0",width:72,minWidth:72,whiteSpace:"nowrap"}}>{(order.items||[]).reduce((s,i)=>s+i.qty,0)} ชิ้น</td>
                   </tr>
                 </tfoot>
               </table>
               </div>
 
-              {order.note&&<div style={{padding:12,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,fontSize:12,color:"#92400e",marginBottom:16}}>📝 หมายเหตุ: {order.note}</div>}
+              {order.note&&<div style={{padding:10,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,fontSize:11,color:"#92400e",marginBottom:12}}>📝 หมายเหตุ: {order.note}</div>}
 
-              <div style={{display:"flex",justifyContent:"space-between",marginTop:32,paddingTop:16,borderTop:"1px solid #e2e8f0",fontSize:11,color:"#94a3b8"}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginTop:20,paddingTop:10,borderTop:"1px solid #e2e8f0",fontSize:10,color:"#94a3b8"}}>
                 <div>ผู้สั่ง: {order.by}</div>
                 <div>สถานะ: {order.status}</div>
               </div>
