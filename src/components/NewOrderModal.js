@@ -1,6 +1,7 @@
 import React from "react";
-import { T, compareSizes } from "../theme";
+import { T, compareSizes, getSizesFor, mergeSizes } from "../theme";
 import { Modal, MHead, BtnPrimary, BtnGhost } from "./ui";
+import { matchTokens } from "../utils/search";
 
 export default function NewOrderModal({
   onClose,
@@ -33,16 +34,8 @@ export default function NewOrderModal({
                   onChange={e=>{setCustomerSearch(e.target.value);setOrderForm(f=>({...f,customerId:"",customerName:e.target.value,customerPhone:"",customerAddress:""}));}}
                   style={{width:"100%",background:T.input,border:`1px solid ${orderForm.customerId?"#34d399":T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
                 {customerSearch&&!orderForm.customerId&&(()=>{
-                  // 🔍 ค้นหาแบบ normalize — NFC unicode + lower + ลบช่องว่าง — รองรับ Thai vowel marks
-                  const norm = (s) => String(s||"").normalize("NFC").toLowerCase().replace(/\s+/g," ").trim();
-                  const q = norm(customerSearch);
-                  const matches = customers.filter(c => {
-                    if (!q) return true;
-                    return norm(c.name).includes(q)
-                      || norm(c.phone).includes(q)
-                      || norm(c.address).includes(q)
-                      || norm(c.taxId).includes(q);
-                  });
+                  // 🔍 token search — เว้นวรรคแยกคำ ไม่สนลำดับ
+                  const matches = customers.filter(c => matchTokens(customerSearch, c.name, c.phone, c.address, c.taxId));
                   return (
                   <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#ffffff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:50,maxHeight:280,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.4)"}}>
                     {matches.length > 0 && (
@@ -130,6 +123,11 @@ export default function NewOrderModal({
             const item=clothingItems.find(i=>i.id===orderItemForm.clothingId);
             const col=item?.colors?.[Number(orderItemForm.colorIdx)];
             if(!item||!col) return null;
+            // 📐 รวมไซส์: base ของประเภท + ไซส์เพิ่มเติมที่มีในสต๊อก (เช่น 6XL/7XL) → แบ่งเป็นแถวละ 4
+            const stockKeys = Object.keys(col.stock || {});
+            const allSizes = mergeSizes(getSizesFor(item), stockKeys);
+            const sizeRows = [];
+            for (let i = 0; i < allSizes.length; i += 4) sizeRows.push(allSizes.slice(i, i + 4));
             return (
               <div style={{marginBottom:14,background:"rgba(241,243,246,0.6)",borderRadius:10,border:"1px solid rgba(59,91,139,0.2)",overflow:"hidden"}}>
                 <div style={{padding:"8px 14px",background:"rgba(59,91,139,0.08)",borderBottom:"1px solid rgba(59,91,139,0.15)",display:"flex",alignItems:"center",gap:8}}>
@@ -139,7 +137,7 @@ export default function NewOrderModal({
                 </div>
                 <div style={{padding:10,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
                   <div style={{display:"flex",flexDirection:"column",gap:8,minWidth:480}}>
-                  {[["6","8","10","12"],["S","M","L","XL"],["2XL","3XL","4XL","5XL"]].map((row,ri)=>(
+                  {sizeRows.map((row,ri)=>(
                     <div key={ri} style={{display:"grid",gridTemplateColumns:`repeat(${row.length},1fr)`,gap:6,minWidth:480}}>
                       {row.map(sz=>{
                         const stock=(col.stock||{})[sz]||0;
