@@ -5,6 +5,7 @@ import { matchTokens } from "../utils/search";
 
 export default function NewOrderModal({
   onClose,
+  editingOrderId,
   orderForm, setOrderForm,
   orderItemForm, setOrderItemForm,
   orderMixForm, setOrderMixForm,
@@ -21,7 +22,7 @@ export default function NewOrderModal({
 }) {
   return (
         <Modal onClose={()=>onClose()} w={880}>
-          <MHead title="📋 สร้างใบสั่งของ" onClose={()=>onClose()} color={T.accent}/>
+          <MHead title={editingOrderId ? "✏️ แก้ไขใบสั่งของ" : "📋 สร้างใบสั่งของ"} onClose={()=>onClose()} color={T.accent}/>
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
             {/* Customer section */}
@@ -342,7 +343,11 @@ export default function NewOrderModal({
           <div style={{display:"flex",gap:10}}>
             <BtnGhost onClick={()=>onClose()} style={{flex:1}}>ยกเลิก</BtnGhost>
             <BtnPrimary onClick={handleConfirmOrder} disabled={orderForm.items.length===0} style={{flex:2,opacity:orderForm.items.length===0?0.45:1}}>
-              {orderForm.items.length===0?"กรุณาเพิ่มสินค้าก่อน":"✅ ยืนยันใบสั่งของ + ตัดสต็อก"}
+              {orderForm.items.length===0
+                ? "กรุณาเพิ่มสินค้าก่อน"
+                : editingOrderId
+                  ? "💾 บันทึกการแก้ไข"
+                  : "✅ ยืนยันใบสั่งของ + ตัดสต็อก"}
             </BtnPrimary>
           </div>
         </Modal>

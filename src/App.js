@@ -253,6 +253,7 @@ export default function App() {
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [showImportCustomers, setShowImportCustomers] = useState(false);
   const [showPrintOrder, setShowPrintOrder] = useState(null);
+  const [editingOrderId, setEditingOrderId] = useState(null); // null = สร้างใหม่, string = แก้ไข
   const [orderForm, setOrderForm] = useState({
     customerId: "", customerName: "", customerPhone: "", customerAddress: "",
     shipping: "", note: "", items: [], deferStockCut: false
@@ -1479,19 +1480,60 @@ export default function App() {
 
   const handleConfirmOrder = async () => {
     if (!orderForm.customerName || orderForm.items.length === 0) return;
+    const isEditing = !!editingOrderId;
+    const oldOrder = isEditing ? orders.find(o => o.id === editingOrderId) : null;
+    if (isEditing && !oldOrder) { alert("ไม่พบใบสั่งของที่จะแก้ไข"); return; }
+
     // 🧺 แยก mix items (ยังไม่ระบุสี/ไซส์) ออก — ไม่ตัดสต๊อกจนกว่าจะกรอกครบ
     const mixItems = orderForm.items.filter(i => i.isMix);
     const normalItems = orderForm.items.filter(i => !i.isMix);
     const hasPendingMix = mixItems.length > 0;
-    // จัดกลุ่ม normal items ตาม clothingId เพื่อรวมการตัดสต๊อกใน updateDoc เดียว
+    const deferStockCut = !!orderForm.deferStockCut;
+
+    // ── EDIT: คืนสต๊อกของ items เก่าก่อน (ถ้าใบเดิมได้ตัดสต๊อกไปแล้ว) ──
+    if (isEditing) {
+      const oldSkipRestock = !!oldOrder.deferStockCut || !!oldOrder.hasPendingMix;
+      if (!oldSkipRestock) {
+        const restockByClothing = new Map();
+        for (const oi of (oldOrder.items || [])) {
+          if (oi.isMix) continue;
+          if (!clothingItems.find(i => i.id === oi.clothingId)) continue;
+          if (!restockByClothing.has(oi.clothingId)) restockByClothing.set(oi.clothingId, []);
+          restockByClothing.get(oi.clothingId).push(oi);
+        }
+        for (const [clothingId, ois] of restockByClothing) {
+          const item = clothingItems.find(i => i.id === clothingId);
+          const newColors = item.colors.map((c, i) => {
+            const adds = ois.filter(oi => oi.colorIdx === i);
+            if (adds.length === 0) return c;
+            const newStock = { ...(c.stock || {}) };
+            for (const oi of adds) newStock[oi.size] = (newStock[oi.size] || 0) + (Number(oi.qty) || 0);
+            return { ...c, stock: newStock };
+          });
+          await updateDoc(doc(db, "clothing", clothingId), { colors: newColors });
+        }
+        // log tx "รับ" คืนของเก่า
+        for (const oi of (oldOrder.items || [])) {
+          const isLinked = !!clothingItems.find(i => i.id === oi.clothingId);
+          await addDoc(collection(db, "transactions"), {
+            type: "รับ", code: oi.clothingId,
+            name: `${oi.clothingName} / ${oi.colorName} / ${oi.size}`,
+            qty: Number(oi.qty) || 0, by: user.name, date: now(),
+            note: `แก้ไขใบสั่งของ ${oldOrder.orderNo}: คืนของเดิม`,
+            stockAffected: isLinked,
+            createdAt: serverTimestamp(), category: "เสื้อผ้า"
+          });
+        }
+      }
+    }
+
+    // ── ตัดสต๊อกใหม่ ──
     const byClothing = new Map();
     for (const oi of normalItems) {
       if (!clothingItems.find(i => i.id === oi.clothingId)) continue;
       if (!byClothing.has(oi.clothingId)) byClothing.set(oi.clothingId, []);
       byClothing.get(oi.clothingId).push(oi);
     }
-    // 🔓 ถ้าเลือก "ขายก่อน ไม่ตัดสต๊อก" → ข้ามการตัดสต๊อก (ยังคงบันทึกใบและ transactions)
-    const deferStockCut = !!orderForm.deferStockCut;
     if (!deferStockCut) {
       for (const [clothingId, ois] of byClothing) {
         const item = clothingItems.find(i => i.id === clothingId);
@@ -1512,32 +1554,78 @@ export default function App() {
       const isFree = typeof oi.clothingId === "string" && oi.clothingId.startsWith("free_");
       const isCustom = typeof oi.clothingId === "string" && oi.clothingId.startsWith("custom_");
       const noteSuffix = isFree ? " (รายการอิสระ — ไม่ตัดสต๊อก)" : isCustom ? " (custom order — ไม่ตัดสต๊อก)" : deferStockCut ? " (🔓 ขายก่อน ไม่ตัดสต๊อก)" : "";
+      const editPrefix = isEditing ? `แก้ไขใบสั่งของ ${oldOrder.orderNo}: ` : "ใบสั่งของ: ";
       await addDoc(collection(db, "transactions"), {
         type: "จ่าย", code: oi.clothingId,
         name: `${oi.clothingName} / ${oi.colorName} / ${oi.size}`,
         qty: oi.qty, by: user.name, date: now(),
-        note: `ใบสั่งของ: ${orderForm.customerName}${noteSuffix}`,
+        note: `${editPrefix}${orderForm.customerName}${noteSuffix}`,
         stockAffected: isLinked && !deferStockCut,
         createdAt: serverTimestamp(), category: "เสื้อผ้า"
       });
     }
-    const orderNo = generateDocNo("ORD", orders, "orderNo");
-    const ref = await addDoc(collection(db, "orders"), {
-      orderNo, ...orderForm,
-      status: hasPendingMix ? "รอระบุ" : "สำเร็จ",
-      hasPendingMix,
-      by: user.name, date: now(), createdAt: serverTimestamp()
-    });
+
     const totalQty = orderForm.items.reduce((s,i)=>s+i.qty,0);
-    logAudit(user, {
-      action: AUDIT_ACTIONS.CREATE,
-      collection: "orders",
-      targetId: ref.id,
-      targetLabel: `${orderNo} · ${orderForm.customerName}`,
-      note: `${orderForm.items.length} รายการ · ${totalQty} ชิ้น${hasPendingMix?` · 🕐 คละ ${mixItems.length} รายการ (รอระบุ)`:""}`,
-    });
-    setOrderForm({ customerId:"", customerName:"", customerPhone:"", customerAddress:"", shipping:"", note:"", items:[] });
+    if (isEditing) {
+      // updateDoc — คงค่า orderNo/date/by/createdAt เดิม
+      await updateDoc(doc(db, "orders", editingOrderId), {
+        ...orderForm,
+        status: hasPendingMix ? "รอระบุ" : "สำเร็จ",
+        hasPendingMix,
+        editedBy: user.name, editedAt: now(),
+      });
+      logAudit(user, {
+        action: AUDIT_ACTIONS.UPDATE,
+        collection: "orders",
+        targetId: editingOrderId,
+        targetLabel: `${oldOrder.orderNo} · ${orderForm.customerName}`,
+        note: `แก้ไข: ${orderForm.items.length} รายการ · ${totalQty} ชิ้น${hasPendingMix?` · 🕐 คละ ${mixItems.length} รายการ (รอระบุ)`:""}`,
+      });
+    } else {
+      const orderNo = generateDocNo("ORD", orders, "orderNo");
+      const ref = await addDoc(collection(db, "orders"), {
+        orderNo, ...orderForm,
+        status: hasPendingMix ? "รอระบุ" : "สำเร็จ",
+        hasPendingMix,
+        by: user.name, date: now(), createdAt: serverTimestamp()
+      });
+      logAudit(user, {
+        action: AUDIT_ACTIONS.CREATE,
+        collection: "orders",
+        targetId: ref.id,
+        targetLabel: `${orderNo} · ${orderForm.customerName}`,
+        note: `${orderForm.items.length} รายการ · ${totalQty} ชิ้น${hasPendingMix?` · 🕐 คละ ${mixItems.length} รายการ (รอระบุ)`:""}`,
+      });
+    }
+    setOrderForm({ customerId:"", customerName:"", customerPhone:"", customerAddress:"", shipping:"", note:"", items:[], deferStockCut:false });
+    setEditingOrderId(null);
     setShowNewOrder(false);
+  };
+
+  // ✏️ เปิดหน้าแก้ไขใบสั่งของ — โหลดข้อมูลลง orderForm แล้วเปิด modal เดียวกับตอนสร้าง
+  const openEditOrder = (o) => {
+    if (!o) return;
+    // เช็คว่าออกบิลไปแล้วหรือยัง
+    const invoiced = invoices.some(inv =>
+      (inv.mergedFromOrderIds || []).includes(o.id) ||
+      ((inv.customerName||"").trim() === (o.customerName||"").trim() && String(inv.date||"").slice(0,10) === String(o.date||"").slice(0,10))
+    );
+    if (invoiced) {
+      if (!window.confirm(`⚠️ ใบสั่งของ ${o.orderNo} ถูกออกบิลไปแล้ว\nการแก้ไขจะไม่กระทบกับใบเสร็จเดิม\n\nยืนยันแก้ไข?`)) return;
+    }
+    setOrderForm({
+      customerId: o.customerId || "",
+      customerName: o.customerName || "",
+      customerPhone: o.customerPhone || "",
+      customerAddress: o.customerAddress || "",
+      shipping: o.shipping || "",
+      note: o.note || "",
+      items: (o.items || []).map(i => ({ ...i })),
+      deferStockCut: !!o.deferStockCut,
+    });
+    setCustomerSearch("");
+    setEditingOrderId(o.id);
+    setShowNewOrder(true);
   };
 
   // ยกเลิก/ลบใบสั่งของ — คืนสต๊อกกลับ clothing ก่อนลบ (ข้ามถ้าใบนี้เป็น deferStockCut / hasPendingMix)
@@ -2789,6 +2877,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               openFillOrderMix={openFillOrderMix}
               handleCutStockNow={handleCutStockNow}
               handleDeleteOrder={handleDeleteOrder}
+              openEditOrder={openEditOrder}
             />
           )}
 
@@ -3857,7 +3946,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       {/* ── MODAL: สร้างใบสั่งของ ── */}
       {showNewOrder && (
         <NewOrderModal
-          onClose={() => setShowNewOrder(false)}
+          onClose={() => { setShowNewOrder(false); setEditingOrderId(null); }}
+          editingOrderId={editingOrderId}
           orderForm={orderForm}
           setOrderForm={setOrderForm}
           orderItemForm={orderItemForm}

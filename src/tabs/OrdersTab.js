@@ -39,6 +39,7 @@ export default function OrdersTab({
   setOrderForm, setShowNewOrder,
   setShowPrintOrder,
   openFillOrderMix, handleCutStockNow, handleDeleteOrder,
+  openEditOrder,
 }) {
   const filteredOrders = orders.filter(o => {
     if (orderSearch) {
@@ -231,6 +232,7 @@ export default function OrdersTab({
                                         {o.hasPendingMix && <button onClick={() => openFillOrderMix(o)} title="กรอกรายละเอียดสี/ไซส์" style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(184,134,0,0.4)", background: "rgba(184,134,0,0.12)", color: T.amber, cursor: "pointer", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>✏️ กรอก</button>}
                                         {o.deferStockCut && !o.hasPendingMix && <button onClick={() => handleCutStockNow(o)} title="ตัดสต๊อกใบนี้ตอนนี้เลย" style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(124,58,237,0.4)", background: "rgba(124,58,237,0.12)", color: "#7c3aed", cursor: "pointer", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>📦 ตัด</button>}
                                         <button onClick={() => setShowPrintOrder(o)} style={{ padding: "4px 7px", borderRadius: 7, border: `1px solid rgba(59,91,139,0.25)`, background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 10, fontFamily: "'Sarabun',sans-serif", whiteSpace: "nowrap" }}>🖨️ ปริ้น</button>
+                                        {role.canCreateOrder && openEditOrder && <button onClick={() => openEditOrder(o)} title="แก้ไขใบสั่งของ" style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(59,91,139,0.25)", background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 10, fontFamily: "'Sarabun',sans-serif", whiteSpace: "nowrap" }}>✏️ แก้ไข</button>}
                                         {role.canDelete && <button onClick={() => handleDeleteOrder(o)} title="ยกเลิก + คืนสต๊อก" style={{ padding: "5px 8px", borderRadius: 7, border: "1px solid rgba(248,113,113,0.25)", background: "rgba(248,113,113,0.08)", color: "#f87171", cursor: "pointer", fontSize: 11 }}>✕</button>}
                                       </div>
                                     </div>
