@@ -199,14 +199,14 @@ export default function OrdersTab({
                                 <div style={{ fontSize: 11, color: T.muted }}>{list.length} ใบ · {totalQty} ชิ้น</div>
                               </div>
                               {!collapsed && <>
-                                <div style={{ display: "grid", gridTemplateColumns: "88px 1fr 90px 52px 200px 124px", alignItems: "center", padding: "8px 20px", background: "rgba(241,243,246,0.5)", borderBottom: `1px solid ${T.border}`, color: T.muted, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                                <div style={{ display: "grid", gridTemplateColumns: "88px 1fr 90px 52px 240px 190px", alignItems: "center", padding: "8px 20px", background: "rgba(241,243,246,0.5)", borderBottom: `1px solid ${T.border}`, color: T.muted, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                                   <div>เลขที่</div><div>ลูกค้า</div><div>รายการ</div><div>โดย</div><div>สถานะ</div><div style={{ textAlign: "center" }}>จัดการ</div>
                                 </div>
                                 {list.map((o, i) => {
                                   const invoiced = isOrderInvoiced(o, invoices);
                                   return (
                                     <div key={o.id} onClick={() => setShowPrintOrder(o)} title="คลิกเพื่อดูใบสั่งของ"
-                                      style={{ display: "grid", gridTemplateColumns: "88px 1fr 90px 52px 200px 124px", alignItems: "center", padding: "13px 20px", borderBottom: i < list.length - 1 ? `1px solid ${T.border}` : "none", cursor: "pointer", background: selectedOrders.has(o.id) ? "rgba(59,91,139,0.08)" : "transparent" }}
+                                      style={{ display: "grid", gridTemplateColumns: "88px 1fr 90px 52px 240px 190px", alignItems: "center", padding: "13px 20px", borderBottom: i < list.length - 1 ? `1px solid ${T.border}` : "none", cursor: "pointer", background: selectedOrders.has(o.id) ? "rgba(59,91,139,0.08)" : "transparent" }}
                                       onMouseEnter={e => { if (!selectedOrders.has(o.id)) e.currentTarget.style.background = "rgba(59,91,139,0.05)"; }}
                                       onMouseLeave={e => { if (!selectedOrders.has(o.id)) e.currentTarget.style.background = "transparent"; }}>
                                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -219,7 +219,7 @@ export default function OrdersTab({
                                       </div>
                                       <div style={{ fontSize: 12, color: T.sub }}>{(o.items || []).length} รายการ · {(o.items || []).reduce((s, i) => s + i.qty, 0)} ชิ้น</div>
                                       <div style={{ fontSize: 11, color: T.sub }}>{o.by}</div>
-                                      <div style={{ display: "flex", flexDirection: "row", gap: 3, alignItems: "center", flexWrap: "nowrap", overflow: "hidden" }}>
+                                      <div style={{ display: "flex", flexDirection: "row", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
                                         {o.hasPendingMix
                                           ? <span title="ยังไม่ได้ระบุสี/ไซส์ของรายการคละ — ยังไม่ตัดสต็อก" style={{ padding: "2px 7px", borderRadius: 20, fontSize: 10, fontWeight: 700, background: "rgba(184,134,0,0.15)", color: T.amber, border: "1px solid rgba(184,134,0,0.4)", whiteSpace: "nowrap" }}>🕐 รอระบุ</span>
                                           : <span style={{ padding: "2px 7px", borderRadius: 20, fontSize: 10, fontWeight: 600, background: "rgba(52,211,153,0.1)", color: "#34d399", border: "1px solid rgba(52,211,153,0.2)", whiteSpace: "nowrap" }}>{o.status}</span>}
