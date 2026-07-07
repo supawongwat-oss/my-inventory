@@ -1324,6 +1324,9 @@ export default function App() {
     });
     setNewCustomerForm({ name:"", phone:"", address:"" });
     setShowNewCustomer(false);
+    // 🔍 ล้างตัวกรอง/คำค้นหา — กันลูกค้าใหม่หายไปเพราะโดนกรองด้วยภาค/คำค้นเดิมที่ค้างอยู่
+    setCustomerRegion("ทั้งหมด");
+    setCustomerSearch("");
   };
 
   const handleSelectCustomer = (cust) => {
