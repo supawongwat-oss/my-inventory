@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { Modal, MHead, Input, BtnPrimary, BtnGhost, Toast } from "./ui";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { generateDocNo } from "../utils/docNumber";
@@ -11,14 +11,26 @@ const T = { border:"#e3e8ef", sub:"#5b6b85", text:"#1f2a44", muted:"#8a9bb3", ac
 const fmt = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtInt = (n) => Number(n || 0).toLocaleString("th-TH");
 
-export default function NewProductionOrderModal({ clothingItems = [], boms = [], products = [], productionOrders = [], user, onClose, onCreated }) {
-  const [clothingId, setClothingId] = useState("");
-  const [items, setItems] = useState([]); // [{colorIdx, colorName, colorHex, size, qty}] — โหมดทีละแถว
-  const [grid, setGrid] = useState({}); // { [colorIdx]: { [size]: qtyStr } } — โหมดตาราง
+export default function NewProductionOrderModal({ clothingItems = [], boms = [], products = [], productionOrders = [], user, onClose, onCreated, editOrder = null, onUpdated }) {
+  const isEdit = !!editOrder;
+  const [clothingId, setClothingId] = useState(editOrder?.clothingId || "");
+  const [items, setItems] = useState(() => isEdit
+    ? (editOrder.items || []).map(it => ({ colorIdx: Number(it.colorIdx) || 0, colorName: it.colorName || "", colorHex: it.colorHex || "#999", size: it.size || "", qty: Number(it.qty) || 0 }))
+    : []); // [{colorIdx, colorName, colorHex, size, qty}] — โหมดทีละแถว
+  const [grid, setGrid] = useState(() => {
+    if (!isEdit) return {};
+    const g = {};
+    (editOrder.items || []).forEach(it => {
+      const ci = Number(it.colorIdx) || 0;
+      if (!g[ci]) g[ci] = {};
+      g[ci][it.size] = String(it.qty);
+    });
+    return g;
+  }); // { [colorIdx]: { [size]: qtyStr } } — โหมดตาราง
   const [inputMode, setInputMode] = useState("grid"); // "grid" | "rows"
-  const [note, setNote] = useState("");
-  const [setNo, setSetNo] = useState(""); // 🎽 ชุดที่ (เช่น "ชุด3", "ชุดผู้ใหญ่", "รอบ2/2026")
-  const [color, setColor] = useState(""); // 🎨 สีชุดงาน (ว่าง = auto จาก prodNo)
+  const [note, setNote] = useState(editOrder?.note || "");
+  const [setNo, setSetNo] = useState(editOrder?.setNo || ""); // 🎽 ชุดที่ (เช่น "ชุด3", "ชุดผู้ใหญ่", "รอบ2/2026")
+  const [color, setColor] = useState(editOrder?.color || ""); // 🎨 สีชุดงาน (ว่าง = auto จาก prodNo)
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -107,23 +119,66 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
     return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
   };
 
+  const costSnapshotOf = () => ({
+    materials: (bom?.materials || []).map(m => ({
+      productId: m.productId, productName: m.productName, unit: m.unit || "",
+      qtyPerPiece: Number(m.qtyPerPiece)||0,
+      costPerUnit: Number(m.costPerUnit)||0,
+      totalQty: (Number(m.qtyPerPiece)||0) * totalQty,
+      totalCost: (Number(m.qtyPerPiece)||0) * totalQty * (Number(m.costPerUnit)||0),
+    })),
+    laborCostPerPiece,
+    materialCostPerPiece,
+    totalCostPerPiece,
+    grandTotal,
+  });
+
+  // ✏️ บันทึกการแก้ไข — เขียนทับ items + rebuild lots (ใบต้องยังไม่เริ่มผลิต)
+  const handleUpdate = async () => {
+    if (!canSubmit || saving) return;
+    setSaving(true);
+    const newItems = effItems.map(r => ({ colorIdx:Number(r.colorIdx)||0, colorName:r.colorName||"", colorHex:r.colorHex||"#999", size:r.size||"", qty:Number(r.qty)||0 }));
+    // ล็อตเดียวที่ยัง "พิมพ์ลาย" → เขียนใหม่ให้ตรงกับ items ที่แก้ (Kanban อ่านจาก lots[])
+    const singleLot = {
+      lotId: "L1",
+      items: newItems,
+      status: "พิมพ์ลาย",
+      statusHistory: [ ...((editOrder.statusHistory)||[]), { status:"แก้ไขใบสั่งผลิต", at:now(), by:user?.name || "", note:`แก้ไข ${newItems.length} แถว · ${totalQty} ตัว` } ],
+      notes: [],
+      finishedStocked: false,
+    };
+    await updateDoc(doc(db, "productionOrders", editOrder.id), {
+      clothingId,
+      clothingName: clothing?.model || "",
+      clothingImage: clothing?.image || "",
+      items: newItems,
+      totalQty,
+      status: "พิมพ์ลาย",
+      lots: [singleLot],
+      costSnapshot: costSnapshotOf(),
+      bomId: bom?.id || null,
+      note: note || "",
+      setNo: setNo || "",
+      color: color || "",
+      editedBy: user?.name || "",
+      editedAt: now(),
+    });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.UPDATE,
+      collection: "productionOrders",
+      targetId: editOrder.id,
+      targetLabel: `${editOrder.prodNo} · ${clothing?.model || ""}`,
+      note: `แก้ไข: ${newItems.length} แถว · ${totalQty} ตัว · ต้นทุน ฿${fmt(grandTotal)}${hasShortage ? " · ⚠️ วัตถุดิบไม่พอ" : ""}`,
+    });
+    setSaved(true);
+    setTimeout(() => { setSaved(false); setSaving(false); onUpdated && onUpdated(); onClose && onClose(); }, 700);
+  };
+
   const handleSubmit = async () => {
     if (!canSubmit || saving) return;
     setSaving(true);
     const prodNo = generateDocNo("PRD", productionOrders, "prodNo");
-    const costSnapshot = {
-      materials: (bom?.materials || []).map(m => ({
-        productId: m.productId, productName: m.productName, unit: m.unit || "",
-        qtyPerPiece: Number(m.qtyPerPiece)||0,
-        costPerUnit: Number(m.costPerUnit)||0,
-        totalQty: (Number(m.qtyPerPiece)||0) * totalQty,
-        totalCost: (Number(m.qtyPerPiece)||0) * totalQty * (Number(m.costPerUnit)||0),
-      })),
-      laborCostPerPiece,
-      materialCostPerPiece,
-      totalCostPerPiece,
-      grandTotal,
-    };
+    const costSnapshot = costSnapshotOf();
     const data = {
       prodNo,
       clothingId,
@@ -161,8 +216,9 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
 
   return (
     <Modal onClose={onClose} w={820}>
-      <MHead title="🏭 สร้างใบสั่งผลิตใหม่" sub="เลือกรุ่น · สี · ไซส์ · จำนวน — ระบบคำนวณวัตถุดิบและต้นทุนให้" onClose={onClose}/>
-      {saved && <Toast msg="สร้างใบสั่งผลิตสำเร็จ"/>}
+      <MHead title={isEdit ? `✏️ แก้ไขใบสั่งผลิต · ${editOrder.prodNo}` : "🏭 สร้างใบสั่งผลิตใหม่"} sub="เลือกรุ่น · สี · ไซส์ · จำนวน — ระบบคำนวณวัตถุดิบและต้นทุนให้" onClose={onClose}/>
+      {saved && <Toast msg={isEdit ? "บันทึกการแก้ไขสำเร็จ" : "สร้างใบสั่งผลิตสำเร็จ"}/>}
+      {isEdit && <div style={{marginBottom:12,padding:"8px 12px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,fontSize:11,color:"#1e40af",lineHeight:1.5}}>ℹ️ แก้ไขได้เพราะใบนี้ยังไม่เริ่มผลิต — เมื่อบันทึก ระบบจะอัปเดตรายการบนบอร์ด Kanban ให้อัตโนมัติ</div>}
 
       <div style={{marginBottom:14}}>
         <label style={{fontSize:11,color:T.sub,display:"block",marginBottom:5,fontWeight:500}}>เลือกรุ่นเสื้อ *</label>
@@ -344,7 +400,7 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
 
       <div style={{display:"flex",gap:10}}>
         <BtnGhost onClick={onClose} style={{flex:1}}>ยกเลิก</BtnGhost>
-        <BtnPrimary onClick={handleSubmit} disabled={!canSubmit || saving} style={{flex:1}}>{saving ? "กำลังบันทึก..." : "🏭 ยืนยันสั่งผลิต"}</BtnPrimary>
+        <BtnPrimary onClick={isEdit ? handleUpdate : handleSubmit} disabled={!canSubmit || saving} style={{flex:1}}>{saving ? "กำลังบันทึก..." : isEdit ? "💾 บันทึกการแก้ไข" : "🏭 ยืนยันสั่งผลิต"}</BtnPrimary>
       </div>
     </Modal>
   );

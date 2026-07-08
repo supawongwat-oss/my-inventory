@@ -8,6 +8,7 @@ import NewCustomOrderModal from "../components/NewCustomOrderModal";
 import ProductionStatusModal from "../components/ProductionStatusModal";
 import PrintProductionOrder from "../components/PrintProductionOrder";
 import KanbanBoard from "../components/KanbanBoard";
+import { getLots } from "../utils/productionLots";
 
 const T = {
   card:"#ffffff", border:"#e3e8ef", text:"#1f2a44", sub:"#5b6b85", muted:"#8a9bb3",
@@ -37,6 +38,7 @@ function parseThaiDate(s) {
 export default function ProductionTab({ productionOrders=[], customOrders=[], boms=[], products=[], clothingItems=[], customers=[], companyInfo={}, user, role, printElementById, onCreateInvoiceFromCustom }) {
   const [subTab, setSubTab] = useState("kanban"); // kanban | orders | custom | bom
   const [showNew, setShowNew] = useState(false);
+  const [editProdOrder, setEditProdOrder] = useState(null); // ✏️ ใบสั่งผลิตที่กำลังแก้ไข
   const [showNewCustom, setShowNewCustom] = useState(false);
   const [selectedCustom, setSelectedCustom] = useState(new Set()); // ids ของ custom orders ที่เลือกเพื่อออกบิลรวม
   const [customSubTab, setCustomSubTab] = useState("active"); // active | done | all
@@ -82,6 +84,17 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
   };
 
   // ลบใบสั่งผลิตทั้งใบ + sub-collection photos (สำหรับ custom + production)
+  // ✏️ เปิดแก้ไขใบสั่งผลิต — อนุญาตเฉพาะใบที่ยังไม่เริ่มผลิต (กันสต๊อกวัตถุดิบ/ล็อตเพี้ยน)
+  const openEditProd = (o) => {
+    const lots = getLots(o);
+    const started = o.materialsConsumed || o.finishedStocked || lots.length > 1 || lots.some(l => l.status !== "พิมพ์ลาย");
+    if (started) {
+      alert(`⚠️ แก้ไขใบ ${o.prodNo} ไม่ได้ — เริ่มผลิตไปแล้ว\n(มีล็อตเลื่อนสถานะ / แยกล็อต / ตัดวัตถุดิบไปแล้ว)\n\nถ้าต้องแก้จำนวนมาก แนะนำยกเลิกใบนี้แล้วสร้างใหม่ หรือจัดการทีละล็อตบนบอร์ด Kanban`);
+      return;
+    }
+    setEditProdOrder(o);
+  };
+
   const handleDeleteOrder = async (o, collectionName) => {
     const msg = `ลบใบสั่งผลิต "${o.prodNo}" ทั้งใบ?\n\n⚠️ การลบนี้ย้อนคืนไม่ได้`;
     if (!window.confirm(msg)) return;
@@ -216,6 +229,7 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
                     </div>
                     <div style={{display:"flex",gap:6,justifyContent:"flex-end"}} onClick={e=>e.stopPropagation()}>
                       <button onClick={()=>setPrintOrder(o)} title="พิมพ์" style={{padding:"6px 10px",borderRadius:7,border:"1px solid rgba(59,91,139,0.25)",background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:12}}>🖨️</button>
+                      <button onClick={()=>openEditProd(o)} title="แก้ไขใบสั่งผลิต" style={{padding:"6px 10px",borderRadius:7,border:"1px solid rgba(59,91,139,0.25)",background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:12}}>✏️</button>
                       <button onClick={()=>setStatusOrder(o)} title="สถานะ" style={{padding:"6px 10px",borderRadius:7,border:"1px solid rgba(16,185,129,0.25)",background:"rgba(16,185,129,0.08)",color:"#059669",cursor:"pointer",fontSize:12}}>⚙️</button>
                       {(role?.canDelete || user?.role === "admin" || user?.role === "manager") && (
                         <button onClick={()=>handleDeleteOrder(o, "productionOrders")} title="ลบใบนี้" style={{padding:"6px 10px",borderRadius:7,border:"1px solid rgba(248,113,113,0.3)",background:"rgba(248,113,113,0.08)",color:T.red,cursor:"pointer",fontSize:13,fontWeight:600}}>🗑</button>
@@ -396,6 +410,18 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
           user={user}
           onClose={()=>setShowNew(false)}
           onCreated={(orderData) => { setShowNew(false); setPrintOrder(orderData); }}
+        />
+      )}
+      {editProdOrder && (
+        <NewProductionOrderModal
+          clothingItems={clothingItems}
+          boms={boms}
+          products={products}
+          productionOrders={productionOrders}
+          user={user}
+          editOrder={editProdOrder}
+          onClose={()=>setEditProdOrder(null)}
+          onUpdated={()=>setEditProdOrder(null)}
         />
       )}
       {statusOrder && (
