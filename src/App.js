@@ -4706,7 +4706,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
       {/* ── MODAL: รับ/จ่ายเสื้อผ้า ── */}
       {clothingTxModal&&(
-        <Modal onClose={()=>setClothingTxModal(null)} w={540}>
+        <Modal onClose={()=>setClothingTxModal(null)} w={700}>
           <MHead title={clothingTxType==="รับ"?"⬇️ รับเสื้อผ้าเข้าคลัง":"⬆️ จ่ายเสื้อผ้าออกคลัง"} onClose={()=>{setClothingTxModal(null);setClothingTxExtraColors(new Set());}} color={clothingTxType==="รับ"?T.green:T.red}/>
           {clothingTxSuccess&&<Toast msg="บันทึกสำเร็จ! ตัดสต็อกแล้ว"/>}
           <div style={{padding:14,background:"rgba(59,91,139,0.06)",border:`1px solid rgba(59,91,139,0.2)`,borderRadius:10,marginBottom:12}}>
@@ -4746,9 +4746,9 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   const selected=clothingTxSizeQty[sz]!==undefined;
                   return (
                     <button key={sz} onClick={()=>setClothingTxSizeQty(p=>{const n={...p}; if(selected){delete n[sz];}else{n[sz]="";} return n;})}
-                      style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${selected?"#3b5b8b":"rgba(203,210,217,0.8)"}`,background:selected?"rgba(59,91,139,0.2)":"rgba(4,18,44,0.6)",color:selected?"#3b5b8b":T.sub,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:selected?700:400,transition:"all 0.15s"}}>
-                      <div style={{fontWeight:700}}>{sz}</div>
-                      <div style={{fontSize:9,color:stock===0?"#9aa5b1":stock<5?"#fbbf24":"#22d3ee",fontFamily:"monospace"}}>{stock}</div>
+                      style={{padding:"8px 14px",borderRadius:8,border:`2px solid ${selected?"#3b5b8b":"#cbd2d9"}`,background:selected?"#3b5b8b":"#ffffff",color:selected?"#ffffff":"#1f2a44",cursor:"pointer",fontSize:13,fontFamily:"'Sarabun',sans-serif",fontWeight:selected?700:600,transition:"all 0.15s",minWidth:56,textAlign:"center"}}>
+                      <div style={{fontWeight:800,fontSize:14}}>{sz}</div>
+                      <div style={{fontSize:10,fontWeight:700,color:selected?"#bfdbfe":stock===0?"#9aa5b1":stock<5?"#d97706":"#0891b2",fontFamily:"monospace"}}>{stock}</div>
                     </button>
                   );
                 })}
