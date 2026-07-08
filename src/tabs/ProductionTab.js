@@ -39,6 +39,7 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
   const [subTab, setSubTab] = useState("kanban"); // kanban | orders | custom | bom
   const [showNew, setShowNew] = useState(false);
   const [editProdOrder, setEditProdOrder] = useState(null); // ✏️ ใบสั่งผลิตที่กำลังแก้ไข
+  const [editCustomOrder, setEditCustomOrder] = useState(null); // ✏️ Custom order ที่กำลังแก้ไข
   const [showNewCustom, setShowNewCustom] = useState(false);
   const [selectedCustom, setSelectedCustom] = useState(new Set()); // ids ของ custom orders ที่เลือกเพื่อออกบิลรวม
   const [customSubTab, setCustomSubTab] = useState("active"); // active | done | all
@@ -84,15 +85,24 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
   };
 
   // ลบใบสั่งผลิตทั้งใบ + sub-collection photos (สำหรับ custom + production)
-  // ✏️ เปิดแก้ไขใบสั่งผลิต — อนุญาตเฉพาะใบที่ยังไม่เริ่มผลิต (กันสต๊อกวัตถุดิบ/ล็อตเพี้ยน)
-  const openEditProd = (o) => {
+  // ✏️ เช็คว่าใบเริ่มผลิตไปแล้วหรือยัง (กันสต๊อกวัตถุดิบ/ล็อตเพี้ยน)
+  const isProdStarted = (o) => {
     const lots = getLots(o);
-    const started = o.materialsConsumed || o.finishedStocked || lots.length > 1 || lots.some(l => l.status !== "พิมพ์ลาย");
-    if (started) {
+    return o.materialsConsumed || o.finishedStocked || lots.length > 1 || lots.some(l => l.status !== "พิมพ์ลาย");
+  };
+  const openEditProd = (o) => {
+    if (isProdStarted(o)) {
       alert(`⚠️ แก้ไขใบ ${o.prodNo} ไม่ได้ — เริ่มผลิตไปแล้ว\n(มีล็อตเลื่อนสถานะ / แยกล็อต / ตัดวัตถุดิบไปแล้ว)\n\nถ้าต้องแก้จำนวนมาก แนะนำยกเลิกใบนี้แล้วสร้างใหม่ หรือจัดการทีละล็อตบนบอร์ด Kanban`);
       return;
     }
     setEditProdOrder(o);
+  };
+  const openEditCustom = (o) => {
+    if (isProdStarted(o)) {
+      alert(`⚠️ แก้ไขใบ ${o.prodNo} ไม่ได้ — เริ่มผลิตไปแล้ว\n(มีล็อตเลื่อนสถานะ / แยกล็อต)\n\nถ้าต้องแก้จำนวนมาก แนะนำยกเลิกใบนี้แล้วสร้างใหม่ หรือจัดการทีละล็อตบนบอร์ด Kanban`);
+      return;
+    }
+    setEditCustomOrder(o);
   };
 
   const handleDeleteOrder = async (o, collectionName) => {
@@ -345,6 +355,7 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
                     </div>
                     <div style={{display:"flex",gap:6,justifyContent:"flex-end"}} onClick={e=>e.stopPropagation()}>
                       <button onClick={()=>setPrintOrder(o)} title="พิมพ์" style={{padding:"6px 10px",borderRadius:7,border:"1px solid rgba(59,91,139,0.25)",background:"rgba(59,91,139,0.08)",color:T.accent,cursor:"pointer",fontSize:12}}>🖨️</button>
+                      <button onClick={()=>openEditCustom(o)} title="แก้ไขใบ Custom" style={{padding:"6px 10px",borderRadius:7,border:"1px solid rgba(217,119,6,0.3)",background:"rgba(217,119,6,0.08)",color:"#d97706",cursor:"pointer",fontSize:12}}>✏️</button>
                       {(role?.canDelete || user?.role === "admin" || user?.role === "manager") && (
                         <button onClick={()=>handleDeleteOrder(o, "customOrders")} title="ลบใบนี้" style={{padding:"6px 10px",borderRadius:7,border:"1px solid rgba(248,113,113,0.3)",background:"rgba(248,113,113,0.08)",color:T.red,cursor:"pointer",fontSize:13,fontWeight:600}}>🗑</button>
                       )}
@@ -440,6 +451,16 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
           user={user}
           onClose={()=>setShowNewCustom(false)}
           onCreated={(orderData) => { setShowNewCustom(false); setPrintOrder(orderData); }}
+        />
+      )}
+      {editCustomOrder && (
+        <NewCustomOrderModal
+          customOrders={customOrders}
+          customers={customers}
+          user={user}
+          editOrder={editCustomOrder}
+          onClose={()=>setEditCustomOrder(null)}
+          onUpdated={()=>setEditCustomOrder(null)}
         />
       )}
       {statusCustom && (

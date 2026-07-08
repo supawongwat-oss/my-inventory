@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import { Modal, MHead, Input, BtnPrimary, BtnGhost, Toast } from "./ui";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { generateDocNo } from "../utils/docNumber";
@@ -18,23 +18,45 @@ function nowStr() {
   return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-export default function NewCustomOrderModal({ customOrders = [], customers = [], user, onClose, onCreated }) {
-  const [customerId, setCustomerId] = useState("");
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [customerSearch, setCustomerSearch] = useState("");
-  const [jobName, setJobName] = useState("");
-  const [fabricType, setFabricType] = useState("");
-  const [collarType, setCollarType] = useState("");
-  const [jobDescription, setJobDescription] = useState("");
-  const [shrinkOffset, setShrinkOffset] = useState(0); // 🪡 เผื่อหด: +0 / +1 / +2 / +3
-  const [images, setImages] = useState([]); // [{dataUrl, label}]
-  const [items, setItems] = useState([{ colorName:"", colorHex:"#94a3b8", size:"", qty:"", variant:"", productionSize:"" }]);
+// ✏️ สร้าง gridColors/gridSizes กลับจาก items ที่บันทึกไว้ (สำหรับโหมดแก้ไข)
+function buildGridFromItems(its) {
+  const rows = [];
+  const sizeSet = new Set();
+  const keyToRow = new Map();
+  (its || []).forEach(it => {
+    const key = (it.colorName || "-") + "|" + (it.colorHex || "#94a3b8") + "|" + (it.variant || "");
+    sizeSet.add(it.size);
+    if (!keyToRow.has(key)) {
+      const row = { colorName: it.colorName || "", colorHex: it.colorHex || "#94a3b8", variant: it.variant || "", qty: {} };
+      keyToRow.set(key, row);
+      rows.push(row);
+    }
+    keyToRow.get(key).qty[it.size] = String(it.qty);
+  });
+  return { rows, sizes: [...sizeSet] };
+}
+
+export default function NewCustomOrderModal({ customOrders = [], customers = [], user, onClose, onCreated, editOrder = null, onUpdated }) {
+  const isEdit = !!editOrder;
+  const editSeed = isEdit ? buildGridFromItems(editOrder.items) : null;
+  const [customerId, setCustomerId] = useState(editOrder?.customerId || "");
+  const [customerName, setCustomerName] = useState(editOrder?.customerName || "");
+  const [customerPhone, setCustomerPhone] = useState(editOrder?.customerPhone || "");
+  const [customerSearch, setCustomerSearch] = useState(editOrder && !editOrder.customerId ? (editOrder.customerName || "") : "");
+  const [jobName, setJobName] = useState(editOrder?.clothingName || "");
+  const [fabricType, setFabricType] = useState(editOrder?.fabricType || "");
+  const [collarType, setCollarType] = useState(editOrder?.collarType || "");
+  const [jobDescription, setJobDescription] = useState(editOrder?.jobDescription || "");
+  const [shrinkOffset, setShrinkOffset] = useState(Number(editOrder?.shrinkOffset) || 0); // 🪡 เผื่อหด: +0 / +1 / +2 / +3
+  const [images, setImages] = useState(editOrder?.clothingImages || (editOrder?.clothingImage ? [{ dataUrl: editOrder.clothingImage, label: "" }] : [])); // [{dataUrl, label}]
+  const [items, setItems] = useState(() => isEdit && (editOrder.items || []).length
+    ? editOrder.items.map(it => ({ colorName: it.colorName || "", colorHex: it.colorHex || "#94a3b8", size: it.size || "", qty: String(it.qty ?? ""), variant: it.variant || "", productionSize: it.productionSize || "" }))
+    : [{ colorName:"", colorHex:"#94a3b8", size:"", qty:"", variant:"", productionSize:"" }]);
   // ▦ โหมดตาราง: แถว=สี (มี variant ต่อสี), คอลัมน์=ไซส์ (แก้ได้)
   const [inputMode, setInputMode] = useState("grid"); // "grid" | "rows"
-  const [gridSizes, setGridSizes] = useState(["S","M","L","XL","2XL","3XL"]);
+  const [gridSizes, setGridSizes] = useState(() => (isEdit && editSeed.sizes.length) ? [...editSeed.sizes].sort(compareSizes) : ["S","M","L","XL","2XL","3XL"]);
   const [newSizeCol, setNewSizeCol] = useState("");
-  const [gridColors, setGridColors] = useState([{ colorName:"", colorHex:"#94a3b8", variant:"", qty:{} }]);
+  const [gridColors, setGridColors] = useState(() => (isEdit && editSeed.rows.length) ? editSeed.rows : [{ colorName:"", colorHex:"#94a3b8", variant:"", qty:{} }]);
 
   const setGridCell = (ri, sz, v) => setGridColors(prev => prev.map((r,i)=> i===ri ? { ...r, qty:{...r.qty, [sz]:v} } : r));
   const setGridColorField = (ri, patch) => setGridColors(prev => prev.map((r,i)=> i===ri ? { ...r, ...patch } : r));
@@ -61,10 +83,10 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const VARIANT_PRESETS = ["แขนสั้น", "แขนยาว", "แขนกุด", "คอกลม", "คอวี", "โปโล", "ฮู้ด"];
   const FABRIC_PRESETS = ["TK", "TC", "Cotton 100%", "Polyester", "Microfiber", "Lacoste/PK", "Dry-tech", "ผ้าโทรี่"];
   const COLLAR_PRESETS = ["คอกลม", "คอวี", "คอปก (โปโล)", "คอจีน", "คอฮู้ด"];
-  const [costPerPiece, setCostPerPiece] = useState("");
-  const [laborCostPerPiece, setLaborCostPerPiece] = useState("");
-  const [note, setNote] = useState("");
-  const [color, setColor] = useState(""); // 🎨 สีชุดงาน
+  const [costPerPiece, setCostPerPiece] = useState(editOrder?.costSnapshot?.materialCostPerPiece != null ? String(editOrder.costSnapshot.materialCostPerPiece) : "");
+  const [laborCostPerPiece, setLaborCostPerPiece] = useState(editOrder?.costSnapshot?.laborCostPerPiece != null ? String(editOrder.costSnapshot.laborCostPerPiece) : "");
+  const [note, setNote] = useState(editOrder?.note || "");
+  const [color, setColor] = useState(editOrder?.color || ""); // 🎨 สีชุดงาน
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const fileRef = useRef(null);
@@ -133,6 +155,90 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const totalImageKB = images.reduce((s, im) => s + dataUrlSizeKB(im.dataUrl), 0);
   const IMAGE_BUDGET_KB = 900; // เหลือ ~120 KB สำหรับ field อื่น ๆ (Firestore limit 1024 KB / doc)
 
+  // สร้าง items สำหรับบันทึก — colorIdx ต้องไม่ซ้ำกันต่อสี (ไม่งั้น invoice form รวมทุกสีเป็นกลุ่มเดียว)
+  const buildItemsForSave = () => {
+    const colorMap = new Map(); // colorName|hex → index
+    return validItems.map(r => {
+      const key = (r.colorName.trim() || "-") + "|" + (r.colorHex || "#94a3b8");
+      if (!colorMap.has(key)) colorMap.set(key, colorMap.size);
+      const cSize = r.size.trim() || "-";
+      const pSize = (r.productionSize||"").trim() || getProductionSize(cSize, shrinkOffset);
+      return {
+        colorIdx: colorMap.get(key),
+        colorName: r.colorName.trim() || "-",
+        colorHex: r.colorHex || "#94a3b8",
+        size: cSize,
+        productionSize: pSize,
+        qty: Number(r.qty) || 0,
+        variant: (r.variant || "").trim() || "",
+      };
+    });
+  };
+
+  // ✏️ บันทึกการแก้ไข custom order — เขียนทับ + rebuild lots (ใบต้องยังไม่เริ่มผลิต)
+  const handleUpdate = async () => {
+    if (!canSubmit || saving) return;
+    if (totalImageKB > IMAGE_BUDGET_KB) {
+      alert(`รูปรวม ${totalImageKB} KB เกิน budget ${IMAGE_BUDGET_KB} KB\n(Firestore จำกัด ~1 MB ต่อ document)\n\nกรุณาลบรูปบางรูป หรือใช้รูปที่เล็กลง`);
+      return;
+    }
+    setSaving(true);
+    try {
+      const newItems = buildItemsForSave();
+      const singleLot = {
+        lotId: "L1",
+        items: newItems,
+        status: "พิมพ์ลาย",
+        statusHistory: [ ...((editOrder.statusHistory)||[]), { status:"แก้ไขใบสั่งผลิต (custom)", at:nowStr(), by:user?.name || "", note:`แก้ไข ${newItems.length} แถว · ${totalQty} ตัว` } ],
+        notes: [],
+        finishedStocked: false,
+      };
+      await updateDoc(doc(db, "customOrders", editOrder.id), {
+        customerId: customerId || "",
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim(),
+        clothingName: jobName.trim(),
+        fabricType: (fabricType||"").trim(),
+        collarType: (collarType||"").trim(),
+        jobDescription: (jobDescription||"").trim(),
+        shrinkOffset: Number(shrinkOffset) || 0,
+        clothingImage: images[0]?.dataUrl || "",
+        clothingImages: images,
+        items: newItems,
+        totalQty,
+        status: "พิมพ์ลาย",
+        lots: [singleLot],
+        costSnapshot: {
+          materials: [],
+          laborCostPerPiece: labor,
+          materialCostPerPiece: matCost,
+          totalCostPerPiece,
+          grandTotal,
+        },
+        note: note || "",
+        color: color || "",
+        editedBy: user?.name || "",
+        editedAt: nowStr(),
+      });
+      logAudit(user, {
+        action: AUDIT_ACTIONS.UPDATE,
+        collection: "customOrders",
+        targetId: editOrder.id,
+        targetLabel: `${editOrder.prodNo} · ${jobName.trim()}`,
+        note: `แก้ไข Custom · ${newItems.length} แถว · ${totalQty} ตัว · ต้นทุน ฿${fmt(grandTotal)}`,
+      });
+      setSaved(true);
+      setTimeout(() => { setSaved(false); setSaving(false); onUpdated && onUpdated(); onClose && onClose(); }, 700);
+    } catch (err) {
+      console.error("[customOrder] update failed:", err);
+      setSaving(false);
+      const msg = err?.code === "invalid-argument" || /size|too large|exceeds/i.test(err?.message || "")
+        ? "บันทึกไม่สำเร็จ — เอกสารใหญ่เกินไป (ลองใช้รูปขนาดเล็กลง)"
+        : "บันทึกไม่สำเร็จ: " + (err?.message || err);
+      alert(msg);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!canSubmit || saving) return;
     if (totalImageKB > IMAGE_BUDGET_KB) {
@@ -156,25 +262,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
       shrinkOffset: Number(shrinkOffset) || 0,
       clothingImage: images[0]?.dataUrl || "", // backward compat (รูปแรก)
       clothingImages: images,                  // [{dataUrl, label}]
-      items: (() => {
-        // 🔑 colorIdx ต้องไม่ซ้ำกันต่อสี — ไม่งั้น invoice form จะรวมทุกสีเป็นกลุ่มเดียว
-        const colorMap = new Map(); // colorName → index
-        return validItems.map(r => {
-          const key = (r.colorName.trim() || "-") + "|" + (r.colorHex || "#94a3b8");
-          if (!colorMap.has(key)) colorMap.set(key, colorMap.size);
-          const cSize = r.size.trim() || "-";
-          const pSize = (r.productionSize||"").trim() || getProductionSize(cSize, shrinkOffset);
-          return {
-            colorIdx: colorMap.get(key),
-            colorName: r.colorName.trim() || "-",
-            colorHex: r.colorHex || "#94a3b8",
-            size: cSize,
-            productionSize: pSize,
-            qty: Number(r.qty) || 0,
-            variant: (r.variant || "").trim() || "",
-          };
-        });
-      })(),
+      items: buildItemsForSave(),
       totalQty,
       status: "พิมพ์ลาย",
       statusHistory: [{ status:"สร้างใบสั่งผลิต (custom)", at:nowStr(), by:user?.name || "", note:note || "" }],
@@ -216,8 +304,9 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
 
   return (
     <Modal onClose={onClose} w={820}>
-      <MHead title="🎨 สร้างใบสั่งผลิต Custom (เฉพาะแบบ)" sub="ใส่รูป + พิมพ์รุ่น/สี/ไซส์เอง — ไม่ตัดสต็อก" onClose={onClose}/>
-      {saved && <Toast msg="สร้างใบสั่งผลิต custom สำเร็จ"/>}
+      <MHead title={isEdit ? `✏️ แก้ไข Custom · ${editOrder.prodNo}` : "🎨 สร้างใบสั่งผลิต Custom (เฉพาะแบบ)"} sub="ใส่รูป + พิมพ์รุ่น/สี/ไซส์เอง — ไม่ตัดสต็อก" onClose={onClose}/>
+      {saved && <Toast msg={isEdit ? "บันทึกการแก้ไขสำเร็จ" : "สร้างใบสั่งผลิต custom สำเร็จ"}/>}
+      {isEdit && <div style={{marginBottom:12,padding:"8px 12px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,fontSize:11,color:"#1e40af",lineHeight:1.5}}>ℹ️ แก้ไขได้เพราะใบนี้ยังไม่เริ่มผลิต — เมื่อบันทึก ระบบจะอัปเดตรายการบนบอร์ด Kanban ให้อัตโนมัติ</div>}
 
       {/* ลูกค้า — search ลูกค้าเดิม หรือพิมพ์ชื่อใหม่ */}
       <div style={{marginBottom:12,position:"relative"}}>
@@ -596,7 +685,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
 
       <div style={{display:"flex",gap:10}}>
         <BtnGhost onClick={onClose} style={{flex:1}}>ยกเลิก</BtnGhost>
-        <BtnPrimary onClick={handleSubmit} disabled={!canSubmit || saving || totalImageKB > IMAGE_BUDGET_KB} style={{flex:1}}>{saving ? "กำลังบันทึก..." : totalImageKB > IMAGE_BUDGET_KB ? "⚠️ รูปใหญ่เกิน — ลดรูปก่อน" : "🎨 ยืนยันสั่งผลิต Custom"}</BtnPrimary>
+        <BtnPrimary onClick={isEdit ? handleUpdate : handleSubmit} disabled={!canSubmit || saving || totalImageKB > IMAGE_BUDGET_KB} style={{flex:1}}>{saving ? "กำลังบันทึก..." : totalImageKB > IMAGE_BUDGET_KB ? "⚠️ รูปใหญ่เกิน — ลดรูปก่อน" : isEdit ? "💾 บันทึกการแก้ไข" : "🎨 ยืนยันสั่งผลิต Custom"}</BtnPrimary>
       </div>
     </Modal>
   );
