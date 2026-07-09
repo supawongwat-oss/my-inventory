@@ -1935,6 +1935,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     setShowPrintInvoice({...data, id:ref.id});
     setShowNewInvoice(false);
     setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0});
+    // 🧭 เด้งไปหน้า "ออกบิล" ให้เห็นบิลใหม่ในรายการทันที (โดยเฉพาะตอนออกบิลรวมจากหน้าใบสั่งของ)
+    setActiveTab("invoice");
   };
 
   // 🔗 toggle เลือกบิล
