@@ -227,7 +227,10 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
                       <div style={{fontSize:10,color:T.muted,marginTop:2}}>{o.date}</div>
                     </div>
                     <div>
-                      <div style={{fontWeight:600,color:T.text,fontSize:13}}>{o.clothingName}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                        <span style={{fontWeight:600,color:T.text,fontSize:13}}>{o.clothingName}</span>
+                        {o.setNo && <span style={{background:"#fef3c7",color:"#92400e",padding:"1px 8px",borderRadius:10,fontSize:10,fontWeight:800,border:"1px solid #f59e0b"}}>🎽 {o.setNo}</span>}
+                      </div>
                       <div style={{fontSize:11,color:T.muted,marginTop:2}}>{(o.items||[]).length} รายการ</div>
                     </div>
                     <div style={{textAlign:"center"}}>
