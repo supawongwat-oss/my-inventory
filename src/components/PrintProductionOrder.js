@@ -27,6 +27,7 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
               <span style={{background:"#3b5b8b",color:"white",padding:"2px 10px",borderRadius:3,fontSize:11,fontWeight:800,letterSpacing:0.5}}>ใบสั่งผลิต</span>
               <span style={{color:"#64748b"}}>เลขที่</span>
               <span style={{color:"#3b5b8b",fontFamily:"monospace",fontWeight:700}}>{order.prodNo}</span>
+              {order.setNo && <span style={{background:"#f59e0b",color:"white",padding:"2px 10px",borderRadius:3,fontSize:11,fontWeight:800,letterSpacing:0.3}}>🎽 {order.setNo}</span>}
               <span style={{color:"#64748b"}}>·</span>
               <span style={{color:"#1e293b",fontWeight:600}}>{order.date}</span>
               <span style={{color:"#64748b"}}>·</span>
@@ -48,7 +49,10 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
                 <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:n>0?10:0}}>
                   <div style={{flex:1}}>
                     <div style={{fontSize:10,color:"#3b5b8b",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>รุ่นสินค้า</div>
-                    <div style={{fontSize:18,fontWeight:700,color:"#1e293b"}}>{order.clothingName}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      <div style={{fontSize:18,fontWeight:700,color:"#1e293b"}}>{order.clothingName}</div>
+                      {order.setNo && <span style={{background:"#fef3c7",color:"#92400e",padding:"3px 12px",borderRadius:14,fontSize:14,fontWeight:800,border:"1px solid #f59e0b"}}>🎽 {order.setNo}</span>}
+                    </div>
                     <div style={{fontSize:12,color:"#475569",marginTop:2}}>รวมทั้งหมด <b style={{color:"#3b5b8b",fontSize:15}}>{fmtInt(order.totalQty)}</b> ตัว</div>
                     {(order.fabricType||order.collarType||order.jobDescription||order.shrinkOffset>0) && (
                       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:6,fontSize:11,color:"#475569"}}>
