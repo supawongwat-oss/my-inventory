@@ -1159,6 +1159,8 @@ export default function LotDetailModal({
           lots={lots}
           lotIdx={lotIdx}
           busy={busy}
+          setNo={order?.setNo || ""}
+          clothingName={order?.clothingName || ""}
           onClose={() => setShowRollSplit(false)}
           onConfirm={applyRollSplit}
           onConfirmManual={applyManualRolls}
@@ -1169,7 +1171,7 @@ export default function LotDetailModal({
 }
 
 // ── Roll-split modal: แบ่งของในล็อตเป็นหลายม้วน (อัตโนมัติ หรือ กรอกเอง) ──
-function RollSplitModal({ lot, lots = [], lotIdx, busy, onClose, onConfirm, onConfirmManual }) {
+function RollSplitModal({ lot, lots = [], lotIdx, busy, setNo = "", clothingName = "", onClose, onConfirm, onConfirmManual }) {
   const [mode, setMode] = useState("manual"); // "manual" | "auto"
   const lotItems = lot.items || [];
 
@@ -1267,6 +1269,13 @@ function RollSplitModal({ lot, lots = [], lotIdx, busy, onClose, onConfirm, onCo
   return (
     <Modal onClose={onClose} w={860}>
       <MHead title={`🧵 แบ่งม้วน · ${lot.lotId}`} sub="กรอกเองว่าแต่ละม้วนพิมพ์อะไร (ใส่ชื่อรุ่น/งานได้) หรือให้ระบบจัดอัตโนมัติ" onClose={onClose}/>
+
+      {(setNo || clothingName) && (
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:12,padding:"8px 12px",background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:9}}>
+          {clothingName && <span style={{fontSize:13,fontWeight:700,color:T.text}}>{clothingName}</span>}
+          {setNo && <span style={{background:"#fef3c7",color:"#92400e",padding:"2px 12px",borderRadius:12,fontSize:13,fontWeight:800,border:"1px solid #f59e0b"}}>🎽 {setNo}</span>}
+        </div>
+      )}
 
       {/* tabs */}
       <div style={{display:"flex",gap:4,background:"#eef2f7",borderRadius:8,padding:3,marginBottom:14}}>
