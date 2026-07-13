@@ -1,6 +1,6 @@
 ﻿import React, { useState, useRef, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import { db, authReady } from "./firebase";
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, serverTimestamp, query, orderBy } from "firebase/firestore";
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, serverTimestamp, query, orderBy, where, Timestamp } from "firebase/firestore";
 import { T, SIZES, SHOE_SIZES, getSizesFor, mergeSizes, PRESET_COLORS, MASTER_KEY, SIZE_GROUPS, getPriceForSize, compareSizes, splitSizesIntoRows } from "./theme";
 import { INIT_USERS, ROLES, INIT_CATS } from "./constants";
 import { BarcodeDisplay, Modal, MHead, Toast, Input, BtnPrimary, BtnSuccess, BtnDanger, BtnGhost, Badge, CardBox } from "./components/ui";
@@ -387,6 +387,11 @@ export default function App() {
   const [showSalesToday, setShowSalesToday] = useState(false); // 📊 modal ขายวันนี้
   const [salesDate, setSalesDate] = useState(() => new Date().toISOString().slice(0,10)); // yyyy-mm-dd
   const [salesCell, setSalesCell] = useState(null); // {model,color,size,prefix} ดู/ลบรายการจ่ายของช่องนั้น
+  // 🔎 Option A — โหลด transactions ตามช่วงวันที่ (createdAt) แทนพึ่ง rolling window ที่ล้นเร็วเมื่อออกใบเยอะ
+  const [salesTx, setSalesTx] = useState([]);            // tx ของวัน salesDate (สำหรับ "ขายวันนี้")
+  const [salesTxLoading, setSalesTxLoading] = useState(false);
+  const [salesTxNonce, setSalesTxNonce] = useState(0);   // bump เพื่อ refetch หลังลบรายการ
+  const [reportTx, setReportTx] = useState([]);          // tx 90 วันล่าสุด (สำหรับหน้ารายงาน)
   const [collapsedSalesModels, setCollapsedSalesModels] = useState({}); // ย่อรุ่นใน "ขายวันนี้"
   const [newApparelSize, setNewApparelSize] = useState("");
   const [newShoeSize, setNewShoeSize] = useState("");
@@ -893,6 +898,55 @@ export default function App() {
     } catch (e) { alert("ลบไม่สำเร็จ: " + (e.message || e)); }
     finally { setTxSaving(false); }
   };
+
+  // 🔎 Option A — ดึง transactions ตามช่วง createdAt (ไม่พึ่ง rolling window ที่ล้นเร็ว)
+  const fetchTxByCreatedRange = async (start, endExclusive) => {
+    const clauses = [where("createdAt", ">=", Timestamp.fromDate(start))];
+    if (endExclusive) clauses.push(where("createdAt", "<", Timestamp.fromDate(endExclusive)));
+    const q = query(collection(db, "transactions"), ...clauses, orderBy("createdAt", "desc"));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id }));
+  };
+
+  // "ขายวันนี้" — โหลด tx เฉพาะวัน salesDate (createdAt ในช่วง 00:00–24:00 ของวันนั้น)
+  useEffect(() => {
+    if (!showSalesToday) return;
+    let cancelled = false;
+    (async () => {
+      setSalesTxLoading(true);
+      try {
+        const [yy, mm, dd] = salesDate.split("-").map(Number);
+        const start = new Date(yy, mm - 1, dd, 0, 0, 0, 0);
+        const end = new Date(yy, mm - 1, dd + 1, 0, 0, 0, 0);
+        const rows = await fetchTxByCreatedRange(start, end);
+        if (!cancelled) setSalesTx(rows);
+      } catch (e) {
+        console.warn("[salesTx] fetch failed:", e);
+        if (!cancelled) setSalesTx([]);
+      } finally {
+        if (!cancelled) setSalesTxLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showSalesToday, salesDate, salesTxNonce]);
+
+  // หน้ารายงาน — โหลด tx 90 วันล่าสุด (กราฟรับ/จ่าย + ยอดต่อสินค้า) ไม่ให้ขาดข้อมูลเมื่อออกใบเยอะ
+  useEffect(() => {
+    if (activeTab !== "reports") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const start = new Date();
+        start.setDate(start.getDate() - 90);
+        start.setHours(0, 0, 0, 0);
+        const rows = await fetchTxByCreatedRange(start, null);
+        if (!cancelled) setReportTx(rows);
+      } catch (e) {
+        console.warn("[reportTx] fetch failed:", e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab]);
 
   // 🧺 เปิด modal ขายคละ
   const openMix = (item) => {
@@ -3126,7 +3180,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
           {/* ── REPORTS ── */}
           {activeTab==="reports"&&(
-            <ReportsTab products={products} transactions={transactions} invoices={invoices} orders={orders} customers={customers} clothingItems={clothingItems}/>
+            <ReportsTab products={products} transactions={reportTx.length ? reportTx : transactions} invoices={invoices} orders={orders} customers={customers} clothingItems={clothingItems}/>
           )}
 
           {/* ── SUPPLIERS ── */}
@@ -4151,7 +4205,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       {showSalesToday&&(()=>{
         const [yy,mm,dd] = salesDate.split("-");
         const prefix = `${dd}/${mm}/${yy}`; // ตรงกับรูปแบบ transaction.date
-        const todays = transactions.filter(t => t.type==="จ่าย" && t.category==="เสื้อผ้า" && (t.date||"").startsWith(prefix));
+        const todays = salesTx.filter(t => t.type==="จ่าย" && t.category==="เสื้อผ้า" && (t.date||"").startsWith(prefix));
         const byModel = {};
         todays.forEach(t => {
           const parts = (t.name||"").split(" / ");
@@ -4176,7 +4230,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
             {models.length>1&&(()=>{const allCollapsed=models.every(mm=>collapsedSalesModels[mm]);return(
               <button onClick={()=>setCollapsedSalesModels(allCollapsed?{}:Object.fromEntries(models.map(mm=>[mm,true])))} style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif"}}>{allCollapsed?"⊞ กางทั้งหมด":"⊟ ย่อทั้งหมด"}</button>
             );})()}
-            <div style={{marginLeft:"auto",fontSize:14,fontWeight:800,color:T.green}}>รวมทั้งหมด {grandTotal.toLocaleString("th-TH")} ตัว</div>
+            <div style={{marginLeft:"auto",fontSize:14,fontWeight:800,color:T.green}}>{salesTxLoading?"⏳ กำลังโหลด...":`รวมทั้งหมด ${grandTotal.toLocaleString("th-TH")} ตัว`}</div>
           </div>
 
           {models.length===0 ? (
@@ -4251,7 +4305,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       {salesCell&&(()=>{
         const { model, color, size, prefix } = salesCell;
         const targetName = `${model} / ${color} / ${size}`;
-        const cellTx = transactions
+        const cellTx = salesTx
           .filter(t => t.type==="จ่าย" && t.category==="เสื้อผ้า" && (t.date||"").startsWith(prefix) && (t.name||"")===targetName)
           .sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));
         const cellTotal = cellTx.reduce((s,t)=>s+(Number(t.qty)||0),0);
@@ -4272,7 +4326,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                     <div style={{fontSize:11,color:T.muted}}>{t.date}{t.by?` · ${t.by}`:""}{t.note?` · ${t.note}`:""}</div>
                   </div>
                   {role.canAdd&&(
-                    <button onClick={async()=>{await handleDeleteSaleTx(t); if(cellTx.length<=1)setSalesCell(null);}} disabled={txSaving} title="ลบรายการนี้ + คืนสต็อก"
+                    <button onClick={async()=>{await handleDeleteSaleTx(t); setSalesTxNonce(n=>n+1); if(cellTx.length<=1)setSalesCell(null);}} disabled={txSaving} title="ลบรายการนี้ + คืนสต็อก"
                       style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(248,113,113,0.3)",background:"rgba(248,113,113,0.08)",color:T.red,cursor:txSaving?"wait":"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:600}}>🗑 ลบ</button>
                   )}
                 </div>
