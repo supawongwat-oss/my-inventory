@@ -465,10 +465,12 @@ export default function App() {
 
 
   // 🏷️ Tab-level filter — รวมหลาย category เป็น 1 tab ได้ (เช่น sports = รองเท้า+อุปกรณ์กีฬา)
-  const TAB_CATEGORIES = { sports: ["รองเท้า","อุปกรณ์กีฬา"] };
+  const MATERIAL_CATS = ["วัตถุดิบ"]; // 🧪 หมวดที่ถือเป็นวัตถุดิบ (หมึก/กระดาษ ฯลฯ) — แยกไปแท็บวัตถุดิบ
+  const TAB_CATEGORIES = { sports: ["รองเท้า","อุปกรณ์กีฬา"], materials: MATERIAL_CATS };
   const filtered = products.filter(p => {
     const tabCats = TAB_CATEGORIES[inventoryTab];
-    if (tabCats && !tabCats.includes(p.category)) return false;
+    if (tabCats) { if (!tabCats.includes(p.category)) return false; }
+    else if (inventoryTab === "general" && MATERIAL_CATS.includes(p.category)) return false; // 🧪 วัตถุดิบ แยกไปแท็บวัตถุดิบแล้ว
     if (selectedCat !== "ทั้งหมด" && p.category !== selectedCat) return false;
     if (!search) return true;
     const q = search.toLowerCase().trim();
@@ -2535,14 +2537,14 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
             <div style={{fontSize:10,color:T.muted}}>CPU ERP — ระบบบริหารคลังสินค้า</div>
           </div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            {activeTab==="inventory"&&inventoryTab==="general"&&role.canManageCats&&<BtnGhost onClick={()=>setShowCatModal(true)}>📦 หมวดหมู่</BtnGhost>}
-            {activeTab==="inventory"&&inventoryTab==="general"&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddModal(true)}>️ เพิ่มสินค้า</BtnPrimary>}
+            {activeTab==="inventory"&&(inventoryTab==="general"||inventoryTab==="materials")&&role.canManageCats&&<BtnGhost onClick={()=>setShowCatModal(true)}>📦 หมวดหมู่</BtnGhost>}
+            {activeTab==="inventory"&&(inventoryTab==="general"||inventoryTab==="materials")&&role.canAdd&&<BtnPrimary onClick={()=>{if(inventoryTab==="materials")setNewProduct(p=>({...p,category:"วัตถุดิบ"}));setShowAddModal(true);}}>️ เพิ่ม{inventoryTab==="materials"?"วัตถุดิบ":"สินค้า"}</BtnPrimary>}
             {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&<BtnGhost onClick={()=>collapseAllClothing(true)} title="พับทุกรุ่น">▶ พับทั้งหมด</BtnGhost>}
             {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&<BtnGhost onClick={()=>collapseAllClothing(false)} title="กางทุกรุ่น">▼ กางทั้งหมด</BtnGhost>}
             {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&<BtnGhost onClick={()=>{setSalesDate(new Date().toISOString().slice(0,10));setShowSalesToday(true);}}>📊 ขายวันนี้</BtnGhost>}
             {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&role.canAdd&&<BtnGhost onClick={()=>setShowSizeManager(true)}>📏 จัดการไซส์</BtnGhost>}
             {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&role.canAdd&&<BtnPrimary onClick={()=>setShowAddClothing(true)}>{inventoryTab==="sports"?"👟":"️"} เพิ่มรุ่นใหม่</BtnPrimary>}
-            {activeTab==="inventory"&&inventoryTab==="general"&&<>
+            {activeTab==="inventory"&&(inventoryTab==="general"||inventoryTab==="materials")&&<>
               <BtnSuccess onClick={()=>{setTxType("รับ");setTxRows([{productId:"",qty:""}]);setTxNote("");setShowTxModal(true);}}>⬇ รับสินค้า</BtnSuccess>
               <BtnDanger onClick={()=>{setTxType("จ่าย");setTxRows([{productId:"",qty:""}]);setTxNote("");setShowTxModal(true);}}>⬆ จ่ายสินค้า</BtnDanger>
             </>}
@@ -2635,6 +2637,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                 {[
                   {id:"clothing",icon:"👕",label:"เสื้อผ้า"},
                   {id:"sports",icon:"👟",label:"รองเท้า & อุปกรณ์กีฬา",cats:["รองเท้า","อุปกรณ์กีฬา"]},
+                  {id:"materials",icon:"🧪",label:"วัตถุดิบ",cats:["วัตถุดิบ"]},
                   {id:"general",icon:"📦",label:"สินค้าทั่วไป"},
                 ].map(t=>{
                   // นับสินค้าในหมวด (รองรับหลาย cats)
@@ -2663,8 +2666,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                 })}
               </div>
 
-              {/* General products (สินค้าทั่วไปเท่านั้น — sports ใช้ view แบบ clothing แล้ว) */}
-              {inventoryTab==="general"&&<div>
+              {/* General products + วัตถุดิบ (ใช้ view เดียวกัน — filter ต่างกันด้วย inventoryTab) */}
+              {(inventoryTab==="general"||inventoryTab==="materials")&&<div>
               <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
                 <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 ค้นหาชื่อ, รหัส, บาร์โค้ด..."
                   style={{width:260,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
