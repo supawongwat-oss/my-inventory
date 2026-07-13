@@ -3,7 +3,7 @@ import { Modal, MHead, Input, BtnPrimary, BtnGhost, Toast } from "./ui";
 import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
-import { generateDocNo } from "../utils/docNumber";
+import { reserveDocNo } from "../utils/docNumber";
 import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
 import { PRESET_COLORS, getProductionSize, isProductionSizeCapped, SIZES, compareSizes } from "../theme";
 import { ORDER_PALETTE } from "./KanbanBoard";
@@ -247,7 +247,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
     }
     setSaving(true);
     try {
-    const prodNo = generateDocNo("CUS", customOrders, "prodNo");
+    const prodNo = await reserveDocNo(db, "CUS", customOrders, "prodNo");
     const data = {
       prodNo,
       isCustom: true,

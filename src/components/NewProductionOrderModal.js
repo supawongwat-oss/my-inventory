@@ -3,7 +3,7 @@ import { Modal, MHead, Input, BtnPrimary, BtnGhost, Toast } from "./ui";
 import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
-import { generateDocNo } from "../utils/docNumber";
+import { reserveDocNo } from "../utils/docNumber";
 import { SIZES, SHOE_SIZES, compareSizes } from "../theme";
 import { ORDER_PALETTE } from "./KanbanBoard";
 
@@ -177,7 +177,7 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
   const handleSubmit = async () => {
     if (!canSubmit || saving) return;
     setSaving(true);
-    const prodNo = generateDocNo("PRD", productionOrders, "prodNo");
+    const prodNo = await reserveDocNo(db, "PRD", productionOrders, "prodNo");
     const costSnapshot = costSnapshotOf();
     const data = {
       prodNo,

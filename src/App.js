@@ -24,7 +24,7 @@ import { PAYMENT_METHODS, docTypeLabel, docTypeLabelEn, itemLineTotal, calcInvoi
 import { compressImage } from "./utils/imageCompress";
 import { uploadImage, deleteFile } from "./utils/upload";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiRegion";
-import { generateDocNo } from "./utils/docNumber";
+import { reserveDocNo } from "./utils/docNumber";
 
 // 🚀 Code splitting — tabs โหลดเฉพาะตอนคลิกใช้งาน (ลด first-load bundle)
 const ReportsTab = lazy(() => import("./tabs/ReportsTab"));
@@ -1639,7 +1639,7 @@ export default function App() {
         note: `แก้ไข: ${orderForm.items.length} รายการ · ${totalQty} ชิ้น${hasPendingMix?` · 🕐 คละ ${mixItems.length} รายการ (รอระบุ)`:""}`,
       });
     } else {
-      const orderNo = generateDocNo("ORD", orders, "orderNo");
+      const orderNo = await reserveDocNo(db, "ORD", orders, "orderNo");
       const ref = await addDoc(collection(db, "orders"), {
         orderNo, ...orderForm,
         status: hasPendingMix ? "รอระบุ" : "สำเร็จ",
@@ -1971,7 +1971,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     }
 
     // ── โหมดสร้างใหม่ ──
-    const invNo = generateDocNo("INV", invoices, "invoiceNo");
+    const invNo = await reserveDocNo(db, "INV", invoices, "invoiceNo");
     const data = {
       ...invoiceForm, ...calc,
       invoiceNo:invNo, docType:invoiceDocType, useVat:invoiceVat,
@@ -2022,7 +2022,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     const vatRate = base.vatRate || 7;
     const payments = ordered.flatMap(i => i.payments || []);
     const calc = calcInvoice(items, vatRate, useVat, discount, "amount", useShipping, shippingFee);
-    const invNo = generateDocNo("INV", invoices, "invoiceNo");
+    const invNo = await reserveDocNo(db, "INV", invoices, "invoiceNo");
     const newData = {
       ...base,
       invoiceNo: invNo,
@@ -2068,7 +2068,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     if (!sourceInv) return;
     if (!window.confirm(`สร้าง${targetDocType==="tax"?"ใบกำกับภาษี":"ใบเสร็จ"}จาก ${sourceInv.invoiceNo} (${sourceInv.customerName})?`)) return;
     const calc = calcInvoice(sourceInv.items||[], sourceInv.vatRate||7, targetDocType==="tax"||sourceInv.useVat, sourceInv.discount||0, sourceInv.discountType||"amount", !!sourceInv.useShipping, sourceInv.shippingFee||0);
-    const invNo = generateDocNo("INV", invoices, "invoiceNo");
+    const invNo = await reserveDocNo(db, "INV", invoices, "invoiceNo");
     const newData = {
       customerId: sourceInv.customerId || "",
       customerName: sourceInv.customerName || "",
@@ -3293,7 +3293,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   return;
                 }
                 // 3) สร้าง order (status: รอดำเนินการ — ยังไม่ตัดสต็อก)
-                const orderNo = generateDocNo("ORD", orders, "orderNo");
+                const orderNo = await reserveDocNo(db, "ORD", orders, "orderNo");
                 const newOrder = {
                   orderNo,
                   customerId,
