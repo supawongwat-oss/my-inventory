@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Modal, MHead, BtnPrimary, BtnGhost, BtnDanger, Toast } from "./ui";
+import { consumeMaterialsForOrder, stockFinishedForLot as stockFinishedForLotUtil } from "../utils/productionEffects";
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, documentId, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
@@ -113,66 +114,12 @@ export default function LotDetailModal({
     });
   };
 
-  // ── side effects ──
+  // ── side effects (ใช้ util กลางเดียวกับ KanbanBoard — กันตัดสต๊อกไม่ตรงกัน) ──
   const consumeMaterials = async () => {
-    if (isCustom) return;
-    const mats = order.costSnapshot?.materials || [];
-    for (const m of mats) {
-      const prod = products.find(p => p.id === m.productId);
-      if (!prod) continue;
-      const oldQty = Number(prod.qty) || 0;
-      const newQty = oldQty - (Number(m.totalQty) || 0);
-      await updateDoc(doc(db, "products", prod.id), {
-        qty: newQty,
-        lastUpdate: nowStr(),
-        history: [
-          { action: "ผลิต-ใช้วัตถุดิบ", by: user?.name || "", date: nowStr(), note: `${order.prodNo} · -${fmtInt(m.totalQty)} ${m.unit || prod.unit || ""}` },
-          ...(prod.history || [])
-        ]
-      });
-      await addDoc(collection(db, "transactions"), {
-        type: "ผลิต-รับวัตถุดิบออก",
-        code: prod.code, name: prod.name,
-        qty: Number(m.totalQty) || 0,
-        by: user?.name || "", date: nowStr(),
-        note: `${order.prodNo} · ${order.clothingName}`,
-        createdAt: serverTimestamp(),
-      });
-    }
+    await consumeMaterialsForOrder({ order, products, user, isCustom });
   };
-
   const stockFinishedForLot = async (l) => {
-    if (isCustom) return;
-    const clothing = clothingItems.find(c => c.id === order.clothingId);
-    if (!clothing) return;
-    const addMap = {};
-    (l.items || []).forEach(it => {
-      const ci = Number(it.colorIdx) || 0;
-      if (!addMap[ci]) addMap[ci] = {};
-      addMap[ci][it.size] = (addMap[ci][it.size] || 0) + (Number(it.qty) || 0);
-    });
-    const newColors = (clothing.colors || []).map((c, idx) => {
-      const adds = addMap[idx];
-      if (!adds) return c;
-      const stock = { ...(c.stock || {}) };
-      Object.entries(adds).forEach(([size, qty]) => {
-        stock[size] = (Number(stock[size]) || 0) + qty;
-      });
-      return { ...c, stock };
-    });
-    await updateDoc(doc(db, "clothing", clothing.id), { colors: newColors });
-    for (const it of (l.items || [])) {
-      await addDoc(collection(db, "transactions"), {
-        type: "ผลิต-รับเข้าคลัง",
-        code: clothing.id,
-        name: `${clothing.model} / ${it.colorName} / ${it.size}`,
-        qty: Number(it.qty) || 0,
-        by: user?.name || "", date: nowStr(),
-        note: `${order.prodNo} · ${l.lotId}`,
-        category: "เสื้อผ้า",
-        createdAt: serverTimestamp(),
-      });
-    }
+    await stockFinishedForLotUtil({ order, lot: l, clothingItems, user, isCustom });
   };
 
   // 📦 เข้าคลังบางส่วน — บวก stock ตามที่กรอก + หัก qty ในล็อต

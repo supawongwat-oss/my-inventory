@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { doc, setDoc, updateDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import { PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot, moveLot, getMachineForCurrentStage, nextLotId, nowStr } from "../utils/productionLots";
+import { consumeMaterialsForOrder, stockFinishedForLot } from "../utils/productionEffects";
 import LotDetailModal from "./LotDetailModal";
 
 const T = { card:"#ffffff", border:"#e3e8ef", text:"#1f2a44", sub:"#5b6b85", muted:"#8a9bb3", accent:"#3b5b8b" };
@@ -100,13 +101,34 @@ export default function KanbanBoard({
     const orderRef = lot.orderRef;
     if (!orderRef) return;
     const collectionName = orderRef.__collection || defaultCollection;
+    const isCustom = !!defaultIsCustom;
+    // 🧪 side-effects (เหมือน path กดปุ่มในล็อต) — ตัดวัตถุดิบตอนออกจาก "พิมพ์ลาย" + บวกสต๊อกตอนเข้าคลัง
+    const needsConsume = !isCustom && lot.status === "พิมพ์ลาย" && targetStatus !== "พิมพ์ลาย" && !orderRef.materialsConsumed;
+    const enteringStock = targetStatus === "เข้าคลัง" && !lot.finishedStocked;
     try {
       const lots = orderRef.lots || [];
       // ถ้า order ไม่มี lots structure (legacy) → update status ของ order
       if (lots.length === 0 || lot.lotIdx === undefined || lot.lotIdx < 0) {
-        await updateDoc(doc(db, collectionName, orderRef.id), { status: targetStatus });
+        if (needsConsume) await consumeMaterialsForOrder({ order: orderRef, products, user, isCustom });
+        await updateDoc(doc(db, collectionName, orderRef.id), { status: targetStatus, ...(needsConsume ? { materialsConsumed: true } : {}) });
       } else {
+        // 📦 เข้าคลัง — ยืนยันก่อน (กันลากพลาด) + บวกสต๊อกเฉพาะล็อตนี้
+        if (enteringStock) {
+          const items = lot.items || [];
+          const totalQty = items.reduce((s, it) => s + (Number(it.qty) || 0), 0);
+          const lines = items.map(it => `• ${it.colorName || "?"} / ${it.size || "?"} × ${Number(it.qty) || 0}`).slice(0, 12).join("\n");
+          const moreText = items.length > 12 ? `\n... และอีก ${items.length - 12} รายการ` : "";
+          const ok = window.confirm(
+            `✅ ยืนยันเข้าคลัง — ${lot.lotId || "ล็อตนี้"}\n\n${lines}${moreText}\n\n` +
+            `รวม ${totalQty} ตัว → ${isCustom ? "(custom — ไม่บวกสต็อก)" : (orderRef.clothingName || "เสื้อผ้า")}\n\n` +
+            `⚠️ ตรวจว่าตัวเลขถูกต้องก่อนกด OK`
+          );
+          if (!ok) return;
+        }
+        if (needsConsume) await consumeMaterialsForOrder({ order: orderRef, products, user, isCustom });
+        if (enteringStock) await stockFinishedForLot({ order: orderRef, lot, clothingItems, user, isCustom });
         let newLots = moveLot(lots, lot.lotIdx, targetStatus, user?.name || "", `drag → ${targetStatus}`);
+        if (enteringStock) newLots = newLots.map((l, i) => i === lot.lotIdx ? { ...l, finishedStocked: true } : l);
         // 🔗 ลากเข้า "เย็บ" → รวมม้วนของใบนี้ที่อยู่เย็บแล้วเป็นล็อตเดียว (รอกระจายทีม)
         if (targetStatus === AUTO_MERGE_STAGE) {
           const atStage = newLots.filter(l => l.status === AUTO_MERGE_STAGE);
@@ -130,7 +152,7 @@ export default function KanbanBoard({
             }];
           }
         }
-        await updateDoc(doc(db, collectionName, orderRef.id), { lots: newLots });
+        await updateDoc(doc(db, collectionName, orderRef.id), { lots: newLots, ...(needsConsume ? { materialsConsumed: true } : {}) });
       }
     } catch (e) {
       console.error("[kanban] move failed:", e);
