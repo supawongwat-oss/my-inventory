@@ -7,7 +7,7 @@ import { INIT_USERS, INIT_CATS } from "../constants";
 // ใช้ rolling window (เรียงใหม่→เก่า) — พอสำหรับงานประจำวัน + รายงาน 30 วัน
 // ⚙️ ปรับตัวเลขตรงนี้ได้ทันที ถ้าอยากเห็นย้อนหลังมากขึ้น
 const LIMITS = {
-  transactions: 2000,      // รับ/จ่าย/ขาย — รายงานใช้แค่กราฟ 30 วัน
+  transactions: 500,       // รับ/จ่าย/ขาย — รายงาน/ขายวันนี้ query ตามวันเองแล้ว (live ใช้แค่ dashboard + tab ประวัติ)
   invoices: 1000,          // บิล
   orders: 1000,            // ใบสั่งของ
   productionOrders: 1000,  // ใบสั่งผลิต
@@ -44,6 +44,13 @@ export function useFirestore() {
   const [customSizes, setCustomSizes] = useState({ apparel: [], shoe: [] }); // 📏 ไซส์ที่ผู้ใช้เพิ่มเอง
   const [pendingMixSales, setPendingMixSales] = useState([]); // 🕐 ขายคละที่รอระบุสี/ไซส์
   const [loading, setLoading] = useState(true);
+  // 🚀 หน่วงโหลดข้อมูลหนัก (ผลิต/บิล/ลูกค้า ฯลฯ) ให้หน้าแรก (login/dashboard) ขึ้นก่อน
+  // critical (users/products/transactions/settings) โหลดทันที · ที่เหลือเริ่มหลัง ~250ms
+  const [deferReady, setDeferReady] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setDeferReady(true), 250);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     // 🛡️ ห้าม auto-overwrite ด้วย INIT_USERS!
@@ -97,39 +104,45 @@ export function useFirestore() {
   }, []);
 
   useEffect(() => {
+    if (!deferReady) return;
     const unsub = onSnapshot(collection(db, "clothing"), snap => {
       setClothingItems(snap.docs.map(d => ({ ...d.data(), id: d.id })));
     });
     return () => unsub();
-  }, []);
+  }, [deferReady]);
 
   useEffect(() => {
+    if (!deferReady) return;
     const q = query(collection(db, "orders"), orderBy("createdAt","desc"), limit(LIMITS.orders));
     const unsub = onSnapshot(q, snap => setOrders(snap.docs.map(d => ({...d.data(), id:d.id}))));
     return () => unsub();
-  }, []);
+  }, [deferReady]);
 
   useEffect(() => {
+    if (!deferReady) return;
     const unsub = onSnapshot(collection(db, "customers"), snap => setCustomers(snap.docs.map(d => ({...d.data(), id:d.id}))));
     return () => unsub();
-  }, []);
+  }, [deferReady]);
 
   useEffect(() => {
+    if (!deferReady) return;
     const unsub = onSnapshot(collection(db, "suppliers"), snap => setSuppliers(snap.docs.map(d => ({ ...d.data(), id: d.id }))));
     return () => unsub();
-  }, []);
+  }, [deferReady]);
 
   useEffect(() => {
+    if (!deferReady) return;
     const q = query(collection(db, "invoices"), orderBy("createdAt","desc"), limit(LIMITS.invoices));
     const unsub = onSnapshot(q, snap => setInvoices(snap.docs.map(d=>({...d.data(),id:d.id}))), ()=>{});
     return () => unsub();
-  }, []);
+  }, [deferReady]);
 
   useEffect(() => {
+    if (!deferReady) return;
     const q = query(collection(db, "statements"), orderBy("createdAt","desc"), limit(LIMITS.statements));
     const unsub = onSnapshot(q, snap => setStatements(snap.docs.map(d=>({...d.data(),id:d.id}))), ()=>{});
     return () => unsub();
-  }, []);
+  }, [deferReady]);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db,"settings","company"), snap => {
@@ -147,72 +160,82 @@ export function useFirestore() {
 
   // Audit logs — เอามาแค่ 500 รายการล่าสุด (กัน load หนัก)
   useEffect(() => {
+    if (!deferReady) return;
     const q = query(collection(db, "auditLog"), orderBy("timestamp", "desc"), limit(500));
     const unsub = onSnapshot(q, snap => setAuditLogs(snap.docs.map(d => ({ ...d.data(), id: d.id }))), ()=>{});
     return () => unsub();
-  }, []);
+  }, [deferReady]);
 
   // Employees (พนักงาน + work permit)
   useEffect(() => {
+    if (!deferReady) return;
     const unsub = onSnapshot(collection(db, "employees"), snap => setEmployees(snap.docs.map(d => ({ ...d.data(), id: d.id }))), ()=>{});
     return () => unsub();
-  }, []);
+  }, [deferReady]);
 
   // Tax Docs
   useEffect(() => {
+    if (!deferReady) return;
     const q = query(collection(db, "taxDocs"), orderBy("date","desc"));
     const unsub = onSnapshot(q, snap => setTaxDocs(snap.docs.map(d => ({ ...d.data(), id: d.id }))), ()=>{});
     return () => unsub();
-  }, []);
+  }, [deferReady]);
 
   // Production orders
   useEffect(() => {
+    if (!deferReady) return;
     const q = query(collection(db, "productionOrders"), orderBy("createdAt","desc"), limit(LIMITS.productionOrders));
     const unsub = onSnapshot(q, snap => setProductionOrders(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
     return () => unsub();
-  }, []);
+  }, [deferReady]);
 
   // BOMs (สูตรวัตถุดิบ)
   useEffect(() => {
+    if (!deferReady) return;
     const unsub = onSnapshot(collection(db, "boms"), snap => setBoms(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
     return () => unsub();
-  }, []);
+  }, [deferReady]);
 
   // Custom orders (ผลิตเฉพาะแบบ — ไม่ตัดสต็อกวัตถุดิบ/สินค้า)
   useEffect(() => {
+    if (!deferReady) return;
     const q = query(collection(db, "customOrders"), orderBy("createdAt","desc"), limit(LIMITS.customOrders));
     const unsub = onSnapshot(q, snap => setCustomOrders(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
     return () => unsub();
-  }, []);
+  }, [deferReady]);
 
   // Catalog orders — สั่งจาก /catalog (public)
   useEffect(() => {
+    if (!deferReady) return;
     const q = query(collection(db, "catalogOrders"), orderBy("createdAt","desc"), limit(LIMITS.catalogOrders));
     const unsub = onSnapshot(q, snap => setCatalogOrders(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
     return () => unsub();
-  }, []);
+  }, [deferReady]);
 
   // 📅 Attendance — บันทึกเวลาเข้างานพนักงาน (per day)
   useEffect(() => {
+    if (!deferReady) return;
     const unsub = onSnapshot(collection(db, "attendance"),
       snap => setAttendance(snap.docs.map(d => ({...d.data(), id:d.id}))),
       ()=>{});
     return () => unsub();
-  }, []);
+  }, [deferReady]);
 
   // 💰 Payroll runs — รอบจ่ายเงินเดือน
   useEffect(() => {
+    if (!deferReady) return;
     const q = query(collection(db, "payrollRuns"), orderBy("createdAt","desc"), limit(LIMITS.payrollRuns));
     const unsub = onSnapshot(q, snap => setPayrollRuns(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
     return () => unsub();
-  }, []);
+  }, [deferReady]);
 
-  // 📏 Custom sizes — ไซส์เสื้อผ้า/รองเท้าที่ผู้ใช้เพิ่มเอง (settings/sizes)
+  // 🧺 ขายคละที่รอระบุสี/ไซส์
   useEffect(() => {
+    if (!deferReady) return;
     const q = query(collection(db, "pendingMixSales"), orderBy("createdAt","desc"), limit(LIMITS.pendingMixSales));
     const unsub = onSnapshot(q, snap => setPendingMixSales(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
     return () => unsub();
-  }, []);
+  }, [deferReady]);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "settings", "sizes"), snap => {
