@@ -130,6 +130,17 @@ export default function App() {
     }
   }, [user]);
 
+  // 🔄 sync สิทธิ์ของผู้ใช้ที่ล็อกอินอยู่ กับข้อมูลล่าสุดใน users collection (real-time)
+  // แอดมินแก้สิทธิ์/เมนู → เครื่องพนักงานอัปเดตเองทันที ไม่ต้อง login ใหม่
+  useEffect(() => {
+    if (!user || !usersLoaded) return;
+    const fresh = users.find(u => String(u.id) === String(user.id));
+    if (!fresh) return; // ไม่พบ (เช่น seed admin ที่ไม่ได้อยู่ใน Firestore) → ไม่แตะ
+    const keys = ["role", "allowedTabs", "permissions", "name", "avatar", "position", "username"];
+    const changed = keys.some(k => JSON.stringify(fresh[k]) !== JSON.stringify(user[k]));
+    if (changed) setUser(prev => ({ ...prev, ...Object.fromEntries(keys.map(k => [k, fresh[k]])) }));
+  }, [users, usersLoaded, user]);
+
   // Auto-reload เมื่อมี deploy ใหม่ — เช็คตอน tab กลับมา visible
   // เทียบ hash ของ main JS จาก /asset-manifest.json
   useEffect(() => {
