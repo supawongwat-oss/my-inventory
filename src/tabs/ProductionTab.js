@@ -290,6 +290,7 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:10,flexWrap:"wrap"}}>
             <div style={{fontSize:12,color:T.sub}}>
               {customSubTab==="active" ? "กำลังผลิต" : customSubTab==="done" ? "งานที่เสร็จแล้ว" : "Custom Order ทั้งหมด"} <b style={{color:T.accent}}>{filteredCustom.length} ใบ</b>
+              <span style={{marginLeft:8,padding:"2px 10px",background:"rgba(217,119,6,0.12)",color:"#d97706",borderRadius:10,fontSize:11,fontWeight:700}}>รวม {fmtInt(filteredCustom.reduce((s,o)=>s+(Number(o.totalQty)||0),0))} ตัว</span>
               {selectedCustom.size > 0 && <span style={{marginLeft:8,padding:"2px 8px",background:"rgba(22,163,74,0.12)",color:"#16a34a",borderRadius:10,fontSize:11,fontWeight:600}}>เลือก {selectedCustom.size} ใบ</span>}
             </div>
             <div style={{display:"flex",gap:8}}>
