@@ -431,6 +431,27 @@ export default function StatementTab({ statements, invoices, customers, companyI
             <Input label="หมายเหตุ" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="ระบุข้อความเพิ่มเติม..." />
           </div>
 
+          {/* 🏦 บัญชีรับชำระ — แสดงบนใบวางบิล */}
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11, color: T.sub, display: "block", marginBottom: 5, fontWeight: 500 }}>🏦 บัญชีรับชำระ (แสดงบนใบวางบิล)</label>
+            <select
+              value={form.bankAccount ? String(form.bankAccount.__idx ?? -1) : ""}
+              onChange={e => {
+                const idx = Number(e.target.value);
+                const b = (companyInfo?.bankAccounts || [])[idx];
+                setForm(f => ({ ...f, bankAccount: b ? { __idx: idx, bank: b.bankName, bankName: b.bankName, accountNo: b.accountNo, accountName: b.accountName || b.label || "" } : null }));
+              }}
+              style={{ width: "100%", background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 8, padding: "9px 12px", fontFamily: "'Sarabun',sans-serif", fontSize: 13, outline: "none" }}>
+              <option value="">— ไม่แสดงบัญชี —</option>
+              {(companyInfo?.bankAccounts || []).map((b, i) => (
+                <option key={i} value={i}>{b.label ? `${b.label} · ` : ""}{b.bankName} · {b.accountNo}{b.accountName ? ` · ${b.accountName}` : ""}</option>
+              ))}
+            </select>
+            {(!companyInfo?.bankAccounts || companyInfo.bankAccounts.length === 0) && (
+              <div style={{ fontSize: 10, color: T.muted, marginTop: 4 }}>ยังไม่มีบัญชี — เพิ่มได้ที่ ⚙️ ตั้งค่า → ข้อมูลบริษัท</div>
+            )}
+          </div>
+
           {/* Buttons */}
           <div style={{ display: "flex", gap: 10 }}>
             <BtnGhost onClick={() => setShowCreate(false)} style={{ flex: 1 }}>ยกเลิก</BtnGhost>
@@ -594,7 +615,7 @@ function StatementPrintLayout({ statement, companyInfo }) {
             <th style={{ padding: "4px 6px", textAlign: "left", fontWeight: 700, width: 95, border: "1px solid #000", fontSize: 9 }}>เลขที่บิล</th>
             <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, width: 80, border: "1px solid #000", fontSize: 9 }}>วันที่</th>
             <th style={{ padding: "4px 6px", textAlign: "left", fontWeight: 700, border: "1px solid #000", fontSize: 9 }}>ประเภท / สถานะ</th>
-            <th style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700, width: 100, border: "1px solid #000", fontSize: 9 }}>ยอดบิล (฿)</th>
+            <th style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700, width: 130, minWidth: 130, border: "1px solid #000", fontSize: 9, whiteSpace: "nowrap" }}>ยอดบิล (฿)</th>
           </tr>
         </thead>
         <tbody>
@@ -606,14 +627,14 @@ function StatementPrintLayout({ statement, companyInfo }) {
                 {inv.docType === "tax" ? "ใบกำกับภาษี" : inv.docType === "quotation" ? "ใบวางบิล" : "ใบเสร็จ"}
                 <span style={{ marginLeft: 4, fontSize: 8, padding: "0px 4px", borderRadius: 4, background: inv.status === "ชำระแล้ว" ? "#dcfce7" : "#fef3c7", color: "#000", border: "1px solid #000" }}>{inv.status}</span>
               </td>
-              <td style={{ padding: "4px 6px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#000", border: "1px solid #cbd5e1", fontSize: 10 }}>{Number(inv.total).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
+              <td style={{ padding: "4px 6px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#000", border: "1px solid #cbd5e1", fontSize: 10, whiteSpace: "nowrap" }}>{Number(inv.total).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
             </tr>
           ))}
         </tbody>
         <tfoot>
           <tr style={{ background: "#f1f5f9", fontWeight: 800 }}>
             <td colSpan={3} style={{ padding: "6px 8px", textAlign: "right", color: "#000", fontSize: 11, border: "2px solid #000" }}>รวมทั้งสิ้น</td>
-            <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 13, color: "#000", border: "2px solid #000" }}>
+            <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 13, color: "#000", border: "2px solid #000", whiteSpace: "nowrap" }}>
               ฿{Number(statement.totalAmount || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
             </td>
           </tr>
