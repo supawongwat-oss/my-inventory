@@ -63,3 +63,64 @@ export function teamMembers(teamsMap, key, employees = []) {
 export function teamableStages(steps = PRODUCTION_STEPS) {
   return steps.filter(s => !NO_TEAM_STAGES.includes(s));
 }
+
+// ── 📊 ผลงานทีม ──────────────────────────────────────────────
+// แกะจากข้อมูลที่ล็อตเก็บไว้อยู่แล้ว — ไม่ต้องบันทึกเพิ่มตอนทำงาน
+//   lot.machineByStage[stage] = ทีมที่ทำขั้นนั้น (เก็บแยกรายขั้น ไม่หายตอนย้าย)
+//   lot.statusHistory         = เวลาที่เข้าแต่ละขั้น
+//   lot.items / producedQty   = จำนวน
+
+// "17/07/2026 14:30" → Date  (รูปแบบจาก nowStr())
+export function parseThaiDateTime(s) {
+  if (typeof s !== "string") return null;
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/);
+  if (!m) return null;
+  const [, dd, mm, yyyy, hh = "0", mi = "0"] = m;
+  const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(mi));
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// จำนวนที่ล็อตนี้ผลิต — items ปัจจุบัน + ที่เข้าคลังไปแล้ว (items ถูกล้างตอนเข้าครบ)
+export function lotProducedQty(lot) {
+  const inHand = (lot?.items || []).reduce((s, it) => s + (Number(it.qty) || 0), 0);
+  return inHand + (Number(lot?.producedQty) || 0);
+}
+
+// ล็อตนี้เข้าขั้นนี้เมื่อไหร่ (ครั้งแรก)
+export function stageEnteredAt(lot, stage) {
+  const h = (lot?.statusHistory || []).find(x => x.status === stage);
+  return h?.at ? parseThaiDateTime(h.at) : null;
+}
+
+// สรุปผลงานของสายงานหนึ่ง → { [teamKey]: { lots:[], qty, count } }
+// opts.from / opts.to = ช่วงเวลา (Date) กรองตามวันที่ "เข้าขั้นนั้น"
+export function stageOutput(orders = [], stage, opts = {}) {
+  const { from, to } = opts;
+  const byTeam = {};
+  orders.forEach(order => {
+    const lots = Array.isArray(order?.lots) && order.lots.length > 0
+      ? order.lots
+      : [{ lotId: "L1", items: order?.items || [], status: order?.status, statusHistory: order?.statusHistory, machineByStage: order?.machineByStage }];
+    lots.forEach(lot => {
+      if (lot?.status === "ยกเลิก") return;
+      const team = (lot?.machineByStage || {})[stage];
+      if (!team) return;                       // ยังไม่ได้ระบุทีมของขั้นนี้
+      const at = stageEnteredAt(lot, stage);
+      if (from && (!at || at < from)) return;
+      if (to && (!at || at > to)) return;
+      const qty = lotProducedQty(lot);
+      if (!byTeam[team]) byTeam[team] = { lots: [], qty: 0, count: 0 };
+      byTeam[team].lots.push({
+        lotId: lot.lotId || "—",
+        prodNo: order.prodNo || order.orderNo || "",
+        clothingName: order.clothingName || "",
+        qty, at,
+        status: lot.status || "",
+      });
+      byTeam[team].qty += qty;
+      byTeam[team].count += 1;
+    });
+  });
+  Object.values(byTeam).forEach(t => t.lots.sort((a, b) => (b.at?.getTime() || 0) - (a.at?.getTime() || 0)));
+  return byTeam;
+}

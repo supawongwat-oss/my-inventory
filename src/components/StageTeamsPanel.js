@@ -6,7 +6,11 @@ import { db } from "../firebase";
 import { T } from "../theme";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { PRODUCTION_STEPS, STATUS_COLORS, getLots } from "../utils/productionLots";
-import { TEAMS_DOC, getStageList, getStageTeams, teamInfo, teamableStages } from "../utils/stageTeams";
+import { TEAMS_DOC, getStageList, getStageTeams, teamInfo, teamableStages, stageOutput } from "../utils/stageTeams";
+
+const fmtInt = (n) => Number(n || 0).toLocaleString("th-TH");
+const THAI_MONTHS = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+const fmtDT = (d) => d ? `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}` : "—";
 
 export default function StageTeamsPanel({ employees = [], orders = [], user, role }) {
   const [data, setData] = useState({});          // ทั้ง doc
@@ -16,6 +20,11 @@ export default function StageTeamsPanel({ employees = [], orders = [], user, rol
   const [addingTo, setAddingTo] = useState("");  // unit key ที่กำลังเลือกคนเพิ่ม
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
+  const [view, setView] = useState("manage");    // manage = จัดทีม | output = ผลงาน
+  const now = new Date();
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
+  const [openTeam, setOpenTeam] = useState("");  // ทีมที่กางดูรายละเอียด
   const canEdit = !!role?.canManageUsers || user?.role === "admin" || user?.role === "manager";
 
   useEffect(() => {
@@ -148,6 +157,24 @@ export default function StageTeamsPanel({ employees = [], orders = [], user, rol
     return s;
   }, [list, teams]);
 
+  // 📊 ผลงานของสายงานนี้ในเดือนที่เลือก
+  const output = useMemo(() => {
+    const from = new Date(year, month - 1, 1, 0, 0, 0);
+    const to = new Date(year, month, 0, 23, 59, 59);
+    return stageOutput(orders, stage, { from, to });
+  }, [orders, stage, month, year]);
+
+  const outputRows = useMemo(() => {
+    const keys = [...new Set([...list, ...Object.keys(output)])]; // รวมทีมที่ถูกลบไปแล้วแต่ยังมีผลงาน
+    return keys
+      .map(k => ({ key: k, gone: !list.includes(k), ...(output[k] || { lots: [], qty: 0, count: 0 }) }))
+      .filter(r => r.count > 0)
+      .sort((a, b) => b.qty - a.qty);
+  }, [list, output]);
+
+  const grandQty = outputRows.reduce((s, r) => s + r.qty, 0);
+  const grandLots = outputRows.reduce((s, r) => s + r.count, 0);
+
   if (!loaded) return <div style={{ padding: 30, textAlign: "center", color: T.muted, fontSize: 13 }}>⏳ กำลังโหลด...</div>;
 
   const stageColor = STATUS_COLORS[stage] || T.accent;
@@ -177,6 +204,104 @@ export default function StageTeamsPanel({ employees = [], orders = [], user, rol
         })}
       </div>
 
+      {/* จัดทีม / ผลงาน */}
+      <div style={{ display: "flex", gap: 5, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+        {[{ id: "manage", label: "⚙️ จัดทีม" }, { id: "output", label: "📊 ผลงาน" }].map(v => (
+          <button key={v.id} onClick={() => setView(v.id)}
+            style={{ padding: "7px 16px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 12,
+              border: `1px solid ${view === v.id ? T.accent : T.border}`,
+              background: view === v.id ? "rgba(59,91,139,0.1)" : "white",
+              color: view === v.id ? T.accent : T.sub, fontWeight: view === v.id ? 700 : 500 }}>
+            {v.label}
+          </button>
+        ))}
+        {view === "output" && (
+          <>
+            <select value={month} onChange={e => setMonth(Number(e.target.value))}
+              style={{ padding: "6px 10px", borderRadius: 7, border: `1px solid ${T.border}`, fontSize: 12, fontFamily: "inherit", marginLeft: 6 }}>
+              {THAI_MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+            </select>
+            <select value={year} onChange={e => setYear(Number(e.target.value))}
+              style={{ padding: "6px 10px", borderRadius: 7, border: `1px solid ${T.border}`, fontSize: 12, fontFamily: "inherit" }}>
+              {[year - 2, year - 1, year, year + 1].map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </>
+        )}
+      </div>
+
+      {/* ── 📊 ผลงาน ── */}
+      {view === "output" && (
+        <div>
+          <div style={{ padding: "8px 14px", background: "rgba(59,91,139,0.06)", border: `1px solid ${T.border}`, borderRadius: 8, marginBottom: 10, fontSize: 11, color: T.sub, lineHeight: 1.6 }}>
+            📌 นับจากล็อตที่ <b>เข้าขั้น “{stage}”</b> ในเดือนที่เลือก และระบุทีมไว้แล้ว — ล็อตที่ไม่ได้เลือกทีมจะไม่ถูกนับ
+          </div>
+
+          {outputRows.length === 0 ? (
+            <div style={{ padding: 30, textAlign: "center", color: T.muted, fontSize: 13, background: T.card, border: `1px dashed ${T.border}`, borderRadius: 10 }}>
+              ยังไม่มีผลงานของ “{stage}” ใน {THAI_MONTHS[month - 1]} {year}<br/>
+              <span style={{ fontSize: 11 }}>ล็อตต้องผ่านขั้นนี้ + เลือกทีมไว้ ถึงจะขึ้นรายงาน</span>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+                <Stat label="ทีมที่มีผลงาน" value={`${outputRows.length} ทีม`} color={stageColor}/>
+                <Stat label="ล็อตทั้งหมด" value={`${fmtInt(grandLots)} ล็อต`} color={T.sub}/>
+                <Stat label="รวมทั้งหมด" value={`${fmtInt(grandQty)} ตัว`} color={stageColor} highlight/>
+              </div>
+
+              <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, overflow: "hidden" }}>
+                {outputRows.map((r, i) => {
+                  const pct = grandQty > 0 ? Math.round((r.qty / grandQty) * 100) : 0;
+                  const { nickname } = teamInfo(teams, r.key);
+                  const memberEmps = teamInfo(teams, r.key).members.map(id => employees.find(e => e.id === id)).filter(Boolean);
+                  const isOpen = openTeam === r.key;
+                  return (
+                    <div key={r.key} style={{ borderBottom: i < outputRows.length - 1 ? `1px solid ${T.border}` : "none" }}>
+                      <div onClick={() => setOpenTeam(isOpen ? "" : r.key)}
+                        style={{ display: "grid", gridTemplateColumns: "16px 1fr 90px 78px 46px", alignItems: "center", gap: 8, padding: "9px 12px", cursor: "pointer", fontSize: 12 }}>
+                        <span style={{ color: T.muted, fontSize: 10 }}>{isOpen ? "▼" : "▶"}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <span style={{ fontWeight: 700, color: T.text }}>{r.key}</span>
+                          {nickname && <span style={{ color: T.sub, marginLeft: 5 }}>“{nickname}”</span>}
+                          {r.gone && <span style={{ marginLeft: 6, fontSize: 10, color: T.red }}>· ทีมถูกลบแล้ว</span>}
+                          {memberEmps.length > 0 && (
+                            <div style={{ fontSize: 10, color: T.muted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {memberEmps.map(e => e.name).join(", ")}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ height: 6, background: "#f1f5f9", borderRadius: 3, overflow: "hidden" }}>
+                          <div style={{ width: `${pct}%`, height: "100%", background: stageColor }}/>
+                        </div>
+                        <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 800, color: stageColor }}>{fmtInt(r.qty)}</div>
+                        <div style={{ textAlign: "right", fontSize: 10, color: T.muted }}>{r.count} ล็อต</div>
+                      </div>
+
+                      {isOpen && (
+                        <div style={{ padding: "0 12px 10px 36px", background: "#f8fafc" }}>
+                          {r.lots.map((l, li) => (
+                            <div key={li} style={{ display: "grid", gridTemplateColumns: "84px 1fr 74px 62px", gap: 8, alignItems: "center", padding: "5px 0", fontSize: 11, borderBottom: li < r.lots.length - 1 ? `1px solid ${T.border}` : "none" }}>
+                              <span style={{ fontFamily: "monospace", color: T.sub }}>{l.prodNo}</span>
+                              <span style={{ color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {l.lotId} · {l.clothingName}
+                                <span style={{ color: T.muted, marginLeft: 5 }}>({l.status})</span>
+                              </span>
+                              <span style={{ color: T.muted, fontFamily: "monospace" }}>{fmtDT(l.at)}</span>
+                              <span style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: stageColor }}>{fmtInt(l.qty)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {view === "manage" && (<>
       {/* Toolbar */}
       {canEdit && (
         <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -290,6 +415,16 @@ export default function StageTeamsPanel({ employees = [], orders = [], user, rol
           );
         })}
       </div>
+      </>)}
+    </div>
+  );
+}
+
+function Stat({ label, value, color, highlight }) {
+  return (
+    <div style={{ flex: "1 1 140px", padding: "8px 12px", background: highlight ? `${color}12` : "#f8fafc", border: `1px solid ${highlight ? color : T.border}`, borderRadius: 8 }}>
+      <div style={{ fontSize: 10, color: T.muted, fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 17, fontWeight: 800, color, fontFamily: "monospace", marginTop: 2 }}>{value}</div>
     </div>
   );
 }

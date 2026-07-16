@@ -208,9 +208,10 @@ export default function LotDetailModal({
       const newLots = lots.map((l, i) => {
         if (i !== lotIdx) return l;
         if (allDone) {
-          return { ...l, items: [], status: "เข้าคลัง", finishedStocked: true, statusHistory: [...(l.statusHistory||[]), { status: "เข้าคลัง", at: nowStr(), by: user?.name || "", note: "เข้าคลังบางส่วน · ครบทุกตัว" }] };
+          // 📊 items ถูกล้าง → ต้องจำยอดที่ผลิตจริงไว้ ไม่งั้นรายงานผลงานทีมจะเป็น 0
+          return { ...l, items: [], producedQty: (Number(l.producedQty)||0) + totalTake, status: "เข้าคลัง", finishedStocked: true, statusHistory: [...(l.statusHistory||[]), { status: "เข้าคลัง", at: nowStr(), by: user?.name || "", note: "เข้าคลังบางส่วน · ครบทุกตัว" }] };
         }
-        return { ...l, items: newItems, statusHistory: [...(l.statusHistory||[]), { status: l.status, at: nowStr(), by: user?.name || "", note: `เข้าคลังบางส่วน ${totalTake} ตัว · เหลือ ${remain}` }] };
+        return { ...l, items: newItems, producedQty: (Number(l.producedQty)||0) + totalTake, statusHistory: [...(l.statusHistory||[]), { status: l.status, at: nowStr(), by: user?.name || "", note: `เข้าคลังบางส่วน ${totalTake} ตัว · เหลือ ${remain}` }] };
       });
       await persistLots(newLots, allDone ? { status: "เข้าคลัง" } : {});
       logAudit(user, {
