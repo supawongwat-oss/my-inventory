@@ -2860,6 +2860,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               boms={boms||[]}
               products={products}
               clothingItems={clothingItems}
+              employees={employees||[]}
               customers={customers}
               companyInfo={companyInfo}
               user={user}

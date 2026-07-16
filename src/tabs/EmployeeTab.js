@@ -6,6 +6,7 @@ import { T } from "../theme";
 import { Modal, MHead, BtnPrimary, BtnGhost, CardBox } from "../components/ui";
 import { uploadFile, deleteFile, fmtBytes } from "../utils/upload";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
+import SewingTeamsPanel from "../components/SewingTeamsPanel";
 
 const TODAY = () => { const d=new Date(); d.setHours(0,0,0,0); return d; };
 const daysUntil = (dateStr) => {
@@ -51,6 +52,7 @@ const EMPTY_FORM = {
 };
 
 export default function EmployeeTab({ employees = [], user, role }) {
+  const [view, setView] = useState("cards"); // cards = บัตรลูกจ้าง | teams = ทีมเย็บ
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null); // employee object
   const [form, setForm] = useState(EMPTY_FORM);
@@ -193,6 +195,26 @@ export default function EmployeeTab({ employees = [], user, role }) {
   // ────────── RENDER ──────────
   return (
     <div style={{ animation: "fadeUp 0.4s ease" }}>
+      {/* Sub-tabs */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 14, padding: 4, background: T.card, borderRadius: 12, border: `1px solid ${T.border}`, width: "fit-content" }}>
+        {[
+          { id: "cards", icon: "👷", label: "บัตรลูกจ้าง" },
+          { id: "teams", icon: "👥", label: "ทีมเย็บ" },
+        ].map(t => (
+          <button key={t.id} onClick={()=>setView(t.id)}
+            style={{ padding: "8px 18px", borderRadius: 9, border: "none", cursor: "pointer",
+              background: view===t.id ? "linear-gradient(135deg,#3b5b8b,#3b5b8b)" : "transparent",
+              color: view===t.id ? "white" : T.sub,
+              fontSize: 13, fontWeight: view===t.id ? 700 : 500, fontFamily: "inherit" }}>
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {view === "teams" ? (
+        <SewingTeamsPanel employees={employees} user={user} role={role}/>
+      ) : (
+      <>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
         <div>
@@ -286,6 +308,8 @@ export default function EmployeeTab({ employees = [], user, role }) {
         ))}
         </div>
       </CardBox>
+      </>
+      )}
 
       {/* ── Form Modal ── */}
       {showForm && (

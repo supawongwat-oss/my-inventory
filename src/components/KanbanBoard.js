@@ -12,7 +12,7 @@ const AUTO_MERGE_STAGE = "เย็บ";
 
 export default function KanbanBoard({
   orders = [], collectionName: defaultCollection = "productionOrders", isCustom: defaultIsCustom = false,
-  user, role, products = [], clothingItems = [],
+  user, role, products = [], clothingItems = [], employees = [],
   printElementById, companyInfo = {},
 }) {
   const [search, setSearch] = useState("");
@@ -431,6 +431,7 @@ export default function KanbanBoard({
           role={role}
           products={products}
           clothingItems={clothingItems}
+          employees={employees}
           collectionName={selected.order.__collection || defaultCollection}
           isCustom={selected.order.__isCustom ?? defaultIsCustom}
           steps={columnOrder}

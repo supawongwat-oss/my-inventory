@@ -11,6 +11,7 @@ import {
   estimateRolls, ROLL_CAPACITY, packIntoRolls, nextLotId,
 } from "../utils/productionLots";
 import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
+import { SEWING_STAGE, teamInfo } from "../utils/sewingTeams";
 import { sizeRank } from "../theme";
 import PrintRollLabel from "./PrintRollLabel";
 
@@ -18,7 +19,7 @@ const T = { border:"#e3e8ef", sub:"#5b6b85", text:"#1f2a44", muted:"#8a9bb3", ac
 const fmtInt = (n) => Number(n || 0).toLocaleString("th-TH");
 
 export default function LotDetailModal({
-  order, lotIdx, user, role, products = [], clothingItems = [],
+  order, lotIdx, user, role, products = [], clothingItems = [], employees = [],
   collectionName = "productionOrders", isCustom = false,
   steps = PRODUCTION_STEPS,
   printElementById, companyInfo = {},
@@ -42,6 +43,15 @@ export default function LotDetailModal({
   const [rollVal, setRollVal] = useState("");
   const [jobVal, setJobVal] = useState("");
   const fileRef = useRef(null);
+
+  // 👥 ทีมเย็บ — ไว้โชว์ว่าทีมที่เลือกมีใครบ้าง (ดูอย่างเดียว ไม่ยุ่งกับเงินเดือน)
+  const [sewingTeams, setSewingTeams] = useState({});
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "settings", "sewingTeams"), snap => {
+      setSewingTeams(snap.exists() && snap.data().teams ? snap.data().teams : {});
+    }, () => {});
+    return () => unsub();
+  }, []);
 
   // 🔒 โหมดบวกสต๊อกอัตโนมัติ — ปิดไว้ก่อน (settings/production.autoStockOnFinish)
   // ปิด = กด "เข้าคลัง" ได้ตามปกติ + บันทึกยอด/วันที่ไว้ครบ แต่ "ไม่แตะเลขสต๊อกจริง"
@@ -709,6 +719,20 @@ export default function LotDetailModal({
                 <button onClick={()=>saveVal("")} title="ล้าง" style={{padding:"3px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:"white",color:T.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>✕</button>
               </>
             )}
+            {/* 👥 คนในทีม — โชว์เฉพาะช่องเย็บที่เลือกทีมแล้ว */}
+            {currentStage === SEWING_STAGE && current && (()=>{
+              const { nickname, members } = teamInfo(sewingTeams, current);
+              const emps = members.map(id => employees.find(e => e.id === id)).filter(Boolean);
+              if (!nickname && emps.length === 0) return null;
+              return (
+                <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",flexBasis:"100%"}}>
+                  {nickname && <span style={{fontSize:11,color:T.sub,fontWeight:700}}>“{nickname}”</span>}
+                  {emps.map(e => (
+                    <span key={e.id} style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:"rgba(59,91,139,0.08)",color:T.accent,fontWeight:600}}>{e.name}</span>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         );
       })()}

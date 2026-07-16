@@ -35,7 +35,7 @@ function parseThaiDate(s) {
   return new Date(`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`);
 }
 
-export default function ProductionTab({ productionOrders=[], customOrders=[], boms=[], products=[], clothingItems=[], customers=[], companyInfo={}, user, role, printElementById, onCreateInvoiceFromCustom }) {
+export default function ProductionTab({ productionOrders=[], customOrders=[], boms=[], products=[], clothingItems=[], customers=[], employees=[], companyInfo={}, user, role, printElementById, onCreateInvoiceFromCustom }) {
   const [subTab, setSubTab] = useState("kanban"); // kanban | orders | custom | bom
   const [showNew, setShowNew] = useState(false);
   const [editProdOrder, setEditProdOrder] = useState(null); // ✏️ ใบสั่งผลิตที่กำลังแก้ไข
@@ -160,7 +160,7 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
               ...customOrders.map(o => ({ ...o, __collection: "customOrders", __isCustom: true })),
             ]}
             user={user} role={role}
-            products={products} clothingItems={clothingItems}
+            products={products} clothingItems={clothingItems} employees={employees}
             printElementById={printElementById} companyInfo={companyInfo}
           />
         </>
