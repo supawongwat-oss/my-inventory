@@ -1,7 +1,7 @@
 // 👥 จัดการทีมเย็บ — ระบุว่าแต่ละทีมมีใครบ้าง + ตั้งชื่อเล่นทีม
 // ⚠️ ไม่ยุ่งกับระบบเงินเดือน — เป็นข้อมูลสำหรับ "ดู" อย่างเดียว
 import { useState, useEffect, useMemo } from "react";
-import { doc, setDoc, onSnapshot } from "firebase/firestore";
+import { doc, setDoc, onSnapshot, addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { T } from "../theme";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
@@ -104,6 +104,37 @@ export default function SewingTeamsPanel({ employees = [], orders = [], user, ro
     setSearch("");
   };
 
+  // ➕ สร้างพนักงานใหม่ + ใส่เข้าทีมเลยในก้าวเดียว
+  // (ไม่ต้องเดินไปแท็บบัตรลูกจ้าง — ที่นั่นบังคับแค่ "ชื่อ" อยู่แล้ว
+  //  ข้อมูลอื่น เช่น passport/work permit ค่อยไปเติมทีหลังได้ถ้าจำเป็น)
+  const [creating, setCreating] = useState(false);
+  const createAndAdd = async (key, name) => {
+    const trimmed = (name || "").trim();
+    if (!trimmed || creating) return;
+    setCreating(true);
+    try {
+      const ref = await addDoc(collection(db, "employees"), {
+        name: trimmed,
+        department: SEWING_STAGE,   // จัดเข้าแผนก "เย็บ" ให้เลย — แก้ทีหลังได้
+        position: "", nameEn: "", nationality: "", phone: "", note: "",
+        attachments: [],
+        salaryType: "monthly", baseSalary: 0, pieceRate: 0, otRate: 0,
+        hasSSO: true, extraDeductionAnnual: 0,
+        createdAt: serverTimestamp(),
+        createdBy: user?.name || "",
+      });
+      logAudit(user, { action: AUDIT_ACTIONS.CREATE, collection: "employees", targetId: ref.id, targetLabel: trimmed, note: `สร้างจากหน้าทีมเย็บ → ${key}` });
+      const cur = teamInfo(teams, key);
+      await save({ ...teams, [key]: { ...cur, members: [...cur.members, ref.id] } }, `เพิ่ม ${trimmed} (คนใหม่) เข้า ${key}`);
+      setAddingTo("");
+      setSearch("");
+    } catch (e) {
+      alert("สร้างพนักงานไม่สำเร็จ: " + (e.message || e));
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const removeMember = (key, empId) => {
     const cur = teamInfo(teams, key);
     const emp = employees.find(e => e.id === empId);
@@ -124,14 +155,10 @@ export default function SewingTeamsPanel({ employees = [], orders = [], user, ro
     <div>
       <div style={{ padding: "10px 14px", background: "rgba(59,91,139,0.06)", border: `1px solid ${T.border}`, borderRadius: 10, marginBottom: 14, fontSize: 12, color: T.sub, lineHeight: 1.7 }}>
         💡 ทีมพวกนี้คือทีมเดียวกับที่เลือกในช่อง <b>“เย็บ”</b> บนบอร์ดผลิต — ระบุว่าใครอยู่ทีมไหนไว้ตรงนี้ แล้วเปิดล็อตดูจะเห็นชื่อคนในทีมทันที<br/>
+        ⚡ กด <b>“+ เพิ่มคนเข้าทีม”</b> แล้วพิมพ์ชื่อได้เลย — ยังไม่มีในระบบก็<b>สร้างใหม่จากตรงนี้</b>ได้ทันที ไม่ต้องไปแท็บบัตรลูกจ้าง<br/>
         🔒 <b>ยังไม่ยุ่งกับเงินเดือน</b> — เป็นข้อมูลไว้ดูเฉย ๆ ไม่กระทบการคำนวณค่าจ้างใด ๆ
       </div>
 
-      {employees.length === 0 && (
-        <div style={{ padding: 30, textAlign: "center", color: T.muted, fontSize: 13, background: T.card, border: `1px solid ${T.border}`, borderRadius: 10 }}>
-          ยังไม่มีพนักงานในระบบ — เพิ่มที่แท็บ “👷 บัตรลูกจ้าง” ก่อน แล้วค่อยกลับมาจัดทีม
-        </div>
-      )}
 
       {employees.length > 0 && unassigned.length > 0 && (
         <div style={{ padding: "8px 14px", background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.3)", borderRadius: 8, marginBottom: 12, fontSize: 12, color: "#b45309" }}>
@@ -169,6 +196,8 @@ export default function SewingTeamsPanel({ employees = [], orders = [], user, ro
           const pickable = employees
             .filter(e => !members.includes(e.id))
             .filter(e => !search || `${e.name} ${e.department || ""} ${e.position || ""}`.toLowerCase().includes(search.toLowerCase()));
+          // มีคนชื่อนี้อยู่แล้วไหม (นับคนที่อยู่ทีมนี้ด้วย) — กันสร้างชื่อซ้ำ
+          const exactExists = employees.some(e => (e.name || "").trim().toLowerCase() === search.trim().toLowerCase());
 
           return (
             <div key={key} style={{ background: T.card, border: `1px solid ${memberEmps.length > 0 ? "rgba(59,91,139,0.35)" : T.border}`, borderRadius: 10, padding: 12 }}>
@@ -214,10 +243,10 @@ export default function SewingTeamsPanel({ employees = [], orders = [], user, ro
               {canEdit && (isAdding ? (
                 <div>
                   <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
-                    placeholder="🔍 พิมพ์ชื่อ..."
+                    onKeyDown={e => { if (e.key === "Enter" && search.trim() && !exactExists) createAndAdd(key, search); }}
+                    placeholder="🔍 พิมพ์ชื่อ — มีอยู่แล้วก็เลือก / ยังไม่มีก็สร้างใหม่"
                     style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: `1px solid ${T.accent}`, fontSize: 12, fontFamily: "inherit", outline: "none", marginBottom: 6 }}/>
                   <div style={{ maxHeight: 150, overflowY: "auto", border: `1px solid ${T.border}`, borderRadius: 6 }}>
-                    {pickable.length === 0 && <div style={{ padding: 10, fontSize: 11, color: T.muted, textAlign: "center" }}>ไม่พบพนักงาน</div>}
                     {pickable.map(e => (
                       <div key={e.id} onClick={() => addMember(key, e.id)}
                         style={{ padding: "6px 10px", fontSize: 12, cursor: "pointer", borderBottom: `1px solid ${T.border}` }}
@@ -227,6 +256,16 @@ export default function SewingTeamsPanel({ employees = [], orders = [], user, ro
                         <span style={{ fontSize: 10, color: T.muted, marginLeft: 6 }}>{e.department || "—"}</span>
                       </div>
                     ))}
+                    {/* พิมพ์ชื่อที่ยังไม่มีในระบบ → สร้างคนใหม่ + ใส่เข้าทีมเลย */}
+                    {search.trim() && !exactExists && (
+                      <div onClick={() => createAndAdd(key, search)}
+                        style={{ padding: "8px 10px", fontSize: 12, cursor: creating ? "wait" : "pointer", background: "rgba(16,185,129,0.08)", color: "#059669", fontWeight: 700 }}>
+                        {creating ? "⏳ กำลังสร้าง..." : <>➕ สร้าง “{search.trim()}” เป็นพนักงานใหม่ → ใส่เข้า {key}</>}
+                      </div>
+                    )}
+                    {pickable.length === 0 && !search.trim() && (
+                      <div style={{ padding: 10, fontSize: 11, color: T.muted, textAlign: "center" }}>พิมพ์ชื่อเพื่อค้นหา หรือสร้างคนใหม่</div>
+                    )}
                   </div>
                   <button onClick={() => { setAddingTo(""); setSearch(""); }}
                     style={{ marginTop: 6, width: "100%", padding: "5px", borderRadius: 6, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>ปิด</button>
