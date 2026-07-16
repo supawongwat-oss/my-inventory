@@ -6,7 +6,7 @@ import { T } from "../theme";
 import { Modal, MHead, BtnPrimary, BtnGhost, CardBox } from "../components/ui";
 import { uploadFile, deleteFile, fmtBytes } from "../utils/upload";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
-import SewingTeamsPanel from "../components/SewingTeamsPanel";
+import StageTeamsPanel from "../components/StageTeamsPanel";
 
 const TODAY = () => { const d=new Date(); d.setHours(0,0,0,0); return d; };
 const daysUntil = (dateStr) => {
@@ -199,7 +199,7 @@ export default function EmployeeTab({ employees = [], orders = [], user, role })
       <div style={{ display: "flex", gap: 6, marginBottom: 14, padding: 4, background: T.card, borderRadius: 12, border: `1px solid ${T.border}`, width: "fit-content" }}>
         {[
           { id: "cards", icon: "👷", label: "บัตรลูกจ้าง" },
-          { id: "teams", icon: "👥", label: "ทีมเย็บ" },
+          { id: "teams", icon: "👥", label: "ทีมงาน" },
         ].map(t => (
           <button key={t.id} onClick={()=>setView(t.id)}
             style={{ padding: "8px 18px", borderRadius: 9, border: "none", cursor: "pointer",
@@ -212,7 +212,7 @@ export default function EmployeeTab({ employees = [], orders = [], user, role })
       </div>
 
       {view === "teams" ? (
-        <SewingTeamsPanel employees={employees} orders={orders} user={user} role={role}/>
+        <StageTeamsPanel employees={employees} orders={orders} user={user} role={role}/>
       ) : (
       <>
       {/* Header */}
