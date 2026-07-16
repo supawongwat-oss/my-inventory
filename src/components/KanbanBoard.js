@@ -121,6 +121,9 @@ export default function KanbanBoard({
           const ok = window.confirm(
             `✅ ยืนยันเข้าคลัง — ${lot.lotId || "ล็อตนี้"}\n\n${lines}${moreText}\n\n` +
             `รวม ${totalQty} ตัว → ${isCustom ? "(custom — ไม่บวกสต็อก)" : (orderRef.clothingName || "เสื้อผ้า")}\n\n` +
+            (isCustom ? "" : autoStock
+              ? `➕ จะบวกเข้าสต๊อกจริงทันที\n\n`
+              : `🔒 โหมดบันทึกยอด — บันทึกยอด/วันที่ไว้ แต่ไม่แตะเลขสต๊อก\n\n`) +
             `⚠️ ตรวจว่าตัวเลขถูกต้องก่อนกด OK`
           );
           if (!ok) return;
@@ -176,6 +179,25 @@ export default function KanbanBoard({
     setColumnOrder(steps);
     try { await setDoc(doc(db, "settings", "kanbanSteps"), { steps }); }
     catch(e) { console.warn("[kanbanSteps] save failed:", e); }
+  };
+
+  // 🔒 โหมดบวกสต๊อกอัตโนมัติตอน "เข้าคลัง" — ปิดไว้ก่อนจนกว่าระบบจะนิ่ง
+  const [autoStock, setAutoStock] = useState(false);
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "settings", "production"), snap => {
+      setAutoStock(snap.exists() && snap.data().autoStockOnFinish === true);
+    }, () => {});
+    return () => unsub();
+  }, []);
+
+  const toggleAutoStock = async () => {
+    const next = !autoStock;
+    const msg = next
+      ? "เปิดโหมดบวกสต๊อกอัตโนมัติ?\n\nต่อไปเมื่อกด \"เข้าคลัง\" ระบบจะบวกเลขสต๊อกจริงให้ทันที\n\n⚠️ เปิดเมื่อมั่นใจว่าตัวเลขในระบบตรงกับของจริงแล้ว"
+      : "ปิดโหมดบวกสต๊อกอัตโนมัติ?\n\nกด \"เข้าคลัง\" ได้ตามปกติ + บันทึกยอด/วันที่ครบ\nแต่ระบบจะไม่แตะเลขสต๊อก (นับเองเหมือนเดิม)";
+    if (!window.confirm(msg)) return;
+    try { await setDoc(doc(db, "settings", "production"), { autoStockOnFinish: next }, { merge: true }); }
+    catch(e) { alert("บันทึกไม่สำเร็จ: " + (e.message||e)); }
   };
 
   const moveColumn = async (idx, dir) => {
@@ -291,6 +313,17 @@ export default function KanbanBoard({
         )}
         <button onClick={()=>setCompact(c=>!c)} title={compact?"ขยายการ์ด":"ย่อการ์ดให้เหลือบรรทัดเดียว"}
           style={{padding:"8px 14px",borderRadius:8,border:`1px solid ${compact?T.accent:T.border}`,background:compact?"rgba(59,91,139,0.1)":"white",color:compact?T.accent:T.sub,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit"}}>{compact?"🗗 ขยายการ์ด":"🗜️ ย่อการ์ด"}</button>
+        {/* 🔒 สถานะโหมดสต๊อก — เห็นทุกคน, admin กดสลับได้ */}
+        <button onClick={user?.role === "admin" ? toggleAutoStock : undefined}
+          title={user?.role === "admin"
+            ? (autoStock ? "กดเพื่อปิด — ให้บันทึกยอดอย่างเดียว" : "กดเพื่อเปิด — ให้บวกสต๊อกอัตโนมัติ")
+            : (autoStock ? "กด \"เข้าคลัง\" = บวกสต๊อกจริง" : "กด \"เข้าคลัง\" = บันทึกยอดเท่านั้น ไม่แตะสต๊อก")}
+          style={{padding:"8px 14px",borderRadius:8,cursor:user?.role==="admin"?"pointer":"default",fontSize:11,fontWeight:600,fontFamily:"inherit",
+            border:`1px solid ${autoStock?"rgba(16,185,129,0.35)":"rgba(217,119,6,0.35)"}`,
+            background:autoStock?"rgba(16,185,129,0.08)":"rgba(217,119,6,0.08)",
+            color:autoStock?"#059669":"#b45309"}}>
+          {autoStock ? "➕ เข้าคลัง = บวกสต๊อกจริง" : "🔒 เข้าคลัง = บันทึกยอดเท่านั้น"}
+        </button>
         {canReorder && (
           <>
             <button onClick={addColumn} title="เพิ่มสายงานใหม่"

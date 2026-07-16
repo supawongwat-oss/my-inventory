@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Modal, MHead, BtnPrimary, BtnGhost, BtnDanger, Toast } from "./ui";
 import { consumeMaterialsForOrder, stockFinishedForLot as stockFinishedForLotUtil } from "../utils/productionEffects";
-import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, documentId, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, onSnapshot, query, where, documentId, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import {
@@ -42,6 +42,17 @@ export default function LotDetailModal({
   const [rollVal, setRollVal] = useState("");
   const [jobVal, setJobVal] = useState("");
   const fileRef = useRef(null);
+
+  // 🔒 โหมดบวกสต๊อกอัตโนมัติ — ปิดไว้ก่อน (settings/production.autoStockOnFinish)
+  // ปิด = กด "เข้าคลัง" ได้ตามปกติ + บันทึกยอด/วันที่ไว้ครบ แต่ "ไม่แตะเลขสต๊อกจริง"
+  // เปิดเมื่อไหร่ → กลับไปบวกสต๊อกให้อัตโนมัติเหมือนเดิม
+  const [autoStock, setAutoStock] = useState(false);
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "settings", "production"), snap => {
+      setAutoStock(snap.exists() && snap.data().autoStockOnFinish === true);
+    }, () => {});
+    return () => unsub();
+  }, []);
 
   const lots = getLots(order);
   const lot = lots[lotIdx];
@@ -138,37 +149,45 @@ export default function LotDetailModal({
     // ยืนยัน
     const remain = items.reduce((s,it,idx)=>s+((Number(it.qty)||0)-takes[idx]), 0);
     const lines = items.map((it, idx) => takes[idx] > 0 ? `• ${it.colorName||"?"} / ${it.size||"?"} × ${takes[idx]}` : "").filter(Boolean).slice(0, 12).join("\n");
-    if (!window.confirm(`📦 เข้าคลังบางส่วน — ${lot.lotId}\n\n${lines}\n\nรวมเข้าคลัง: ${totalTake} ตัว\nเหลือในล็อต: ${remain} ตัว\n\nตรวจแล้วกด OK`)) return;
+    if (!window.confirm(
+      `📦 ${autoStock ? "เข้าคลังบางส่วน" : "บันทึกยอดเสร็จบางส่วน"} — ${lot.lotId}\n\n${lines}\n\n`+
+      `รวม: ${totalTake} ตัว\nเหลือในล็อต: ${remain} ตัว\n\n`+
+      (autoStock ? "➕ จะบวกเข้าสต๊อกจริง\n\n" : "🔒 บันทึกยอดเท่านั้น — ไม่แตะเลขสต๊อก\n\n")+
+      `ตรวจแล้วกด OK`
+    )) return;
     setBusy(true);
     try {
       const clothing = clothingItems.find(c => c.id === order.clothingId);
-      // เพิ่ม stock ตาม takes
+      // เพิ่ม stock ตาม takes — ข้ามถ้า autoStock ปิด (แต่ยังลงบันทึกยอดให้)
       if (clothing) {
-        const addMap = {};
-        items.forEach((it, idx) => {
-          if (takes[idx] <= 0) return;
-          const ci = Number(it.colorIdx) || 0;
-          if (!addMap[ci]) addMap[ci] = {};
-          addMap[ci][it.size] = (addMap[ci][it.size] || 0) + takes[idx];
-        });
-        const newColors = (clothing.colors || []).map((c, idx) => {
-          const adds = addMap[idx];
-          if (!adds) return c;
-          const stock = { ...(c.stock || {}) };
-          Object.entries(adds).forEach(([size, qty]) => { stock[size] = (Number(stock[size]) || 0) + qty; });
-          return { ...c, stock };
-        });
-        await updateDoc(doc(db, "clothing", clothing.id), { colors: newColors });
+        if (autoStock) {
+          const addMap = {};
+          items.forEach((it, idx) => {
+            if (takes[idx] <= 0) return;
+            const ci = Number(it.colorIdx) || 0;
+            if (!addMap[ci]) addMap[ci] = {};
+            addMap[ci][it.size] = (addMap[ci][it.size] || 0) + takes[idx];
+          });
+          const newColors = (clothing.colors || []).map((c, idx) => {
+            const adds = addMap[idx];
+            if (!adds) return c;
+            const stock = { ...(c.stock || {}) };
+            Object.entries(adds).forEach(([size, qty]) => { stock[size] = (Number(stock[size]) || 0) + qty; });
+            return { ...c, stock };
+          });
+          await updateDoc(doc(db, "clothing", clothing.id), { colors: newColors });
+        }
         for (const [idx, take] of takes.entries()) {
           if (take <= 0) continue;
           const it = items[idx];
           await addDoc(collection(db, "transactions"), {
-            type: "ผลิต-รับเข้าคลัง",
+            type: autoStock ? "ผลิต-รับเข้าคลัง" : "ผลิต-เสร็จ (ยังไม่เข้าสต๊อก)",
             code: clothing.id,
             name: `${clothing.model} / ${it.colorName} / ${it.size}`,
             qty: take, by: user?.name || "", date: nowStr(),
-            note: `${order.prodNo} · ${lot.lotId} · บางส่วน`,
+            note: `${order.prodNo} · ${lot.lotId} · บางส่วน${autoStock ? "" : " · บันทึกยอดเท่านั้น"}`,
             category: "เสื้อผ้า",
+            stockApplied: autoStock,
             createdAt: serverTimestamp(),
           });
         }
@@ -224,8 +243,12 @@ export default function LotDetailModal({
           `✅ ยืนยันเข้าคลัง — ${lot.lotId || "ล็อตนี้"}\n\n`+
           `${lines}${moreText}\n\n`+
           `รวม ${totalQty} ตัว → ${targetName}\n\n`+
+          (isCustomOrder ? "" : autoStock
+            ? `➕ จะบวกเข้าสต๊อกจริงทันที\n\n`
+            : `🔒 โหมดบันทึกยอด — ล็อตจะย้ายเป็น "เข้าคลัง" และบันทึกยอด/วันที่ไว้\n`+
+              `แต่ "ไม่แตะเลขสต๊อก" (ยังนับสต๊อกเองอยู่)\n\n`)+
           `⚠️ ตรวจว่าตัวเลขถูกต้องก่อนกด OK\n`+
-          `(กด Cancel ถ้ายังมี lot อื่นที่ต้องเข้าคลังพร้อมกัน)`
+          `(ถ้าเย็บเสร็จไม่ครบ → กด Cancel แล้วใช้ปุ่ม "📦 เข้าคลังบางส่วน" แทน)`
         );
         if (!ok) { setBusy(false); return; }
         await stockFinishedForLot(lot);
