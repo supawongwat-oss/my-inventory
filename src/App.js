@@ -397,6 +397,7 @@ export default function App() {
   const [showSizeManager, setShowSizeManager] = useState(false); // 📏 modal จัดการไซส์
   const [showSalesToday, setShowSalesToday] = useState(false); // 📊 modal ขายวันนี้
   const [salesDate, setSalesDate] = useState(() => new Date().toISOString().slice(0,10)); // yyyy-mm-dd
+  const [salesMode, setSalesMode] = useState("day"); // 📅 "day" = รายวัน | "month" = รวมทั้งเดือน
   const [salesCell, setSalesCell] = useState(null); // {model,color,size,prefix} ดู/ลบรายการจ่ายของช่องนั้น
   // 🔎 Option A — โหลด transactions ตามช่วงวันที่ (createdAt) แทนพึ่ง rolling window ที่ล้นเร็วเมื่อออกใบเยอะ
   const [salesTx, setSalesTx] = useState([]);            // tx ของวัน salesDate (สำหรับ "ขายวันนี้")
@@ -917,7 +918,7 @@ export default function App() {
     return snap.docs.map(d => ({ ...d.data(), id: d.id }));
   };
 
-  // "ขายวันนี้" — โหลด tx เฉพาะวัน salesDate (createdAt ในช่วง 00:00–24:00 ของวันนั้น)
+  // "ขายตามวันที่/รายเดือน" — โหลด tx ตามช่วงที่เลือก (วันเดียว หรือ ทั้งเดือน)
   useEffect(() => {
     if (!showSalesToday) return;
     let cancelled = false;
@@ -925,8 +926,9 @@ export default function App() {
       setSalesTxLoading(true);
       try {
         const [yy, mm, dd] = salesDate.split("-").map(Number);
-        const start = new Date(yy, mm - 1, dd, 0, 0, 0, 0);
-        const end = new Date(yy, mm - 1, dd + 1, 0, 0, 0, 0);
+        // 📅 month = 1 ถึงสิ้นเดือน · day = 00:00–24:00 ของวันนั้น
+        const start = salesMode === "month" ? new Date(yy, mm - 1, 1, 0, 0, 0, 0) : new Date(yy, mm - 1, dd, 0, 0, 0, 0);
+        const end   = salesMode === "month" ? new Date(yy, mm, 1, 0, 0, 0, 0)     : new Date(yy, mm - 1, dd + 1, 0, 0, 0, 0);
         const rows = await fetchTxByCreatedRange(start, end);
         if (!cancelled) setSalesTx(rows);
       } catch (e) {
@@ -937,7 +939,7 @@ export default function App() {
       }
     })();
     return () => { cancelled = true; };
-  }, [showSalesToday, salesDate, salesTxNonce]);
+  }, [showSalesToday, salesDate, salesMode, salesTxNonce]);
 
   // หน้ารายงาน — โหลด tx 90 วันล่าสุด (กราฟรับ/จ่าย + ยอดต่อสินค้า) ไม่ให้ขาดข้อมูลเมื่อออกใบเยอะ
   useEffect(() => {
@@ -4210,11 +4212,13 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         </Modal>
       )}
 
-      {/* ── MODAL: ขายวันนี้ (สรุปจ่ายออก แยกรุ่น/สี/ไซส์) ── */}
+      {/* ── MODAL: ขายตามวันที่/รายเดือน (สรุปจ่ายออก แยกรุ่น/สี/ไซส์) ── */}
       {showSalesToday&&(()=>{
         const [yy,mm,dd] = salesDate.split("-");
-        const prefix = `${dd}/${mm}/${yy}`; // ตรงกับรูปแบบ transaction.date
-        const todays = salesTx.filter(t => t.type==="จ่าย" && t.category==="เสื้อผ้า" && (t.date||"").startsWith(prefix));
+        const prefix = `${dd}/${mm}/${yy}`;      // รูปแบบ transaction.date (ใช้ตอนเปิดรายการรายช่อง)
+        const monthPrefix = `${mm}/${yy}`;       // สำหรับโหมดรายเดือน
+        // salesTx ถูก query ตามช่วงวัน/เดือนมาแล้ว → กรองแค่ประเภท
+        const todays = salesTx.filter(t => t.type==="จ่าย" && t.category==="เสื้อผ้า");
         const byModel = {};
         todays.forEach(t => {
           const parts = (t.name||"").split(" / ");
@@ -4229,13 +4233,27 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         const models = Object.keys(byModel).sort((a,b)=>byModel[b].total-byModel[a].total);
         const grandTotal = todays.reduce((s,t)=>s+(Number(t.qty)||0),0);
         const isToday = salesDate === new Date().toISOString().slice(0,10);
+        const isMonth = salesMode === "month";
+        const THAI_MO = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
         return (
         <Modal onClose={()=>setShowSalesToday(false)} w={640}>
-          <MHead title={`📊 ขาย${isToday?"วันนี้":"ตามวันที่"}`} onClose={()=>setShowSalesToday(false)} color={T.green}/>
+          <MHead title={isMonth?`📊 ขายรายเดือน · ${THAI_MO[Number(mm)-1]} ${Number(yy)+543}`:`📊 ขาย${isToday?"วันนี้":"ตามวันที่"}`} onClose={()=>setShowSalesToday(false)} color={T.green}/>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14,flexWrap:"wrap"}}>
-            <input type="date" value={salesDate} onChange={e=>setSalesDate(e.target.value)}
-              style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
-            <button onClick={()=>setSalesDate(new Date().toISOString().slice(0,10))} style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif"}}>วันนี้</button>
+            {/* 📅 สลับ วัน / เดือน */}
+            <div style={{display:"flex",gap:3,background:"#eef2f7",borderRadius:8,padding:3}}>
+              {[{k:"day",l:"รายวัน"},{k:"month",l:"รายเดือน"}].map(m=>(
+                <button key={m.k} onClick={()=>setSalesMode(m.k)}
+                  style={{padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontSize:12,fontWeight:salesMode===m.k?700:500,fontFamily:"'Sarabun',sans-serif",background:salesMode===m.k?"white":"transparent",color:salesMode===m.k?T.green:T.sub,boxShadow:salesMode===m.k?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>{m.l}</button>
+              ))}
+            </div>
+            {isMonth ? (
+              <input type="month" value={salesDate.slice(0,7)} onChange={e=>{const v=e.target.value; if(v) setSalesDate(`${v}-01`);}}
+                style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+            ) : (
+              <input type="date" value={salesDate} onChange={e=>setSalesDate(e.target.value)}
+                style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+            )}
+            <button onClick={()=>setSalesDate(new Date().toISOString().slice(0,10))} style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif"}}>{isMonth?"เดือนนี้":"วันนี้"}</button>
             {models.length>1&&(()=>{const allCollapsed=models.every(mm=>collapsedSalesModels[mm]);return(
               <button onClick={()=>setCollapsedSalesModels(allCollapsed?{}:Object.fromEntries(models.map(mm=>[mm,true])))} style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif"}}>{allCollapsed?"⊞ กางทั้งหมด":"⊟ ย่อทั้งหมด"}</button>
             );})()}
@@ -4286,7 +4304,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                           </div>
                           <div style={{display:"flex",flexWrap:"wrap",gap:5,flex:1}}>
                             {byColor[color].sizes.map((s,i)=>(
-                              <button key={i} onClick={()=>setSalesCell({model,color,size:s.size,prefix})} title="คลิกเพื่อดู/ลบรายการที่กรอกผิด"
+                              <button key={i} onClick={()=>setSalesCell({model,color,size:s.size,prefix:isMonth?monthPrefix:prefix,mode:salesMode})} title="คลิกเพื่อดู/ลบรายการที่กรอกผิด"
                                 style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 9px",borderRadius:7,background:"rgba(241,243,246,0.8)",border:`1px solid ${T.border}`,fontSize:12,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}
                                 onMouseEnter={e=>e.currentTarget.style.background="rgba(184,134,0,0.12)"}
                                 onMouseLeave={e=>e.currentTarget.style.background="rgba(241,243,246,0.8)"}>
@@ -4312,10 +4330,12 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
       {/* ── MODAL: รายการจ่ายของช่อง (ดู/ลบรายการที่กรอกผิด) ── */}
       {salesCell&&(()=>{
-        const { model, color, size, prefix } = salesCell;
+        const { model, color, size, prefix, mode } = salesCell;
         const targetName = `${model} / ${color} / ${size}`;
+        // date = "DD/MM/YYYY HH:mm" — รายเดือนเทียบ MM/YYYY, รายวันเทียบ DD/MM/YYYY
+        const matchDate = (d) => mode === "month" ? String(d||"").slice(3,10) === prefix : String(d||"").startsWith(prefix);
         const cellTx = salesTx
-          .filter(t => t.type==="จ่าย" && t.category==="เสื้อผ้า" && (t.date||"").startsWith(prefix) && (t.name||"")===targetName)
+          .filter(t => t.type==="จ่าย" && t.category==="เสื้อผ้า" && matchDate(t.date) && (t.name||"")===targetName)
           .sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));
         const cellTotal = cellTx.reduce((s,t)=>s+(Number(t.qty)||0),0);
         return (
