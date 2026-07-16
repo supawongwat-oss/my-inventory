@@ -11,7 +11,7 @@ import {
   estimateRolls, ROLL_CAPACITY, packIntoRolls, nextLotId,
 } from "../utils/productionLots";
 import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
-import { SEWING_STAGE, teamInfo } from "../utils/sewingTeams";
+import { SEWING_STAGE, SEWING_TEAM_KEYS, getTeamList, teamInfo } from "../utils/sewingTeams";
 import { sizeRank } from "../theme";
 import PrintRollLabel from "./PrintRollLabel";
 
@@ -44,11 +44,14 @@ export default function LotDetailModal({
   const [jobVal, setJobVal] = useState("");
   const fileRef = useRef(null);
 
-  // 👥 ทีมเย็บ — ไว้โชว์ว่าทีมที่เลือกมีใครบ้าง (ดูอย่างเดียว ไม่ยุ่งกับเงินเดือน)
+  // 👥 ทีมเย็บ — รายชื่อทีม (เพิ่ม/ลบได้จากหน้าพนักงาน) + สมาชิกในทีม
   const [sewingTeams, setSewingTeams] = useState({});
+  const [sewingTeamList, setSewingTeamList] = useState(SEWING_TEAM_KEYS);
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "settings", "sewingTeams"), snap => {
-      setSewingTeams(snap.exists() && snap.data().teams ? snap.data().teams : {});
+      const data = snap.exists() ? snap.data() : {};
+      setSewingTeams(data.teams || {});
+      setSewingTeamList(getTeamList(data));
     }, () => {});
     return () => unsub();
   }, []);
@@ -691,7 +694,8 @@ export default function LotDetailModal({
       {/* 🏭 เครื่อง/ทีม ที่กำลังทำม้วนนี้ใน stage ปัจจุบัน */}
       {(()=>{
         const currentStage = lot?.status || "";
-        const presets = MACHINES_BY_STAGE[currentStage] || [];
+        // ช่อง "เย็บ" ใช้รายชื่อทีมจริง (เพิ่ม/ลบได้) — ช่องอื่นใช้ค่าคงที่เดิม
+        const presets = currentStage === SEWING_STAGE ? sewingTeamList : (MACHINES_BY_STAGE[currentStage] || []);
         if (presets.length === 0) return null; // แพ๊ค/QC, เข้าคลัง ฯลฯ ไม่ต้องระบุเครื่อง
         const current = (lot?.machineByStage || {})[currentStage] || "";
         const saveVal = async (v) => {
@@ -1114,6 +1118,7 @@ export default function LotDetailModal({
         <SplitLotModal
           lot={lot}
           steps={steps}
+          sewingTeamList={sewingTeamList}
           onClose={() => setShowSplit(false)}
           onConfirm={async (selections, opts = {}) => {
             setBusy(true);
@@ -1498,7 +1503,7 @@ function RollSplitModal({ lot, lots = [], lotIdx, busy, setNo = "", clothingName
 }
 
 // ── Split modal ──
-function SplitLotModal({ lot, steps = PRODUCTION_STEPS, onClose, onConfirm }) {
+function SplitLotModal({ lot, steps = PRODUCTION_STEPS, sewingTeamList = SEWING_TEAM_KEYS, onClose, onConfirm }) {
   const [sels, setSels] = useState(() => (lot.items || []).map(() => ""));
   const [machine, setMachine] = useState("");
   const [rollNo, setRollNo] = useState("");
@@ -1510,7 +1515,9 @@ function SplitLotModal({ lot, steps = PRODUCTION_STEPS, onClose, onConfirm }) {
   const splitTotal = sels.reduce((s, v) => s + (Number(v) || 0), 0);
   const cap = Math.max(1, Number(capacity) || ROLL_CAPACITY);
   const rollEst = Math.max(1, Math.ceil(splitTotal / cap));
-  const stageTeamChoices = targetStage ? (MACHINES_BY_STAGE[targetStage] || []) : [];
+  const stageTeamChoices = !targetStage ? []
+    : targetStage === SEWING_STAGE ? sewingTeamList
+    : (MACHINES_BY_STAGE[targetStage] || []);
 
   const submit = () => {
     const selections = sels.map((v, idx) => ({ itemIdx: idx, qty: Number(v) || 0 }))

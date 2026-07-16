@@ -3212,7 +3212,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
           {/* ── EMPLOYEES — บัตรลูกจ้าง ── */}
           {activeTab==="employees"&&(
-            <EmployeeTab employees={employees} user={user} role={role}/>
+            <EmployeeTab employees={employees} orders={[...(productionOrders||[]), ...(customOrders||[])]} user={user} role={role}/>
           )}
 
           {/* ── PRODUCTION HISTORY — งานที่ archived จาก Kanban ── */}

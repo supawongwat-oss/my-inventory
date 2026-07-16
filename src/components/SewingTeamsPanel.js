@@ -5,10 +5,12 @@ import { doc, setDoc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import { T } from "../theme";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
-import { SEWING_TEAM_KEYS, teamInfo } from "../utils/sewingTeams";
+import { SEWING_STAGE, getTeamList, teamInfo } from "../utils/sewingTeams";
+import { getLots } from "../utils/productionLots";
 
-export default function SewingTeamsPanel({ employees = [], user, role }) {
+export default function SewingTeamsPanel({ employees = [], orders = [], user, role }) {
   const [teams, setTeams] = useState({});
+  const [teamList, setTeamList] = useState(null); // null = ยังไม่โหลด
   const [loaded, setLoaded] = useState(false);
   const [addingTo, setAddingTo] = useState("");   // team key ที่กำลังเลือกคนเพิ่ม
   const [search, setSearch] = useState("");
@@ -16,20 +18,76 @@ export default function SewingTeamsPanel({ employees = [], user, role }) {
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "settings", "sewingTeams"), snap => {
-      setTeams(snap.exists() && snap.data().teams ? snap.data().teams : {});
+      const data = snap.exists() ? snap.data() : {};
+      setTeams(data.teams || {});
+      setTeamList(getTeamList(data));
       setLoaded(true);
     }, () => setLoaded(true));
     return () => unsub();
   }, []);
 
-  const save = async (next, note) => {
-    setTeams(next); // optimistic — onSnapshot จะยืนยันอีกที
+  // 🔎 นับว่าแต่ละทีมถูกใช้ในล็อตไหนบ้าง — กันลบทีมที่ยังมีงานค้าง
+  const usageByTeam = useMemo(() => {
+    const map = {};
+    orders.forEach(o => {
+      getLots(o).forEach(l => {
+        const t = (l.machineByStage || {})[SEWING_STAGE];
+        if (t) map[t] = (map[t] || 0) + 1;
+      });
+    });
+    return map;
+  }, [orders]);
+
+  const persist = async (patch, note) => {
     try {
-      await setDoc(doc(db, "settings", "sewingTeams"), { teams: next }, { merge: true });
+      await setDoc(doc(db, "settings", "sewingTeams"), patch, { merge: true });
       if (note) logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: "settings", targetId: "sewingTeams", targetLabel: "ทีมเย็บ", note });
     } catch (e) {
       alert("บันทึกไม่สำเร็จ: " + (e.message || e));
     }
+  };
+
+  const save = async (next, note) => {
+    setTeams(next); // optimistic — onSnapshot จะยืนยันอีกที
+    await persist({ teams: next }, note);
+  };
+
+  const list = teamList || [];
+
+  const addTeam = async () => {
+    const name = window.prompt("ชื่อทีมใหม่:", `ทีม ${list.length + 1}`);
+    const trimmed = (name || "").trim();
+    if (!trimmed) return;
+    if (list.includes(trimmed)) { alert(`มีทีมชื่อ "${trimmed}" อยู่แล้ว`); return; }
+    const next = [...list, trimmed];
+    setTeamList(next);
+    await persist({ list: next }, `เพิ่มทีม "${trimmed}"`);
+  };
+
+  const removeTeam = async (key) => {
+    const inUse = usageByTeam[key] || 0;
+    const { members } = teamInfo(teams, key);
+    const warn =
+      `ลบทีม "${key}"?\n\n` +
+      (members.length > 0 ? `• มีสมาชิก ${members.length} คน — จะถูกเอาออกจากทีม (ไม่ได้ลบพนักงาน)\n` : "") +
+      (inUse > 0
+        ? `\n⚠️ มี ${inUse} ล็อตที่เลือกทีมนี้อยู่\n`+
+          `ล็อตพวกนั้นจะยังแสดง "${key}" เหมือนเดิม (ข้อมูลเก่าไม่หาย)\n`+
+          `แต่จะเลือกทีมนี้ให้ล็อตใหม่ไม่ได้อีก\n`
+        : `\n✅ ยังไม่มีล็อตไหนใช้ทีมนี้ — ลบได้ปลอดภัย\n`);
+    if (!window.confirm(warn)) return;
+    const nextList = list.filter(k => k !== key);
+    const nextTeams = { ...teams };
+    delete nextTeams[key];
+    setTeamList(nextList);
+    setTeams(nextTeams);
+    await persist({ list: nextList, teams: nextTeams }, `ลบทีม "${key}"${inUse > 0 ? ` (มี ${inUse} ล็อตใช้อยู่)` : ""}`);
+  };
+
+  const resetTeams = async () => {
+    if (!window.confirm("กลับไปใช้ทีมเริ่มต้น (ทีม 1-14)?\n\nสมาชิกที่จัดไว้จะยังอยู่ครบ — แค่รายชื่อทีมกลับเป็นค่าเริ่มต้น")) return;
+    setTeamList(null);
+    await persist({ list: null }, "รีเซ็ตรายชื่อทีมกลับค่าเริ่มต้น");
   };
 
   const setNickname = (key, nickname) => {
@@ -81,8 +139,29 @@ export default function SewingTeamsPanel({ employees = [], user, role }) {
         </div>
       )}
 
+      {/* Toolbar */}
+      {canEdit && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <button onClick={addTeam}
+            style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid rgba(16,185,129,0.35)", background: "rgba(16,185,129,0.08)", color: "#059669", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit" }}>
+            ＋ เพิ่มทีม
+          </button>
+          <button onClick={resetTeams} title="กลับไปใช้ทีม 1-14 (สมาชิกไม่หาย)"
+            style={{ padding: "8px 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
+            ↺ ทีมเริ่มต้น
+          </button>
+          <span style={{ fontSize: 11, color: T.muted, marginLeft: 4 }}>ทั้งหมด <b style={{ color: T.accent }}>{list.length}</b> ทีม</span>
+        </div>
+      )}
+
+      {list.length === 0 && (
+        <div style={{ padding: 30, textAlign: "center", color: T.muted, fontSize: 13, background: T.card, border: `1px dashed ${T.border}`, borderRadius: 10 }}>
+          ยังไม่มีทีม — กด “＋ เพิ่มทีม” เพื่อสร้างทีมแรก
+        </div>
+      )}
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 10 }}>
-        {SEWING_TEAM_KEYS.map(key => {
+        {list.map(key => {
           const { nickname, members } = teamInfo(teams, key);
           const memberEmps = members.map(id => employees.find(e => e.id === id)).filter(Boolean);
           const missing = members.length - memberEmps.length; // คนที่ถูกลบออกจากระบบไปแล้ว
@@ -99,7 +178,15 @@ export default function SewingTeamsPanel({ employees = [], user, role }) {
                   placeholder="ชื่อเล่นทีม (ไม่ใส่ก็ได้)"
                   style={{ flex: 1, minWidth: 0, padding: "4px 8px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 12, fontFamily: "inherit", outline: "none", background: canEdit ? "white" : "#f8fafc" }}/>
                 <span style={{ fontSize: 11, fontWeight: 700, color: memberEmps.length > 0 ? T.accent : T.muted, flexShrink: 0 }}>{memberEmps.length} คน</span>
+                {canEdit && (
+                  <button onClick={() => removeTeam(key)} title="ลบทีมนี้"
+                    style={{ flexShrink: 0, padding: "3px 7px", borderRadius: 6, border: "1px solid rgba(185,74,72,0.3)", background: "rgba(185,74,72,0.08)", color: T.red, cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>🗑</button>
+                )}
               </div>
+
+              {usageByTeam[key] > 0 && (
+                <div style={{ fontSize: 10, color: T.sub, marginBottom: 6 }}>🏭 มี {usageByTeam[key]} ล็อตใช้ทีมนี้อยู่</div>
+              )}
 
               {memberEmps.length === 0 && !isAdding && (
                 <div style={{ fontSize: 11, color: T.muted, padding: "6px 0" }}>ยังไม่มีคนในทีมนี้</div>

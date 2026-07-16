@@ -5,6 +5,7 @@
 // ชื่อเล่น (nickname) เป็นแค่ "ป้ายแสดงผล" ไม่เคยถูกเก็บลงล็อต → เปลี่ยนกี่ครั้งก็ไม่พัง
 //
 // settings/sewingTeams = {
+//   list:  ["ทีม 1", "ทีม 2", "ทีมพิเศษ"],   // ← ลำดับ + ทีมที่มีอยู่ (เพิ่ม/ลบได้)
 //   teams: {
 //     "ทีม 1": { nickname: "ป้าแดง", members: ["empId1","empId2"] },
 //     "ทีม 3": { nickname: "",       members: ["empId5"] },
@@ -14,8 +15,15 @@ import { MACHINES_BY_STAGE } from "./productionLots";
 
 export const SEWING_STAGE = "เย็บ";
 
-// รายชื่อทีมมาตรฐาน (ทีม 1..14) — ตรงกับ dropdown ที่ล็อตใช้เลือกอยู่แล้ว
+// รายชื่อทีมเริ่มต้น (ทีม 1..14) — ใช้เมื่อยังไม่เคยตั้งค่า list เอง
 export const SEWING_TEAM_KEYS = MACHINES_BY_STAGE[SEWING_STAGE] || [];
+
+// รายชื่อทีมปัจจุบัน — ถ้ายังไม่เคยแก้ list จะได้ค่าเริ่มต้น 14 ทีม (backward compat)
+// ⚠️ list ว่าง [] = ผู้ใช้ลบทีมทิ้งหมดจริง ๆ → ต้องเคารพ ไม่ใช่ fallback กลับไป 14 ทีม
+export function getTeamList(data) {
+  const list = data?.list;
+  return Array.isArray(list) ? list : SEWING_TEAM_KEYS;
+}
 
 // ดึงข้อมูลทีมหนึ่ง (ปลอดภัยกับ doc ที่ยังไม่มี/ว่าง)
 export function teamInfo(teamsMap, key) {

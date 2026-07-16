@@ -51,7 +51,7 @@ const EMPTY_FORM = {
   extraDeductionAnnual: 0, // ค่าลดหย่อนเพิ่ม/ปี (ลูก ประกัน) — สำหรับคำนวณภาษี
 };
 
-export default function EmployeeTab({ employees = [], user, role }) {
+export default function EmployeeTab({ employees = [], orders = [], user, role }) {
   const [view, setView] = useState("cards"); // cards = บัตรลูกจ้าง | teams = ทีมเย็บ
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null); // employee object
@@ -212,7 +212,7 @@ export default function EmployeeTab({ employees = [], user, role }) {
       </div>
 
       {view === "teams" ? (
-        <SewingTeamsPanel employees={employees} user={user} role={role}/>
+        <SewingTeamsPanel employees={employees} orders={orders} user={user} role={role}/>
       ) : (
       <>
       {/* Header */}
