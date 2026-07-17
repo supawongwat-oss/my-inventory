@@ -99,6 +99,23 @@ export function nextLotId(existing) {
   return `L${n}`;
 }
 
+// ย่อรายการเลขม้วนเป็นช่วงอ่านง่าย: [1,2,3,5] → "1-3, 5"
+// ใช้ตอนรวมม้วน เพื่อจำว่าล็อตที่รวมแล้วมาจากม้วนไหนบ้าง (แทนการล้างทิ้ง)
+export function summarizeRollNos(rollNos = []) {
+  const nums = [...new Set(
+    rollNos.map(r => parseInt(r, 10)).filter(n => Number.isFinite(n))
+  )].sort((a, b) => a - b);
+  if (nums.length === 0) return "";
+  const parts = [];
+  let start = nums[0], prev = nums[0];
+  for (let i = 1; i <= nums.length; i++) {
+    if (nums[i] === prev + 1) { prev = nums[i]; continue; }
+    parts.push(start === prev ? `${start}` : `${start}-${prev}`);
+    start = prev = nums[i];
+  }
+  return parts.join(", ");
+}
+
 // label ของขั้นถัดไป (null ถ้าเป็นขั้นสุดท้าย) — รับ steps แบบ dynamic
 export function nextStep(status, steps = PRODUCTION_STEPS) {
   const idx = steps.indexOf(status);

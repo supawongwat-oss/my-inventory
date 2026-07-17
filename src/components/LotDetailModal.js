@@ -8,7 +8,7 @@ import {
   PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot,
   moveLot, splitLot, addLotNote, nextStep, canMoveTo, removeLot, nowStr,
   getMachineForCurrentStage,
-  estimateRolls, ROLL_CAPACITY, packIntoRolls, nextLotId,
+  estimateRolls, ROLL_CAPACITY, packIntoRolls, nextLotId, summarizeRollNos,
 } from "../utils/productionLots";
 import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
 import { TEAMS_DOC, getStageList, getStageTeams, teamInfo } from "../utils/stageTeams";
@@ -497,10 +497,15 @@ export default function LotDetailModal({
       // ล็อตที่เหลือ (ขั้นอื่น + ยกเลิก) ไม่ถูกแตะ
       const untouched = lots.filter(l => !(l.status === lot.status && l.status !== "ยกเลิก"));
       const id = nextLotId(untouched);
+      // 🧵 จำเลขม้วนที่รวมมา แทนการล้างทิ้ง
+      const mergedRolls = summarizeRollNos(sameStage.map(l => l.rollNo));
+      const jobLabel = sameStage.map(l => l.jobLabel).find(Boolean) || "";
       const mergedLot = {
         lotId: id, items, status: lot.status,
-        statusHistory: [{ status: `รวม ${sameStage.length} ล็อต (${lot.status})`, at: nowStr(), by: user?.name || "" }],
-        notes, finishedStocked: false, machine: "", rollNo: "", machineByStage: {},
+        statusHistory: [{ status: `รวม ${sameStage.length} ล็อต (${lot.status})${mergedRolls ? ` · ม้วน ${mergedRolls}` : ""}`, at: nowStr(), by: user?.name || "" }],
+        notes, finishedStocked: false, machine: "",
+        rollNo: mergedRolls, jobLabel, mergedRollCount: sameStage.length,
+        machineByStage: {},
       };
       await persistLots([mergedLot, ...untouched]);
       logAudit(user, {

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { doc, setDoc, updateDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
-import { PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot, moveLot, getMachineForCurrentStage, nextLotId, nowStr } from "../utils/productionLots";
+import { PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot, moveLot, getMachineForCurrentStage, nextLotId, summarizeRollNos, nowStr } from "../utils/productionLots";
 import { consumeMaterialsForOrder, stockFinishedForLot } from "../utils/productionEffects";
 import LotDetailModal from "./LotDetailModal";
 
@@ -148,10 +148,15 @@ export default function KanbanBoard({
             });
             const others = newLots.filter(l => l.status !== AUTO_MERGE_STAGE);
             const id = nextLotId(others);
+            // 🧵 จำว่ารวมมาจากม้วนไหนบ้าง (แทนการล้างเลขม้วนทิ้ง → เดิม fallback เป็น L1)
+            const mergedRolls = summarizeRollNos(atStage.map(l => l.rollNo));
+            const jobLabel = atStage.map(l => l.jobLabel).find(Boolean) || "";
             newLots = [...others, {
               lotId: id, items: Array.from(merged.values()), status: AUTO_MERGE_STAGE,
-              statusHistory: [{ status: `รวม ${atStage.length} ม้วน → เย็บ`, at: nowStr(), by: user?.name || "" }],
-              notes, finishedStocked: false, machine: "", rollNo: "", machineByStage: {},
+              statusHistory: [{ status: `รวม ${atStage.length} ม้วน (${mergedRolls || "—"}) → เย็บ`, at: nowStr(), by: user?.name || "" }],
+              notes, finishedStocked: false, machine: "",
+              rollNo: mergedRolls, jobLabel, mergedRollCount: atStage.length,
+              machineByStage: {},
             }];
           }
         }
