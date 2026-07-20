@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "../utils/thaiRegion";
+import { countOrdersByCustomers } from "../utils/orderStats";
 import { deleteDoc, doc } from "firebase/firestore";
 import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
@@ -31,10 +32,38 @@ export default function CustomersTab({
     return true;
   });
 
+  // 🔢 จำนวนครั้งที่สั่ง — นับที่เซิร์ฟเวอร์ ไม่ใช่นับจาก orders ที่โหลดมา
+  // (orders ในหน่วยความจำมีแค่ช่วง 7 วัน → ถ้านับจากตรงนั้นจะได้เลขผิดมาก)
+  const [orderCounts, setOrderCounts] = useState({});   // { [customerId]: number | null }
+  const [countingBusy, setCountingBusy] = useState(false);
+  const COUNT_LIMIT = 60; // นับเฉพาะรายที่อยู่ต้น ๆ ของผลกรอง — กันยิง query เป็นร้อยพร้อมกัน
+  const visibleIds = filtered.slice(0, COUNT_LIMIT).map(c => c.id).filter(Boolean);
+  const missingIds = visibleIds.filter(id => orderCounts[id] === undefined);
+  const missingKey = missingIds.join(",");
+
+  useEffect(() => {
+    if (!missingKey) return;
+    let alive = true;
+    setCountingBusy(true);
+    countOrdersByCustomers(missingKey.split(","))
+      .then(res => { if (alive) setOrderCounts(prev => ({ ...prev, ...res })); })
+      .catch(() => {})
+      .finally(() => { if (alive) setCountingBusy(false); });
+    return () => { alive = false; };
+  }, [missingKey]);
+
   return (
     <div style={{ animation: "fadeUp 0.4s ease", maxWidth: 1000 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
-        <div style={{ fontSize: 12, color: T.sub }}>ลูกค้าทั้งหมด <b style={{ color: T.accent }}>{customers.length} ราย</b> · กรองแล้ว {filtered.length}</div>
+        <div style={{ fontSize: 12, color: T.sub }}>
+          ลูกค้าทั้งหมด <b style={{ color: T.accent }}>{customers.length} ราย</b> · กรองแล้ว {filtered.length}
+          {countingBusy && <span style={{ marginLeft: 8, fontSize: 11, color: T.muted }}>⏳ กำลังนับยอดสั่งซื้อ...</span>}
+          {filtered.length > COUNT_LIMIT && (
+            <span style={{ marginLeft: 8, fontSize: 11, color: "#b45309" }}>
+              · แสดงยอดสั่งซื้อเฉพาะ {COUNT_LIMIT} รายแรก — ค้นหาเพื่อดูรายอื่น
+            </span>
+          )}
+        </div>
         <div style={{ display: "flex", gap: 8 }}>
           {role.canAdd && <button onClick={() => setShowImportCustomers(true)} style={{ padding: "8px 14px", borderRadius: 9, border: `1px solid ${T.border}`, cursor: "pointer", background: "rgba(59,91,139,0.06)", color: T.accent, fontSize: 12, fontWeight: 600, fontFamily: "'Sarabun',sans-serif" }}>📥 นำเข้า Excel</button>}
           <button onClick={() => setShowNewCustomer(true)} style={{ padding: "8px 18px", borderRadius: 9, border: "none", cursor: "pointer", background: "linear-gradient(135deg,#3b5b8b,#3b5b8b)", color: "white", fontSize: 12, fontWeight: 600, fontFamily: "'Sarabun',sans-serif", boxShadow: "0 4px 14px rgba(59,91,139,0.3)" }}>＋ เพิ่มลูกค้าใหม่</button>
@@ -93,7 +122,14 @@ export default function CustomersTab({
                   <div style={{ fontSize: 11, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📍 {c.address || "-"}</div>
                 </div>
                 <div style={{ fontSize: 11, color: T.sub, textAlign: "right" }}>
-                  <div>สั่งซื้อ {orders.filter(o => o.customerId === c.id).length} ครั้ง</div>
+                  <div>
+                    {(() => {
+                      const n = orderCounts[c.id];
+                      if (n === undefined) return <span style={{ color: T.muted }}>สั่งซื้อ …</span>;
+                      if (n === null) return <span style={{ color: T.muted }}>สั่งซื้อ —</span>;
+                      return <>สั่งซื้อ <b style={{ color: T.accent }}>{n.toLocaleString("th-TH")}</b> ครั้ง</>;
+                    })()}
+                  </div>
                   <div style={{ color: T.accent, fontSize: 10, marginTop: 2 }}>👁 ดูโปรไฟล์</div>
                 </div>
                 {role.canAdd && <button onClick={(e) => { e.stopPropagation(); setEditingCustomer({ ...c }); }}

@@ -1,0 +1,15 @@
+{
+  "//": "Composite index ที่ระบบต้องใช้ — ดูวิธีติดตั้งท้ายไฟล์ firestore.rules",
+  "//1": "invoices (status + createdAt): ใช้ในรายงานแนวโน้มรายเดือน — หักบิลยกเลิก + แยกยอดที่ชำระแล้ว",
+  "indexes": [
+    {
+      "collectionGroup": "invoices",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

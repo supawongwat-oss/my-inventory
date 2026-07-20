@@ -1,8 +1,9 @@
 // 📊 Reports Tab — รายงานเชิงลึก
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { T } from "../theme";
 import { CardBox } from "../components/ui";
 import { matchTokens } from "../utils/search";
+import { monthlyStats } from "../utils/orderStats";
 
 // ────────── helpers ──────────
 const fmtBaht = (n) => `฿${Number(n||0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}`;
@@ -97,7 +98,7 @@ export default function ReportsTab({ products = [], transactions = [], invoices 
       {tab === "aging"     && <AgingTab invoices={invoices}/>}
       {tab === "customer"  && <SalesByCustomerTab invoices={invoices} customers={customers}/>}
       {tab === "product"   && <SalesByProductTab transactions={transactions} invoices={invoices} products={products}/>}
-      {tab === "trend"     && <MonthlyTrendTab invoices={invoices} orders={orders}/>}
+      {tab === "trend"     && <MonthlyTrendTab/>}
       {tab === "profit"    && <ProfitTab products={products} clothingItems={clothingItems}/>}
       {tab === "vat"       && <VATTab invoices={invoices}/>}
     </div>
@@ -605,41 +606,34 @@ function SalesByProductTab({ transactions, invoices, products }) {
 }
 
 // ────────── 5. MONTHLY TREND ──────────
-function MonthlyTrendTab({ invoices, orders }) {
-  // last 12 months
-  const months = useMemo(() => {
-    const arr = [];
-    const today = new Date();
-    for (let i = 11; i >= 0; i--) {
-      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-      arr.push(monthKey(d));
-    }
-    return arr;
+function MonthlyTrendTab() {
+  // 📡 ดึงยอดรายเดือนจาก Firestore โดยตรง (aggregate query)
+  // เดิมนับจาก invoices/orders ที่โหลดมาในหน่วยความจำ — ซึ่งมีแค่ช่วงเวลาสั้น ๆ
+  // ที่ 200-300 ใบ/วัน กราฟย้อนหลัง 12 เดือนจึงผิดหมด (เดือนเก่าขึ้นศูนย์)
+  const [stats, setStats] = useState(null);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    setErr("");
+    monthlyStats(12)
+      .then(rows => { if (alive) setStats(rows.map(r => ({ ...r, label: monthLabel(r.key) }))); })
+      .catch(e => { if (alive) setErr(e?.message || String(e)); });
+    return () => { alive = false; };
   }, []);
 
-  const stats = useMemo(() => {
-    const m = {};
-    months.forEach(k => { m[k] = { revenue: 0, paidRevenue: 0, invoiceCount: 0, orderCount: 0, vat: 0 }; });
-    invoices.forEach(inv => {
-      if ((inv.status||"") === "ยกเลิก") return;
-      const d = parseDate(inv.date);
-      if (!d) return;
-      const k = monthKey(d);
-      if (!m[k]) return;
-      m[k].invoiceCount++;
-      m[k].revenue += Number(inv.total) || 0;
-      m[k].vat     += Number(inv.vat) || 0;
-      if (inv.status === "ชำระแล้ว") m[k].paidRevenue += Number(inv.total) || 0;
-    });
-    orders.forEach(o => {
-      const d = parseDate(o.date);
-      if (!d) return;
-      const k = monthKey(d);
-      if (!m[k]) return;
-      m[k].orderCount++;
-    });
-    return months.map(k => ({ key: k, label: monthLabel(k), ...m[k] }));
-  }, [months, invoices, orders]);
+  if (err) return (
+    <div style={{ padding: 30, textAlign: "center", background: T.card, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+      <div style={{ fontSize: 13, color: T.red, marginBottom: 6 }}>โหลดสถิติไม่สำเร็จ</div>
+      <div style={{ fontSize: 11, color: T.muted }}>{err}</div>
+    </div>
+  );
+  if (!stats) return (
+    <div style={{ padding: 40, textAlign: "center", color: T.muted, fontSize: 13 }}>⏳ กำลังรวมยอดย้อนหลัง 12 เดือน...</div>
+  );
+
+  // index ยังไม่พร้อม → ยอดยังไม่ได้หักบิลที่ยกเลิก ต้องบอก ไม่ปล่อยให้เข้าใจผิด
+  const needsIndex = stats.some(s => s.needsIndex);
 
   const maxRev = Math.max(...stats.map(s => s.revenue), 1);
   const totalRev = stats.reduce((s, x) => s + x.revenue, 0);
@@ -657,6 +651,14 @@ function MonthlyTrendTab({ invoices, orders }) {
           "เดือน": s.label, "ใบบิล": s.invoiceCount, "ใบสั่ง": s.orderCount, "ยอดรวม": s.revenue.toFixed(2), "ชำระแล้ว": s.paidRevenue.toFixed(2), "VAT": s.vat.toFixed(2),
         })))} style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(58,122,82,0.1)", color: T.green, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>📊 Export CSV</button>
       </div>
+
+      {needsIndex && (
+        <div style={{ padding: "9px 14px", marginBottom: 12, borderRadius: 9, fontSize: 12, lineHeight: 1.7,
+          background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.35)", color: "#b45309" }}>
+          ⚠️ ยอดนี้<b>ยังไม่ได้หักบิลที่ยกเลิก</b> และยอด "ชำระแล้ว" ยังไม่ขึ้น<br/>
+          เพราะ Firestore ยังไม่มี index สำหรับ <code>invoices (status + createdAt)</code> — เปิด Console (F12) จะเห็นลิงก์สร้าง index กดครั้งเดียวจบ รอสัก 1-2 นาทีแล้วรีเฟรช
+        </div>
+      )}
 
       {/* Chart */}
       <CardBox style={{ marginBottom: 16 }}>
