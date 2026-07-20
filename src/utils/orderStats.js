@@ -9,8 +9,11 @@
 //
 // ⚠️ ใช้ createdAt (timestamp) เป็นตัวอ้างอิงช่วงเวลา ไม่ใช่ field `date` (ข้อความไทย)
 //    เพราะ query ช่วงเวลาต้องใช้ field ที่เรียงลำดับได้จริง
-import { collection, query, where, Timestamp, count, sum, getCountFromServer, getAggregateFromServer } from "firebase/firestore";
+import { collection, query, where, limit, Timestamp, count, sum, getDocs, getCountFromServer, getAggregateFromServer } from "firebase/firestore";
 import { db } from "../firebase";
+
+// เพดานเอกสารที่ยอมดึงมารวมเองต่อเดือน (ใช้เฉพาะตอนไม่มี index)
+const SUM_FALLBACK_CAP = 3000;
 
 // ขอบเขตเดือน: [1 ค่ำเดือนนั้น 00:00, 1 ค่ำเดือนถัดไป 00:00)
 export function monthBounds(year, month /* 1-12 */) {
@@ -43,42 +46,45 @@ export async function countOrdersInRange(from, to) {
 //    → ถ้ายังไม่ได้สร้าง ให้ยอมได้ยอดรวมแบบยังไม่หักยกเลิก ดีกว่าพังทั้งหน้า (ดู needsIndex)
 export async function summarizeInvoicesInRange(from, to) {
   const base = collection(db, "invoices");
-  const allSnap = await getAggregateFromServer(
-    query(base, ...rangeClauses(from, to)),
-    { count: count(), revenue: sum("total"), vat: sum("vat") }
-  );
-  const a = allSnap.data();
-  const result = {
-    invoiceCount: a.count || 0,
-    revenue: a.revenue || 0,
-    vat: a.vat || 0,
-    paidRevenue: 0,
-    needsIndex: false,
-  };
+  const ranged = query(base, ...rangeClauses(from, to));
 
+  // ① ทางเร็ว: ให้เซิร์ฟเวอร์รวมยอดให้ (ถูกมาก — อ่านไม่กี่ครั้ง)
+  //    แต่ sum() ต้องมี composite index (createdAt + total + vat) ถึงจะใช้ได้
   try {
-    const [cancelled, paid] = await Promise.all([
-      getAggregateFromServer(
-        query(base, ...rangeClauses(from, to), where("status", "==", "ยกเลิก")),
-        { count: count(), revenue: sum("total"), vat: sum("vat") }
-      ),
-      getAggregateFromServer(
-        query(base, ...rangeClauses(from, to), where("status", "==", "ชำระแล้ว")),
-        { revenue: sum("total") }
-      ),
+    const [allSnap, cancelled, paid] = await Promise.all([
+      getAggregateFromServer(ranged, { count: count(), revenue: sum("total"), vat: sum("vat") }),
+      getAggregateFromServer(query(base, ...rangeClauses(from, to), where("status", "==", "ยกเลิก")),
+        { count: count(), revenue: sum("total"), vat: sum("vat") }),
+      getAggregateFromServer(query(base, ...rangeClauses(from, to), where("status", "==", "ชำระแล้ว")),
+        { revenue: sum("total") }),
     ]);
-    const c = cancelled.data();
-    result.invoiceCount -= c.count || 0;
-    result.revenue     -= c.revenue || 0;
-    result.vat         -= c.vat || 0;
-    result.paidRevenue  = paid.data().revenue || 0;
-  } catch (e) {
-    // index ยังไม่พร้อม → คืนยอดรวม (ยังไม่หักบิลยกเลิก) + ธงบอกให้ UI เตือน
-    // log ไว้ด้วย เพราะ Firestore ใส่ "ลิงก์สร้าง index" มากับ error — กดลิงก์ครั้งเดียวจบ
-    console.warn("[orderStats] ต้องสร้าง Firestore index (invoices: status + createdAt) — กดลิงก์ใน error ข้างล่างนี้:", e);
-    result.needsIndex = true;
+    const a = allSnap.data(), c = cancelled.data();
+    return {
+      invoiceCount: (a.count || 0) - (c.count || 0),
+      revenue: (a.revenue || 0) - (c.revenue || 0),
+      vat: (a.vat || 0) - (c.vat || 0),
+      paidRevenue: paid.data().revenue || 0,
+      fallback: false,
+    };
+  } catch {
+    // ② ทางสำรอง: ไม่มี index ก็ยังใช้งานได้ — ดึงบิลของเดือนนั้นมารวมเอง
+    //    เปลืองกว่าแบบแรก แต่ "ได้ตัวเลขจริง" และไม่ต้องตั้งค่าอะไรเลย
+    const snap = await getDocs(query(ranged, limit(SUM_FALLBACK_CAP)));
+    let invoiceCount = 0, revenue = 0, vat = 0, paidRevenue = 0;
+    snap.forEach(d => {
+      const inv = d.data();
+      if ((inv.status || "") === "ยกเลิก") return;   // บิลยกเลิกไม่นับ
+      invoiceCount++;
+      revenue += Number(inv.total) || 0;
+      vat     += Number(inv.vat) || 0;
+      if (inv.status === "ชำระแล้ว") paidRevenue += Number(inv.total) || 0;
+    });
+    return {
+      invoiceCount, revenue, vat, paidRevenue,
+      fallback: true,
+      capped: snap.size >= SUM_FALLBACK_CAP, // ชนเพดาน = ยอดเดือนนั้นยังไม่ครบ
+    };
   }
-  return result;
 }
 
 // สถิติรายเดือนย้อนหลัง N เดือน (รวมเดือนปัจจุบัน)

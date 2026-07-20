@@ -632,8 +632,9 @@ function MonthlyTrendTab() {
     <div style={{ padding: 40, textAlign: "center", color: T.muted, fontSize: 13 }}>⏳ กำลังรวมยอดย้อนหลัง 12 เดือน...</div>
   );
 
-  // index ยังไม่พร้อม → ยอดยังไม่ได้หักบิลที่ยกเลิก ต้องบอก ไม่ปล่อยให้เข้าใจผิด
-  const needsIndex = stats.some(s => s.needsIndex);
+  // ยังไม่มี index → ใช้ทางสำรอง (ดึงบิลมารวมเอง) ตัวเลขถูก แต่ช้า/เปลืองกว่า
+  const usingFallback = stats.some(s => s.fallback);
+  const anyCapped = stats.some(s => s.capped);
 
   const maxRev = Math.max(...stats.map(s => s.revenue), 1);
   const totalRev = stats.reduce((s, x) => s + x.revenue, 0);
@@ -652,11 +653,19 @@ function MonthlyTrendTab() {
         })))} style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(58,122,82,0.1)", color: T.green, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>📊 Export CSV</button>
       </div>
 
-      {needsIndex && (
+      {anyCapped && (
         <div style={{ padding: "9px 14px", marginBottom: 12, borderRadius: 9, fontSize: 12, lineHeight: 1.7,
-          background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.35)", color: "#b45309" }}>
-          ⚠️ ยอดนี้<b>ยังไม่ได้หักบิลที่ยกเลิก</b> และยอด "ชำระแล้ว" ยังไม่ขึ้น<br/>
-          เพราะ Firestore ยังไม่มี index สำหรับ <code>invoices (status + createdAt)</code> — เปิด Console (F12) จะเห็นลิงก์สร้าง index กดครั้งเดียวจบ รอสัก 1-2 นาทีแล้วรีเฟรช
+          background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.35)", color: T.red }}>
+          ⚠️ บางเดือนมีบิลมากกว่า 3,000 ใบ — ยอดเดือนนั้นยังรวมไม่ครบ<br/>
+          แก้ได้ด้วยการสร้าง Firestore index ตามด้านล่าง แล้วระบบจะรวมยอดที่เซิร์ฟเวอร์แทน (ครบและเร็วกว่า)
+        </div>
+      )}
+
+      {usingFallback && (
+        <div style={{ padding: "9px 14px", marginBottom: 12, borderRadius: 9, fontSize: 12, lineHeight: 1.7,
+          background: "rgba(59,91,139,0.06)", border: `1px solid ${T.border}`, color: T.sub }}>
+          💡 <b>ตัวเลขถูกต้องแล้ว</b> — แต่ตอนนี้ใช้วิธีดึงบิลมารวมเอง ซึ่งช้าและเปลืองโควต้าอ่านกว่าที่ควร<br/>
+          อยากให้เร็วขึ้น: สร้าง Firestore index <code>invoices</code> → <code>createdAt</code> + <code>total</code> + <code>vat</code> (และ <code>status</code> + <code>createdAt</code> + <code>total</code> + <code>vat</code>) — ไม่สร้างก็ใช้งานได้ปกติ
         </div>
       )}
 

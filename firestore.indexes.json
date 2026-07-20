@@ -1,13 +1,27 @@
 {
-  "//": "Composite index ที่ระบบต้องใช้ — ดูวิธีติดตั้งท้ายไฟล์ firestore.rules",
-  "//1": "invoices (status + createdAt): ใช้ในรายงานแนวโน้มรายเดือน — หักบิลยกเลิก + แยกยอดที่ชำระแล้ว",
+  "//": "Composite index (ไม่บังคับ) — ไม่สร้างระบบก็ทำงานได้ แต่รายงานรายเดือนจะเร็วขึ้นและประหยัดโควต้าอ่านมาก",
+  "//why": "sum() ของ Firestore ต้องมี index ที่ครอบทั้งฟิลด์ที่กรองและฟิลด์ที่รวมยอด",
+  "//deploy": "firebase deploy --only firestore:indexes",
   "indexes": [
     {
+      "//": "รวมยอดบิลรายเดือน: count + sum(total) + sum(vat) ในช่วงวันที่",
+      "collectionGroup": "invoices",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "createdAt", "order": "ASCENDING" },
+        { "fieldPath": "total", "order": "ASCENDING" },
+        { "fieldPath": "vat", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "//": "แยกยอดตามสถานะ (หักบิลยกเลิก / ยอดที่ชำระแล้ว)",
       "collectionGroup": "invoices",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "ASCENDING" }
+        { "fieldPath": "createdAt", "order": "ASCENDING" },
+        { "fieldPath": "total", "order": "ASCENDING" },
+        { "fieldPath": "vat", "order": "ASCENDING" }
       ]
     }
   ],
