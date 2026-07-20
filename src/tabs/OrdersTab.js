@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 
 const T = {
   card:"#ffffff", border:"#e3e8ef", text:"#1f2a44", sub:"#5b6b85", muted:"#8a9bb3",
@@ -16,6 +16,11 @@ const parseThaiDate = (s) => {
 
 const norm = (s) => String(s || "").normalize("NFC").toLowerCase().replace(/\s+/g, " ").trim();
 
+// Date → "21/07/2026" (สำหรับบอกช่วงที่กำลังโหลด)
+const fmtDMY = (d) => d instanceof Date && !isNaN(d)
+  ? `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`
+  : "—";
+
 // ตรวจสอบว่าใบสั่งนี้ออกบิลแล้วหรือยัง — เช็คตรงก่อน แล้ว fallback ด้วย customer+date
 const isOrderInvoiced = (o, invoices) => {
   if (invoices.some(inv => (inv.mergedFromOrderIds || []).includes(o.id))) return true;
@@ -29,6 +34,7 @@ const isOrderInvoiced = (o, invoices) => {
 
 export default function OrdersTab({
   orders, invoices, role,
+  ordersRange, setOrdersRange, ordersCapped,
   orderSearch, setOrderSearch,
   orderDateFrom, setOrderDateFrom,
   orderDateTo, setOrderDateTo,
@@ -65,13 +71,29 @@ export default function OrdersTab({
   const setPreset = (preset) => {
     const today = new Date(); const y = today.getFullYear(); const m = today.getMonth();
     const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    if (preset === "all") { setOrderDateFrom(""); setOrderDateTo(""); }
-    else if (preset === "today") { setOrderDateFrom(fmt(today)); setOrderDateTo(fmt(today)); }
+    const back = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d; };
+    if (preset === "today") { setOrderDateFrom(fmt(today)); setOrderDateTo(fmt(today)); }
+    else if (preset === "7d")  { setOrderDateFrom(fmt(back(7)));  setOrderDateTo(""); }
+    else if (preset === "30d") { setOrderDateFrom(fmt(back(30))); setOrderDateTo(""); }
     else if (preset === "month") { setOrderDateFrom(fmt(new Date(y, m, 1))); setOrderDateTo(fmt(new Date(y, m + 1, 0))); }
-    else if (preset === "year")  { setOrderDateFrom(fmt(new Date(y, 0, 1))); setOrderDateTo(fmt(new Date(y, 11, 31))); }
-    else if (preset === "lastyear") { setOrderDateFrom(fmt(new Date(y - 1, 0, 1))); setOrderDateTo(fmt(new Date(y - 1, 11, 31))); }
+    else if (preset === "lastmonth") { setOrderDateFrom(fmt(new Date(y, m - 1, 1))); setOrderDateTo(fmt(new Date(y, m, 0))); }
   };
-  const presets = [{ k: "all", l: "ทั้งหมด" }, { k: "today", l: "วันนี้" }, { k: "month", l: "เดือนนี้" }, { k: "year", l: "ปีนี้" }, { k: "lastyear", l: "ปีที่แล้ว" }];
+  // ⚠️ ไม่มี "ทั้งหมด" แล้ว — ที่ 200-300 ใบ/วัน การโหลดทุกใบทำให้แอปค้าง
+  //    อยากดูเก่ากว่านี้ให้เลือกช่วงวันที่เอง (ระบบจะไปดึงจากฐานข้อมูลให้จริง)
+  const presets = [
+    { k: "today", l: "วันนี้" }, { k: "7d", l: "7 วัน" }, { k: "30d", l: "30 วัน" },
+    { k: "month", l: "เดือนนี้" }, { k: "lastmonth", l: "เดือนที่แล้ว" },
+  ];
+
+  // 📡 ช่วงวันที่ที่เลือก → ไปดึงจาก Firestore จริง (ไม่ใช่กรองเฉพาะที่โหลดมาแล้ว)
+  useEffect(() => {
+    if (!setOrdersRange) return;
+    const from = orderDateFrom ? new Date(`${orderDateFrom}T00:00:00`) : null;
+    const to = orderDateTo ? new Date(`${orderDateTo}T23:59:59`) : null;
+    if (!from && !to) return; // ยังไม่เลือก → คงค่าเริ่มต้น (7 วัน)
+    const fallback = new Date(); fallback.setDate(fallback.getDate() - 7); fallback.setHours(0,0,0,0);
+    setOrdersRange({ from: from || fallback, to });
+  }, [orderDateFrom, orderDateTo, setOrdersRange]);
 
   // group ตามวันที่
   const groups = filteredOrders.reduce((acc, o) => {
@@ -125,15 +147,20 @@ export default function OrdersTab({
         );
       })()}
 
-      {orders.length === 0 ? (
-        <div style={{ textAlign: "center", padding: 60, background: T.card, borderRadius: 16, border: `1px solid ${T.border}` }}>
-          <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.3 }}>📋</div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: T.accent, marginBottom: 6 }}>ยังไม่มีใบสั่งของ</div>
-          <div style={{ fontSize: 11, color: T.muted }}>กด "️ สร้างใบสั่งของ" เพื่อเริ่มต้น</div>
+      {/* 📅 บอกให้ชัดว่ากำลังดูช่วงไหน — กันเข้าใจผิดว่า "ไม่มีข้อมูล" ทั้งที่แค่ไม่ได้โหลดมา */}
+      {ordersRange && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "8px 14px", marginBottom: 12, borderRadius: 9, fontSize: 11,
+          background: ordersCapped ? "rgba(217,119,6,0.08)" : "rgba(59,91,139,0.06)",
+          border: `1px solid ${ordersCapped ? "rgba(217,119,6,0.35)" : T.border}`,
+          color: ordersCapped ? "#b45309" : T.sub }}>
+          <span>📅 กำลังดูใบสั่งของช่วง <b>{fmtDMY(ordersRange.from)} – {ordersRange.to ? fmtDMY(ordersRange.to) : "วันนี้"}</b> ({orders.length.toLocaleString("th-TH")} ใบ)</span>
+          {ordersCapped
+            ? <b>⚠️ ช่วงนี้มีใบมากเกินกว่าจะโหลดหมด — แสดงเฉพาะที่ใหม่ที่สุด ให้เลือกช่วงแคบลง</b>
+            : <span style={{ color: T.muted }}>· ใบเก่ากว่านี้ยังอยู่ครบ — เลือกช่วงวันที่เพื่อดึงมาดู</span>}
         </div>
-      ) : (
-        <>
-          {/* ── FILTER BAR ── */}
+      )}
+
+      {/* ── FILTER BAR ── (อยู่นอกเงื่อนไขเสมอ — ช่วงไหนไม่มีใบก็ยังเปลี่ยนวันที่ได้) */}
           <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: 14, marginBottom: 14 }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
               <div style={{ flex: "1 1 240px", position: "relative" }}>
@@ -166,6 +193,19 @@ export default function OrdersTab({
             <div style={{ textAlign: "center", padding: 40, background: T.card, borderRadius: 14, border: `1px solid ${T.border}` }}>
               <div style={{ fontSize: 36, marginBottom: 8, opacity: 0.3 }}>🔍</div>
               <div style={{ fontSize: 13, color: T.muted }}>ไม่พบใบสั่งของตามที่ค้นหา</div>
+              {/* ⚠️ สำคัญ: ค้นเฉพาะช่วงที่โหลดมา — ถ้าไม่บอก ผู้ใช้จะนึกว่าใบนั้นไม่มีอยู่จริง */}
+              {orderSearch && ordersRange && (
+                <div style={{ marginTop: 10, fontSize: 12, color: "#b45309", lineHeight: 1.7 }}>
+                  ค้นเฉพาะช่วง <b>{fmtDMY(ordersRange.from)} – {ordersRange.to ? fmtDMY(ordersRange.to) : "วันนี้"}</b> เท่านั้น<br/>
+                  ถ้าใบที่หาเก่ากว่านี้ — กด <b>“30 วัน”</b> / <b>“เดือนที่แล้ว”</b> หรือเลือกช่วงวันที่เอง แล้วค้นใหม่
+                  <div style={{ marginTop: 8, display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
+                    <button onClick={() => setPreset("30d")}
+                      style={{ padding: "5px 14px", borderRadius: 8, border: `1px solid ${T.accent}`, background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit" }}>🔎 ค้นย้อนหลัง 30 วัน</button>
+                    <button onClick={() => setPreset("lastmonth")}
+                      style={{ padding: "5px 14px", borderRadius: 8, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>เดือนที่แล้ว</button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -249,8 +289,6 @@ export default function OrdersTab({
               })}
             </div>
           )}
-        </>
-      )}
     </div>
   );
 }

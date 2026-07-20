@@ -1,7 +1,15 @@
 import { useState, useEffect } from "react";
 import { db } from "../firebase";
-import { collection, onSnapshot, doc, query, orderBy, limit, writeBatch, setDoc } from "firebase/firestore";
+import { collection, onSnapshot, doc, query, where, orderBy, limit, writeBatch, setDoc, Timestamp } from "firebase/firestore";
 import { INIT_USERS, INIT_CATS } from "../constants";
+
+// เที่ยงคืนของ N วันก่อน — ใช้เป็นจุดเริ่มช่วงโหลดใบสั่งของ
+function daysAgo(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
 
 // 🚀 จำกัดจำนวน doc ที่ subscribe real-time — โหลดเร็วขึ้น + ประหยัด Firestore reads
 // ใช้ rolling window (เรียงใหม่→เก่า) — พอสำหรับงานประจำวัน + รายงาน 30 วัน
@@ -9,7 +17,7 @@ import { INIT_USERS, INIT_CATS } from "../constants";
 const LIMITS = {
   transactions: 500,       // รับ/จ่าย/ขาย — รายงาน/ขายวันนี้ query ตามวันเองแล้ว (live ใช้แค่ dashboard + tab ประวัติ)
   invoices: 1000,          // บิล
-  orders: 1000,            // ใบสั่งของ
+  ordersCap: 4000,         // 🛡️ เพดานกันเผลอเลือกช่วงกว้างเกิน (ปกติโหลดตามช่วงวันที่)
   productionOrders: 1000,  // ใบสั่งผลิต
   customOrders: 800,       // ใบสั่งผลิต custom
   catalogOrders: 400,      // สั่งจากหน้า catalog
@@ -27,6 +35,9 @@ export function useFirestore() {
   const [categories, setCategories] = useState(INIT_CATS);
   const [clothingItems, setClothingItems] = useState([]);
   const [orders, setOrders] = useState([]);
+  // 📅 ช่วงวันที่ของใบสั่งของที่กำลังโหลด — เริ่มต้น 7 วันล่าสุด, เปลี่ยนได้จากหน้าใบสั่งของ
+  const [ordersRange, setOrdersRange] = useState(() => ({ from: daysAgo(7), to: null }));
+  const [ordersCapped, setOrdersCapped] = useState(false);
   const [customers, setCustomers] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [statements, setStatements] = useState([]);
@@ -111,12 +122,23 @@ export function useFirestore() {
     return () => unsub();
   }, [deferReady]);
 
+  // 📅 ใบสั่งของ — โหลด "ตามช่วงวันที่" ไม่ใช่ "N ใบล่าสุด"
+  // ที่ 200-300 ใบ/วัน การ limit จำนวนใบทำให้เห็นย้อนหลังได้แค่ 3-4 วัน
+  // และค้นหาใบเก่าไม่เจอโดยไม่มีอะไรเตือน → เปลี่ยนเป็น query ตามช่วงวันที่แทน
   useEffect(() => {
     if (!deferReady) return;
-    const q = query(collection(db, "orders"), orderBy("createdAt","desc"), limit(LIMITS.orders));
-    const unsub = onSnapshot(q, snap => setOrders(snap.docs.map(d => ({...d.data(), id:d.id}))));
+    const clauses = [where("createdAt", ">=", Timestamp.fromDate(ordersRange.from))];
+    if (ordersRange.to) clauses.push(where("createdAt", "<=", Timestamp.fromDate(ordersRange.to)));
+    const q = query(collection(db, "orders"), ...clauses, orderBy("createdAt","desc"), limit(LIMITS.ordersCap));
+    const unsub = onSnapshot(q, snap => {
+      setOrders(snap.docs.map(d => ({...d.data(), id:d.id})));
+      // ชนเพดาน = ในช่วงนี้มีมากกว่าที่โหลดไหว → ต้องบอกผู้ใช้ ไม่ใช่เงียบ
+      setOrdersCapped(snap.size >= LIMITS.ordersCap);
+    });
     return () => unsub();
-  }, [deferReady]);
+    // ใช้ค่าเวลา ไม่ใช่ object — กัน re-subscribe ทุก render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deferReady, ordersRange.from?.getTime(), ordersRange.to?.getTime()]);
 
   useEffect(() => {
     if (!deferReady) return;
@@ -255,6 +277,7 @@ export function useFirestore() {
     categories, setCategories,
     clothingItems,
     orders,
+    ordersRange, setOrdersRange, ordersCapped,
     customers,
     invoices,
     statements,
