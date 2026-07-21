@@ -3306,7 +3306,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
           {/* ── TAX DOCS — คลังเอกสารภาษี ── */}
           {activeTab==="taxdocs"&&(
-            <TaxDocsTab taxDocs={taxDocs} user={user} role={role}/>
+            <TaxDocsTab taxDocs={taxDocs} suppliers={suppliers} user={user} role={role}/>
           )}
 
           {/* ── CATALOG INBOX — order จาก /catalog ── */}

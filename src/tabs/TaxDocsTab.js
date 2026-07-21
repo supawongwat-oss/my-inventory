@@ -55,6 +55,7 @@ const EMPTY_FORM = {
   date: "",
   party: "", // ชื่อคู่ค้า (ขาย/ซื้อ)
   partyTaxId: "",
+  supplierId: "", // 🔗 ลิงก์ซัพพลายเออร์ (ถ้าเลือกจากรายการ) — ว่างได้ถ้าพิมพ์เอง
   amount: "", // ยอดก่อนภาษี
   vat: "",
   whtAmount: "", // ยอดหัก ณ ที่จ่าย
@@ -64,13 +65,14 @@ const EMPTY_FORM = {
   attachments: [], // [{url, path, name, size, type}]
 };
 
-export default function TaxDocsTab({ taxDocs = [], user, role }) {
+export default function TaxDocsTab({ taxDocs = [], suppliers = [], user, role }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [filterType, setFilterType] = useState("ทั้งหมด");
   const [filterYear, setFilterYear] = useState(new Date().getFullYear() + 543);
   const [filterMonth, setFilterMonth] = useState("ทั้งหมด");
+  const [filterSupplier, setFilterSupplier] = useState("ทั้งหมด");
   const [search, setSearch] = useState("");
   const [uploading, setUploading] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
@@ -110,13 +112,14 @@ export default function TaxDocsTab({ taxDocs = [], user, role }) {
       const m = d.date ? new Date(d.date).getMonth() + 1 : null;
       if (m !== filterMonth) return false;
     }
+    if (filterSupplier !== "ทั้งหมด" && d.supplierId !== filterSupplier) return false;
     if (search) {
       const q = search.toLowerCase();
       const hay = `${d.docNo} ${d.party} ${d.partyTaxId} ${d.note}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
-  }), [enriched, filterType, filterYear, filterMonth, search]);
+  }), [enriched, filterType, filterYear, filterMonth, filterSupplier, search]);
 
   // summary (ตาม filter)
   const summary = useMemo(() => {
@@ -274,6 +277,13 @@ export default function TaxDocsTab({ taxDocs = [], user, role }) {
           <option>ทั้งหมด</option>
           {[1,2,3,4,5,6,7,8,9,10,11,12].map(m=><option key={m} value={m}>เดือน {m}</option>)}
         </select>
+        {suppliers.length > 0 && (
+          <select value={filterSupplier} onChange={e=>setFilterSupplier(e.target.value)}
+            style={{ background: T.input, border: `1px solid ${filterSupplier!=="ทั้งหมด"?T.accent:T.inputBorder}`, color: T.text, borderRadius: 7, padding: "8px 10px", fontSize: 12, outline: "none", cursor: "pointer" }}>
+            <option value="ทั้งหมด">🏭 ทุกซัพพลายเออร์</option>
+            {[...suppliers].sort((a,b)=>(a.name||"").localeCompare(b.name||"","th")).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        )}
       </div>
 
       {/* List */}
@@ -323,10 +333,31 @@ export default function TaxDocsTab({ taxDocs = [], user, role }) {
                 {DOC_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
               </select>
             </div>
+            {/* 🔗 เลือกจากซัพพลายเออร์ → เติมชื่อ + เลขภาษีให้อัตโนมัติ (ยังพิมพ์แก้เองได้) */}
+            {suppliers.length > 0 && (
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ fontSize: 11, color: T.muted, display: "block", marginBottom: 4, fontWeight: 600 }}>🏭 เลือกจากซัพพลายเออร์ (ไม่บังคับ)</label>
+                <select value={form.supplierId || ""} onChange={e => {
+                  const s = suppliers.find(x => x.id === e.target.value);
+                  if (s) setForm(f => ({ ...f, supplierId: s.id, party: s.name || f.party, partyTaxId: s.taxId || f.partyTaxId }));
+                  else setForm(f => ({ ...f, supplierId: "" })); // เลือก "— พิมพ์เอง —" = ไม่ลิงก์
+                }}
+                  style={{ width: "100%", background: T.input, border: `1px solid ${form.supplierId ? T.accent : T.inputBorder}`, color: T.text, borderRadius: 7, padding: "8px 12px", fontSize: 13, outline: "none", cursor: "pointer" }}>
+                  <option value="">— พิมพ์เอง / ไม่ลิงก์ —</option>
+                  {[...suppliers].sort((a,b)=>(a.name||"").localeCompare(b.name||"","th")).map(s => (
+                    <option key={s.id} value={s.id}>{s.name}{s.taxId ? ` · ${s.taxId}` : ""}</option>
+                  ))}
+                </select>
+                {form.supplierId && !suppliers.find(x=>x.id===form.supplierId)?.taxId && (
+                  <div style={{ fontSize: 10, color: "#b45309", marginTop: 3 }}>⚠️ ซัพพลายเออร์รายนี้ยังไม่มีเลขภาษี — เพิ่มได้ที่แท็บซัพพลายเออร์</div>
+                )}
+              </div>
+            )}
             <Grid2>
               <Field label="เลขที่เอกสาร" value={form.docNo} onChange={v=>setForm(f=>({...f,docNo:v}))}/>
               <Field label="วันที่ * (ค.ศ.)" type="date" value={form.date} onChange={v=>setForm(f=>({...f,date:v}))}/>
-              <Field label="คู่ค้า (ชื่อบริษัท/บุคคล)" value={form.party} onChange={v=>setForm(f=>({...f,party:v}))}/>
+              {/* พิมพ์แก้ชื่อเอง = หลุดลิงก์ซัพพลายเออร์ (ถือว่าไม่ตรงกันแล้ว) */}
+              <Field label="คู่ค้า (ชื่อบริษัท/บุคคล)" value={form.party} onChange={v=>setForm(f=>({...f,party:v,supplierId:""}))}/>
               <Field label="เลขผู้เสียภาษี คู่ค้า" value={form.partyTaxId} onChange={v=>setForm(f=>({...f,partyTaxId:v}))}/>
             </Grid2>
           </Section>

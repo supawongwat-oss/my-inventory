@@ -4,7 +4,7 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "
 import { T } from "../theme";
 import { Modal, MHead, Input, BtnPrimary, BtnGhost, BtnDanger, CardBox } from "../components/ui";
 
-const emptyForm = { name: "", phone: "", email: "", address: "", note: "" };
+const emptyForm = { name: "", taxId: "", phone: "", email: "", address: "", note: "" };
 
 export default function SuppliersTab({ suppliers, role }) {
   const [showAdd, setShowAdd] = useState(false);
@@ -13,7 +13,7 @@ export default function SuppliersTab({ suppliers, role }) {
   const [search, setSearch] = useState("");
 
   const openAdd = () => { setForm(emptyForm); setEditSupplier(null); setShowAdd(true); };
-  const openEdit = (s) => { setForm({ name: s.name, phone: s.phone || "", email: s.email || "", address: s.address || "", note: s.note || "" }); setEditSupplier(s); setShowAdd(true); };
+  const openEdit = (s) => { setForm({ name: s.name, taxId: s.taxId || "", phone: s.phone || "", email: s.email || "", address: s.address || "", note: s.note || "" }); setEditSupplier(s); setShowAdd(true); };
 
   const handleSave = async () => {
     if (!form.name.trim()) return;
@@ -77,6 +77,7 @@ export default function SuppliersTab({ suppliers, role }) {
           <MHead title={editSupplier ? "✏️ แก้ไขซัพพลายเออร์" : "🏭 เพิ่มซัพพลายเออร์ใหม่"} onClose={() => setShowAdd(false)} />
           <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
             <Input label="ชื่อบริษัท / ร้าน *" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="ชื่อซัพพลายเออร์" />
+            <Input label="เลขผู้เสียภาษี (13 หลัก)" value={form.taxId} onChange={e => setForm(f => ({ ...f, taxId: e.target.value }))} placeholder="สำหรับออกเอกสารภาษี" />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <Input label="เบอร์โทรศัพท์" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="0812345678" />
               <Input label="Email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="info@supplier.com" />
