@@ -2955,6 +2955,11 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                 setActiveTab("invoice");
                 const custC = (first.customerId && customers.find(c => c.id === first.customerId))
                   || customers.find(c => (c.name||"").trim() === (first.customerName||"").trim());
+                // 💰 รวมมัดจำจากทุก custom order ที่เลือก → ผูกเป็นการชำระในบิล
+                const custPayments = orders.filter(o => Number(o.depositAmount) > 0).map(o => ({
+                  id: `dep_${o.id}`, amount: Number(o.depositAmount), method: o.depositMethod || "โอน",
+                  date: o.date || now(), bank: "", note: `มัดจำ (จาก Custom ${o.prodNo})`, receivedBy: o.by || user.name,
+                }));
                 setTimeout(() => {
                   setInvoiceForm({
                     customerId: first.customerId||custC?.id||"",
@@ -2963,6 +2968,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                     customerAddress: first.customerAddress||custC?.address||"",
                     customerTaxId: first.customerTaxId||custC?.taxId||"",
                     items,
+                    payments: custPayments,
                     note: `จาก Custom Order: ${orders.map(o=>o.prodNo).join(", ")}`,
                     dueDate: "",
                     vatRate: 7,

@@ -87,6 +87,8 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const [laborCostPerPiece, setLaborCostPerPiece] = useState(editOrder?.costSnapshot?.laborCostPerPiece != null ? String(editOrder.costSnapshot.laborCostPerPiece) : "");
   const [note, setNote] = useState(editOrder?.note || "");
   const [color, setColor] = useState(editOrder?.color || ""); // 🎨 สีชุดงาน
+  const [depositAmount, setDepositAmount] = useState(editOrder?.depositAmount != null ? String(editOrder.depositAmount) : ""); // 💰 มัดจำ
+  const [depositMethod, setDepositMethod] = useState(editOrder?.depositMethod || "โอน");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const fileRef = useRef(null);
@@ -217,6 +219,8 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
         },
         note: note || "",
         color: color || "",
+        depositAmount: Number(depositAmount) || 0,
+        depositMethod: depositMethod || "โอน",
         editedBy: user?.name || "",
         editedAt: nowStr(),
       });
@@ -278,6 +282,8 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
       bomId: null,
       note: note || "",
       color: color || "",
+      depositAmount: Number(depositAmount) || 0,
+      depositMethod: depositMethod || "โอน",
       by: user?.name || "",
       date: nowStr(),
       createdAt: serverTimestamp(),
@@ -651,6 +657,21 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
             placeholder="เช่น ส่งภายใน 7 วัน"
             style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:6,padding:"5px 8px",fontFamily:"inherit",fontSize:11,outline:"none"}}/>
         </div>
+      </div>
+
+      {/* 💰 มัดจำ (option) — ผูกไปกับบิลตอนออกบิลจาก custom */}
+      <div style={{marginBottom:10,padding:"8px 10px",background:"rgba(245,158,11,0.06)",border:"1px solid rgba(245,158,11,0.3)",borderRadius:8}}>
+        <div style={{fontSize:10,color:"#b45309",fontWeight:700,marginBottom:5}}>💰 รับมัดจำ (ถ้ามี) — บาท</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <input type="number" min="0" value={depositAmount} onFocus={e=>e.target.select()}
+            onChange={e => setDepositAmount(e.target.value)} placeholder="0"
+            style={{width:"100%",background:"#fff",border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:6,padding:"6px 8px",fontFamily:"monospace",fontSize:12,fontWeight:700,textAlign:"right",outline:"none"}}/>
+          <select value={depositMethod} onChange={e => setDepositMethod(e.target.value)}
+            style={{width:"100%",background:"#fff",border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:6,padding:"6px 8px",fontFamily:"inherit",fontSize:12,outline:"none",cursor:"pointer"}}>
+            {["โอน","เงินสด","COD"].map(m=><option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+        {Number(depositAmount)>0 && <div style={{fontSize:9,color:"#b45309",marginTop:4}}>💡 มัดจำนี้จะผูกเป็นการชำระในบิลอัตโนมัติตอนออกบิลจากงานนี้</div>}
       </div>
 
       {/* 🎨 สีชุดงาน */}
