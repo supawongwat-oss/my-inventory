@@ -9,6 +9,7 @@ import ProductionStatusModal from "../components/ProductionStatusModal";
 import PrintProductionOrder from "../components/PrintProductionOrder";
 import KanbanBoard from "../components/KanbanBoard";
 import { getLots } from "../utils/productionLots";
+import { migrateCustomOrderImages } from "../utils/migrateImages";
 
 const T = {
   card:"#ffffff", border:"#e3e8ef", text:"#1f2a44", sub:"#5b6b85", muted:"#8a9bb3",
@@ -40,6 +41,24 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
   const [showNew, setShowNew] = useState(false);
   const [editProdOrder, setEditProdOrder] = useState(null); // ✏️ ใบสั่งผลิตที่กำลังแก้ไข
   const [editCustomOrder, setEditCustomOrder] = useState(null); // ✏️ Custom order ที่กำลังแก้ไข
+  const [migrating, setMigrating] = useState(false);
+  const [migrateMsg, setMigrateMsg] = useState("");
+  // ☁️ ย้ายรูป base64 เก่าใน custom order ขึ้น Storage (admin, ครั้งเดียว)
+  const runMigrateImages = async () => {
+    if (migrating) return;
+    if (!window.confirm("ย้ายรูป custom order เก่าทั้งหมดขึ้น Storage?\n\n• ทำครั้งเดียว รันซ้ำได้ (ข้ามใบที่ย้ายแล้ว)\n• อาจใช้เวลาสักครู่ ห้ามปิดหน้าจนกว่าจะเสร็จ")) return;
+    setMigrating(true); setMigrateMsg("เริ่ม...");
+    try {
+      const res = await migrateCustomOrderImages(({ done, total, imagesMoved }) => setMigrateMsg(`กำลังตรวจ ${done}/${total} · ย้ายแล้ว ${imagesMoved} รูป`));
+      setMigrateMsg("");
+      alert(`✅ เสร็จแล้ว\n\nตรวจ ${res.total} ใบ · ย้าย ${res.migrated} ใบ · ${res.imagesMoved} รูป${res.failed ? `\n⚠️ พลาด ${res.failed} ใบ` : ""}`);
+    } catch (e) {
+      setMigrateMsg("");
+      alert("ย้ายไม่สำเร็จ: " + (e?.message || e));
+    } finally {
+      setMigrating(false);
+    }
+  };
   const [showNewCustom, setShowNewCustom] = useState(false);
   const [selectedCustom, setSelectedCustom] = useState(new Set()); // ids ของ custom orders ที่เลือกเพื่อออกบิลรวม
   const [customSubTab, setCustomSubTab] = useState("active"); // active | done | all
@@ -309,6 +328,12 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
               )}
               {selectedCustom.size > 0 && (
                 <button onClick={() => setSelectedCustom(new Set())} style={{padding:"8px 12px",borderRadius:9,border:`1px solid ${T.border}`,background:"white",color:T.sub,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>✕ ล้าง</button>
+              )}
+              {user?.role === "admin" && (
+                <button onClick={runMigrateImages} disabled={migrating} title="ย้ายรูป custom order เก่าขึ้น Storage (ทำครั้งเดียว)"
+                  style={{padding:"8px 12px",borderRadius:9,border:`1px solid ${T.border}`,cursor:migrating?"wait":"pointer",background:"rgba(59,91,139,0.06)",color:T.accent,fontSize:11,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>
+                  {migrating ? `☁️ ${migrateMsg||"กำลังย้าย..."}` : "☁️ ย้ายรูปเก่าขึ้น Storage"}
+                </button>
               )}
               {role?.canProduction && (
                 <button onClick={()=>setShowNewCustom(true)} style={{padding:"8px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#d97706,#d97706)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(217,119,6,0.3)"}}>+ สร้าง Custom Order</button>

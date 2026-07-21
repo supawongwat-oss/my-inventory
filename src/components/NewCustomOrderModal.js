@@ -5,6 +5,7 @@ import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { reserveDocNo } from "../utils/docNumber";
 import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
+import { uploadImage } from "../utils/upload";
 import { PRESET_COLORS, getProductionSize, isProductionSizeCapped, SIZES, compareSizes } from "../theme";
 import { ORDER_PALETTE } from "./KanbanBoard";
 import { matchTokens } from "../utils/search";
@@ -144,6 +145,21 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const updateImageLabel = (idx, label) => setImages(prev => prev.map((im, i) => i === idx ? { ...im, label } : im));
   const removeImage = (idx) => setImages(prev => prev.filter((_, i) => i !== idx));
 
+  // 📤 อัปโหลดรูปที่ยังเป็น base64 → Firebase Storage แล้วเก็บแค่ URL (doc เล็กลง โหลดเร็ว)
+  //    ที่เป็น URL อยู่แล้ว (แก้ไขงานเก่า) → คงไว้
+  const uploadImagesToStorage = async (imgs) => {
+    const out = [];
+    for (const im of (imgs || [])) {
+      if (im?.dataUrl && String(im.dataUrl).startsWith("data:")) {
+        const { url, path } = await uploadImage(im.dataUrl, "customOrders");
+        out.push({ dataUrl: url, path, label: im.label || "" });
+      } else {
+        out.push({ dataUrl: im?.dataUrl || "", path: im?.path || "", label: im?.label || "" });
+      }
+    }
+    return out;
+  };
+
   const validItems = inputMode === "grid" ? gridToItems() : items.filter(r => Number(r.qty) > 0);
   const totalQty = validItems.reduce((s,r) => s + (Number(r.qty)||0), 0);
   const matCost = Number(costPerPiece) || 0;
@@ -153,9 +169,8 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
 
   const canSubmit = jobName.trim() && validItems.length > 0 && totalQty > 0;
 
-  // คำนวณขนาดรวมของรูปทั้งหมด (KB) — ใช้แสดง progress + guard ตอน save
-  const totalImageKB = images.reduce((s, im) => s + dataUrlSizeKB(im.dataUrl), 0);
-  const IMAGE_BUDGET_KB = 900; // เหลือ ~120 KB สำหรับ field อื่น ๆ (Firestore limit 1024 KB / doc)
+  // ขนาดรวมรูป (KB) — แสดงเฉยๆ (รูปอัปขึ้น Storage ตอนบันทึก ไม่ฝังใน doc แล้ว)
+  const totalImageKB = images.reduce((s, im) => s + (String(im.dataUrl||"").startsWith("data:") ? dataUrlSizeKB(im.dataUrl) : 0), 0);
 
   // สร้าง items สำหรับบันทึก — colorIdx ต้องไม่ซ้ำกันต่อสี (ไม่งั้น invoice form รวมทุกสีเป็นกลุ่มเดียว)
   const buildItemsForSave = () => {
@@ -180,12 +195,9 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   // ✏️ บันทึกการแก้ไข custom order — เขียนทับ + rebuild lots (ใบต้องยังไม่เริ่มผลิต)
   const handleUpdate = async () => {
     if (!canSubmit || saving) return;
-    if (totalImageKB > IMAGE_BUDGET_KB) {
-      alert(`รูปรวม ${totalImageKB} KB เกิน budget ${IMAGE_BUDGET_KB} KB\n(Firestore จำกัด ~1 MB ต่อ document)\n\nกรุณาลบรูปบางรูป หรือใช้รูปที่เล็กลง`);
-      return;
-    }
     setSaving(true);
     try {
+      const uploadedImages = await uploadImagesToStorage(images); // 📤 base64 → Storage URL
       const newItems = buildItemsForSave();
       const singleLot = {
         lotId: "L1",
@@ -204,8 +216,8 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
         collarType: (collarType||"").trim(),
         jobDescription: (jobDescription||"").trim(),
         shrinkOffset: Number(shrinkOffset) || 0,
-        clothingImage: images[0]?.dataUrl || "",
-        clothingImages: images,
+        clothingImage: uploadedImages[0]?.dataUrl || "",
+        clothingImages: uploadedImages,
         items: newItems,
         totalQty,
         status: "พิมพ์ลาย",
@@ -245,12 +257,9 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
 
   const handleSubmit = async () => {
     if (!canSubmit || saving) return;
-    if (totalImageKB > IMAGE_BUDGET_KB) {
-      alert(`รูปรวม ${totalImageKB} KB เกิน budget ${IMAGE_BUDGET_KB} KB\n(Firestore จำกัด ~1 MB ต่อ document)\n\nกรุณาลบรูปบางรูป หรือใช้รูปที่เล็กลง`);
-      return;
-    }
     setSaving(true);
     try {
+    const uploadedImages = await uploadImagesToStorage(images); // 📤 base64 → Storage URL
     const prodNo = await reserveDocNo(db, "CUS", customOrders, "prodNo");
     const data = {
       prodNo,
@@ -264,8 +273,8 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
       collarType: (collarType||"").trim(),
       jobDescription: (jobDescription||"").trim(),
       shrinkOffset: Number(shrinkOffset) || 0,
-      clothingImage: images[0]?.dataUrl || "", // backward compat (รูปแรก)
-      clothingImages: images,                  // [{dataUrl, label}]
+      clothingImage: uploadedImages[0]?.dataUrl || "", // backward compat (รูปแรก)
+      clothingImages: uploadedImages,                  // [{dataUrl:url, path, label}]
       items: buildItemsForSave(),
       totalQty,
       status: "พิมพ์ลาย",
@@ -393,12 +402,9 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
           <div style={{fontSize:12,fontWeight:600,color:T.text,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
             🎨 รูปแบบงาน ({images.length} รูป)
             {images.length > 0 && (
-              <span style={{padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:700,fontFamily:"monospace",background:totalImageKB > IMAGE_BUDGET_KB ? "rgba(220,38,38,0.1)" : totalImageKB > IMAGE_BUDGET_KB * 0.85 ? "rgba(217,119,6,0.1)" : "rgba(22,163,74,0.1)",color:totalImageKB > IMAGE_BUDGET_KB ? "#dc2626" : totalImageKB > IMAGE_BUDGET_KB * 0.85 ? "#92400e" : "#15803d",border:`1px solid ${totalImageKB > IMAGE_BUDGET_KB ? "rgba(220,38,38,0.3)" : totalImageKB > IMAGE_BUDGET_KB * 0.85 ? "rgba(217,119,6,0.3)" : "rgba(22,163,74,0.3)"}`}}>
-                {totalImageKB} / {IMAGE_BUDGET_KB} KB
+              <span style={{padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:700,fontFamily:"monospace",background:"rgba(22,163,74,0.1)",color:"#15803d",border:"1px solid rgba(22,163,74,0.3)"}} title="รูปจะอัปขึ้น Storage ตอนบันทึก — ไม่ฝังในเอกสาร">
+                {totalImageKB} KB ☁️
               </span>
-            )}
-            {totalImageKB > IMAGE_BUDGET_KB && (
-              <span style={{fontSize:10,color:T.red,fontWeight:700}}>⚠️ เกิน — บันทึกไม่ได้</span>
             )}
           </div>
           <BtnGhost onClick={()=>fileRef.current?.click()} style={{fontSize:11,padding:"5px 12px"}}>📁 + เพิ่มรูป</BtnGhost>
@@ -706,7 +712,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
 
       <div style={{display:"flex",gap:10}}>
         <BtnGhost onClick={onClose} style={{flex:1}}>ยกเลิก</BtnGhost>
-        <BtnPrimary onClick={isEdit ? handleUpdate : handleSubmit} disabled={!canSubmit || saving || totalImageKB > IMAGE_BUDGET_KB} style={{flex:1}}>{saving ? "กำลังบันทึก..." : totalImageKB > IMAGE_BUDGET_KB ? "⚠️ รูปใหญ่เกิน — ลดรูปก่อน" : isEdit ? "💾 บันทึกการแก้ไข" : "🎨 ยืนยันสั่งผลิต Custom"}</BtnPrimary>
+        <BtnPrimary onClick={isEdit ? handleUpdate : handleSubmit} disabled={!canSubmit || saving} style={{flex:1}}>{saving ? "⏳ กำลังอัปรูป/บันทึก..." : isEdit ? "💾 บันทึกการแก้ไข" : "🎨 ยืนยันสั่งผลิต Custom"}</BtnPrimary>
       </div>
     </Modal>
   );
