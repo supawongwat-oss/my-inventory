@@ -1,6 +1,6 @@
 ﻿import React, { useState, useRef, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import { db, authReady } from "./firebase";
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, serverTimestamp, query, orderBy, where, Timestamp } from "firebase/firestore";
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, serverTimestamp, query, orderBy, where, Timestamp, limit } from "firebase/firestore";
 import { T, SIZES, SHOE_SIZES, getSizesFor, mergeSizes, PRESET_COLORS, MASTER_KEY, SIZE_GROUPS, getPriceForSize, compareSizes, splitSizesIntoRows } from "./theme";
 import { INIT_USERS, ROLES, INIT_CATS } from "./constants";
 import { BarcodeDisplay, Modal, MHead, Toast, Input, BtnPrimary, BtnSuccess, BtnDanger, BtnGhost, Badge, CardBox } from "./components/ui";
@@ -339,6 +339,7 @@ export default function App() {
 
   // ── Invoice & Company state ───────────────────────────────────
   const [showNewInvoice, setShowNewInvoice] = useState(false);
+  const [invoiceOrderPool, setInvoiceOrderPool] = useState([]); // 📋 ใบสั่งของล่าสุดจาก DB (เผื่อเก่ากว่า window ในหน่วยความจำ) สำหรับ dropdown ดึงข้อมูล
   const [editingInvoiceId, setEditingInvoiceId] = useState(null); // ถ้ามี = โหมดแก้ไข
   const [profileCustomer, setProfileCustomer] = useState(null);
   const [editingCustomer, setEditingCustomer] = useState(null); // 📝 customer edit modal
@@ -958,6 +959,23 @@ export default function App() {
     })();
     return () => { cancelled = true; };
   }, [activeTab]);
+
+  // 📋 เปิด modal ออกบิล → ดึงใบสั่งของล่าสุด 300 ใบจาก DB (B) เผื่อเก่ากว่า window ในหน่วยความจำ (A)
+  // dropdown "ดึงข้อมูลจากใบสั่งของ" จะได้เห็นใบที่ยังไม่ออกบิลครบ ไม่พลาดใบเก่า
+  useEffect(() => {
+    if (!showNewInvoice) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const q = query(collection(db, "orders"), orderBy("createdAt", "desc"), limit(300));
+        const snap = await getDocs(q);
+        if (!cancelled) setInvoiceOrderPool(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+      } catch (e) {
+        console.warn("[invoiceOrderPool] fetch failed:", e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showNewInvoice]);
 
   // 🧺 เปิด modal ขายคละ
   const openMix = (item) => {
@@ -4099,6 +4117,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           setInvoiceItemForm={setInvoiceItemForm}
           companyInfo={companyInfo}
           orders={orders}
+          orderPool={invoiceOrderPool}
           clothingItems={clothingItems}
           addItemCollapsed={addItemCollapsed}
           setAddItemCollapsed={setAddItemCollapsed}

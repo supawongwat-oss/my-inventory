@@ -12,6 +12,7 @@ export default function NewInvoiceModal({
   invoiceItemForm, setInvoiceItemForm,
   companyInfo = {},
   orders = [],
+  orderPool = [],
   clothingItems = [],
   addItemCollapsed, setAddItemCollapsed,
   handleAddInvoiceItem,
@@ -84,26 +85,33 @@ export default function NewInvoiceModal({
           </div>
 
           {/* Import from order */}
-          {orders.length>0&&(()=>{
+          {(orders.length>0 || orderPool.length>0)&&(()=>{
+            // A (memory ~7 วัน) + B (ดึงจาก DB 300 ใบล่าสุด) → รวม + ตัดซ้ำด้วย id
+            const seen = new Set();
+            const allOrders = [...orders, ...orderPool].filter(o => {
+              if (!o || !o.id || seen.has(o.id)) return false;
+              seen.add(o.id); return true;
+            });
             // เช็คว่าใบสั่งไหนออกบิลไปแล้ว (ตรงกับ mergedFromOrderIds หรือ ลูกค้า+วันเดียวกัน)
             const isInvoiced = (o) => invoices.some(inv =>
               (inv.mergedFromOrderIds||[]).includes(o.id) ||
               ((inv.customerName||"").trim()===(o.customerName||"").trim() && String(inv.date||"").slice(0,10)===String(o.date||"").slice(0,10))
             );
+            const tsOf = (o) => o.createdAt?.seconds || 0;
             const label = (o) => `${o.orderNo} · ${o.customerName} · ${o.date}`;
-            const pending = orders.filter(o => !isInvoiced(o));
-            const billed = orders.filter(o => isInvoiced(o));
+            const pending = allOrders.filter(o => !isInvoiced(o)).sort((a,b)=>tsOf(b)-tsOf(a));
+            const billed = allOrders.filter(o => isInvoiced(o)).sort((a,b)=>tsOf(b)-tsOf(a));
             return (
             <div style={{marginBottom:16,padding:12,background:"rgba(59,91,139,0.06)",border:"1px solid rgba(59,91,139,0.2)",borderRadius:10}}>
               <div style={{fontSize:11,color:T.accent,fontWeight:600,marginBottom:8}}>📋 ดึงข้อมูลจากใบสั่งของ <span style={{color:T.muted,fontWeight:400}}>· ยังไม่ออกบิล {pending.length} ใบ</span></div>
-              <select value="" onChange={e=>{const o=orders.find(x=>x.id===e.target.value);if(o)handleImportFromOrder(o);}}
+              <select value="" onChange={e=>{const o=allOrders.find(x=>x.id===e.target.value);if(o)handleImportFromOrder(o);}}
                 style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
                 <option value="">-- เลือกใบสั่งของ (ถ้ามี) --</option>
                 {pending.length>0 && <optgroup label={`⏳ ยังไม่ออกบิล (${pending.length})`}>
                   {pending.map(o=><option key={o.id} value={o.id}>{label(o)}</option>)}
                 </optgroup>}
-                {billed.length>0 && <optgroup label={`✅ ออกบิลแล้ว (${billed.length})`}>
-                  {billed.map(o=><option key={o.id} value={o.id}>{label(o)}</option>)}
+                {billed.length>0 && <optgroup label={`✅ ออกบิลแล้ว (${billed.length}${billed.length>50?" · แสดง 50 ล่าสุด":""})`}>
+                  {billed.slice(0,50).map(o=><option key={o.id} value={o.id}>{label(o)}</option>)}
                 </optgroup>}
               </select>
             </div>
