@@ -26,7 +26,7 @@ const LIMITS = {
   pendingMixSales: 300,    // ขายคละที่รอระบุ
 };
 
-export function useFirestore() {
+export function useFirestore(activeTab = "") {
   const [users, setUsers] = useState(INIT_USERS);
   const [usersLoaded, setUsersLoaded] = useState(false); // 🔐 true เมื่อ Firestore ตอบกลับจริง (กัน race "ไม่พบบัญชี")
   const [products, setProducts] = useState([]);
@@ -62,6 +62,14 @@ export function useFirestore() {
     const t = setTimeout(() => setDeferReady(true), 250);
     return () => clearTimeout(t);
   }, []);
+
+  // 🏭 ข้อมูลผลิต (ใบสั่งผลิต/custom — custom ฝังรูป base64 หนักมาก) โหลดเฉพาะตอนเข้าโซนผลิตครั้งแรก
+  // แล้ว "ค้าง" ไว้ทั้ง session (sticky) — หน้าแรกจะได้ไม่ต้องดาวน์โหลดก้อนนี้เลย
+  const [prodLoaded, setProdLoaded] = useState(false);
+  useEffect(() => {
+    if (["production", "productionHistory", "employees"].includes(activeTab)) setProdLoaded(true);
+  }, [activeTab]);
+  const prodReady = deferReady && prodLoaded;
 
   useEffect(() => {
     // 🛡️ ห้าม auto-overwrite ด้วย INIT_USERS!
@@ -203,13 +211,13 @@ export function useFirestore() {
     return () => unsub();
   }, [deferReady]);
 
-  // Production orders
+  // Production orders — โหลดเฉพาะตอนเข้าโซนผลิต
   useEffect(() => {
-    if (!deferReady) return;
+    if (!prodReady) return;
     const q = query(collection(db, "productionOrders"), orderBy("createdAt","desc"), limit(LIMITS.productionOrders));
     const unsub = onSnapshot(q, snap => setProductionOrders(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
     return () => unsub();
-  }, [deferReady]);
+  }, [prodReady]);
 
   // BOMs (สูตรวัตถุดิบ)
   useEffect(() => {
@@ -218,13 +226,13 @@ export function useFirestore() {
     return () => unsub();
   }, [deferReady]);
 
-  // Custom orders (ผลิตเฉพาะแบบ — ไม่ตัดสต็อกวัตถุดิบ/สินค้า)
+  // Custom orders (ฝังรูป base64 หนักมาก) — โหลดเฉพาะตอนเข้าโซนผลิต
   useEffect(() => {
-    if (!deferReady) return;
+    if (!prodReady) return;
     const q = query(collection(db, "customOrders"), orderBy("createdAt","desc"), limit(LIMITS.customOrders));
     const unsub = onSnapshot(q, snap => setCustomOrders(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
     return () => unsub();
-  }, [deferReady]);
+  }, [prodReady]);
 
   // Catalog orders — สั่งจาก /catalog (public)
   useEffect(() => {
