@@ -1907,12 +1907,16 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     });
     const first = sel[0];
     const orderNos = sel.map(o => o.orderNo).filter(Boolean).join(", ");
+    // 🔎 ดึงเลขภาษี/ข้อมูลลูกค้าจากทะเบียน (ใบสั่งของไม่ได้เก็บ taxId)
+    const firstCust = (first.customerId && customers.find(c => c.id === first.customerId))
+      || customers.find(c => (c.name||"").trim() === (first.customerName||"").trim());
     setInvoiceForm(f => ({
       ...f,
-      customerId: first.customerId||"",
-      customerName: first.customerName||"",
-      customerPhone: first.customerPhone||"",
-      customerAddress: first.customerAddress||"",
+      customerId: first.customerId||firstCust?.id||"",
+      customerName: first.customerName||firstCust?.name||"",
+      customerPhone: first.customerPhone||firstCust?.phone||"",
+      customerAddress: first.customerAddress||firstCust?.address||"",
+      customerTaxId: firstCust?.taxId||"",
       items: [...merged.values()],
       note: f.note ? `${f.note}\n[รวมจากใบสั่ง: ${orderNos}]` : `รวมจากใบสั่ง: ${orderNos}`,
       mergedFromOrderIds: sel.map(o=>o.id),
@@ -1935,11 +1939,15 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         size:i.size
       };
     });
+    // 🔎 ดึงข้อมูลลูกค้าจากทะเบียน (เลขภาษี/เบอร์/ที่อยู่ล่าสุด) — ใบสั่งของไม่ได้เก็บ taxId
+    const cust = (order.customerId && customers.find(c => c.id === order.customerId))
+      || customers.find(c => (c.name||"").trim() === (order.customerName||"").trim());
     setInvoiceForm(f=>({...f,
-      customerId:order.customerId||"",
-      customerName:order.customerName||"",
-      customerPhone:order.customerPhone||"",
-      customerAddress:order.customerAddress||"",
+      customerId:order.customerId||cust?.id||"",
+      customerName:order.customerName||cust?.name||"",
+      customerPhone:order.customerPhone||cust?.phone||"",
+      customerAddress:order.customerAddress||cust?.address||"",
+      customerTaxId:cust?.taxId||"",
       items,
       mergedFromOrderIds:[order.id], // 🔗 track ว่ามาจากใบสั่งไหน → order จะได้ mark "ออกบิลแล้ว"
     }));
@@ -2929,13 +2937,15 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                 setInvoiceVat(false);
                 setShowNewInvoice(true);
                 setActiveTab("invoice");
+                const custC = (first.customerId && customers.find(c => c.id === first.customerId))
+                  || customers.find(c => (c.name||"").trim() === (first.customerName||"").trim());
                 setTimeout(() => {
                   setInvoiceForm({
-                    customerId: first.customerId||"",
-                    customerName: first.customerName||"",
-                    customerPhone: first.customerPhone||"",
-                    customerAddress: first.customerAddress||"",
-                    customerTaxId: first.customerTaxId||"",
+                    customerId: first.customerId||custC?.id||"",
+                    customerName: first.customerName||custC?.name||"",
+                    customerPhone: first.customerPhone||custC?.phone||"",
+                    customerAddress: first.customerAddress||custC?.address||"",
+                    customerTaxId: first.customerTaxId||custC?.taxId||"",
                     items,
                     note: `จาก Custom Order: ${orders.map(o=>o.prodNo).join(", ")}`,
                     dueDate: "",
