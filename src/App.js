@@ -2006,6 +2006,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         lastEditedBy: user.name,
         lastEditedAt: now(),
       };
+      delete updated.depositAmount; delete updated.depositMethod; // ฟิลด์ชั่วคราวของฟอร์ม (แก้บิลจัดการชำระผ่านปุ่ม 💵)
       await updateDoc(doc(db,"invoices",editingInvoiceId), updated);
       logAudit(user, {
         action: AUDIT_ACTIONS.UPDATE,
@@ -2025,12 +2026,20 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
     // ── โหมดสร้างใหม่ ──
     const invNo = await reserveDocNo(db, "INV", invoices, "invoiceNo");
+    // 💰 มัดจำที่กรอกในหน้าออกบิล → เพิ่มเป็นการชำระ (รวมกับมัดจำที่ผูกจากใบสั่ง ถ้ามี)
+    const inlineDep = Number(invoiceForm.depositAmount) || 0;
+    const finalPayments = [
+      ...(invoiceForm.payments || []),
+      ...(inlineDep > 0 ? [{ id: `dep_inline_${Date.now()}`, amount: inlineDep, method: invoiceForm.depositMethod || "โอน", date: now(), bank: "", note: "มัดจำ (ตอนออกบิล)", receivedBy: user.name }] : []),
+    ];
     const data = {
       ...invoiceForm, ...calc,
+      payments: finalPayments,
       invoiceNo:invNo, docType:invoiceDocType, useVat:invoiceVat,
       bankAccount: bank,
       by:user.name, date:now(), createdAt:serverTimestamp(), status:"ออกแล้ว"
     };
+    delete data.depositAmount; delete data.depositMethod; // ฟิลด์ชั่วคราวของฟอร์ม ไม่ต้องเก็บลง doc
     const ref = await addDoc(collection(db,"invoices"), data);
     logAudit(user, {
       action: AUDIT_ACTIONS.CREATE,

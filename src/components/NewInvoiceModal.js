@@ -328,6 +328,28 @@ export default function NewInvoiceModal({
                       {invoiceVat&&<div style={{color:T.sub,marginBottom:2}}>VAT {invoiceForm.vatRate}%: <b style={{fontFamily:"monospace",color:T.text}}>฿{c.vat.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>}
                       {c.shipping>0&&<div style={{color:T.sub,marginBottom:2}}>🚚 ค่าจัดส่ง: <b style={{fontFamily:"monospace",color:T.text}}>฿{c.shipping.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>}
                       <div style={{color:"#34d399",fontSize:14,fontWeight:700}}>ยอดรวม: <span style={{fontFamily:"monospace"}}>฿{c.total.toLocaleString("th-TH",{minimumFractionDigits:2})}</span></div>
+                      {/* 💰 รับมัดจำ/ชำระแล้ว ตอนออกบิล */}
+                      {(()=>{
+                        const carried = (invoiceForm.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0),0);
+                        const dep = Number(invoiceForm.depositAmount)||0;
+                        const remain = Math.max(0, c.total - carried - dep);
+                        return (
+                        <div style={{marginTop:8,paddingTop:8,borderTop:`1px dashed ${T.border}`}}>
+                          {carried>0&&<div style={{color:T.green,marginBottom:4,fontSize:11}}>มัดจำจากใบสั่ง: <b style={{fontFamily:"monospace"}}>฿{carried.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>}
+                          <div style={{display:"flex",alignItems:"center",gap:6,justifyContent:"flex-end",marginBottom:4}}>
+                            <span style={{fontSize:11,color:"#b45309",fontWeight:600}}>💰 รับมัดจำ:</span>
+                            <input type="number" min="0" value={invoiceForm.depositAmount||""} onFocus={e=>e.target.select()}
+                              onChange={e=>setInvoiceForm(f=>({...f,depositAmount:e.target.value}))} placeholder="0"
+                              style={{width:90,textAlign:"right",background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.4)",color:"#b45309",borderRadius:6,padding:"5px 8px",fontFamily:"monospace",fontSize:12,fontWeight:700,outline:"none"}}/>
+                            <select value={invoiceForm.depositMethod||"โอน"} onChange={e=>setInvoiceForm(f=>({...f,depositMethod:e.target.value}))}
+                              style={{background:"#fff",border:`1px solid ${T.border}`,color:T.text,borderRadius:6,padding:"5px 6px",fontSize:11,outline:"none",cursor:"pointer"}}>
+                              {["โอน","เงินสด","COD"].map(m=><option key={m} value={m}>{m}</option>)}
+                            </select>
+                          </div>
+                          {(dep>0||carried>0)&&<div style={{color:remain>0?T.amber:T.green,fontSize:13,fontWeight:800}}>คงเหลือ: <span style={{fontFamily:"monospace"}}>฿{remain.toLocaleString("th-TH",{minimumFractionDigits:2})}</span></div>}
+                        </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 )})()}
