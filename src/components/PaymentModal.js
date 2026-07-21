@@ -62,6 +62,16 @@ export default function PaymentModal({
           {/* ฟอร์มเพิ่มการชำระ */}
           <div style={{padding:14,background:"rgba(16,185,129,0.04)",border:"1px dashed rgba(16,185,129,0.3)",borderRadius:10,marginBottom:10}}>
             <div style={{fontSize:11,color:T.green,fontWeight:700,marginBottom:10,letterSpacing:"0.04em"}}>➕ เพิ่มการชำระเงิน</div>
+            {/* ⚡ ปุ่มลัดรับมัดจำ — เติมยอดให้อัตโนมัติ */}
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+              <span style={{fontSize:10,color:T.muted,fontWeight:600,alignSelf:"center"}}>⚡ มัดจำเร็ว:</span>
+              {[30,50,70].map(p=>(
+                <button key={p} onClick={()=>setPayForm(f=>({...f,amount:(Math.round(total*p/100*100)/100).toString(),note:f.note||`มัดจำ ${p}%`}))}
+                  style={{padding:"4px 12px",borderRadius:14,border:"1px solid rgba(245,158,11,0.4)",background:"rgba(245,158,11,0.1)",color:"#b45309",cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"'Sarabun',sans-serif"}}>มัดจำ {p}%</button>
+              ))}
+              <button onClick={()=>setPayForm(f=>({...f,amount:(Math.round(remaining*100)/100).toString(),note:f.note||"ชำระส่วนที่เหลือ"}))}
+                style={{padding:"4px 12px",borderRadius:14,border:"1px solid rgba(16,185,129,0.4)",background:"rgba(16,185,129,0.1)",color:T.green,cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"'Sarabun',sans-serif"}}>เต็มจำนวน (คงเหลือ)</button>
+            </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:8}}>
               <div>
                 <label style={{fontSize:10,color:T.muted,display:"block",marginBottom:3,fontWeight:600}}>จำนวนเงิน (บาท) *</label>

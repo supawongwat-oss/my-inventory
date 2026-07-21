@@ -334,6 +334,21 @@ export default function NewOrderModal({
             </label>
           </div>
 
+          {/* 💰 มัดจำ (option) — ผูกไปกับบิลตอนออกบิล */}
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:5,fontWeight:600}}>💰 รับมัดจำ (ถ้ามี) — บาท</label>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <input type="number" min="0" value={orderForm.depositAmount||""} onFocus={e=>e.target.select()}
+                onChange={e=>setOrderForm(f=>({...f,depositAmount:e.target.value}))} placeholder="0"
+                style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"monospace",fontSize:13,fontWeight:700,outline:"none",textAlign:"right"}}/>
+              <select value={orderForm.depositMethod||"โอน"} onChange={e=>setOrderForm(f=>({...f,depositMethod:e.target.value}))}
+                style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none",cursor:"pointer"}}>
+                {["โอน","เงินสด","COD"].map(m=><option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            {Number(orderForm.depositAmount)>0 && <div style={{fontSize:10,color:"#b45309",marginTop:4}}>💡 มัดจำนี้จะถูกผูกเป็นการชำระในบิลอัตโนมัติตอนออกบิลจากใบสั่งนี้</div>}
+          </div>
+
           <div>
             <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:5,fontWeight:600}}>หมายเหตุ</label>
             <input value={orderForm.note} onChange={e=>setOrderForm(f=>({...f,note:e.target.value}))} placeholder="หมายเหตุเพิ่มเติม..."

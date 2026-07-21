@@ -275,6 +275,25 @@ export default function PrintInvoiceModal({
                         <td colSpan={12} style={{padding:"9px 12px",textAlign:"right",fontWeight:800,fontSize:15,color:"#000",border:"2px solid #000",whiteSpace:"nowrap"}}>ยอดรวมทั้งสิ้น</td>
                         <td style={{padding:"9px 12px",textAlign:"right",fontFamily:"monospace",fontWeight:800,fontSize:17,color:"#000",border:"2px solid #000",whiteSpace:"nowrap"}}>{(invoice.total||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                       </tr>
+                      {/* ── มัดจำ/ชำระแล้ว + คงเหลือ (เฉพาะเมื่อมีการชำระ) ── */}
+                      {(() => {
+                        const paidTotal = (invoice.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0),0);
+                        if (paidTotal <= 0) return null;
+                        const remain = Math.max(0, (Number(invoice.total)||0) - paidTotal);
+                        const isDeposit = (invoice.payments||[]).some(p=>/มัดจำ/.test(p.note||""));
+                        return (
+                          <>
+                            <tr style={{background:"#fff"}}>
+                              <td colSpan={12} style={{padding:"6px 12px",textAlign:"right",fontWeight:700,fontSize:12,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>{isDeposit?"หัก มัดจำ/ชำระแล้ว":"ชำระแล้ว"}</td>
+                              <td style={{padding:"6px 12px",textAlign:"right",fontFamily:"monospace",fontWeight:700,fontSize:13,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>-{paidTotal.toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                            </tr>
+                            <tr style={{background:"#fff"}}>
+                              <td colSpan={12} style={{padding:"8px 12px",textAlign:"right",fontWeight:800,fontSize:14,color:"#000",border:"2px solid #000",whiteSpace:"nowrap"}}>คงเหลือต้องชำระ</td>
+                              <td style={{padding:"8px 12px",textAlign:"right",fontFamily:"monospace",fontWeight:800,fontSize:16,color:"#000",border:"2px solid #000",whiteSpace:"nowrap"}}>{remain.toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                            </tr>
+                          </>
+                        );
+                      })()}
                     </tfoot>
                   </table>
                   </div>

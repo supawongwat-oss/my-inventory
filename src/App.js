@@ -1708,6 +1708,8 @@ export default function App() {
       note: o.note || "",
       items: (o.items || []).map(i => ({ ...i })),
       deferStockCut: !!o.deferStockCut,
+      depositAmount: o.depositAmount || "",
+      depositMethod: o.depositMethod || "โอน",
     });
     setCustomerSearch("");
     setEditingOrderId(o.id);
@@ -1910,6 +1912,11 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     // 🔎 ดึงเลขภาษี/ข้อมูลลูกค้าจากทะเบียน (ใบสั่งของไม่ได้เก็บ taxId)
     const firstCust = (first.customerId && customers.find(c => c.id === first.customerId))
       || customers.find(c => (c.name||"").trim() === (first.customerName||"").trim());
+    // 💰 รวมมัดจำจากทุกใบสั่งที่เลือก → เป็นการชำระในบิลรวม
+    const payments = sel.filter(o => Number(o.depositAmount) > 0).map(o => ({
+      id: `dep_${o.id}`, amount: Number(o.depositAmount), method: o.depositMethod || "โอน",
+      date: o.date || now(), bank: "", note: `มัดจำ (จากใบสั่ง ${o.orderNo})`, receivedBy: o.by || user.name,
+    }));
     setInvoiceForm(f => ({
       ...f,
       customerId: first.customerId||firstCust?.id||"",
@@ -1918,6 +1925,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       customerAddress: first.customerAddress||firstCust?.address||"",
       customerTaxId: firstCust?.taxId||"",
       items: [...merged.values()],
+      payments,
       note: f.note ? `${f.note}\n[รวมจากใบสั่ง: ${orderNos}]` : `รวมจากใบสั่ง: ${orderNos}`,
       mergedFromOrderIds: sel.map(o=>o.id),
     }));
@@ -1942,6 +1950,13 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     // 🔎 ดึงข้อมูลลูกค้าจากทะเบียน (เลขภาษี/เบอร์/ที่อยู่ล่าสุด) — ใบสั่งของไม่ได้เก็บ taxId
     const cust = (order.customerId && customers.find(c => c.id === order.customerId))
       || customers.find(c => (c.name||"").trim() === (order.customerName||"").trim());
+    // 💰 ถ้าใบสั่งมีมัดจำ → ผูกเป็นการชำระในบิลอัตโนมัติ
+    const dep = Number(order.depositAmount) || 0;
+    const payments = dep > 0 ? [{
+      id: `dep_${order.id}`, amount: dep, method: order.depositMethod || "โอน",
+      date: order.date || now(), bank: "", note: `มัดจำ (จากใบสั่ง ${order.orderNo})`,
+      receivedBy: order.by || user.name,
+    }] : [];
     setInvoiceForm(f=>({...f,
       customerId:order.customerId||cust?.id||"",
       customerName:order.customerName||cust?.name||"",
@@ -1949,6 +1964,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       customerAddress:order.customerAddress||cust?.address||"",
       customerTaxId:cust?.taxId||"",
       items,
+      payments,
       mergedFromOrderIds:[order.id], // 🔗 track ว่ามาจากใบสั่งไหน → order จะได้ mark "ออกบิลแล้ว"
     }));
   };
