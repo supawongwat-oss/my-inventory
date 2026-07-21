@@ -16,6 +16,13 @@ import { sizeRank } from "../theme";
 import PrintRollLabel from "./PrintRollLabel";
 
 const T = { border:"#e3e8ef", sub:"#5b6b85", text:"#1f2a44", muted:"#8a9bb3", accent:"#3b5b8b", red:"#dc2626", green:"#16a34a" };
+
+// 🧵 ดึงเลขม้วน "สูงสุด" จาก rollNo — รองรับม้วนที่รวมแล้วเป็นช่วง เช่น "1-14", "1,3,5-9"
+// (เดิมใช้ parseInt ได้แค่เลขตัวแรก → "1-14" อ่านเป็น 1 ทำให้ม้วนใหม่เลขผิด)
+const maxRollNoIn = (s) => {
+  const nums = String(s ?? "").match(/\d+/g);
+  return nums ? Math.max(...nums.map(Number)) : 0;
+};
 const fmtInt = (n) => Number(n || 0).toLocaleString("th-TH");
 
 export default function LotDetailModal({
@@ -463,11 +470,10 @@ export default function LotDetailModal({
   const applyRollSplit = async (orderedItems, capacity) => {
     const baseRolls = packIntoRolls(orderedItems, capacity);
     if (baseRolls.length <= 1) { setToast("ของน้อยกว่า 1 ม้วน — ไม่ต้องแบ่ง"); return; }
-    // 🩹 offset rollNo เพื่อต่อจากม้วนพี่น้องที่มีอยู่
+    // 🩹 offset rollNo เพื่อต่อจากม้วนพี่น้องที่มีอยู่ (รองรับม้วนที่รวมเป็นช่วง เช่น "1-14")
     const siblingMaxRoll = lots.reduce((max, l, i) => {
       if (i === lotIdx) return max;
-      const n = parseInt(l.rollNo, 10);
-      return !isNaN(n) && n > max ? n : max;
+      return Math.max(max, maxRollNoIn(l.rollNo));
     }, 0);
     const rolls = baseRolls.map((r, i) => ({ ...r, rollNo: siblingMaxRoll + i + 1 }));
     await replaceLotWithRolls(rolls, `แบ่ง ${rolls.length} ม้วน (${capacity}/ม้วน) จาก ${lot.lotId}`);
@@ -1178,12 +1184,12 @@ function RollSplitModal({ lot, lots = [], lotIdx, busy, setNo = "", clothingName
   const lotItems = lot.items || [];
 
   // 🩹 หา rollNo สูงสุดของม้วนพี่น้อง (ที่ไม่ใช่ตัวเอง) — เพื่อให้ลำดับม้วนใหม่ต่อจากเดิม
+  // รองรับม้วนที่รวมแล้วเป็นช่วง เช่น "1-14" → ได้ 14 (ไม่ใช่ 1)
   const siblingMaxRoll = (() => {
     let max = 0;
     (lots || []).forEach((l, i) => {
       if (i === lotIdx) return; // ข้ามล็อตที่กำลังแบ่ง
-      const n = parseInt(l.rollNo, 10);
-      if (!isNaN(n) && n > max) max = n;
+      max = Math.max(max, maxRollNoIn(l.rollNo));
     });
     return max;
   })();
