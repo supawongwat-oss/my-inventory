@@ -71,7 +71,7 @@ function dataUrlToBlob(dataUrl) {
  * อัปโหลดรูป (dataUrl ที่ compress แล้ว) → Firebase Storage
  * คืน { url, path } เพื่อเก็บใน Firestore doc แทน base64 (doc เล็กลง โหลดเร็ว)
  */
-export async function uploadImage(dataUrl, folder = "images") {
+export async function uploadImage(dataUrl, folder = "images", { timeoutMs = 20000 } = {}) {
   if (!dataUrl || !String(dataUrl).startsWith("data:")) {
     return { url: dataUrl || "", path: "" }; // ไม่ใช่ base64 → คืนตามเดิม
   }
@@ -79,7 +79,10 @@ export async function uploadImage(dataUrl, folder = "images") {
   const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
   const path = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const fileRef = ref(storage, path);
-  const snap = await uploadBytes(fileRef, blob, { contentType: blob.type });
+  // ⏱️ กัน uploadBytes ค้างตลอดกาล (เช่น Storage ยังไม่เปิด/rules บล็อก/เน็ตหลุด)
+  //    เกิน timeout → โยน error ให้ผู้เรียกจัดการ (fallback เก็บ base64 แทน)
+  const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error("upload-timeout")), timeoutMs));
+  const snap = await Promise.race([uploadBytes(fileRef, blob, { contentType: blob.type }), timeout]);
   const url = await getDownloadURL(snap.ref);
   return { url, path };
 }

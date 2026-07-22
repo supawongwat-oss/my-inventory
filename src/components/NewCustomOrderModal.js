@@ -147,17 +147,26 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
 
   // 📤 อัปโหลดรูปที่ยังเป็น base64 → Firebase Storage แล้วเก็บแค่ URL (doc เล็กลง โหลดเร็ว)
   //    ที่เป็น URL อยู่แล้ว (แก้ไขงานเก่า) → คงไว้
+  // คืน { images, storageFailed } — storageFailed=true ถ้ามีรูปอัปไม่ขึ้น (เก็บ base64 แทน)
   const uploadImagesToStorage = async (imgs) => {
     const out = [];
+    let storageFailed = false;
     for (const im of (imgs || [])) {
       if (im?.dataUrl && String(im.dataUrl).startsWith("data:")) {
-        const { url, path } = await uploadImage(im.dataUrl, "customOrders");
-        out.push({ dataUrl: url, path, label: im.label || "" });
+        try {
+          const { url, path } = await uploadImage(im.dataUrl, "customOrders");
+          out.push({ dataUrl: url, path, label: im.label || "" });
+        } catch (e) {
+          // ⚠️ อัปโหลดล้มเหลว/timeout → เก็บ base64 ไว้ในเอกสารแทน (หนักกว่าแต่ "ไม่หาย")
+          console.warn("[customOrder] อัปโหลดรูปไม่สำเร็จ เก็บ base64 แทน:", e?.message || e);
+          out.push({ dataUrl: im.dataUrl, path: "", label: im.label || "" });
+          storageFailed = true;
+        }
       } else {
         out.push({ dataUrl: im?.dataUrl || "", path: im?.path || "", label: im?.label || "" });
       }
     }
-    return out;
+    return { images: out, storageFailed };
   };
 
   const validItems = inputMode === "grid" ? gridToItems() : items.filter(r => Number(r.qty) > 0);
@@ -197,7 +206,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
     if (!canSubmit || saving) return;
     setSaving(true);
     try {
-      const uploadedImages = await uploadImagesToStorage(images); // 📤 base64 → Storage URL
+      const { images: uploadedImages, storageFailed } = await uploadImagesToStorage(images);
       const newItems = buildItemsForSave();
       const singleLot = {
         lotId: "L1",
@@ -243,6 +252,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
         targetLabel: `${editOrder.prodNo} · ${jobName.trim()}`,
         note: `แก้ไข Custom · ${newItems.length} แถว · ${totalQty} ตัว · ต้นทุน ฿${fmt(grandTotal)}`,
       });
+      if (storageFailed) alert("⚠️ บันทึกใบแก้ไขแล้ว แต่รูปบางรูปอัปขึ้นคลังไม่สำเร็จ (เก็บไว้ในเอกสารชั่วคราว)\nตรวจว่า Firebase Storage เปิดใช้งานแล้วหรือยัง");
       setSaved(true);
       setTimeout(() => { setSaved(false); setSaving(false); onUpdated && onUpdated(); onClose && onClose(); }, 700);
     } catch (err) {
@@ -259,7 +269,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
     if (!canSubmit || saving) return;
     setSaving(true);
     try {
-    const uploadedImages = await uploadImagesToStorage(images); // 📤 base64 → Storage URL
+    const { images: uploadedImages, storageFailed } = await uploadImagesToStorage(images);
     const prodNo = await reserveDocNo(db, "CUS", customOrders, "prodNo");
     const data = {
       prodNo,
@@ -305,6 +315,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
       targetLabel: `${prodNo} · ${data.clothingName}`,
       note: `Custom · ${validItems.length} แถว · ${totalQty} ตัว · ต้นทุน ฿${fmt(grandTotal)}`,
     });
+    if (storageFailed) alert("⚠️ บันทึกใบสั่งผลิตแล้ว แต่รูปบางรูปอัปขึ้นคลังไม่สำเร็จ (เก็บไว้ในเอกสารชั่วคราว)\nตรวจว่า Firebase Storage เปิดใช้งานแล้วหรือยัง");
     setSaved(true);
     setTimeout(() => { setSaved(false); setSaving(false); onCreated && onCreated({ ...data, id: ref.id }); onClose && onClose(); }, 700);
     } catch (err) {
