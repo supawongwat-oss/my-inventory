@@ -242,6 +242,15 @@ export default function App() {
     setAuthPrompt(null); setAuthInput(""); setAuthErr("");
     act();
   };
+  // 🔒 เมนูที่ต้องใส่รหัสแอดมินก่อนเข้า (จัดการผู้ใช้)
+  const LOCKED_TABS = ["users"];
+  const guardedSetActiveTab = (id) => {
+    if (LOCKED_TABS.includes(id) && user.role === "admin" && Date.now() >= pwSessionExp) {
+      requireAuth(() => setActiveTab(id), "ใส่รหัสแอดมินเพื่อเข้า “จัดการผู้ใช้”");
+      return;
+    }
+    setActiveTab(id);
+  };
   const [newUser, setNewUser] = useState({ name:"", username:"", password:"", confirmPassword:"" });
   const [addUserErr, setAddUserErr] = useState("");
   const [addUserSuccess, setAddUserSuccess] = useState(false);
@@ -808,6 +817,7 @@ export default function App() {
   const openSettings = () => {
     setProfileForm({ name: user.name, username: user.username, oldPass:"", newPass:"", confirmPass:"" });
     setProfileMsg({ type:"", text:"" });
+    setSettingsTab("profile"); // 🔒 เริ่มที่โปรไฟล์เสมอ — เข้า "ระบบ" ต้องใส่รหัสผ่านการ์ด
     setShowSettings(true);
   };
   const handleSaveProfile = async () => {
@@ -2514,7 +2524,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
             if (entry.type === "item") {
               const active = activeTab === entry.id;
               return (
-                <div key={entry.id} onClick={() => setActiveTab(entry.id)}
+                <div key={entry.id} onClick={() => guardedSetActiveTab(entry.id)}
                   className={active?"nav-active-bar":""}
                   style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontWeight:active?600:400,fontSize:13,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,justifyContent:sidebarOpen?"flex-start":"center",position:"relative",boxShadow:active?"0 0 12px rgba(59,91,139,0.08)":"none"}}>
                   <span style={{fontSize:15,flexShrink:0}}>{entry.icon}</span>
@@ -2533,7 +2543,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   {entry.children.map(c => {
                     const active = activeTab === c.id;
                     return (
-                      <div key={c.id} onClick={() => setActiveTab(c.id)} title={c.label}
+                      <div key={c.id} onClick={() => guardedSetActiveTab(c.id)} title={c.label}
                         style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontSize:13,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,justifyContent:"center"}}>
                         <span style={{fontSize:15}}>{c.icon}</span>
                       </div>
@@ -2556,7 +2566,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                 {isOpen && entry.children.map(c => {
                   const active = activeTab === c.id;
                   return (
-                    <div key={c.id} onClick={() => setActiveTab(c.id)}
+                    <div key={c.id} onClick={() => guardedSetActiveTab(c.id)}
                       className={active?"nav-active-bar":""}
                       style={{display:"flex",alignItems:"center",gap:10,padding:"8px 14px 8px 26px",borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontWeight:active?600:400,fontSize:12.5,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,position:"relative",boxShadow:active?"0 0 12px rgba(59,91,139,0.08)":"none"}}>
                       <span style={{fontSize:14,flexShrink:0}}>{c.icon}</span>
@@ -3982,8 +3992,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           <MHead title="⚙️ ตั้งค่าระบบ" onClose={()=>setShowSettings(false)}/>
           {/* Settings tabs */}
           <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:`1px solid ${T.border}`,paddingBottom:12}}>
-            {[{id:"profile",label:"👤 โปรไฟล์"},...(user.role==="admin"?[{id:"system",label:"🏢 ระบบ"},{id:"backup",label:"💾 Backup"}]:[]),{id:"install",label:"📱 ติดตั้งแอป"},{id:"about",label:"ℹ️ เกี่ยวกับ"}].map(t=>(
-              <button key={t.id} onClick={()=>setSettingsTab(t.id)} style={{padding:"7px 16px",borderRadius:8,border:settingsTab===t.id?`1px solid ${T.navActiveBorder}`:`1px solid transparent`,background:settingsTab===t.id?"rgba(59,91,139,0.15)":"transparent",color:settingsTab===t.id?"#3b5b8b":T.sub,cursor:"pointer",fontSize:13,fontFamily:"'Sarabun',sans-serif",fontWeight:settingsTab===t.id?600:400}}>{t.label}</button>
+            {[{id:"profile",label:"👤 โปรไฟล์"},...(user.role==="admin"?[{id:"system",label:"🏢 ระบบ 🔒"},{id:"backup",label:"💾 Backup"}]:[]),{id:"install",label:"📱 ติดตั้งแอป"},{id:"about",label:"ℹ️ เกี่ยวกับ"}].map(t=>(
+              <button key={t.id} onClick={()=>{ if(t.id==="system" && user.role==="admin" && Date.now()>=pwSessionExp){ requireAuth(()=>setSettingsTab("system"),"ใส่รหัสแอดมินเพื่อเข้า “ตั้งค่าระบบ”"); } else setSettingsTab(t.id); }} style={{padding:"7px 16px",borderRadius:8,border:settingsTab===t.id?`1px solid ${T.navActiveBorder}`:`1px solid transparent`,background:settingsTab===t.id?"rgba(59,91,139,0.15)":"transparent",color:settingsTab===t.id?"#3b5b8b":T.sub,cursor:"pointer",fontSize:13,fontFamily:"'Sarabun',sans-serif",fontWeight:settingsTab===t.id?600:400}}>{t.label}</button>
             ))}
           </div>
 
