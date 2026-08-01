@@ -89,11 +89,13 @@ const inlineImagesIn = async (root) => {
 // ภาพถูกบังคับ "พอดีหน้า" ด้วย object-fit: contain → ไม่มีทางล้นไปหน้าที่ 2
 export const printAsImage = async (el, { labels = null, fontScale = PRINT_FONT_SCALE, pageSize = "A4 portrait", title = "พิมพ์เอกสาร" } = {}) => {
   const [pageW, pageH] = PAGE_MM[pageSize] || [210, 297];
-  // 📏 ขอบกระดาษ 5mm (เกือบเต็มหน้า) — @page margin ต้องเป็น 0 เพื่อให้เบราว์เซอร์
-  //    ไม่พิมพ์หัว/ท้ายกระดาษของตัวเอง (URL เว็บ + วันที่) แล้วเว้นขอบเองด้วย padding แทน
-  const edgeMm = 5;
-  const cw = pageW - 2 * edgeMm, ch = pageH - 2 * edgeMm;
-  const widthPx = Math.round(mmToPx(cw));
+  // 📏 iPad/Galaxy ไม่ยอมให้ตั้งขอบกระดาษเป็น 0 — มันใส่ขอบของตัวเองเสมอ และตั้งค่าไม่ได้
+  //    ถ้าเราไปกำหนดความกว้างเป็น mm ตายตัว เนื้อหาจะล้นออกขวาแล้วตกไปหน้า 2
+  //    วิธีที่ได้ผลกับทุกเครื่อง: ให้ภาพกว้าง 100% ของพื้นที่พิมพ์ที่เครื่องให้มา
+  //    แล้วคุม "สัดส่วน" ของภาพให้เตี้ยกว่าสัดส่วนหน้ากระดาษเสมอ → พอดี 1 หน้าแน่นอน
+  //    (พื้นที่พิมพ์ยิ่งมีขอบมาก สัดส่วน สูง/กว้าง ยิ่งมากกว่า A4 เปล่า ⇒ ใช้ A4 เป็นเพดาน)
+  const targetRatio = Math.min(pageH / pageW, (pageH - 30) / (pageW - 30)) * 0.99;
+  const widthPx = Math.round(mmToPx(pageW - 20)); // ความกว้างตอนวาด (ไม่เกี่ยวกับตอนพิมพ์)
   const sheets = labels && labels.length ? labels : [null];
 
   // เปิดแท็บทันทีตอนกด (ต้องอยู่ใน user gesture ไม่งั้นโดน popup blocker)
@@ -130,36 +132,53 @@ export const printAsImage = async (el, { labels = null, fontScale = PRINT_FONT_S
       }).from(cl).toCanvas().get("canvas");
     };
 
-    // 🔍 วาดชุดแรกก่อนเพื่อวัดความสูงจริง — ถ้าเอกสารสั้นกว่าหน้ากระดาษมาก
-    //    ขยายตัวหนังสือให้เต็มหน้าขึ้น (ขยายเฉพาะฟอนต์ → ความสูงโตช้ากว่าตัวคูณ จึงไม่มีทางล้นหน้า)
+    // 📐 เติมขอบขาวด้านล่างให้ภาพมีสัดส่วนเท่ากับ targetRatio พอดี
+    //    (ถ้าเนื้อหาสูงเกิน จะย่อทั้งภาพลงแทน — ไม่ปล่อยให้ล้นหน้า)
+    const toPageImage = (canvas) => {
+      const r = canvas.height / canvas.width;
+      const out = document.createElement("canvas");
+      if (r <= targetRatio) {
+        out.width = canvas.width;
+        out.height = Math.round(canvas.width * targetRatio);
+      } else {
+        out.height = canvas.height;
+        out.width = Math.round(canvas.height / targetRatio);
+      }
+      const ctx = out.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, out.width, out.height);
+      ctx.drawImage(canvas, Math.round((out.width - canvas.width) / 2), 0);
+      return out.toDataURL("image/jpeg", 0.95);
+    };
+
+    // 🔍 วาดชุดแรกก่อนเพื่อวัดความสูงจริง แล้วปรับขนาดตัวหนังสือให้เต็มหน้าพอดี
+    //    (ขยายเฉพาะฟอนต์ ความสูงจึงโตช้ากว่าตัวคูณ — ปลอดภัยกว่าการขยายทั้งหน้า)
     let scale = fontScale;
     let firstCanvas = await renderSheet(sheets[0], scale);
-    const pageRatio = ch / cw;
     const ratio = firstCanvas.height / firstCanvas.width;
-    if (ratio > 0 && ratio < pageRatio * 0.94) {
-      const grow = Math.min(pageRatio / ratio, 1.35);
-      if (grow > 1.08) {
-        scale = fontScale * grow;
+    if (ratio > 0) {
+      const fit = Math.max(0.7, Math.min(targetRatio / ratio, 1.35));
+      if (Math.abs(fit - 1) > 0.06) {
+        scale = fontScale * fit;
         firstCanvas = await renderSheet(sheets[0], scale);
       }
     }
 
-    const pages = [firstCanvas.toDataURL("image/jpeg", 0.95)];
+    const pages = [toPageImage(firstCanvas)];
     for (const label of sheets.slice(1)) {
-      const canvas = await renderSheet(label, scale);
-      pages.push(canvas.toDataURL("image/jpeg", 0.95));
+      pages.push(toPageImage(await renderSheet(label, scale)));
     }
 
     const body = pages.map(src => `<div class="pg"><img src="${src}" alt=""/></div>`).join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
       <link rel="icon" href="data:,">
       <style>
-        /* margin:0 = เบราว์เซอร์ไม่พิมพ์หัว/ท้ายกระดาษ (URL + วันที่) */
+        /* ไม่กำหนดขนาดเป็น mm — ปล่อยให้ภาพกว้างเท่าพื้นที่พิมพ์ที่เครื่องให้มา ป้องกันตกขอบ */
         @page { size: ${pageW}mm ${pageH}mm; margin: 0; }
         html, body { margin:0; padding:0; background:#525659; }
-        .pg { width:${pageW}mm; height:${pageH}mm; padding:${edgeMm}mm; box-sizing:border-box; margin:0 auto; display:flex; align-items:flex-start; justify-content:center; page-break-after:always; background:#fff; overflow:hidden; }
+        .pg { width:100%; margin:0; page-break-after:always; background:#fff; line-height:0; }
         .pg:last-child { page-break-after:auto; }
-        .pg img { max-width:100%; max-height:100%; width:100%; object-fit:contain; object-position:top center; }
+        .pg img { display:block; width:100%; height:auto; }
         #__pb { position:fixed; top:10px; right:10px; padding:12px 20px; background:#3b5b8b; color:#fff; border:none; border-radius:8px; font-size:16px; font-weight:700; font-family:'Sarabun',sans-serif; z-index:9; }
         @media print { #__pb { display:none !important; } html, body { background:#fff; } }
       </style></head><body>
