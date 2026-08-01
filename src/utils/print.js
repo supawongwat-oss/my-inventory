@@ -5,8 +5,10 @@
 export const PRINT_FONT_SCALE = 1.3;
 // ใบบิล: A4 มีพื้นที่พอ → พิมพ์ที่ขนาดเกือบเต็ม (0.95) ให้ตารางอ่านง่าย
 export const INVOICE_FONT_SCALE = 1.0;
-// ใบบิล PDF: ย่อลงให้พอดีหน้า A4 มีขอบเหลือ (ฟอนต์ base ตารางใหญ่ → ต้องย่อกว่า print ปกติ)
-export const INVOICE_PDF_FONT_SCALE = 0.72;
+// ใบบิล PDF: ใช้สเกลเดียวกับพิมพ์จาก PC
+// PDF ถูกวาดที่ความกว้าง 718px = 190mm (= พื้นที่พิมพ์ A4 ขอบ 10mm) ซึ่งเท่ากับตอนพิมพ์จาก PC พอดี
+// → ใช้สเกลเดียวกัน ตัวหนังสือจึงออกมาขนาดเท่ากันเป๊ะ
+export const INVOICE_PDF_FONT_SCALE = INVOICE_FONT_SCALE;
 export const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
   // ต้อง attach root เข้า DOM ชั่วคราวเพื่ออ่าน computed style
   const holder = document.createElement("div");
@@ -409,6 +411,26 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
   });
 };
 
+// 🖼️ แปลง <img> ทุกตัวเป็น data URL ก่อนสร้าง PDF
+// html2canvas วาดรูปข้ามโดเมน (โลโก้/รูปงานจาก Storage) ไม่ได้ → จะกลายเป็นกรอบรูปแตกใน PDF
+const inlineImagesIn = async (root) => {
+  await Promise.all(Array.from(root.querySelectorAll("img")).map(async (im) => {
+    const src = im.getAttribute("src") || "";
+    if (!src || src.startsWith("data:")) return;
+    try {
+      const blob = await (await fetch(src, { mode: "cors", cache: "force-cache" })).blob();
+      im.setAttribute("src", await new Promise((ok, bad) => {
+        const r = new FileReader();
+        r.onload = () => ok(r.result);
+        r.onerror = bad;
+        r.readAsDataURL(blob);
+      }));
+    } catch (e) {
+      im.style.visibility = "hidden"; // โหลดไม่ได้ → ซ่อน ดีกว่าโชว์กรอบแตกบนบิลที่ส่งลูกค้า
+    }
+  }));
+};
+
 // ดาวน์โหลดเอกสารเป็น PDF (ใช้ html2pdf.js — lazy load)
 export const downloadInvoicePdf = async (inv, copies = false) => {
   const el = document.getElementById("invoice-print-area");
@@ -435,14 +457,17 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
   }
   // 📐 บังคับความกว้าง = A4 content (~190mm ≈ 718px @96dpi) → html2canvas จับภาพเท่าหน้าจริง ไม่ล้นขอบ
   source.style.width = "718px";
+  source.style.maxWidth = "718px";
   source.style.boxSizing = "border-box";
+  await inlineImagesIn(source);
   // 🚀 lazy import — โหลด html2pdf.js เฉพาะตอนกดปุ่มนี้เท่านั้น (~400KB)
   const { default: html2pdf } = await import("html2pdf.js");
   html2pdf().set({
     margin: 10,
     filename,
     image: { type: "jpeg", quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true },
+    // windowWidth 718 = จัดหน้าที่ความกว้าง A4 เสมอ ไม่ขึ้นกับจอของเครื่องที่กด (แท็บเล็ตจึงได้เท่า PC)
+    html2canvas: { scale: 2, useCORS: true, windowWidth: 718, backgroundColor: "#ffffff" },
     jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
     pagebreak: { mode: ["css", "legacy"] }
   }).from(source).save();
