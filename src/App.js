@@ -45,6 +45,13 @@ const CustomersTab = lazy(() => import("./tabs/CustomersTab"));
 const ProductionTab = lazy(() => import("./tabs/ProductionTab"));
 // 🎨 วงล้อสี — lazy load เฉพาะตอนเปิด modal เพิ่มสี
 const HexColorPicker = lazy(() => import("react-colorful").then(m => ({ default: m.HexColorPicker })));
+// 🧾 ค่าเริ่มต้นการแสดงข้อมูลบริษัทบนบิล — ใช้ทุกที่ที่รีเซ็ต/เปิดฟอร์มออกบิลใหม่
+// ตั้งให้ "ปลอดภัยไว้ก่อน" สำหรับลูกค้าที่ไม่รับ VAT — พนักงานกดเปิดเองเมื่อลูกค้าขอ
+const INVOICE_DISPLAY_DEFAULTS = {
+  showCompanyTaxId: false,  // ไม่ติ๊ก — กดเองถ้าลูกค้าต้องการเลขภาษี
+  hideCompanyDetails: true, // ติ๊กไว้ — กดออกเองถ้าลูกค้าต้องการข้อมูลบริษัทเต็ม
+};
+
 // ── MAIN APP ───────────────────────────────────────────────────
 export default function App() {
   // ── รอ Firebase Anonymous Auth พร้อมก่อน — เพื่อให้ Security Rules ผ่าน ──
@@ -364,12 +371,11 @@ export default function App() {
     customerId:"", customerName:"", customerPhone:"", customerAddress:"", customerTaxId:"",
     items:[], note:"", dueDate:"", vatRate:7,
     discount:0, discountType:"amount", // ส่วนลดท้ายบิล (amount หรือ percent)
-    showCompanyTaxId: true, // แสดงเลขผู้เสียภาษีของบริษัทในบิลหรือไม่
-    hideCompanyDetails: false, // 🕶️ ซ่อนชื่อเต็ม/ที่อยู่/เลขภาษีบริษัท (ลูกค้าที่ไม่รับ VAT)
+    ...INVOICE_DISPLAY_DEFAULTS, // showCompanyTaxId / hideCompanyDetails
     useShipping: false, shippingFee: 0, // ค่าจัดส่ง (เลือกเปิด/ปิด)
   });
   const [invoiceItemForm, setInvoiceItemForm] = useState({ description:"", qty:"", unitPrice:"", unit:"ชิ้น" });
-  const [addItemCollapsed, setAddItemCollapsed] = useState(false); // พับฟอร์มเพิ่มรายการ
+  const [addItemCollapsed, setAddItemCollapsed] = useState(true); // พับฟอร์มเพิ่มรายการไว้ก่อน — ช่องหนา กินที่
   const [txType, setTxType] = useState("รับ");
 
   // forms
@@ -2031,7 +2037,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       setShowPrintInvoice({...updated, id:editingInvoiceId});
       setShowNewInvoice(false);
       setEditingInvoiceId(null);
-      setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0});
+      setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0,...INVOICE_DISPLAY_DEFAULTS});
       return;
     }
 
@@ -2061,7 +2067,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     });
     setShowPrintInvoice({...data, id:ref.id});
     setShowNewInvoice(false);
-    setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0});
+    setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0,...INVOICE_DISPLAY_DEFAULTS});
     // 🧭 เด้งไปหน้า "ออกบิล" ให้เห็นบิลใหม่ในรายการทันที (โดยเฉพาะตอนออกบิลรวมจากหน้าใบสั่งของ)
     setActiveTab("invoice");
   };
@@ -2205,6 +2211,9 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       useShipping: !!inv.useShipping,
       shippingFee: inv.shippingFee || 0,
       bankAccountIdx: -1, // ผู้ใช้เลือกใหม่ถ้าต้องการ
+      // 🧾 แก้บิลเดิม — คงหน้าตาเดิมของบิลไว้ ไม่ใช้ค่า default ของบิลใหม่
+      showCompanyTaxId: inv.showCompanyTaxId !== false,
+      hideCompanyDetails: inv.hideCompanyDetails === true,
     });
     setShowNewInvoice(true);
   };
@@ -2997,6 +3006,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                     discount: 0,
                     discountType: "amount",
                     useShipping: false, shippingFee: 0,
+                    ...INVOICE_DISPLAY_DEFAULTS,
                     customDetails,
                   });
                 }, 50);

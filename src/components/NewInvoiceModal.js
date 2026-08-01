@@ -19,7 +19,7 @@ const priceTierOf = (sz) => {
 
 // 💰 แผงตั้งราคาทีเดียว — ใส่ราคาตามกลุ่มไซส์ (หรือแยกทีละไซส์) แล้วใช้กับทุกสี/ทุกรุ่นในบิล
 function BulkPricePanel({ items, setInvoiceForm }) {
-  const [open, setOpen] = React.useState(true);
+  const [open, setOpen] = React.useState(false); // พับไว้ก่อน — กดเปิดเมื่อจะตั้งราคา
   const [mode, setMode] = React.useState("group"); // "group" = ตามกลุ่ม | "each" = แยกทีละไซส์
 
   const buckets = React.useMemo(() => {
