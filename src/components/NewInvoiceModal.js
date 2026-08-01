@@ -132,8 +132,8 @@ export default function NewInvoiceModal({
                 {[{id:"receipt",label:"🧾 ใบเสร็จ"},{id:"tax",label:"📄 ใบกำกับภาษี"},{id:"quotation",label:"📋 ใบวางบิล"}].map(t=>(
                   <button key={t.id} onClick={()=>{
                     setInvoiceDocType(t.id);
-                    // ใบกำกับภาษี → บังคับ VAT 7%
-                    if (t.id === "tax") setInvoiceVat(true);
+                    // ใบกำกับภาษี → บังคับ VAT 7% + ต้องแสดงข้อมูลบริษัทเต็ม
+                    if (t.id === "tax") { setInvoiceVat(true); setInvoiceForm(f=>({...f,hideCompanyDetails:false})); }
                   }}
                     style={{padding:"7px 14px",borderRadius:8,border:`1px solid ${invoiceDocType===t.id?"#3b5b8b":T.border}`,background:invoiceDocType===t.id?"rgba(59,91,139,0.15)":"transparent",color:invoiceDocType===t.id?T.accent:T.sub,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif",fontWeight:invoiceDocType===t.id?700:400,transition:"all 0.2s"}}>
                     {t.label}
@@ -152,6 +152,13 @@ export default function NewInvoiceModal({
                 <input type="checkbox" checked={invoiceForm.showCompanyTaxId!==false} disabled={invoiceDocType==="tax"}
                   onChange={e=>setInvoiceForm(f=>({...f,showCompanyTaxId:e.target.checked}))} style={{cursor:invoiceDocType==="tax"?"not-allowed":"pointer"}}/>
                 <span style={{fontSize:12,color:invoiceForm.showCompanyTaxId!==false?T.accent:T.sub,fontWeight:invoiceForm.showCompanyTaxId!==false?700:400}}>แสดงเลขผู้เสียภาษีบริษัท {invoiceDocType==="tax"&&<span style={{color:T.red,fontSize:10,marginLeft:4}}>🔒 บังคับ</span>}</span>
+              </label>
+              {/* 🕶️ ลูกค้าบางเจ้าไม่ต้องการรับ VAT — ซ่อนชื่อเต็ม/ที่อยู่/เลขภาษีบริษัทบนบิล */}
+              <label style={{display:"flex",alignItems:"center",gap:8,cursor:invoiceDocType==="tax"?"not-allowed":"pointer",padding:"7px 14px",borderRadius:8,border:`1px solid ${invoiceForm.hideCompanyDetails?"#b45309":T.border}`,background:invoiceForm.hideCompanyDetails?"rgba(180,83,9,0.12)":"transparent",opacity:invoiceDocType==="tax"?0.8:1}}
+                title={invoiceDocType==="tax"?"ใบกำกับภาษีต้องแสดงข้อมูลบริษัทเต็มเสมอ":"ซ่อนชื่อเต็ม (เหลือชื่อย่อ) + ที่อยู่ + เลขผู้เสียภาษี + กล่อง 'ออกโดย' — สำหรับลูกค้าที่ไม่รับ VAT"}>
+                <input type="checkbox" checked={!!invoiceForm.hideCompanyDetails} disabled={invoiceDocType==="tax"}
+                  onChange={e=>setInvoiceForm(f=>({...f,hideCompanyDetails:e.target.checked}))} style={{cursor:invoiceDocType==="tax"?"not-allowed":"pointer"}}/>
+                <span style={{fontSize:12,color:invoiceForm.hideCompanyDetails?"#b45309":T.sub,fontWeight:invoiceForm.hideCompanyDetails?700:400}}>🕶️ ซ่อนชื่อเต็ม/ที่อยู่บริษัท {invoiceDocType==="tax"&&<span style={{color:T.red,fontSize:10,marginLeft:4}}>🔒 ปิดอยู่</span>}</span>
               </label>
             </div>
           </div>

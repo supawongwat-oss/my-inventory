@@ -3,6 +3,17 @@ import { splitSizesIntoRows } from "../theme";
 
 const INVOICE_FONT_SCALE = 1.0;
 
+// 🕶️ ชื่อบริษัทแบบย่อ — ตัดคำนำหน้า/ต่อท้ายทางกฎหมายออก
+// ใช้ตอนติ๊ก "ซ่อนข้อมูลบริษัท" (ลูกค้าที่ไม่ต้องการรับ VAT)
+// "ห้างหุ้นส่วนจำกัด ซีพียู" → "ซีพียู"
+const shortCompanyName = (name) => {
+  let s = String(name || "").trim();
+  s = s.replace(/\((มหาชน|สำนักงานใหญ่)\)/g, "");
+  s = s.replace(/^(ห้างหุ้นส่วนจำกัด|ห้างหุ้นส่วนสามัญ|หจก\.?|บริษัท|บมจ\.?|บจ\.?|บจก\.?)\s*/i, "");
+  s = s.replace(/\s*(จำกัด|Co\.,?\s*Ltd\.?|Company\s+Limited|Ltd\.?|Part\.?,?\s*Ltd\.?)\s*$/i, "");
+  return s.trim() || String(name || "").trim();
+};
+
 export default function PrintInvoiceModal({
   invoice,
   companyInfo = {},
@@ -13,6 +24,10 @@ export default function PrintInvoiceModal({
   downloadInvoicePdf,
 }) {
   if (!invoice) return null;
+  // 🕶️ ซ่อนข้อมูลบริษัท — ชื่อย่อ + ไม่โชว์ที่อยู่/เลขภาษี/กล่อง "ออกโดย"
+  const hideCo = invoice.hideCompanyDetails === true;
+  const coName = hideCo ? shortCompanyName(companyInfo.name || "CPU") : (companyInfo.name || "CPU");
+  const showCoTaxId = !hideCo && invoice.showCompanyTaxId !== false && !!companyInfo.taxId;
   return (
         <div className="print-modal-overlay" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,backdropFilter:"blur(6px)"}}
           onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
@@ -31,15 +46,15 @@ export default function PrintInvoiceModal({
                         onError={(e)=>{e.target.style.display="none";e.target.parentElement.innerHTML=companyInfo.logo||"⚙️";e.target.parentElement.style.background="#000";e.target.parentElement.style.fontSize="20px";e.target.parentElement.style.color="white";}}/>
                     </div>
                     <div>
-                      <div style={{fontSize:17,fontWeight:800,color:"#000",letterSpacing:1.5}}>{companyInfo.name||"CPU"}</div>
+                      <div style={{fontSize:17,fontWeight:800,color:"#000",letterSpacing:1.5}}>{coName}</div>
                     </div>
                   </div>
-                  {companyInfo.address&&<div style={{fontSize:10,color:"#000",marginBottom:1,maxWidth:280,lineHeight:1.5}}>{companyInfo.address}</div>}
+                  {!hideCo&&companyInfo.address&&<div style={{fontSize:10,color:"#000",marginBottom:1,maxWidth:280,lineHeight:1.5}}>{companyInfo.address}</div>}
                   <div style={{display:"flex",flexWrap:"wrap",gap:12,marginTop:1}}>
                     {companyInfo.phone&&<div style={{fontSize:10,color:"#000"}}>โทร: {companyInfo.phone}</div>}
-                    {companyInfo.email&&<div style={{fontSize:10,color:"#000"}}>{companyInfo.email}</div>}
+                    {!hideCo&&companyInfo.email&&<div style={{fontSize:10,color:"#000"}}>{companyInfo.email}</div>}
                   </div>
-                  {(invoice.showCompanyTaxId!==false)&&companyInfo.taxId&&<div style={{fontSize:10,color:"#000",marginTop:1}}>เลขผู้เสียภาษี: {companyInfo.taxId}</div>}
+                  {showCoTaxId&&<div style={{fontSize:10,color:"#000",marginTop:1}}>เลขผู้เสียภาษี: {companyInfo.taxId}</div>}
                 </div>
 
                 {/* ประเภทเอกสาร + เลขที่ */}
@@ -82,22 +97,24 @@ export default function PrintInvoiceModal({
               </div>
 
               {/* ── BILL TO / FROM — ขอบเล็กลง สีดำ ── */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:0,marginBottom:10,border:"1px solid #000",borderRadius:4,overflow:"hidden"}}>
-                <div style={{padding:"8px 12px",background:"#f8fafc",borderRight:"1px solid #000"}}>
+              <div style={{display:"grid",gridTemplateColumns:hideCo?"1fr":"1fr 1fr",gap:0,marginBottom:10,border:"1px solid #000",borderRadius:4,overflow:"hidden"}}>
+                <div style={{padding:"8px 12px",background:"#f8fafc",borderRight:hideCo?"none":"1px solid #000"}}>
                   <div style={{fontSize:10,color:"#000",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4,paddingBottom:3,borderBottom:"1px solid #000"}}>ออกให้แก่ (Bill To)</div>
                   <div style={{fontSize:14,fontWeight:700,color:"#000",marginBottom:2}}>{invoice.customerName||"-"}</div>
                   {invoice.customerPhone&&<div style={{fontSize:11,color:"#000",marginBottom:1}}>โทร: {invoice.customerPhone}</div>}
                   {invoice.customerTaxId&&<div style={{fontSize:11,color:"#000",marginBottom:1}}>เลขผู้เสียภาษี: {invoice.customerTaxId}</div>}
                   {invoice.customerAddress&&<div style={{fontSize:11,color:"#000",lineHeight:1.5,marginTop:2}}>{invoice.customerAddress}</div>}
                 </div>
+                {!hideCo&&(
                 <div style={{padding:"8px 12px",background:"#f8fafc"}}>
                   <div style={{fontSize:10,color:"#000",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4,paddingBottom:3,borderBottom:"1px solid #000"}}>ออกโดย (From)</div>
                   <div style={{fontSize:13,fontWeight:700,color:"#000",marginBottom:2}}>{companyInfo.name||"CPU"}</div>
                   {companyInfo.phone&&<div style={{fontSize:11,color:"#000",marginBottom:1}}>โทร: {companyInfo.phone}</div>}
                   {companyInfo.email&&<div style={{fontSize:11,color:"#000",marginBottom:1}}>{companyInfo.email}</div>}
                   {companyInfo.address&&<div style={{fontSize:11,color:"#000",lineHeight:1.5,marginTop:2}}>{companyInfo.address}</div>}
-                  {(invoice.showCompanyTaxId!==false)&&companyInfo.taxId&&<div style={{fontSize:11,color:"#000",marginTop:1}}>เลขผู้เสียภาษี: {companyInfo.taxId}</div>}
+                  {showCoTaxId&&<div style={{fontSize:11,color:"#000",marginTop:1}}>เลขผู้เสียภาษี: {companyInfo.taxId}</div>}
                 </div>
+                )}
               </div>
 
               {/* ── รายละเอียดงาน Custom (รูป + ชนิดผ้า + ปก + ลักษณะงาน) ── */}

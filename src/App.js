@@ -365,6 +365,7 @@ export default function App() {
     items:[], note:"", dueDate:"", vatRate:7,
     discount:0, discountType:"amount", // ส่วนลดท้ายบิล (amount หรือ percent)
     showCompanyTaxId: true, // แสดงเลขผู้เสียภาษีของบริษัทในบิลหรือไม่
+    hideCompanyDetails: false, // 🕶️ ซ่อนชื่อเต็ม/ที่อยู่/เลขภาษีบริษัท (ลูกค้าที่ไม่รับ VAT)
     useShipping: false, shippingFee: 0, // ค่าจัดส่ง (เลือกเปิด/ปิด)
   });
   const [invoiceItemForm, setInvoiceItemForm] = useState({ description:"", qty:"", unitPrice:"", unit:"ชิ้น" });
