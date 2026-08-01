@@ -38,6 +38,57 @@ export const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
   return root;
 };
 
+const PAGE_MM = {
+  "A4 portrait":  [210, 297], "A4 landscape": [297, 210],
+  "A5 portrait":  [148, 210], "A5 landscape": [210, 148],
+};
+const mmToPx = (mm) => (mm * 96) / 25.4;
+
+// วัดความสูงจริงของเนื้อหาที่ความกว้างที่กำหนด (วัดนอกจอ ไม่กระพริบ)
+const measureHeightAt = (el, widthPx) => {
+  const holder = document.createElement("div");
+  holder.style.cssText = `position:fixed;left:-99999px;top:0;width:${widthPx}px;visibility:hidden;pointer-events:none;`;
+  holder.appendChild(el);
+  document.body.appendChild(holder);
+  const h = el.scrollHeight;
+  holder.remove();
+  return h;
+};
+
+// 📏 หา fontScale ที่ใหญ่ที่สุดซึ่งยังทำให้เนื้อหาพอดี 1 หน้า
+// ใช้ตอนรายการเยอะจนล้นหน้า — ย่อ "ตัวหนังสือ" ไม่ใช่ย่อทั้งหน้า ตารางจึงยังเต็มความกว้าง
+// ค้นแบบ binary search 5 รอบ (วัดจริงทุกรอบ) → ได้ขนาดใหญ่ที่สุดที่ยังพอดี ไม่ย่อเกินจำเป็น
+export const fitOnePageScale = (srcEl, { widthPx, availPx, baseScale, minScale = 0.55 }) => {
+  const heightAt = (scale) => {
+    const clone = srcEl.cloneNode(true);
+    clone.removeAttribute("id");
+    clone.style.width = widthPx + "px";
+    clone.style.maxWidth = widthPx + "px";
+    clone.style.boxSizing = "border-box";
+    scaleFontInElement(clone, scale);
+    return measureHeightAt(clone, widthPx);
+  };
+  try {
+    if (heightAt(baseScale) <= availPx) return baseScale; // ไม่ล้น → ใช้ขนาดปกติ
+    let lo = minScale, hi = baseScale, best = minScale;
+    for (let i = 0; i < 5; i++) {
+      const mid = (lo + hi) / 2;
+      if (heightAt(mid) <= availPx) { best = mid; lo = mid; } else { hi = mid; }
+    }
+    return best;
+  } catch (e) {
+    console.warn("[print] fit failed:", e);
+    return baseScale;
+  }
+};
+
+// คำนวณพื้นที่พิมพ์ 1 หน้า (px) จากขนาดกระดาษ + ขอบ — เผื่อ 2% กันคลาดเคลื่อนของไดรเวอร์
+const pageBoxPx = (pageSize, pageMargin) => {
+  const [pw, ph] = PAGE_MM[pageSize] || [210, 297];
+  const m = parseFloat(String(pageMargin).match(/^([\d.]+)/)?.[1] || "10");
+  return { widthPx: Math.round(mmToPx(pw - 2 * m)), availPx: Math.round(mmToPx(ph - 2 * m) * 0.98) };
+};
+
 // 🖨️ พิมพ์แบบ same-page isolation — ใช้ได้ทุกอุปกรณ์ (desktop + Samsung/iOS/Android)
 // วิธีนี้ clone เนื้อหาที่จะพิมพ์ไปไว้ที่ body ระดับบนสุด แล้วใช้ @media print ซ่อนทุกอย่างที่เหลือ
 // → ไม่มี sidebar/โลโก้แอป หลุดเข้ามา (เดิม iframe.print() บน Samsung พิมพ์ทั้งหน้าหลัก = โลโก้ซ้ำ)
@@ -134,7 +185,12 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
 
   const clone = el.cloneNode(true);
   clone.removeAttribute("id");
-  const finalEl = isThermal ? clone : scaleFontInElement(clone, fontScale);
+  // 📏 รายการเยอะจนล้นหน้า → ย่อตัวหนังสือให้พอดี 1 หน้าอัตโนมัติ (สติกเกอร์ความร้อนไม่ต้อง)
+  const fitScale = isThermal ? fontScale : (() => {
+    const box = pageBoxPx(pageSize, pageMargin);
+    return fitOnePageScale(el, { widthPx: box.widthPx, availPx: box.availPx, baseScale: fontScale });
+  })();
+  const finalEl = isThermal ? clone : scaleFontInElement(clone, fitScale);
 
   const root = document.createElement("div");
   root.id = "__print_root__";
@@ -319,12 +375,15 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
 
   const root = document.createElement("div");
   root.id = "__print_root__";
+  // 📏 บิลรายการเยอะ → ย่อตัวหนังสือให้พอดี 1 หน้า/ชุด (คำนวณครั้งเดียว ทุกชุดเนื้อหาเหมือนกัน)
+  const boxC = pageBoxPx(pageSize, pageMargin);
+  const fitScaleC = fitOnePageScale(el, { widthPx: boxC.widthPx, availPx: boxC.availPx, baseScale: fontScale });
   labels.forEach((label, i) => {
     const clone = el.cloneNode(true);
     clone.removeAttribute("id");
     const tag = clone.querySelector("[data-doc-label]");
     if (tag) tag.textContent = label;
-    scaleFontInElement(clone, fontScale);
+    scaleFontInElement(clone, fitScaleC);
     const wrap = document.createElement("div");
     if (i < labels.length - 1) wrap.style.pageBreakAfter = "always";
     wrap.appendChild(clone);
@@ -437,6 +496,8 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
   if (!el || !inv) return;
   const safeName = (inv.customerName || "ลูกค้า").replace(/[\\/:*?"<>|]/g, "_").slice(0, 30);
   const filename = `${inv.invoiceNo || "INV"}_${safeName}.pdf`;
+  // 📏 รายการเยอะจนล้นหน้า → ย่อตัวหนังสือให้พอดี 1 หน้า (เท่ากับที่ทำตอนพิมพ์จาก PC)
+  const pdfScale = fitOnePageScale(el, { widthPx: 718, availPx: Math.round(mmToPx(277) * 0.98), baseScale: INVOICE_PDF_FONT_SCALE });
   let source;
   if (copies) {
     const labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"];
@@ -445,7 +506,7 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
       const clone = el.cloneNode(true);
       const tag = clone.querySelector("[data-doc-label]");
       if (tag) tag.textContent = label;
-      scaleFontInElement(clone, INVOICE_PDF_FONT_SCALE);
+      scaleFontInElement(clone, pdfScale);
       const pageWrap = document.createElement("div");
       if (i < labels.length - 1) pageWrap.style.pageBreakAfter = "always";
       pageWrap.appendChild(clone);
@@ -453,7 +514,7 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
     });
     source = wrap;
   } else {
-    source = scaleFontInElement(el.cloneNode(true), INVOICE_PDF_FONT_SCALE);
+    source = scaleFontInElement(el.cloneNode(true), pdfScale);
   }
   // 📐 บังคับความกว้าง = A4 content (~190mm ≈ 718px @96dpi) → html2canvas จับภาพเท่าหน้าจริง ไม่ล้นขอบ
   source.style.width = "718px";
