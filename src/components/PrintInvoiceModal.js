@@ -185,29 +185,14 @@ export default function PrintInvoiceModal({
                     </thead>
                     <tbody>
                       {groups.flatMap((group,gi)=>{
-                        // 🧵 แถวหัวข้อรายละเอียดงาน (ชนิดผ้า / แบบคอ / ลักษณะงาน)
-                        // แสดงครั้งเดียวต่อชุดรายละเอียด — กลุ่มสีถัดไปที่รายละเอียดเหมือนกันไม่ต้องซ้ำ
-                        const detailKey=[group.fabricType,group.collarType,group.jobDescription].join("|");
-                        const prev=gi>0?[groups[gi-1].fabricType,groups[gi-1].collarType,groups[gi-1].jobDescription].join("|"):null;
-                        const showDetail=detailKey.replace(/\|/g,"").trim()!=="" && detailKey!==prev;
-                        const detailRow=showDetail?[(
-                          <tr key={`d${gi}`}>
-                            <td colSpan={13} style={{padding:"5px 8px",border:"1px solid #000",background:"#f1f5f9"}}>
-                              <div style={{display:"flex",flexWrap:"wrap",gap:14,fontSize:12,color:"#000",fontWeight:600}}>
-                                {group.fabricType&&<span>🧵 ผ้า: {group.fabricType}</span>}
-                                {group.collarType&&<span>👔 คอ: {group.collarType}</span>}
-                                {group.jobDescription&&<span>📋 {group.jobDescription}</span>}
-                              </div>
-                            </td>
-                          </tr>
-                        )]:[];
+                        // ชนิดผ้า/แบบคอ ไม่ต้องซ้ำในตาราง — แสดงอยู่ในกล่อง "รายละเอียดงาน" ด้านบนแล้ว
                         // ✨ sort + group (รองรับ 2XL-9XL)
                         const withSize = group.items.filter(i => i.size);
                         const noSize = group.items.filter(i => !i.size);
                         const rows = splitSizesIntoRows(withSize, 4, { fillPlus: false });
                         noSize.forEach(n => rows.push([n]));
                         if(rows.length===0) rows.push([]);
-                        return detailRow.concat(rows.map((chunk,ci)=>{
+                        return rows.map((chunk,ci)=>{
                           const rowQty=chunk.reduce((s,i)=>s+i.qty,0);
                           const rowSub=chunk.reduce((s,i)=>s+(Number(i.unitPrice)||0)*i.qty,0);
                           return (
@@ -243,7 +228,7 @@ export default function PrintInvoiceModal({
                               })()}
                             </tr>
                           );
-                        }));
+                        });
                       })}
                       {/* รายการกรอกเอง (ไม่มี clothing) — span คอลัมน์รุ่น+สี+ไซส์ */}
                       {generic.map((it,i)=>(
