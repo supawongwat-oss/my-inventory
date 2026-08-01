@@ -34,10 +34,10 @@ export default function PrintInvoiceModal({
           <div className="print-modal-card" onMouseDown={e=>e.stopPropagation()} style={{background:"white",borderRadius:16,width:"min(96vw, 794px)",maxHeight:"94vh",overflow:"auto",boxShadow:"0 24px 60px rgba(0,0,0,0.7)"}}>
 
             {/* ── เนื้อหาบิล (พิมพ์ได้) — กว้างเท่า A4 portrait (794px @96dpi) ── */}
-            <div id="invoice-print-area" style={{padding:"12px 28px 14px",fontFamily:"'Sarabun',sans-serif",color:"#000",boxSizing:"border-box"}}>
+            <div id="invoice-print-area" style={{padding:"6px 24px 10px",fontFamily:"'Sarabun',sans-serif",color:"#000",boxSizing:"border-box"}}>
 
               {/* ── HEADER ── */}
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,paddingBottom:10,borderBottom:"2px solid #000"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:7,paddingBottom:6,borderBottom:"2px solid #000"}}>
                 {/* ข้อมูลบริษัท */}
                 <div style={{flex:1}}>
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
@@ -97,8 +97,8 @@ export default function PrintInvoiceModal({
               </div>
 
               {/* ── BILL TO / FROM — ขอบเล็กลง สีดำ ── */}
-              <div style={{display:"grid",gridTemplateColumns:hideCo?"1fr":"1fr 1fr",gap:0,marginBottom:10,border:"1px solid #000",borderRadius:4,overflow:"hidden"}}>
-                <div style={{padding:"8px 12px",background:"#f8fafc",borderRight:hideCo?"none":"1px solid #000"}}>
+              <div style={{display:"grid",gridTemplateColumns:hideCo?"1fr":"1fr 1fr",gap:0,marginBottom:7,border:"1px solid #000",borderRadius:4,overflow:"hidden"}}>
+                <div style={{padding:"5px 12px",background:"#f8fafc",borderRight:hideCo?"none":"1px solid #000"}}>
                   <div style={{fontSize:10,color:"#000",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4,paddingBottom:3,borderBottom:"1px solid #000"}}>ออกให้แก่ (Bill To)</div>
                   <div style={{fontSize:14,fontWeight:700,color:"#000",marginBottom:2}}>{invoice.customerName||"-"}</div>
                   {invoice.customerPhone&&<div style={{fontSize:11,color:"#000",marginBottom:1}}>โทร: {invoice.customerPhone}</div>}
@@ -106,7 +106,7 @@ export default function PrintInvoiceModal({
                   {invoice.customerAddress&&<div style={{fontSize:11,color:"#000",lineHeight:1.5,marginTop:2}}>{invoice.customerAddress}</div>}
                 </div>
                 {!hideCo&&(
-                <div style={{padding:"8px 12px",background:"#f8fafc"}}>
+                <div style={{padding:"5px 12px",background:"#f8fafc"}}>
                   <div style={{fontSize:10,color:"#000",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4,paddingBottom:3,borderBottom:"1px solid #000"}}>ออกโดย (From)</div>
                   <div style={{fontSize:13,fontWeight:700,color:"#000",marginBottom:2}}>{companyInfo.name||"CPU"}</div>
                   {companyInfo.phone&&<div style={{fontSize:11,color:"#000",marginBottom:1}}>โทร: {companyInfo.phone}</div>}
@@ -119,33 +119,34 @@ export default function PrintInvoiceModal({
 
               {/* ── รายละเอียดงาน Custom (รูป + ชนิดผ้า + ปก + ลักษณะงาน) ── */}
               {invoice.customDetails&&(invoice.customDetails.jobs||[]).length>0&&(
-                <div style={{marginBottom:10,padding:"10px 12px",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8}}>
-                  <div style={{fontSize:10,color:"#3b5b8b",fontWeight:800,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>📋 รายละเอียดงาน</div>
+                <div style={{marginBottom:7,padding:"7px 10px",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8}}>
+                  <div style={{fontSize:10,color:"#3b5b8b",fontWeight:800,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:5}}>รายละเอียดงาน</div>
                   {(invoice.customDetails.jobs||[]).map((j,ji)=>{
                     const imgs=j.images||[];
                     const cols=imgs.length<=1?1:(imgs.length===2?2:3);
                     return (
-                      <div key={ji} style={{marginBottom:ji<(invoice.customDetails.jobs.length-1)?10:0,paddingBottom:ji<(invoice.customDetails.jobs.length-1)?10:0,borderBottom:ji<(invoice.customDetails.jobs.length-1)?"1px dashed #cbd5e1":"none"}}>
-                        <div style={{display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap",marginBottom:6}}>
-                          {j.prodNo&&<span style={{fontSize:10,fontFamily:"monospace",color:"#3b5b8b",fontWeight:700,padding:"2px 7px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:4}}>{j.prodNo}</span>}
+                      <div key={ji} style={{marginBottom:ji<(invoice.customDetails.jobs.length-1)?7:0,paddingBottom:ji<(invoice.customDetails.jobs.length-1)?7:0,borderBottom:ji<(invoice.customDetails.jobs.length-1)?"1px dashed #cbd5e1":"none"}}>
+                        <div style={{display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap",marginBottom:4}}>
+                          {j.prodNo&&<span style={{fontSize:10,fontFamily:"monospace",color:"#3b5b8b",fontWeight:700,padding:"1px 7px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:4}}>{j.prodNo}</span>}
                           <span style={{fontSize:13,fontWeight:700,color:"#000"}}>{j.clothingName||"-"}</span>
                         </div>
+                        {/* ไม่ใช้ไอคอน — บางเครื่องพิมพ์เป็นกรอบรูปแตก ใช้ข้อความล้วนแทน */}
                         {(j.fabricType||j.collarType||j.jobDescription)&&(
-                          <div style={{display:"flex",flexWrap:"wrap",gap:6,fontSize:11,marginBottom:imgs.length>0?8:0}}>
-                            {j.fabricType&&<span style={{padding:"2px 8px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,fontWeight:600,color:"#1e40af"}}>🧵 {j.fabricType}</span>}
-                            {j.collarType&&<span style={{padding:"2px 8px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,fontWeight:600,color:"#15803d"}}>👔 {j.collarType}</span>}
-                            {j.jobDescription&&<span style={{padding:"2px 8px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,fontWeight:600,color:"#78350f"}}>📋 {j.jobDescription}</span>}
+                          <div style={{display:"flex",flexWrap:"wrap",gap:6,fontSize:11,marginBottom:imgs.length>0?5:0}}>
+                            {j.fabricType&&<span style={{padding:"1px 8px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,fontWeight:600,color:"#1e40af"}}>ผ้า: {j.fabricType}</span>}
+                            {j.collarType&&<span style={{padding:"1px 8px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,fontWeight:600,color:"#15803d"}}>คอ: {j.collarType}</span>}
+                            {j.jobDescription&&<span style={{padding:"1px 8px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,fontWeight:600,color:"#78350f"}}>{j.jobDescription}</span>}
                           </div>
                         )}
-                        {j.note&&<div style={{fontSize:10,color:"#475569",marginBottom:imgs.length>0?8:0,fontStyle:"italic"}}>💬 {j.note}</div>}
+                        {j.note&&<div style={{fontSize:10,color:"#475569",marginBottom:imgs.length>0?5:0,fontStyle:"italic"}}>หมายเหตุ: {j.note}</div>}
                         {imgs.length>0&&(
-                          <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap:6}}>
+                          <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap:5}}>
                             {imgs.map((im,i)=>(
                               <div key={i} style={{textAlign:"center"}}>
-                                <div style={{width:"100%",height:imgs.length===1?120:100,background:"#fff",border:"1px solid #e2e8f0",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+                                <div style={{width:"100%",height:imgs.length===1?92:76,background:"#fff",border:"1px solid #e2e8f0",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
                                   <img src={im.dataUrl} alt="" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/>
                                 </div>
-                                {im.label&&<div style={{fontSize:10,color:"#1e293b",fontWeight:700,marginTop:3}}>{im.label}</div>}
+                                {im.label&&<div style={{fontSize:10,color:"#1e293b",fontWeight:700,marginTop:2}}>{im.label}</div>}
                               </div>
                             ))}
                           </div>

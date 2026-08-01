@@ -59,57 +59,105 @@ const pdfOverlay = (msg) => {
   return () => { try { d.remove(); } catch (e) {} };
 };
 
-// 📄 สร้าง PDF จาก element แล้วบันทึกลงเครื่อง — ใช้บนแท็บเล็ต/มือถือแทนการสั่งพิมพ์ตรง
-// เหตุผล: เบราว์เซอร์บนแท็บเล็ตจัดหน้าไม่ตรงกับ PC (ตัวเล็กบ้าง หลุดขอบบ้าง)
-// PDF ถูกวาดที่ความกว้างเท่าพื้นที่พิมพ์ A4 จริง + ฟอนต์สเกลเดียวกับ PC → หน้าตาตรงกันแน่นอน
-export const buildPdfFromElement = async (el, { labels = null, fontScale = PRINT_FONT_SCALE, pageSize = "A4 portrait", pageMargin = "10mm", filename = "เอกสาร.pdf" } = {}) => {
-  const [pageW] = PAGE_MM[pageSize] || [210, 297];
-  const marginMm = parseFloat(String(pageMargin).match(/^([\d.]+)/)?.[1] || "10");
-  const widthPx = Math.round(mmToPx(pageW - 2 * marginMm));
-  const sheets = labels && labels.length ? labels : [null];
-
-  const wrap = document.createElement("div");
-  wrap.style.width = widthPx + "px";
-  wrap.style.boxSizing = "border-box";
-  wrap.style.background = "#fff";
-  sheets.forEach((label, i) => {
-    const cl = el.cloneNode(true);
-    cl.removeAttribute("id");
-    if (label) {
-      const tag = cl.querySelector("[data-doc-label]");
-      if (tag) tag.textContent = label;
+// 🖼️ แปลง <img> ทุกตัวเป็น data URL ก่อนวาดภาพ
+// จำเป็นเพราะ html2canvas วาดรูปข้ามโดเมน (โลโก้/รูปงานจาก Storage) ไม่ได้ → กลายเป็นกรอบรูปแตก
+const inlineImagesIn = async (root) => {
+  const imgs = Array.from(root.querySelectorAll("img"));
+  await Promise.all(imgs.map(async (im) => {
+    const src = im.getAttribute("src") || "";
+    if (!src || src.startsWith("data:")) return;
+    try {
+      const res = await fetch(src, { mode: "cors", cache: "force-cache" });
+      const blob = await res.blob();
+      const dataUrl = await new Promise((ok, bad) => {
+        const r = new FileReader();
+        r.onload = () => ok(r.result);
+        r.onerror = bad;
+        r.readAsDataURL(blob);
+      });
+      im.setAttribute("src", dataUrl);
+    } catch (e) {
+      // โหลดไม่ได้ → ซ่อนไปเลย ดีกว่าโชว์กรอบรูปแตกบนเอกสารที่ส่งลูกค้า
+      im.style.visibility = "hidden";
     }
-    scaleFontInElement(cl, fontScale);
-    const page = document.createElement("div");
-    page.style.width = widthPx + "px";
-    page.style.boxSizing = "border-box";
-    if (i < sheets.length - 1) page.style.pageBreakAfter = "always";
-    page.appendChild(cl);
-    wrap.appendChild(page);
-  });
-
-  const hide = pdfOverlay("⏳ กำลังสร้าง PDF...\nกรุณารอสักครู่");
-  try {
-    const { default: html2pdf } = await import("html2pdf.js");
-    await html2pdf().set({
-      margin: marginMm,
-      filename,
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, windowWidth: widthPx, backgroundColor: "#ffffff" },
-      jsPDF: { unit: "mm", format: /A5/i.test(pageSize) ? "a5" : "a4", orientation: /landscape/i.test(pageSize) ? "landscape" : "portrait" },
-      pagebreak: { mode: ["css", "legacy"] },
-    }).from(wrap).save();
-  } finally {
-    hide();
-  }
-  alert(`✅ บันทึก PDF แล้ว: ${filename}\n\nเปิดไฟล์จากแถบแจ้งเตือน (หรือโฟลเดอร์ Download) แล้วสั่งพิมพ์จากตรงนั้น\nหน้าตาจะตรงกับที่พิมพ์จากคอมพิวเตอร์ทุกประการ`);
+  }));
 };
 
-// ตั้งชื่อไฟล์จากป้ายชื่อเอกสาร + เลขที่ในเนื้อหา
-const pdfFileName = (el, fallback = "เอกสาร") => {
-  const label = el.querySelector("[data-doc-label]")?.textContent?.trim() || fallback;
-  const stamp = new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(/[/:,\s]+/g, "-");
-  return `${label.replace(/[\\/:*?"<>|]/g, "_").slice(0, 40)}_${stamp}.pdf`;
+// 🖨️ พิมพ์บนแท็บเล็ต/มือถือ — วาดเอกสารเป็นภาพขนาดเท่าหน้า A4 จริง แล้วสั่งพิมพ์ให้ทันที
+// เหตุผล: เบราว์เซอร์บนแท็บเล็ตจัดหน้าเองไม่ตรงกับ PC (ตัวเล็กบ้าง หลุดขอบบ้าง)
+//   วาดเป็นภาพจาก layout เดียวกับ PC → หน้าตาตรงกันแน่นอน และไม่ต้องโหลดไฟล์มากดพิมพ์ซ้ำ
+// ภาพถูกบังคับ "พอดีหน้า" ด้วย object-fit: contain → ไม่มีทางล้นไปหน้าที่ 2
+export const printAsImage = async (el, { labels = null, fontScale = PRINT_FONT_SCALE, pageSize = "A4 portrait", pageMargin = "10mm", title = "พิมพ์เอกสาร" } = {}) => {
+  const [pageW, pageH] = PAGE_MM[pageSize] || [210, 297];
+  const marginMm = parseFloat(String(pageMargin).match(/^([\d.]+)/)?.[1] || "10");
+  const cw = pageW - 2 * marginMm, ch = pageH - 2 * marginMm;
+  const widthPx = Math.round(mmToPx(cw));
+  const sheets = labels && labels.length ? labels : [null];
+
+  // เปิดแท็บทันทีตอนกด (ต้องอยู่ใน user gesture ไม่งั้นโดน popup blocker)
+  const w = window.open("", "_blank");
+  if (w) {
+    w.document.write(`<!doctype html><meta charset="utf-8"><title>${title}</title>
+      <body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;font-family:'Sarabun',sans-serif;font-size:18px;color:#334155">
+      ⏳ กำลังเตรียมเอกสาร...</body>`);
+  }
+
+  const hide = pdfOverlay("⏳ กำลังเตรียมเอกสาร...\nกรุณารอสักครู่");
+  const holder = document.createElement("div");
+  holder.style.cssText = `position:fixed;left:-99999px;top:0;width:${widthPx}px;background:#fff;`;
+  document.body.appendChild(holder);
+  try {
+    const { default: html2pdf } = await import("html2pdf.js");
+    const pages = [];
+    for (const label of sheets) {
+      const cl = el.cloneNode(true);
+      cl.removeAttribute("id");
+      if (label) {
+        const tag = cl.querySelector("[data-doc-label]");
+        if (tag) tag.textContent = label;
+      }
+      scaleFontInElement(cl, fontScale);
+      cl.style.width = widthPx + "px";
+      cl.style.maxWidth = widthPx + "px";
+      cl.style.boxSizing = "border-box";
+      holder.innerHTML = "";
+      holder.appendChild(cl);
+      await inlineImagesIn(cl);
+      // ใช้ html2canvas ที่มากับ html2pdf.js (ไม่ต้องเพิ่ม dependency)
+      const canvas = await html2pdf().set({
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff", windowWidth: widthPx, logging: false },
+      }).from(cl).toCanvas().get("canvas");
+      pages.push(canvas.toDataURL("image/jpeg", 0.95));
+    }
+
+    const body = pages.map(src => `<div class="pg"><img src="${src}" alt=""/></div>`).join("");
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
+      <link rel="icon" href="data:,">
+      <style>
+        @page { size: ${pageW}mm ${pageH}mm; margin: ${marginMm}mm; }
+        html, body { margin:0; padding:0; background:#525659; }
+        .pg { width:${cw}mm; height:${ch}mm; margin:0 auto; display:flex; align-items:flex-start; justify-content:center; page-break-after:always; background:#fff; }
+        .pg:last-child { page-break-after:auto; }
+        .pg img { max-width:100%; max-height:100%; object-fit:contain; }
+        #__pb { position:fixed; top:10px; right:10px; padding:12px 20px; background:#3b5b8b; color:#fff; border:none; border-radius:8px; font-size:16px; font-weight:700; font-family:'Sarabun',sans-serif; z-index:9; }
+        @media print { #__pb { display:none !important; } html, body { background:#fff; } }
+      </style></head><body>
+      <button id="__pb" onclick="window.print()">🖨️ พิมพ์</button>
+      ${body}
+      <script>window.addEventListener("load",function(){setTimeout(function(){try{window.focus();window.print();}catch(e){}},400);});<\/script>
+      </body></html>`;
+
+    if (w && !w.closed) {
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+    } else {
+      alert("เบราว์เซอร์บล็อก popup — กรุณาอนุญาต popup สำหรับหน้านี้แล้วลองใหม่");
+    }
+  } finally {
+    holder.remove();
+    hide();
+  }
 };
 
 // 🖨️ พิมพ์แบบ same-page isolation — ใช้ได้ทุกอุปกรณ์ (desktop + Samsung/iOS/Android)
@@ -126,10 +174,10 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
   //    เพราะ Samsung Print Service capture ทั้งหน้าจอ ไม่ honor display:none
   const isMobile = isMobileDevice();
 
-  // 📄 แท็บเล็ต/มือถือ (ยกเว้นสติกเกอร์ความร้อน) → สร้าง PDF แทน เพื่อให้หน้าตาตรงกับ PC เป๊ะ
+  // 📄 แท็บเล็ต/มือถือ (ยกเว้นสติกเกอร์ความร้อน) → วาดเป็นภาพแล้วสั่งพิมพ์ทันที (หน้าตาตรงกับ PC)
   if (isMobile && !isThermal) {
-    buildPdfFromElement(el, { fontScale, pageSize, pageMargin, filename: pdfFileName(el, "เอกสาร") })
-      .catch(err => { console.warn("[print] pdf failed:", err); alert("สร้าง PDF ไม่สำเร็จ — ลองใหม่อีกครั้ง"); });
+    printAsImage(el, { fontScale, pageSize, pageMargin })
+      .catch(err => { console.warn("[print] image print failed:", err); alert("เตรียมเอกสารไม่สำเร็จ — ลองใหม่อีกครั้ง"); });
     return;
   }
 
@@ -328,10 +376,10 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
   const el = document.getElementById(id);
   if (!el) return;
 
-  // 📄 แท็บเล็ต/มือถือ → สร้าง PDF (ต้นฉบับ+สำเนา อยู่ในไฟล์เดียว) แทนการสั่งพิมพ์ตรง
+  // 📄 แท็บเล็ต/มือถือ → วาดทุกชุดเป็นภาพแล้วสั่งพิมพ์ทันที (ต้นฉบับ+สำเนา อยู่ในงานพิมพ์เดียว)
   if (isMobileDevice()) {
-    buildPdfFromElement(el, { labels, fontScale, pageSize, pageMargin, filename: pdfFileName(el, "บิล") })
-      .catch(err => { console.warn("[print] pdf failed:", err); alert("สร้าง PDF ไม่สำเร็จ — ลองใหม่อีกครั้ง"); });
+    printAsImage(el, { labels, fontScale, pageSize, pageMargin, title: `พิมพ์เอกสาร × ${labels.length}` })
+      .catch(err => { console.warn("[print] image print failed:", err); alert("เตรียมเอกสารไม่สำเร็จ — ลองใหม่อีกครั้ง"); });
     return;
   }
 
