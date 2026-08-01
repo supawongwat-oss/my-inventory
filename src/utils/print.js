@@ -36,6 +36,82 @@ export const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
   return root;
 };
 
+// 📱 ตรวจว่าเป็นมือถือ/แท็บเล็ตหรือไม่
+export const isMobileDevice = () =>
+  /Android|iPhone|iPad|iPod|Mobi|Tablet|Silk|webOS|Kindle|PlayBook|BB10/i.test(navigator.userAgent)
+  || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent))
+  || (navigator.userAgentData && navigator.userAgentData.mobile)
+  || (window.matchMedia && window.matchMedia("(hover: none) and (pointer: coarse)").matches);
+
+const mmToPx = (mm) => (mm * 96) / 25.4;
+
+const PAGE_MM = {
+  "A4 portrait":  [210, 297], "A4 landscape": [297, 210],
+  "A5 portrait":  [148, 210], "A5 landscape": [210, 148],
+};
+
+// ⏳ overlay ระหว่างสร้าง PDF (สร้าง PDF บนแท็บเล็ตใช้เวลาหลายวินาที ต้องมี feedback)
+const pdfOverlay = (msg) => {
+  const d = document.createElement("div");
+  d.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Sarabun',sans-serif;font-size:17px;font-weight:600;text-align:center;padding:24px;";
+  d.textContent = msg;
+  document.body.appendChild(d);
+  return () => { try { d.remove(); } catch (e) {} };
+};
+
+// 📄 สร้าง PDF จาก element แล้วบันทึกลงเครื่อง — ใช้บนแท็บเล็ต/มือถือแทนการสั่งพิมพ์ตรง
+// เหตุผล: เบราว์เซอร์บนแท็บเล็ตจัดหน้าไม่ตรงกับ PC (ตัวเล็กบ้าง หลุดขอบบ้าง)
+// PDF ถูกวาดที่ความกว้างเท่าพื้นที่พิมพ์ A4 จริง + ฟอนต์สเกลเดียวกับ PC → หน้าตาตรงกันแน่นอน
+export const buildPdfFromElement = async (el, { labels = null, fontScale = PRINT_FONT_SCALE, pageSize = "A4 portrait", pageMargin = "10mm", filename = "เอกสาร.pdf" } = {}) => {
+  const [pageW] = PAGE_MM[pageSize] || [210, 297];
+  const marginMm = parseFloat(String(pageMargin).match(/^([\d.]+)/)?.[1] || "10");
+  const widthPx = Math.round(mmToPx(pageW - 2 * marginMm));
+  const sheets = labels && labels.length ? labels : [null];
+
+  const wrap = document.createElement("div");
+  wrap.style.width = widthPx + "px";
+  wrap.style.boxSizing = "border-box";
+  wrap.style.background = "#fff";
+  sheets.forEach((label, i) => {
+    const cl = el.cloneNode(true);
+    cl.removeAttribute("id");
+    if (label) {
+      const tag = cl.querySelector("[data-doc-label]");
+      if (tag) tag.textContent = label;
+    }
+    scaleFontInElement(cl, fontScale);
+    const page = document.createElement("div");
+    page.style.width = widthPx + "px";
+    page.style.boxSizing = "border-box";
+    if (i < sheets.length - 1) page.style.pageBreakAfter = "always";
+    page.appendChild(cl);
+    wrap.appendChild(page);
+  });
+
+  const hide = pdfOverlay("⏳ กำลังสร้าง PDF...\nกรุณารอสักครู่");
+  try {
+    const { default: html2pdf } = await import("html2pdf.js");
+    await html2pdf().set({
+      margin: marginMm,
+      filename,
+      image: { type: "jpeg", quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, windowWidth: widthPx, backgroundColor: "#ffffff" },
+      jsPDF: { unit: "mm", format: /A5/i.test(pageSize) ? "a5" : "a4", orientation: /landscape/i.test(pageSize) ? "landscape" : "portrait" },
+      pagebreak: { mode: ["css", "legacy"] },
+    }).from(wrap).save();
+  } finally {
+    hide();
+  }
+  alert(`✅ บันทึก PDF แล้ว: ${filename}\n\nเปิดไฟล์จากแถบแจ้งเตือน (หรือโฟลเดอร์ Download) แล้วสั่งพิมพ์จากตรงนั้น\nหน้าตาจะตรงกับที่พิมพ์จากคอมพิวเตอร์ทุกประการ`);
+};
+
+// ตั้งชื่อไฟล์จากป้ายชื่อเอกสาร + เลขที่ในเนื้อหา
+const pdfFileName = (el, fallback = "เอกสาร") => {
+  const label = el.querySelector("[data-doc-label]")?.textContent?.trim() || fallback;
+  const stamp = new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(/[/:,\s]+/g, "-");
+  return `${label.replace(/[\\/:*?"<>|]/g, "_").slice(0, 40)}_${stamp}.pdf`;
+};
+
 // 🖨️ พิมพ์แบบ same-page isolation — ใช้ได้ทุกอุปกรณ์ (desktop + Samsung/iOS/Android)
 // วิธีนี้ clone เนื้อหาที่จะพิมพ์ไปไว้ที่ body ระดับบนสุด แล้วใช้ @media print ซ่อนทุกอย่างที่เหลือ
 // → ไม่มี sidebar/โลโก้แอป หลุดเข้ามา (เดิม iframe.print() บน Samsung พิมพ์ทั้งหน้าหลัก = โลโก้ซ้ำ)
@@ -48,10 +124,14 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
 
   // 🩹 Mobile/Tablet (Samsung Tab, iPad, Android) — เปิด tab ใหม่แล้ว print
   //    เพราะ Samsung Print Service capture ทั้งหน้าจอ ไม่ honor display:none
-  const isMobile = /Android|iPhone|iPad|iPod|Mobi|Tablet|Silk|webOS|Kindle|PlayBook|BB10/i.test(navigator.userAgent)
-    || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent))
-    || (navigator.userAgentData && navigator.userAgentData.mobile)
-    || (window.matchMedia && window.matchMedia("(hover: none) and (pointer: coarse)").matches);
+  const isMobile = isMobileDevice();
+
+  // 📄 แท็บเล็ต/มือถือ (ยกเว้นสติกเกอร์ความร้อน) → สร้าง PDF แทน เพื่อให้หน้าตาตรงกับ PC เป๊ะ
+  if (isMobile && !isThermal) {
+    buildPdfFromElement(el, { fontScale, pageSize, pageMargin, filename: pdfFileName(el, "เอกสาร") })
+      .catch(err => { console.warn("[print] pdf failed:", err); alert("สร้าง PDF ไม่สำเร็จ — ลองใหม่อีกครั้ง"); });
+    return;
+  }
 
   if (isMobile) {
     const sizeMapM = {
@@ -248,81 +328,13 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
   const el = document.getElementById(id);
   if (!el) return;
 
-  // 🩹 Mobile/Tablet — เปิด tab ใหม่
-  const isMobileM = /Android|iPhone|iPad|iPod|Mobi|Tablet|Silk|webOS|Kindle|PlayBook|BB10/i.test(navigator.userAgent)
-    || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent))
-    || (navigator.userAgentData && navigator.userAgentData.mobile)
-    || (window.matchMedia && window.matchMedia("(hover: none) and (pointer: coarse)").matches);
-
-  if (isMobileM) {
-    const sizeMapM = {
-      "A4 portrait":  "210mm 297mm",
-      "A4 landscape": "297mm 210mm",
-      "A5 portrait":  "148mm 210mm",
-      "A5 landscape": "210mm 148mm",
-    };
-    const cssPageSizeM = sizeMapM[pageSize] || pageSize;
-    // 📐 บังคับความกว้างเท่าพื้นที่พิมพ์จริงของ A4 (เท่ากับฝั่ง PC) — ไม่งั้นเนื้อหากว้างตามจอแท็บเล็ตแล้วหลุดขอบกระดาษ
-    const marginMmM = parseFloat(String(pageMargin).match(/^([\d.]+)/)?.[1] || "10");
-    const pmM = cssPageSizeM.match(/^([\d.]+)mm\s+([\d.]+)mm$/);
-    const contentWidthM = pmM ? (parseFloat(pmM[1]) - 2 * marginMmM) + "mm" : "auto";
-    const pageStyleM = `width:${contentWidthM};max-width:${contentWidthM};box-sizing:border-box;margin:0 auto;`;
-    const allHtml = labels.map((label, i) => {
-      const cl = el.cloneNode(true);
-      cl.removeAttribute("id");
-      const tag = cl.querySelector("[data-doc-label]");
-      if (tag) tag.textContent = label;
-      scaleFontInElement(cl, fontScale);
-      const brk = i < labels.length - 1 ? "page-break-after: always;" : "";
-      return `<div style="${pageStyleM}${brk}">${cl.outerHTML}</div>`;
-    }).join("");
-    const html = `<!doctype html><html><head><meta charset="utf-8"/>
-      <title>พิมพ์เอกสาร × ${labels.length}</title>
-      <link rel="icon" href="data:,">
-      <style>
-        @page { size: ${cssPageSizeM}; margin: ${pageMargin}; }
-        html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun','Sukhumvit Set','Noto Sans Thai',sans-serif; }
-        * { box-sizing: border-box; }
-        /* กันหลุดขอบ: ทุกชุดกว้างเท่าพื้นที่พิมพ์ A4 และตารางไม่เกินกรอบ */
-        body > div { width: ${contentWidthM} !important; max-width: ${contentWidthM} !important; }
-        body > div * { max-width: 100%; }
-        table { border-collapse: collapse; width: 100% !important; max-width: 100% !important; }
-        tr, td, th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
-        thead { display: table-header-group; }
-        tfoot { display: table-footer-group; }
-        img { max-width: 100%; height: auto; }
-        .no-print, [data-no-print="true"], .print-hide { display: none !important; }
-        #__print_btn { position: fixed; top: 12px; right: 12px; padding: 10px 18px; background: #3b5b8b; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.2); z-index: 9999; }
-        @media print { #__print_btn { display: none !important; } }
-      </style></head><body>
-      <button id="__print_btn" onclick="window.print()">🖨️ พิมพ์ × ${labels.length}</button>
-      ${allHtml}
-      </body></html>`;
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const w = window.open(url, "_blank");
-    if (!w) {
-      URL.revokeObjectURL(url);
-      alert("เบราว์เซอร์บล็อก popup — กรุณาอนุญาต popup แล้วลองใหม่");
-      return;
-    }
-    const tryPrint = () => {
-      try {
-        const imgs = Array.from(w.document.images || []);
-        if (!imgs.every(im => im.complete && im.naturalWidth > 0)) { setTimeout(tryPrint, 300); return; }
-        w.focus(); w.print();
-      } catch (e) {} finally { setTimeout(() => URL.revokeObjectURL(url), 60000); }
-    };
-    const start = Date.now();
-    const waitLoad = () => {
-      if (w.closed) return;
-      if (w.document?.readyState === "complete") { setTimeout(tryPrint, 500); return; }
-      if (Date.now() - start > 10000) { tryPrint(); return; }
-      setTimeout(waitLoad, 200);
-    };
-    setTimeout(waitLoad, 300);
+  // 📄 แท็บเล็ต/มือถือ → สร้าง PDF (ต้นฉบับ+สำเนา อยู่ในไฟล์เดียว) แทนการสั่งพิมพ์ตรง
+  if (isMobileDevice()) {
+    buildPdfFromElement(el, { labels, fontScale, pageSize, pageMargin, filename: pdfFileName(el, "บิล") })
+      .catch(err => { console.warn("[print] pdf failed:", err); alert("สร้าง PDF ไม่สำเร็จ — ลองใหม่อีกครั้ง"); });
     return;
   }
+
 
   // === Desktop: same-page isolation ===
   document.getElementById("__print_root__")?.remove();
