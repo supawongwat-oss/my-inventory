@@ -2214,6 +2214,9 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       // 🧾 แก้บิลเดิม — คงหน้าตาเดิมของบิลไว้ ไม่ใช้ค่า default ของบิลใหม่
       showCompanyTaxId: inv.showCompanyTaxId !== false,
       hideCompanyDetails: inv.hideCompanyDetails === true,
+      // 📋 รายละเอียดงาน custom (ผ้า/คอ/รูป) — ต้องพกติดมาด้วย ไม่งั้นแก้บิลแล้วรายละเอียดหาย
+      ...(inv.customDetails ? { customDetails: inv.customDetails } : {}),
+      ...(inv.payments ? { payments: inv.payments } : {}),
     });
     setShowNewInvoice(true);
   };
