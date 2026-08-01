@@ -36,170 +36,6 @@ export const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
   return root;
 };
 
-// 📱 ตรวจว่าเป็นมือถือ/แท็บเล็ตหรือไม่
-export const isMobileDevice = () =>
-  /Android|iPhone|iPad|iPod|Mobi|Tablet|Silk|webOS|Kindle|PlayBook|BB10/i.test(navigator.userAgent)
-  || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent))
-  || (navigator.userAgentData && navigator.userAgentData.mobile)
-  || (window.matchMedia && window.matchMedia("(hover: none) and (pointer: coarse)").matches);
-
-const mmToPx = (mm) => (mm * 96) / 25.4;
-
-const PAGE_MM = {
-  "A4 portrait":  [210, 297], "A4 landscape": [297, 210],
-  "A5 portrait":  [148, 210], "A5 landscape": [210, 148],
-};
-
-// ⏳ overlay ระหว่างสร้าง PDF (สร้าง PDF บนแท็บเล็ตใช้เวลาหลายวินาที ต้องมี feedback)
-const pdfOverlay = (msg) => {
-  const d = document.createElement("div");
-  d.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Sarabun',sans-serif;font-size:17px;font-weight:600;text-align:center;padding:24px;";
-  d.textContent = msg;
-  document.body.appendChild(d);
-  return () => { try { d.remove(); } catch (e) {} };
-};
-
-// 🖼️ แปลง <img> ทุกตัวเป็น data URL ก่อนวาดภาพ
-// จำเป็นเพราะ html2canvas วาดรูปข้ามโดเมน (โลโก้/รูปงานจาก Storage) ไม่ได้ → กลายเป็นกรอบรูปแตก
-const inlineImagesIn = async (root) => {
-  const imgs = Array.from(root.querySelectorAll("img"));
-  await Promise.all(imgs.map(async (im) => {
-    const src = im.getAttribute("src") || "";
-    if (!src || src.startsWith("data:")) return;
-    try {
-      const res = await fetch(src, { mode: "cors", cache: "force-cache" });
-      const blob = await res.blob();
-      const dataUrl = await new Promise((ok, bad) => {
-        const r = new FileReader();
-        r.onload = () => ok(r.result);
-        r.onerror = bad;
-        r.readAsDataURL(blob);
-      });
-      im.setAttribute("src", dataUrl);
-    } catch (e) {
-      // โหลดไม่ได้ → ซ่อนไปเลย ดีกว่าโชว์กรอบรูปแตกบนเอกสารที่ส่งลูกค้า
-      im.style.visibility = "hidden";
-    }
-  }));
-};
-
-// 🖨️ พิมพ์บนแท็บเล็ต/มือถือ — วาดเอกสารเป็นภาพขนาดเท่าหน้า A4 จริง แล้วสั่งพิมพ์ให้ทันที
-// เหตุผล: เบราว์เซอร์บนแท็บเล็ตจัดหน้าเองไม่ตรงกับ PC (ตัวเล็กบ้าง หลุดขอบบ้าง)
-//   วาดเป็นภาพจาก layout เดียวกับ PC → หน้าตาตรงกันแน่นอน และไม่ต้องโหลดไฟล์มากดพิมพ์ซ้ำ
-// ภาพถูกบังคับ "พอดีหน้า" ด้วย object-fit: contain → ไม่มีทางล้นไปหน้าที่ 2
-export const printAsImage = async (el, { labels = null, fontScale = PRINT_FONT_SCALE, pageSize = "A4 portrait", title = "พิมพ์เอกสาร" } = {}) => {
-  const [pageW, pageH] = PAGE_MM[pageSize] || [210, 297];
-  // 📏 iPad/Galaxy ไม่ยอมให้ตั้งขอบกระดาษเป็น 0 — มันใส่ขอบของตัวเองเสมอ และตั้งค่าไม่ได้
-  //    ถ้าเราไปกำหนดความกว้างเป็น mm ตายตัว เนื้อหาจะล้นออกขวาแล้วตกไปหน้า 2
-  //    วิธีที่ได้ผลกับทุกเครื่อง: ให้ภาพกว้าง 100% ของพื้นที่พิมพ์ที่เครื่องให้มา
-  //    แล้วคุม "สัดส่วน" ของภาพให้เตี้ยกว่าสัดส่วนหน้ากระดาษเสมอ → พอดี 1 หน้าแน่นอน
-  //    (พื้นที่พิมพ์ยิ่งมีขอบมาก สัดส่วน สูง/กว้าง ยิ่งมากกว่า A4 เปล่า ⇒ ใช้ A4 เป็นเพดาน)
-  const targetRatio = Math.min(pageH / pageW, (pageH - 30) / (pageW - 30)) * 0.99;
-  const widthPx = Math.round(mmToPx(pageW - 20)); // ความกว้างตอนวาด (ไม่เกี่ยวกับตอนพิมพ์)
-  const sheets = labels && labels.length ? labels : [null];
-
-  // เปิดแท็บทันทีตอนกด (ต้องอยู่ใน user gesture ไม่งั้นโดน popup blocker)
-  const w = window.open("", "_blank");
-  if (w) {
-    w.document.write(`<!doctype html><meta charset="utf-8"><title>${title}</title>
-      <body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;font-family:'Sarabun',sans-serif;font-size:18px;color:#334155">
-      ⏳ กำลังเตรียมเอกสาร...</body>`);
-  }
-
-  const hide = pdfOverlay("⏳ กำลังเตรียมเอกสาร...\nกรุณารอสักครู่");
-  const holder = document.createElement("div");
-  holder.style.cssText = `position:fixed;left:-99999px;top:0;width:${widthPx}px;background:#fff;`;
-  document.body.appendChild(holder);
-  try {
-    const { default: html2pdf } = await import("html2pdf.js");
-    const renderSheet = async (label, scale) => {
-      const cl = el.cloneNode(true);
-      cl.removeAttribute("id");
-      if (label) {
-        const tag = cl.querySelector("[data-doc-label]");
-        if (tag) tag.textContent = label;
-      }
-      scaleFontInElement(cl, scale);
-      cl.style.width = widthPx + "px";
-      cl.style.maxWidth = widthPx + "px";
-      cl.style.boxSizing = "border-box";
-      holder.innerHTML = "";
-      holder.appendChild(cl);
-      await inlineImagesIn(cl);
-      // ใช้ html2canvas ที่มากับ html2pdf.js (ไม่ต้องเพิ่ม dependency)
-      return html2pdf().set({
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff", windowWidth: widthPx, logging: false },
-      }).from(cl).toCanvas().get("canvas");
-    };
-
-    // 📐 เติมขอบขาวด้านล่างให้ภาพมีสัดส่วนเท่ากับ targetRatio พอดี
-    //    (ถ้าเนื้อหาสูงเกิน จะย่อทั้งภาพลงแทน — ไม่ปล่อยให้ล้นหน้า)
-    const toPageImage = (canvas) => {
-      const r = canvas.height / canvas.width;
-      const out = document.createElement("canvas");
-      if (r <= targetRatio) {
-        out.width = canvas.width;
-        out.height = Math.round(canvas.width * targetRatio);
-      } else {
-        out.height = canvas.height;
-        out.width = Math.round(canvas.height / targetRatio);
-      }
-      const ctx = out.getContext("2d");
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, out.width, out.height);
-      ctx.drawImage(canvas, Math.round((out.width - canvas.width) / 2), 0);
-      return out.toDataURL("image/jpeg", 0.95);
-    };
-
-    // 🔍 วาดชุดแรกก่อนเพื่อวัดความสูงจริง แล้วปรับขนาดตัวหนังสือให้เต็มหน้าพอดี
-    //    (ขยายเฉพาะฟอนต์ ความสูงจึงโตช้ากว่าตัวคูณ — ปลอดภัยกว่าการขยายทั้งหน้า)
-    let scale = fontScale;
-    let firstCanvas = await renderSheet(sheets[0], scale);
-    const ratio = firstCanvas.height / firstCanvas.width;
-    if (ratio > 0) {
-      const fit = Math.max(0.7, Math.min(targetRatio / ratio, 1.35));
-      if (Math.abs(fit - 1) > 0.06) {
-        scale = fontScale * fit;
-        firstCanvas = await renderSheet(sheets[0], scale);
-      }
-    }
-
-    const pages = [toPageImage(firstCanvas)];
-    for (const label of sheets.slice(1)) {
-      pages.push(toPageImage(await renderSheet(label, scale)));
-    }
-
-    const body = pages.map(src => `<div class="pg"><img src="${src}" alt=""/></div>`).join("");
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
-      <link rel="icon" href="data:,">
-      <style>
-        /* ไม่กำหนดขนาดเป็น mm — ปล่อยให้ภาพกว้างเท่าพื้นที่พิมพ์ที่เครื่องให้มา ป้องกันตกขอบ */
-        @page { size: ${pageW}mm ${pageH}mm; margin: 0; }
-        html, body { margin:0; padding:0; background:#525659; }
-        .pg { width:100%; margin:0; page-break-after:always; background:#fff; line-height:0; }
-        .pg:last-child { page-break-after:auto; }
-        .pg img { display:block; width:100%; height:auto; }
-        #__pb { position:fixed; top:10px; right:10px; padding:12px 20px; background:#3b5b8b; color:#fff; border:none; border-radius:8px; font-size:16px; font-weight:700; font-family:'Sarabun',sans-serif; z-index:9; }
-        @media print { #__pb { display:none !important; } html, body { background:#fff; } }
-      </style></head><body>
-      <button id="__pb" onclick="window.print()">🖨️ พิมพ์</button>
-      ${body}
-      <script>window.addEventListener("load",function(){setTimeout(function(){try{window.focus();window.print();}catch(e){}},400);});<\/script>
-      </body></html>`;
-
-    if (w && !w.closed) {
-      w.document.open();
-      w.document.write(html);
-      w.document.close();
-    } else {
-      alert("เบราว์เซอร์บล็อก popup — กรุณาอนุญาต popup สำหรับหน้านี้แล้วลองใหม่");
-    }
-  } finally {
-    holder.remove();
-    hide();
-  }
-};
-
 // 🖨️ พิมพ์แบบ same-page isolation — ใช้ได้ทุกอุปกรณ์ (desktop + Samsung/iOS/Android)
 // วิธีนี้ clone เนื้อหาที่จะพิมพ์ไปไว้ที่ body ระดับบนสุด แล้วใช้ @media print ซ่อนทุกอย่างที่เหลือ
 // → ไม่มี sidebar/โลโก้แอป หลุดเข้ามา (เดิม iframe.print() บน Samsung พิมพ์ทั้งหน้าหลัก = โลโก้ซ้ำ)
@@ -212,14 +48,10 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
 
   // 🩹 Mobile/Tablet (Samsung Tab, iPad, Android) — เปิด tab ใหม่แล้ว print
   //    เพราะ Samsung Print Service capture ทั้งหน้าจอ ไม่ honor display:none
-  const isMobile = isMobileDevice();
-
-  // 📄 แท็บเล็ต/มือถือ (ยกเว้นสติกเกอร์ความร้อน) → วาดเป็นภาพแล้วสั่งพิมพ์ทันที (หน้าตาตรงกับ PC)
-  if (isMobile && !isThermal) {
-    printAsImage(el, { fontScale, pageSize, pageMargin })
-      .catch(err => { console.warn("[print] image print failed:", err); alert("เตรียมเอกสารไม่สำเร็จ — ลองใหม่อีกครั้ง"); });
-    return;
-  }
+  const isMobile = /Android|iPhone|iPad|iPod|Mobi|Tablet|Silk|webOS|Kindle|PlayBook|BB10/i.test(navigator.userAgent)
+    || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent))
+    || (navigator.userAgentData && navigator.userAgentData.mobile)
+    || (window.matchMedia && window.matchMedia("(hover: none) and (pointer: coarse)").matches);
 
   if (isMobile) {
     const sizeMapM = {
@@ -231,18 +63,14 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
     const cssPageSizeM = sizeMapM[pageSize] || pageSize;
     const cloneM = el.cloneNode(true);
     cloneM.removeAttribute("id");
-    // ให้ตัวหนังสือเท่า PC — เดิม cap 1.0 ทำให้ Galaxy Tab/มือถือเล็กกว่า desktop (ที่ใช้ 1.3)
-    // กันตกขอบด้วย width:100% + word-break ใน CSS ด้านล่างแทน (ไม่ใช่ย่อฟอนต์)
-    const finalElM = isThermal ? cloneM : scaleFontInElement(cloneM, fontScale);
+    // 🩹 Samsung/mobile: ลด fontScale ลง (default 1.3 มักทำให้ตกขอบ)
+    const mobileFontScale = Math.min(fontScale, 1.0);
+    const finalElM = isThermal ? cloneM : scaleFontInElement(cloneM, mobileFontScale);
     // 🩹 ลด padding รอบ ๆ print-area — เดิม 32px 40px กว้างเกินไป
     finalElM.style.padding = "6mm 8mm";
     finalElM.style.boxSizing = "border-box";
-    // 📐 บังคับความกว้างเท่าพื้นที่พิมพ์จริง — เดิมใช้ 100% (= กว้างตามจอแท็บเล็ต) ทำให้หลุดขอบกระดาษ
-    const pmE = String(cssPageSizeM).match(/^([\d.]+)mm\s+([\d.]+)mm$/);
-    const contentWidthE = (pmE && !isThermal) ? (parseFloat(pmE[1]) - 12) + "mm" : "100%"; // @page margin 6mm × 2
-    finalElM.style.width = contentWidthE;
-    finalElM.style.maxWidth = contentWidthE;
-    finalElM.style.margin = "0 auto";
+    finalElM.style.width = "100%";
+    finalElM.style.maxWidth = "100%";
     // ดึง <style>/<link> ที่จำเป็นจาก parent (สำหรับให้สไตล์ inline ของ React ทำงานเหมือนเดิม)
     const html = `<!doctype html><html><head><meta charset="utf-8"/>
       <title>พิมพ์เอกสาร</title>
@@ -251,9 +79,9 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
         @page { size: ${cssPageSizeM}; margin: 6mm; }
         html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun','Sukhumvit Set','Noto Sans Thai',sans-serif; width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden; }
         * { box-sizing: border-box; }
-        body > * { max-width: ${contentWidthE} !important; }
+        body > * { max-width: 100% !important; }
         table { border-collapse: collapse; width: 100% !important; max-width: 100% !important; }
-        tr, td, th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
+        tr, td, th { page-break-inside: avoid; word-break: break-word; }
         thead { display: table-header-group; }
         tfoot { display: table-footer-group; }
         img { max-width: 100%; height: auto; }
@@ -416,13 +244,72 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
   const el = document.getElementById(id);
   if (!el) return;
 
-  // 📄 แท็บเล็ต/มือถือ → วาดทุกชุดเป็นภาพแล้วสั่งพิมพ์ทันที (ต้นฉบับ+สำเนา อยู่ในงานพิมพ์เดียว)
-  if (isMobileDevice()) {
-    printAsImage(el, { labels, fontScale, pageSize, pageMargin, title: `พิมพ์เอกสาร × ${labels.length}` })
-      .catch(err => { console.warn("[print] image print failed:", err); alert("เตรียมเอกสารไม่สำเร็จ — ลองใหม่อีกครั้ง"); });
+  // 🩹 Mobile/Tablet — เปิด tab ใหม่
+  const isMobileM = /Android|iPhone|iPad|iPod|Mobi|Tablet|Silk|webOS|Kindle|PlayBook|BB10/i.test(navigator.userAgent)
+    || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent))
+    || (navigator.userAgentData && navigator.userAgentData.mobile)
+    || (window.matchMedia && window.matchMedia("(hover: none) and (pointer: coarse)").matches);
+
+  if (isMobileM) {
+    const sizeMapM = {
+      "A4 portrait":  "210mm 297mm",
+      "A4 landscape": "297mm 210mm",
+      "A5 portrait":  "148mm 210mm",
+      "A5 landscape": "210mm 148mm",
+    };
+    const cssPageSizeM = sizeMapM[pageSize] || pageSize;
+    const allHtml = labels.map((label, i) => {
+      const cl = el.cloneNode(true);
+      cl.removeAttribute("id");
+      const tag = cl.querySelector("[data-doc-label]");
+      if (tag) tag.textContent = label;
+      scaleFontInElement(cl, fontScale);
+      const sep = i < labels.length - 1 ? ' style="page-break-after: always;"' : '';
+      return `<div${sep}>${cl.outerHTML}</div>`;
+    }).join("");
+    const html = `<!doctype html><html><head><meta charset="utf-8"/>
+      <title>พิมพ์เอกสาร × ${labels.length}</title>
+      <link rel="icon" href="data:,">
+      <style>
+        @page { size: ${cssPageSizeM}; margin: ${pageMargin}; }
+        html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun','Sukhumvit Set','Noto Sans Thai',sans-serif; }
+        table { border-collapse: collapse; width: 100%; }
+        tr, td, th { page-break-inside: avoid; }
+        thead { display: table-header-group; }
+        tfoot { display: table-footer-group; }
+        img { max-width: 100%; height: auto; }
+        .no-print, [data-no-print="true"], .print-hide { display: none !important; }
+        #__print_btn { position: fixed; top: 12px; right: 12px; padding: 10px 18px; background: #3b5b8b; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.2); z-index: 9999; }
+        @media print { #__print_btn { display: none !important; } }
+      </style></head><body>
+      <button id="__print_btn" onclick="window.print()">🖨️ พิมพ์ × ${labels.length}</button>
+      ${allHtml}
+      </body></html>`;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, "_blank");
+    if (!w) {
+      URL.revokeObjectURL(url);
+      alert("เบราว์เซอร์บล็อก popup — กรุณาอนุญาต popup แล้วลองใหม่");
+      return;
+    }
+    const tryPrint = () => {
+      try {
+        const imgs = Array.from(w.document.images || []);
+        if (!imgs.every(im => im.complete && im.naturalWidth > 0)) { setTimeout(tryPrint, 300); return; }
+        w.focus(); w.print();
+      } catch (e) {} finally { setTimeout(() => URL.revokeObjectURL(url), 60000); }
+    };
+    const start = Date.now();
+    const waitLoad = () => {
+      if (w.closed) return;
+      if (w.document?.readyState === "complete") { setTimeout(tryPrint, 500); return; }
+      if (Date.now() - start > 10000) { tryPrint(); return; }
+      setTimeout(waitLoad, 200);
+    };
+    setTimeout(waitLoad, 300);
     return;
   }
-
 
   // === Desktop: same-page isolation ===
   document.getElementById("__print_root__")?.remove();
