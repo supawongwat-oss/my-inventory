@@ -100,7 +100,9 @@ export function useFirestore(activeTab = "") {
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 6000);
+    // ⏱️ เดิม 6 วิ — นานเกินสำหรับแท็บเล็ต/เน็ตช้า (ค้างหน้าโลโก้)
+    // 2.5 วิ พอ: ถ้าสินค้ายังมาไม่ครบ ก็เข้าแอปไปก่อน แล้ว snapshot จะเติมให้เองแบบ real-time
+    const timer = setTimeout(() => setLoading(false), 2500);
     const unsub = onSnapshot(
       collection(db, "products"),
       snap => { setProducts(snap.docs.map(d => ({...d.data(), id:d.id}))); setLoading(false); clearTimeout(timer); },

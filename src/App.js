@@ -2334,7 +2334,9 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     await setDoc(doc(db, "users", String(u.id)), { ...u, password: newPassword });
   };
 
-  if (loading || !authChecked) return (
+  // 🚀 ยังไม่ล็อกอิน = ไม่ต้องรอโหลดสินค้า → เด้งหน้า login ทันทีที่ auth พร้อม
+  // (เดิมรอ products ทั้ง collection ก่อน ทำให้แท็บเล็ต/เน็ตช้าค้างที่หน้าโลโก้นาน)
+  if (!authChecked || (loading && user)) return (
     <div style={{minHeight:"100vh",background:"#f4f5f7",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Sarabun',sans-serif"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@700&display=swap');@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <div style={{width:64,height:64,background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,marginBottom:20,boxShadow:"0 8px 32px rgba(59,91,139,0.4)"}}>⚙️</div>

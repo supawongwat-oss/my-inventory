@@ -1,6 +1,103 @@
 import React from "react";
-import { T, SIZE_GROUPS, PRESET_COLORS, splitSizesIntoRows } from "../theme";
+import { T, SIZE_GROUPS, PRESET_COLORS, splitSizesIntoRows, sizeRank } from "../theme";
 import { Modal, MHead, BtnPrimary, BtnGhost, BtnDanger } from "./ui";
+
+// ⚡ จัดไซส์เข้ากลุ่มราคา — ใช้กับ "ตั้งราคาทีเดียว"
+// เด็ก 6-12 = กลุ่มเดียว, S-XL = กลุ่มเดียว, 2XL/3XL/4XL... = แยกกลุ่มละไซส์ (ไล่ขึ้นไปไม่จำกัด)
+const GROUP_LABEL = (key, fallback) => (SIZE_GROUPS.find(g => g.key === key)?.label) || fallback;
+const priceTierOf = (sz) => {
+  const s = String(sz || "").trim().toUpperCase();
+  if (!s) return { key: "__nosize", label: "ไม่ระบุไซส์", rank: 999 };
+  if (/^\d+$/.test(s)) {
+    // ตัวเลข ≤ 20 = ไซส์เด็ก (6-12) | มากกว่านั้นคือไซส์รองเท้า → แยกเป็นของตัวเอง
+    if (Number(s) <= 20) return { key: "kids", label: GROUP_LABEL("kids", "ไซส์ 6-12"), rank: 100 };
+    return { key: s, label: `เบอร์ ${s}`, rank: sizeRank(s) };
+  }
+  if (["S", "M", "L", "XL"].includes(s)) return { key: "reg", label: GROUP_LABEL("reg", "ไซส์ S-XL"), rank: 200 };
+  return { key: s, label: `ไซส์ ${s}`, rank: sizeRank(s) };
+};
+
+// 💰 แผงตั้งราคาทีเดียว — ใส่ราคาตามกลุ่มไซส์ (หรือแยกทีละไซส์) แล้วใช้กับทุกสี/ทุกรุ่นในบิล
+function BulkPricePanel({ items, setInvoiceForm }) {
+  const [open, setOpen] = React.useState(true);
+  const [mode, setMode] = React.useState("group"); // "group" = ตามกลุ่ม | "each" = แยกทีละไซส์
+
+  const buckets = React.useMemo(() => {
+    const map = new Map();
+    items.forEach((it, idx) => {
+      const t = mode === "group"
+        ? priceTierOf(it.size)
+        : (() => {
+            const s = String(it.size || "").trim().toUpperCase();
+            return s ? { key: s, label: `ไซส์ ${s}`, rank: sizeRank(s) } : { key: "__nosize", label: "ไม่ระบุไซส์", rank: 999 };
+          })();
+      if (!map.has(t.key)) map.set(t.key, { ...t, idxs: [], qty: 0, prices: new Set() });
+      const b = map.get(t.key);
+      b.idxs.push(idx);
+      b.qty += Number(it.qty) || 0;
+      b.prices.add(Number(it.unitPrice) || 0);
+    });
+    return [...map.values()].sort((a, b) => a.rank - b.rank);
+  }, [items, mode]);
+
+  const applyPrice = (idxs, v) => {
+    const price = Math.max(0, Number(v) || 0);
+    const set = new Set(idxs);
+    setInvoiceForm(f => ({ ...f, items: f.items.map((x, j) => set.has(j) ? { ...x, unitPrice: price } : x) }));
+  };
+  const applyAll = (v) => applyPrice(items.map((_, i) => i), v);
+
+  if (buckets.length === 0) return null;
+
+  return (
+    <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, marginBottom: 10, background: "rgba(52,211,153,0.05)", overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", flexWrap: "wrap", cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>⚡ ตั้งราคาทีเดียว (ใช้กับทุกสี/ทุกรุ่น)</span>
+        <span style={{ fontSize: 10, color: T.muted }}>{buckets.length} กลุ่มไซส์</span>
+        <span style={{ marginLeft: "auto", fontSize: 11, color: T.muted }}>{open ? "▲" : "▼"}</span>
+      </div>
+      {open && (
+        <div style={{ padding: "0 10px 10px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+            {[{ id: "group", l: "📦 ตามกลุ่มไซส์" }, { id: "each", l: "🎯 แยกทีละไซส์" }].map(m => (
+              <button key={m.id} onClick={() => setMode(m.id)}
+                style={{ padding: "4px 10px", borderRadius: 7, cursor: "pointer", fontSize: 11, fontFamily: "inherit", fontWeight: mode === m.id ? 700 : 400, border: `1px solid ${mode === m.id ? "#059669" : T.border}`, background: mode === m.id ? "rgba(5,150,105,0.12)" : "transparent", color: mode === m.id ? "#059669" : T.sub }}>
+                {m.l}
+              </button>
+            ))}
+            <span style={{ marginLeft: 6, fontSize: 11, color: T.muted, fontWeight: 600 }}>ทุกไซส์:</span>
+            <input type="number" min="0" step="0.01" placeholder="฿"
+              onFocus={e => e.target.select()}
+              onBlur={e => { if (e.target.value !== "") { applyAll(e.target.value); e.target.value = ""; } }}
+              onKeyDown={e => e.key === "Enter" && e.target.blur()}
+              style={{ width: 70, textAlign: "right", background: T.input, border: `1px solid ${T.inputBorder}`, borderRadius: 6, color: T.text, fontFamily: "monospace", fontSize: 11, padding: "4px 6px", outline: "none" }} />
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {buckets.map(b => {
+              const uniform = b.prices.size === 1 ? [...b.prices][0] : null;
+              return (
+                <div key={b.key} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 8, border: `1px solid ${T.border}`, background: T.card || "#fff" }}>
+                  <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.25 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: T.text }}>{b.label}</span>
+                    <span style={{ fontSize: 9, color: T.muted }}>{b.qty} ตัว</span>
+                  </div>
+                  <input type="number" min="0" step="0.01"
+                    key={`${b.key}-${uniform ?? "mix"}`}
+                    defaultValue={uniform ?? ""}
+                    placeholder={uniform === null ? "หลายราคา" : "฿"}
+                    onFocus={e => e.target.select()}
+                    onBlur={e => { if (e.target.value !== "") applyPrice(b.idxs, e.target.value); }}
+                    onKeyDown={e => e.key === "Enter" && e.target.blur()}
+                    style={{ width: 74, textAlign: "right", background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.35)", borderRadius: 6, color: "#059669", fontFamily: "monospace", fontSize: 12, fontWeight: 700, padding: "5px 6px", outline: "none" }} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function NewInvoiceModal({
   onClose,
@@ -137,6 +234,7 @@ export default function NewInvoiceModal({
 
           {/* Items */}
           <div style={{fontSize:11,color:T.muted,marginBottom:8,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em"}}>รายการสินค้า / บริการ</div>
+          {invoiceForm.items.length>0&&<BulkPricePanel items={invoiceForm.items} setInvoiceForm={setInvoiceForm}/>}
           {invoiceForm.items.length>0&&(()=>{
             const isPlus=(sz)=>/^[2-9]XL$/.test(sz);
             // index-aware items (เก็บ index เดิมไว้ใช้แก้/ลบ)
