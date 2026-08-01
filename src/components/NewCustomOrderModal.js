@@ -90,6 +90,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const [color, setColor] = useState(editOrder?.color || ""); // 🎨 สีชุดงาน
   const [depositAmount, setDepositAmount] = useState(editOrder?.depositAmount != null ? String(editOrder.depositAmount) : ""); // 💰 มัดจำ
   const [depositMethod, setDepositMethod] = useState(editOrder?.depositMethod || "โอน");
+  const [outsourced, setOutsourced] = useState(!!editOrder?.outsourced); // 🏭 จ้างที่อื่นผลิต — ไม่เข้าสายงานผลิต
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const fileRef = useRef(null);
@@ -242,6 +243,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
         color: color || "",
         depositAmount: Number(depositAmount) || 0,
         depositMethod: depositMethod || "โอน",
+        outsourced,
         editedBy: user?.name || "",
         editedAt: nowStr(),
       });
@@ -303,6 +305,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
       color: color || "",
       depositAmount: Number(depositAmount) || 0,
       depositMethod: depositMethod || "โอน",
+      outsourced, // 🏭 จ้างที่อื่นผลิต → ไม่ขึ้นบอร์ดสายงานผลิต
       by: user?.name || "",
       date: nowStr(),
       createdAt: serverTimestamp(),
@@ -689,6 +692,17 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
           </select>
         </div>
         {Number(depositAmount)>0 && <div style={{fontSize:9,color:"#b45309",marginTop:4}}>💡 มัดจำนี้จะผูกเป็นการชำระในบิลอัตโนมัติตอนออกบิลจากงานนี้</div>}
+      </div>
+
+      {/* 🏭 จ้างที่อื่นผลิต — ไม่ต้องเข้าบอร์ดสายงานผลิตของเรา */}
+      <div onClick={()=>setOutsourced(v=>!v)}
+        style={{marginBottom:10,padding:"8px 10px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",gap:9,
+          background:outsourced?"rgba(139,92,246,0.10)":"#f8fafc",border:`1px solid ${outsourced?"#8b5cf6":T.border}`}}>
+        <input type="checkbox" checked={outsourced} onChange={e=>setOutsourced(e.target.checked)} onClick={e=>e.stopPropagation()} style={{cursor:"pointer"}}/>
+        <div>
+          <div style={{fontSize:12,fontWeight:700,color:outsourced?"#7c3aed":T.text}}>🏭 จ้างที่อื่นผลิต</div>
+          <div style={{fontSize:9,color:T.muted}}>ไม่ขึ้นบอร์ดสายงานผลิต · ยังออกบิล/เก็บมัดจำได้ตามปกติ</div>
+        </div>
       </div>
 
       {/* 🎨 สีชุดงาน */}

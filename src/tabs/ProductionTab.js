@@ -176,7 +176,8 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
           <KanbanBoard
             orders={[
               ...productionOrders.map(o => ({ ...o, __collection: "productionOrders", __isCustom: false })),
-              ...customOrders.map(o => ({ ...o, __collection: "customOrders", __isCustom: true })),
+              // 🏭 ใบที่จ้างที่อื่นผลิต ไม่ต้องขึ้นบอร์ดสายงานผลิตของเรา
+              ...customOrders.filter(o => !o.outsourced).map(o => ({ ...o, __collection: "customOrders", __isCustom: true })),
             ]}
             user={user} role={role}
             products={products} clothingItems={clothingItems} employees={employees}
@@ -284,9 +285,15 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
           if (lots.length === 0) return (o.status||"") === "เข้าคลัง";
           return lots.every(l => l.status === "เข้าคลัง");
         };
-        const activeOrders = customOrders.filter(o => !isOrderDone(o));
-        const doneOrders = customOrders.filter(o => isOrderDone(o));
-        const filteredCustom = customSubTab==="active" ? activeOrders : customSubTab==="done" ? doneOrders : customOrders;
+        // 🏭 ใบที่จ้างที่อื่นผลิต แยกออกจาก "กำลังผลิต" (ไม่ได้อยู่ในสายงานเรา)
+        const outsourcedOrders = customOrders.filter(o => o.outsourced);
+        const inHouse = customOrders.filter(o => !o.outsourced);
+        const activeOrders = inHouse.filter(o => !isOrderDone(o));
+        const doneOrders = inHouse.filter(o => isOrderDone(o));
+        const filteredCustom = customSubTab==="active" ? activeOrders
+          : customSubTab==="done" ? doneOrders
+          : customSubTab==="outsourced" ? outsourcedOrders
+          : customOrders;
         return (
         <>
           {/* sub-tabs: active / done / all */}
@@ -294,6 +301,7 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
             {[
               {k:"active",l:"🎨 กำลังผลิต",c:"#d97706",n:activeOrders.length},
               {k:"done",l:"✅ เสร็จแล้ว",c:"#16a34a",n:doneOrders.length},
+              ...(outsourcedOrders.length ? [{k:"outsourced",l:"🏭 จ้างข้างนอก",c:"#8b5cf6",n:outsourcedOrders.length}] : []),
               {k:"all",l:"📋 ทั้งหมด",c:T.accent,n:customOrders.length},
             ].map(t => {
               const sel = customSubTab === t.k;
@@ -372,7 +380,10 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
                       <div style={{fontSize:10,color:T.muted,marginTop:2}}>{o.date}</div>
                     </div>
                     <div>
-                      <div style={{fontWeight:600,color:T.text,fontSize:13}}>{o.clothingName}</div>
+                      <div style={{fontWeight:600,color:T.text,fontSize:13,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                        {o.clothingName}
+                        {o.outsourced && <span style={{background:"rgba(139,92,246,0.12)",color:"#7c3aed",border:"1px solid #c4b5fd",padding:"1px 7px",borderRadius:10,fontSize:9,fontWeight:800}}>🏭 จ้างข้างนอก</span>}
+                      </div>
                       <div style={{fontSize:11,color:T.muted,marginTop:2}}>{o.customerName ? `👤 ${o.customerName}` : ""} {o.customerPhone ? `· ${o.customerPhone}` : ""}</div>
                     </div>
                     <div style={{textAlign:"center"}}>

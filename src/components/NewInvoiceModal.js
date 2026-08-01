@@ -22,8 +22,16 @@ function BulkPricePanel({ items, setInvoiceForm }) {
   const [open, setOpen] = React.useState(false); // พับไว้ก่อน — กดเปิดเมื่อจะตั้งราคา
   const [mode, setMode] = React.useState("group"); // "group" = ตามกลุ่ม | "each" = แยกทีละไซส์
 
+  // 👕 แขนสั้น/แขนยาว ราคาไม่เท่ากัน → ถ้าบิลมีมากกว่า 1 แบบ ต้องแยกช่องราคาให้
+  const variants = React.useMemo(
+    () => [...new Set(items.map(i => (i.variant || "").trim()))],
+    [items]
+  );
+  const splitVariant = variants.length > 1;
+
   const buckets = React.useMemo(() => {
     const map = new Map();
+    const vRank = new Map(variants.map((v, i) => [v, i]));
     items.forEach((it, idx) => {
       const t = mode === "group"
         ? priceTierOf(it.size)
@@ -31,14 +39,19 @@ function BulkPricePanel({ items, setInvoiceForm }) {
             const s = String(it.size || "").trim().toUpperCase();
             return s ? { key: s, label: `ไซส์ ${s}`, rank: sizeRank(s) } : { key: "__nosize", label: "ไม่ระบุไซส์", rank: 999 };
           })();
-      if (!map.has(t.key)) map.set(t.key, { ...t, idxs: [], qty: 0, prices: new Set() });
-      const b = map.get(t.key);
+      const v = (it.variant || "").trim();
+      const key = splitVariant ? `${v}|${t.key}` : t.key;
+      const label = splitVariant ? `${v || "ไม่ระบุแบบ"} · ${t.label}` : t.label;
+      // เรียงตามแบบเสื้อก่อน แล้วค่อยตามไซส์ — ราคาของแต่ละแบบจะอยู่ติดกัน
+      const rank = splitVariant ? (vRank.get(v) ?? 99) * 1000 + t.rank : t.rank;
+      if (!map.has(key)) map.set(key, { key, label, rank, idxs: [], qty: 0, prices: new Set() });
+      const b = map.get(key);
       b.idxs.push(idx);
       b.qty += Number(it.qty) || 0;
       b.prices.add(Number(it.unitPrice) || 0);
     });
     return [...map.values()].sort((a, b) => a.rank - b.rank);
-  }, [items, mode]);
+  }, [items, mode, splitVariant, variants]);
 
   const applyPrice = (idxs, v) => {
     const price = Math.max(0, Number(v) || 0);
@@ -53,7 +66,7 @@ function BulkPricePanel({ items, setInvoiceForm }) {
     <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, marginBottom: 10, background: "rgba(52,211,153,0.05)", overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", flexWrap: "wrap", cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
         <span style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>⚡ ตั้งราคาทีเดียว (ใช้กับทุกสี/ทุกรุ่น)</span>
-        <span style={{ fontSize: 10, color: T.muted }}>{buckets.length} กลุ่มไซส์</span>
+        <span style={{ fontSize: 10, color: T.muted }}>{buckets.length} กลุ่ม{splitVariant ? " · แยกแขนสั้น/แขนยาวให้แล้ว" : "ไซส์"}</span>
         <span style={{ marginLeft: "auto", fontSize: 11, color: T.muted }}>{open ? "▲" : "▼"}</span>
       </div>
       {open && (
@@ -65,7 +78,7 @@ function BulkPricePanel({ items, setInvoiceForm }) {
                 {m.l}
               </button>
             ))}
-            <span style={{ marginLeft: 6, fontSize: 11, color: T.muted, fontWeight: 600 }}>ทุกไซส์:</span>
+            <span style={{ marginLeft: 6, fontSize: 11, color: T.muted, fontWeight: 600 }}>ทุกรายการ:</span>
             <input type="number" min="0" step="0.01" placeholder="฿"
               onFocus={e => e.target.select()}
               onBlur={e => { if (e.target.value !== "") { applyAll(e.target.value); e.target.value = ""; } }}
