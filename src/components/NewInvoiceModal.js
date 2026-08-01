@@ -271,6 +271,15 @@ export default function NewInvoiceModal({
             },{}));
             const updateQty=(i,v)=>setInvoiceForm(f=>({...f,items:f.items.map((x,j)=>j===i?{...x,qty:Math.max(1,Number(v)||1)}:x)}));
             const updatePrice=(i,v)=>setInvoiceForm(f=>({...f,items:f.items.map((x,j)=>j===i?{...x,unitPrice:Math.max(0,Number(v)||0)}:x)}));
+            // ⌨️ อัปเดตทันทีที่พิมพ์ — เดิมอัปเดตตอนคลิกออกจากช่องเท่านั้น
+            //    ถ้าแก้จำนวนแล้วกดปุ่มอื่นทันที (โดยเฉพาะบนแท็บเล็ต) ค่าใหม่จะไม่ถูกบันทึก
+            //    ตัวเลขในช่องโชว์ค่าที่พิมพ์ แต่ยอดรวมยังคูณด้วยจำนวนเก่า → ราคาผิด
+            const liveInput=(idx,cur,apply)=>({
+              onFocus:e=>e.target.select(),
+              onChange:e=>{ if(e.target.value!=="") apply(idx,e.target.value); },
+              onBlur:e=>{ if(e.target.value==="") e.target.value=cur; else apply(idx,e.target.value); },
+              onKeyDown:e=>e.key==="Enter"&&e.target.blur(),
+            });
             const removeItem=(i)=>setInvoiceForm(f=>({...f,items:f.items.filter((_,j)=>j!==i)}));
             const removeGroup=(items)=>setInvoiceForm(f=>({...f,items:f.items.filter((_,j)=>!items.find(it=>it.__i===j))}));
             return (
@@ -301,8 +310,8 @@ export default function NewInvoiceModal({
                       if(rows.length===0) rows.push([]);
                       return rows.map((chunk,ci)=>{
                         const rowUnit=chunk[0]?.unitPrice||0;
-                        const rowQty=chunk.reduce((s,i)=>s+i.qty,0);
-                        const rowSub=chunk.reduce((s,i)=>s+(Number(i.unitPrice)||0)*i.qty,0);
+                        const rowQty=chunk.reduce((s,i)=>s+(Number(i.qty)||0),0);
+                        const rowSub=chunk.reduce((s,i)=>s+(Number(i.unitPrice)||0)*(Number(i.qty)||0),0);
                         return (
                           <tr key={`${gi}-${ci}`} style={{background:gi%2===0?"transparent":"rgba(59,91,139,0.03)"}}>
                             <td style={{padding:"6px 10px",fontWeight:600,verticalAlign:"middle",border:`1px solid ${T.border}`}}>{ci===0&&<div><div>{group.clothingName}</div>{(group.fabricType||group.collarType||group.jobDescription)&&<div style={{fontSize:10,color:"#64748b",fontWeight:400,marginTop:2,display:"flex",flexWrap:"wrap",gap:3}}>{group.fabricType&&<span>🧵 {group.fabricType}</span>}{group.collarType&&<span>· 👔 {group.collarType}</span>}{group.jobDescription&&<span>· {group.jobDescription}</span>}</div>}</div>}</td>
@@ -315,10 +324,7 @@ export default function NewInvoiceModal({
                             {chunk.map(it=>[
                               <td key={`s-${it.size}`} style={{padding:"5px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:T.accent,border:`1px solid ${T.border}`,background:"rgba(59,91,139,0.06)"}}>{it.size}</td>,
                               <td key={`q-${it.size}`} style={{padding:"4px 4px",textAlign:"center",border:`1px solid ${T.border}`}}>
-                                <input type="number" defaultValue={it.qty} min="1"
-                                  onFocus={e=>e.target.select()}
-                                  onBlur={e=>updateQty(it.__i,e.target.value)}
-                                  onKeyDown={e=>e.key==="Enter"&&e.target.blur()}
+                                <input type="number" defaultValue={it.qty} min="1" {...liveInput(it.__i,it.qty,updateQty)}
                                   style={{width:42,textAlign:"center",background:"rgba(59,91,139,0.08)",border:`1px solid ${T.border}`,borderRadius:5,color:T.text,fontFamily:"monospace",fontSize:11,padding:"3px 2px",outline:"none"}}/>
                               </td>
                             ])}
@@ -330,7 +336,8 @@ export default function NewInvoiceModal({
                             <td style={{padding:"4px 8px",textAlign:"right",verticalAlign:"middle",border:`1px solid ${T.border}`}}>
                               <input type="number" defaultValue={rowUnit} min="0" step="0.01"
                                 onFocus={e=>e.target.select()}
-                                onBlur={e=>{const v=Math.max(0,Number(e.target.value)||0);const ids=chunk.map(c=>c.__i);setInvoiceForm(f=>({...f,items:f.items.map((x,j)=>ids.includes(j)?{...x,unitPrice:v}:x)}));}}
+                                onChange={e=>{if(e.target.value==="")return;const v=Math.max(0,Number(e.target.value)||0);const ids=chunk.map(c=>c.__i);setInvoiceForm(f=>({...f,items:f.items.map((x,j)=>ids.includes(j)?{...x,unitPrice:v}:x)}));}}
+                                onBlur={e=>{if(e.target.value===""){e.target.value=rowUnit;return;}const v=Math.max(0,Number(e.target.value)||0);const ids=chunk.map(c=>c.__i);setInvoiceForm(f=>({...f,items:f.items.map((x,j)=>ids.includes(j)?{...x,unitPrice:v}:x)}));}}
                                 onKeyDown={e=>e.key==="Enter"&&e.target.blur()}
                                 style={{width:72,textAlign:"right",background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.3)",borderRadius:5,color:"#34d399",fontFamily:"monospace",fontSize:11,fontWeight:600,padding:"4px 6px",outline:"none"}}/>
                             </td>
@@ -388,17 +395,11 @@ export default function NewInvoiceModal({
                           </div>
                         </td>
                         <td style={{padding:"4px 8px",textAlign:"center",border:`1px solid ${T.border}`}}>
-                          <input type="number" defaultValue={it.qty} min="1"
-                            onFocus={e=>e.target.select()}
-                            onBlur={e=>updateQty(it.__i,e.target.value)}
-                            onKeyDown={e=>e.key==="Enter"&&e.target.blur()}
+                          <input type="number" defaultValue={it.qty} min="1" {...liveInput(it.__i,it.qty,updateQty)}
                             style={{width:48,textAlign:"center",background:"rgba(59,91,139,0.08)",border:`1px solid ${T.border}`,borderRadius:5,color:T.text,fontFamily:"monospace",fontSize:11,padding:"4px",outline:"none"}}/>
                         </td>
                         <td style={{padding:"4px 8px",textAlign:"right",border:`1px solid ${T.border}`}}>
-                          <input type="number" defaultValue={it.unitPrice} min="0" step="0.01"
-                            onFocus={e=>e.target.select()}
-                            onBlur={e=>updatePrice(it.__i,e.target.value)}
-                            onKeyDown={e=>e.key==="Enter"&&e.target.blur()}
+                          <input type="number" defaultValue={it.unitPrice} min="0" step="0.01" {...liveInput(it.__i,it.unitPrice,updatePrice)}
                             style={{width:72,textAlign:"right",background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.3)",borderRadius:5,color:"#34d399",fontFamily:"monospace",fontSize:11,fontWeight:600,padding:"4px 6px",outline:"none"}}/>
                         </td>
                         <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#34d399",border:`1px solid ${T.border}`}}>฿{(it.qty*it.unitPrice).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
@@ -439,6 +440,10 @@ export default function NewInvoiceModal({
                     </div>
                     {/* Totals */}
                     <div style={{textAlign:"right"}}>
+                      {/* 🧮 จำนวนรวมทั้งบิล — ไว้เช็คกับใบสั่งผลิตว่าตรงกันไหม */}
+                      <div style={{color:T.accent,marginBottom:3,fontSize:11,fontWeight:700}}>
+                        รวมจำนวน: <b style={{fontFamily:"monospace",fontSize:13}}>{(invoiceForm.items||[]).reduce((s,i)=>s+(Number(i.qty)||0),0).toLocaleString("th-TH")}</b> ตัว
+                      </div>
                       <div style={{color:T.sub,marginBottom:2,fontSize:11}}>ราคารวม: <b style={{fontFamily:"monospace",color:T.text}}>฿{c.grossSubtotal.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>
                       {c.itemDiscountTotal>0&&<div style={{color:T.amber,marginBottom:2,fontSize:11}}>ส่วนลดรายการ: <b style={{fontFamily:"monospace"}}>-฿{c.itemDiscountTotal.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>}
                       {c.billDiscount>0&&<div style={{color:T.amber,marginBottom:2,fontSize:11}}>ส่วนลดท้ายบิล: <b style={{fontFamily:"monospace"}}>-฿{c.billDiscount.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>}
