@@ -69,8 +69,12 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
     // 🩹 ลด padding รอบ ๆ print-area — เดิม 32px 40px กว้างเกินไป
     finalElM.style.padding = "6mm 8mm";
     finalElM.style.boxSizing = "border-box";
-    finalElM.style.width = "100%";
-    finalElM.style.maxWidth = "100%";
+    // 📐 บังคับความกว้างเท่าพื้นที่พิมพ์จริง — เดิมใช้ 100% (= กว้างตามจอแท็บเล็ต) ทำให้หลุดขอบกระดาษ
+    const pmE = String(cssPageSizeM).match(/^([\d.]+)mm\s+([\d.]+)mm$/);
+    const contentWidthE = (pmE && !isThermal) ? (parseFloat(pmE[1]) - 12) + "mm" : "100%"; // @page margin 6mm × 2
+    finalElM.style.width = contentWidthE;
+    finalElM.style.maxWidth = contentWidthE;
+    finalElM.style.margin = "0 auto";
     // ดึง <style>/<link> ที่จำเป็นจาก parent (สำหรับให้สไตล์ inline ของ React ทำงานเหมือนเดิม)
     const html = `<!doctype html><html><head><meta charset="utf-8"/>
       <title>พิมพ์เอกสาร</title>
@@ -79,9 +83,9 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
         @page { size: ${cssPageSizeM}; margin: 6mm; }
         html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun','Sukhumvit Set','Noto Sans Thai',sans-serif; width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden; }
         * { box-sizing: border-box; }
-        body > * { max-width: 100% !important; }
+        body > * { max-width: ${contentWidthE} !important; }
         table { border-collapse: collapse; width: 100% !important; max-width: 100% !important; }
-        tr, td, th { page-break-inside: avoid; word-break: break-word; }
+        tr, td, th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
         thead { display: table-header-group; }
         tfoot { display: table-footer-group; }
         img { max-width: 100%; height: auto; }
@@ -258,14 +262,19 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
       "A5 landscape": "210mm 148mm",
     };
     const cssPageSizeM = sizeMapM[pageSize] || pageSize;
+    // 📐 บังคับความกว้างเท่าพื้นที่พิมพ์จริงของ A4 (เท่ากับฝั่ง PC) — ไม่งั้นเนื้อหากว้างตามจอแท็บเล็ตแล้วหลุดขอบกระดาษ
+    const marginMmM = parseFloat(String(pageMargin).match(/^([\d.]+)/)?.[1] || "10");
+    const pmM = cssPageSizeM.match(/^([\d.]+)mm\s+([\d.]+)mm$/);
+    const contentWidthM = pmM ? (parseFloat(pmM[1]) - 2 * marginMmM) + "mm" : "auto";
+    const pageStyleM = `width:${contentWidthM};max-width:${contentWidthM};box-sizing:border-box;margin:0 auto;`;
     const allHtml = labels.map((label, i) => {
       const cl = el.cloneNode(true);
       cl.removeAttribute("id");
       const tag = cl.querySelector("[data-doc-label]");
       if (tag) tag.textContent = label;
       scaleFontInElement(cl, fontScale);
-      const sep = i < labels.length - 1 ? ' style="page-break-after: always;"' : '';
-      return `<div${sep}>${cl.outerHTML}</div>`;
+      const brk = i < labels.length - 1 ? "page-break-after: always;" : "";
+      return `<div style="${pageStyleM}${brk}">${cl.outerHTML}</div>`;
     }).join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"/>
       <title>พิมพ์เอกสาร × ${labels.length}</title>
@@ -273,8 +282,12 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
       <style>
         @page { size: ${cssPageSizeM}; margin: ${pageMargin}; }
         html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun','Sukhumvit Set','Noto Sans Thai',sans-serif; }
-        table { border-collapse: collapse; width: 100%; }
-        tr, td, th { page-break-inside: avoid; }
+        * { box-sizing: border-box; }
+        /* กันหลุดขอบ: ทุกชุดกว้างเท่าพื้นที่พิมพ์ A4 และตารางไม่เกินกรอบ */
+        body > div { width: ${contentWidthM} !important; max-width: ${contentWidthM} !important; }
+        body > div * { max-width: 100%; }
+        table { border-collapse: collapse; width: 100% !important; max-width: 100% !important; }
+        tr, td, th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
         thead { display: table-header-group; }
         tfoot { display: table-footer-group; }
         img { max-width: 100%; height: auto; }
