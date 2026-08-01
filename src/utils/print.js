@@ -87,10 +87,12 @@ const inlineImagesIn = async (root) => {
 // เหตุผล: เบราว์เซอร์บนแท็บเล็ตจัดหน้าเองไม่ตรงกับ PC (ตัวเล็กบ้าง หลุดขอบบ้าง)
 //   วาดเป็นภาพจาก layout เดียวกับ PC → หน้าตาตรงกันแน่นอน และไม่ต้องโหลดไฟล์มากดพิมพ์ซ้ำ
 // ภาพถูกบังคับ "พอดีหน้า" ด้วย object-fit: contain → ไม่มีทางล้นไปหน้าที่ 2
-export const printAsImage = async (el, { labels = null, fontScale = PRINT_FONT_SCALE, pageSize = "A4 portrait", pageMargin = "10mm", title = "พิมพ์เอกสาร" } = {}) => {
+export const printAsImage = async (el, { labels = null, fontScale = PRINT_FONT_SCALE, pageSize = "A4 portrait", title = "พิมพ์เอกสาร" } = {}) => {
   const [pageW, pageH] = PAGE_MM[pageSize] || [210, 297];
-  const marginMm = parseFloat(String(pageMargin).match(/^([\d.]+)/)?.[1] || "10");
-  const cw = pageW - 2 * marginMm, ch = pageH - 2 * marginMm;
+  // 📏 ขอบกระดาษ 5mm (เกือบเต็มหน้า) — @page margin ต้องเป็น 0 เพื่อให้เบราว์เซอร์
+  //    ไม่พิมพ์หัว/ท้ายกระดาษของตัวเอง (URL เว็บ + วันที่) แล้วเว้นขอบเองด้วย padding แทน
+  const edgeMm = 5;
+  const cw = pageW - 2 * edgeMm, ch = pageH - 2 * edgeMm;
   const widthPx = Math.round(mmToPx(cw));
   const sheets = labels && labels.length ? labels : [null];
 
@@ -108,15 +110,14 @@ export const printAsImage = async (el, { labels = null, fontScale = PRINT_FONT_S
   document.body.appendChild(holder);
   try {
     const { default: html2pdf } = await import("html2pdf.js");
-    const pages = [];
-    for (const label of sheets) {
+    const renderSheet = async (label, scale) => {
       const cl = el.cloneNode(true);
       cl.removeAttribute("id");
       if (label) {
         const tag = cl.querySelector("[data-doc-label]");
         if (tag) tag.textContent = label;
       }
-      scaleFontInElement(cl, fontScale);
+      scaleFontInElement(cl, scale);
       cl.style.width = widthPx + "px";
       cl.style.maxWidth = widthPx + "px";
       cl.style.boxSizing = "border-box";
@@ -124,9 +125,28 @@ export const printAsImage = async (el, { labels = null, fontScale = PRINT_FONT_S
       holder.appendChild(cl);
       await inlineImagesIn(cl);
       // ใช้ html2canvas ที่มากับ html2pdf.js (ไม่ต้องเพิ่ม dependency)
-      const canvas = await html2pdf().set({
+      return html2pdf().set({
         html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff", windowWidth: widthPx, logging: false },
       }).from(cl).toCanvas().get("canvas");
+    };
+
+    // 🔍 วาดชุดแรกก่อนเพื่อวัดความสูงจริง — ถ้าเอกสารสั้นกว่าหน้ากระดาษมาก
+    //    ขยายตัวหนังสือให้เต็มหน้าขึ้น (ขยายเฉพาะฟอนต์ → ความสูงโตช้ากว่าตัวคูณ จึงไม่มีทางล้นหน้า)
+    let scale = fontScale;
+    let firstCanvas = await renderSheet(sheets[0], scale);
+    const pageRatio = ch / cw;
+    const ratio = firstCanvas.height / firstCanvas.width;
+    if (ratio > 0 && ratio < pageRatio * 0.94) {
+      const grow = Math.min(pageRatio / ratio, 1.35);
+      if (grow > 1.08) {
+        scale = fontScale * grow;
+        firstCanvas = await renderSheet(sheets[0], scale);
+      }
+    }
+
+    const pages = [firstCanvas.toDataURL("image/jpeg", 0.95)];
+    for (const label of sheets.slice(1)) {
+      const canvas = await renderSheet(label, scale);
       pages.push(canvas.toDataURL("image/jpeg", 0.95));
     }
 
@@ -134,11 +154,12 @@ export const printAsImage = async (el, { labels = null, fontScale = PRINT_FONT_S
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
       <link rel="icon" href="data:,">
       <style>
-        @page { size: ${pageW}mm ${pageH}mm; margin: ${marginMm}mm; }
+        /* margin:0 = เบราว์เซอร์ไม่พิมพ์หัว/ท้ายกระดาษ (URL + วันที่) */
+        @page { size: ${pageW}mm ${pageH}mm; margin: 0; }
         html, body { margin:0; padding:0; background:#525659; }
-        .pg { width:${cw}mm; height:${ch}mm; margin:0 auto; display:flex; align-items:flex-start; justify-content:center; page-break-after:always; background:#fff; }
+        .pg { width:${pageW}mm; height:${pageH}mm; padding:${edgeMm}mm; box-sizing:border-box; margin:0 auto; display:flex; align-items:flex-start; justify-content:center; page-break-after:always; background:#fff; overflow:hidden; }
         .pg:last-child { page-break-after:auto; }
-        .pg img { max-width:100%; max-height:100%; object-fit:contain; }
+        .pg img { max-width:100%; max-height:100%; width:100%; object-fit:contain; object-position:top center; }
         #__pb { position:fixed; top:10px; right:10px; padding:12px 20px; background:#3b5b8b; color:#fff; border:none; border-radius:8px; font-size:16px; font-weight:700; font-family:'Sarabun',sans-serif; z-index:9; }
         @media print { #__pb { display:none !important; } html, body { background:#fff; } }
       </style></head><body>
