@@ -63,9 +63,9 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
     const cssPageSizeM = sizeMapM[pageSize] || pageSize;
     const cloneM = el.cloneNode(true);
     cloneM.removeAttribute("id");
-    // 🩹 Samsung/mobile: ลด fontScale ลง (default 1.3 มักทำให้ตกขอบ)
-    const mobileFontScale = Math.min(fontScale, 1.0);
-    const finalElM = isThermal ? cloneM : scaleFontInElement(cloneM, mobileFontScale);
+    // ให้ตัวหนังสือเท่า PC — เดิม cap 1.0 ทำให้ Galaxy Tab/มือถือเล็กกว่า desktop (ที่ใช้ 1.3)
+    // กันตกขอบด้วย width:100% + word-break ใน CSS ด้านล่างแทน (ไม่ใช่ย่อฟอนต์)
+    const finalElM = isThermal ? cloneM : scaleFontInElement(cloneM, fontScale);
     // 🩹 ลด padding รอบ ๆ print-area — เดิม 32px 40px กว้างเกินไป
     finalElM.style.padding = "6mm 8mm";
     finalElM.style.boxSizing = "border-box";
