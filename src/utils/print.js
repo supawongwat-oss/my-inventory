@@ -377,7 +377,8 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
   root.id = "__print_root__";
   // 📏 บิลรายการเยอะ → ย่อตัวหนังสือให้พอดี 1 หน้า/ชุด (คำนวณครั้งเดียว ทุกชุดเนื้อหาเหมือนกัน)
   const boxC = pageBoxPx(pageSize, pageMargin);
-  const fitScaleC = fitOnePageScale(el, { widthPx: boxC.widthPx, availPx: boxC.availPx, baseScale: fontScale });
+  // บิลย่อได้ลึกสุด 0.8 (80% ของขนาดปกติ) — เล็กกว่านี้ลูกค้าอ่านยาก ยอมให้ล้นหน้า 2 แทน
+  const fitScaleC = fitOnePageScale(el, { widthPx: boxC.widthPx, availPx: boxC.availPx, baseScale: fontScale, minScale: Math.min(0.8, fontScale) });
   labels.forEach((label, i) => {
     const clone = el.cloneNode(true);
     clone.removeAttribute("id");
@@ -497,7 +498,7 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
   const safeName = (inv.customerName || "ลูกค้า").replace(/[\\/:*?"<>|]/g, "_").slice(0, 30);
   const filename = `${inv.invoiceNo || "INV"}_${safeName}.pdf`;
   // 📏 รายการเยอะจนล้นหน้า → ย่อตัวหนังสือให้พอดี 1 หน้า (เท่ากับที่ทำตอนพิมพ์จาก PC)
-  const pdfScale = fitOnePageScale(el, { widthPx: 718, availPx: Math.round(mmToPx(277) * 0.98), baseScale: INVOICE_PDF_FONT_SCALE });
+  const pdfScale = fitOnePageScale(el, { widthPx: 718, availPx: Math.round(mmToPx(277) * 0.98), baseScale: INVOICE_PDF_FONT_SCALE, minScale: Math.min(0.8, INVOICE_PDF_FONT_SCALE) });
   let source;
   if (copies) {
     const labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"];
