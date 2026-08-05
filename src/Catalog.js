@@ -142,25 +142,34 @@ export default function Catalog() {
   const TAB_ALL = "__all__";
   const TAB_APPAREL = "__apparel__";
   const TAB_SHOE = "__shoe__";
+  const BRAND_PREFIX = "brand:";
+  // 🏢 แบรนด์มาก่อนหมวดอื่น — ลูกค้าเลือกแบรนด์ก่อน แล้วค่อยดูหมวดย่อย
+  const brands = useMemo(
+    () => [...new Set(items.map(i => i.brand).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"th")),
+    [items]
+  );
   const tabs = useMemo(() => {
     const list = [
       { key: TAB_ALL, label: "ทั้งหมด", icon: "📦", count: items.length },
+      ...brands.map(b => ({ key: BRAND_PREFIX + b, label: b, icon: "🏢", count: items.filter(i => i.brand === b).length })),
       { key: TAB_APPAREL, label: "เสื้อผ้า", icon: "👕", count: items.filter(i => i.sizeType !== "shoe").length },
       { key: TAB_SHOE, label: "รองเท้า & กีฬา", icon: "👟", count: items.filter(i => i.sizeType === "shoe").length },
     ];
     customCats.forEach(c => list.push({ key: c, label: c, icon: "🏷️", count: items.filter(i => i.category === c).length }));
     return list.filter(t => t.count > 0 || t.key === TAB_ALL);
-  }, [items, customCats]);
+  }, [items, customCats, brands]);
 
   const filtered = useMemo(() => items.filter(i => {
     // tab filter
     if (filterCat === TAB_APPAREL && i.sizeType === "shoe") return false;
     if (filterCat === TAB_SHOE && i.sizeType !== "shoe") return false;
-    if (filterCat && filterCat !== TAB_ALL && filterCat !== TAB_APPAREL && filterCat !== TAB_SHOE && i.category !== filterCat) return false;
+    if (filterCat && filterCat.startsWith(BRAND_PREFIX)) {
+      if (i.brand !== filterCat.slice(BRAND_PREFIX.length)) return false;
+    } else if (filterCat && filterCat !== TAB_ALL && filterCat !== TAB_APPAREL && filterCat !== TAB_SHOE && i.category !== filterCat) return false;
     if (search) {
       const norm = (s) => String(s||"").toLowerCase().replace(/\s+/g, "");
       const q = norm(search);
-      const text = norm(`${i.model||i.name||""} ${i.category||""} ${(i.colors||[]).map(c=>c.colorName||c.name||"").join(" ")}`);
+      const text = norm(`${i.model||i.name||""} ${i.brand||""} ${i.category||""} ${(i.colors||[]).map(c=>c.colorName||c.name||"").join(" ")}`);
       if (!text.includes(q)) return false;
     }
     return true;
@@ -274,7 +283,13 @@ export default function Catalog() {
                   </div>
                   <div style={{ padding: 12 }}>
                     <div style={{ fontWeight: 700, fontSize: 14, color: T.text, marginBottom: 4 }}>{it.model || it.name || `(ไม่ระบุชื่อ — ${it.id.slice(0,6)})`}</div>
-                    {it.category && <div style={{ fontSize: 11, color: T.muted, marginBottom: 6 }}>{it.category}</div>}
+                    {(it.brand || it.category) && (
+                      <div style={{ fontSize: 11, color: T.muted, marginBottom: 6 }}>
+                        {it.brand && <span style={{ color: T.blue, fontWeight: 700 }}>{it.brand}</span>}
+                        {it.brand && it.category && " › "}
+                        {it.category}
+                      </div>
+                    )}
                     {/* 🎨 จุดสี + ชื่อสี (ไม่ได้ตั้งชื่อ → เดาจากรหัสสีให้) */}
                     <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
                       {(it.colors || []).slice(0, 6).map((c, i) => {

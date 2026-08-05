@@ -22,7 +22,8 @@ export default function ClothingInventoryTab({
   draggingClothingId, setDraggingClothingId,
   dragOverClothingId, setDragOverClothingId, reorderClothing,
   collapsedItems, toggleCollapse,
-  setShowAddColor, openMix, openBomModal, openCatalogSettings,
+  setShowAddColor, openMix, openBomModal, openCatalogSettings, openItemCategory,
+  brandFilter, setBrandFilter,
   manageColorMode, setManageColorMode,
   setDeleteClothingTarget, setDeleteConfirmText,
   linkedInvColors, toggleLinkInvColor,
@@ -36,6 +37,15 @@ export default function ClothingInventoryTab({
     inventoryTab === "sports" ? it.sizeType === "shoe" : it.sizeType !== "shoe"
   ).sort((a, b) => (a.sortIndex ?? 9999) - (b.sortIndex ?? 9999));
 
+  // 🏷️ กรองตามแบรนด์ (ชั้นบน) — ทำก่อน sub-tab เพื่อให้ตัวเลขในแท็บย่อยตรงกับแบรนด์ที่เลือก
+  const brandList = [...new Set(tabItems.map(it => it.brand).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"th"));
+  const noBrandCount = tabItems.filter(it => !it.brand).length;
+  const brandCounts = {};
+  tabItems.forEach(it => { if (it.brand) brandCounts[it.brand] = (brandCounts[it.brand]||0) + 1; });
+  const totalInTab = tabItems.length;
+  if (brandFilter === "__none__") tabItems = tabItems.filter(it => !it.brand);
+  else if (brandFilter) tabItems = tabItems.filter(it => it.brand === brandFilter);
+
   const subCounts = { all: tabItems.length, sleeveless: 0, longsleeve: 0, other: 0 };
   tabItems.forEach(it => { subCounts[detectSleeve(it.model)]++; });
   if (inventoryTab === "clothing" && clothingSubTab !== "all") {
@@ -45,6 +55,34 @@ export default function ClothingInventoryTab({
   return (
     <div style={{ animation: "fadeUp 0.4s ease" }}>
       <input ref={clothingImgRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleClothingImageUpload} />
+
+      {/* 🏷️ แท็บแบรนด์ — โผล่เมื่อมีการตั้งแบรนด์แล้วอย่างน้อย 1 รุ่น */}
+      {brandList.length > 0 && (
+        <div style={{ display: "flex", gap: 5, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <button onClick={() => setBrandFilter("")}
+            style={{ padding: "6px 14px", borderRadius: 8, cursor: "pointer", fontFamily: "'Sarabun',sans-serif", fontSize: 12,
+              border: `1px solid ${!brandFilter ? T.accent : T.border}`, background: !brandFilter ? "rgba(59,91,139,0.1)" : "white",
+              color: !brandFilter ? T.accent : T.sub, fontWeight: !brandFilter ? 700 : 500 }}>
+            ทุกแบรนด์ <span style={{ opacity: 0.7, fontSize: 10 }}>({totalInTab})</span>
+          </button>
+          {brandList.map(b => (
+            <button key={b} onClick={() => setBrandFilter(b)}
+              style={{ padding: "6px 14px", borderRadius: 8, cursor: "pointer", fontFamily: "'Sarabun',sans-serif", fontSize: 12,
+                border: `1px solid ${brandFilter === b ? T.accent : T.border}`, background: brandFilter === b ? "rgba(59,91,139,0.1)" : "white",
+                color: brandFilter === b ? T.accent : T.sub, fontWeight: brandFilter === b ? 700 : 500 }}>
+              🏢 {b} <span style={{ opacity: 0.7, fontSize: 10 }}>({brandCounts[b]})</span>
+            </button>
+          ))}
+          {noBrandCount > 0 && (
+            <button onClick={() => setBrandFilter("__none__")} title="รุ่นที่ยังไม่ได้ตั้งแบรนด์"
+              style={{ padding: "6px 14px", borderRadius: 8, cursor: "pointer", fontFamily: "'Sarabun',sans-serif", fontSize: 12,
+                border: `1px solid ${brandFilter === "__none__" ? T.amber : T.border}`, background: brandFilter === "__none__" ? "rgba(217,119,6,0.1)" : "white",
+                color: brandFilter === "__none__" ? T.amber : T.muted, fontWeight: brandFilter === "__none__" ? 700 : 500 }}>
+              ยังไม่ตั้งแบรนด์ <span style={{ opacity: 0.7, fontSize: 10 }}>({noBrandCount})</span>
+            </button>
+          )}
+        </div>
+      )}
       {inventoryTab === "clothing" && (
         <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
           <div style={{ display: "flex", gap: 5, padding: 3, background: T.card, borderRadius: 9, border: `1px solid ${T.border}`, flexWrap: "wrap" }}>
@@ -108,7 +146,11 @@ export default function ClothingInventoryTab({
               )}
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{item.model}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>
+                {item.model}
+                {item.brand && <span style={{ marginLeft: 7, fontSize: 10, padding: "2px 8px", background: "rgba(59,91,139,0.1)", color: T.accent, borderRadius: 10, fontWeight: 700, verticalAlign: "middle" }}>{item.brand}</span>}
+                {item.category && <span style={{ marginLeft: 4, fontSize: 10, padding: "2px 8px", background: "#f1f5f9", color: T.sub, borderRadius: 10, fontWeight: 600, verticalAlign: "middle" }}>{item.category}</span>}
+              </div>
               <div style={{ fontSize: 11, color: T.muted, marginTop: 3, display: "flex", alignItems: "center", gap: 10 }}>
                 <span>{(item.colors || []).length} สี</span>
                 <span style={{ color: "rgba(59,91,139,0.3)" }}>·</span>
@@ -130,6 +172,15 @@ export default function ClothingInventoryTab({
                 const hasBom = boms.some(b => (b.id === item.id || b.clothingId === item.id) && (b.variants || []).some(v => (v.materials || []).length > 0));
                 return <button onClick={() => openBomModal(item)} title="ตั้งสูตรวัตถุดิบ (BOM)" style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${hasBom ? "rgba(22,163,74,0.35)" : "rgba(124,58,237,0.3)"}`, background: hasBom ? "rgba(22,163,74,0.08)" : "rgba(124,58,237,0.08)", color: hasBom ? "#16a34a" : "#7c3aed", cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: 600 }}>📐 {hasBom ? "BOM ✓" : "ตั้งสูตร BOM"}</button>;
               })()}
+              {role.canAdd && openItemCategory && (
+                <button onClick={() => openItemCategory(item)} title="ตั้งแบรนด์ / หมวดย่อย"
+                  style={{ padding: "7px 14px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: 600,
+                    border: `1px solid ${item.brand ? "rgba(59,91,139,0.35)" : "rgba(59,91,139,0.2)"}`,
+                    background: item.brand ? "rgba(59,91,139,0.08)" : "transparent",
+                    color: item.brand ? T.accent : T.muted }}>
+                  🏷️ {item.brand ? "หมวดหมู่" : "ตั้งหมวดหมู่"}
+                </button>
+              )}
               {role.canAdd && openCatalogSettings && (() => {
                 const limited = Array.isArray(item.catalogSizes) && item.catalogSizes.length > 0;
                 const hidden = !!item.hideFromCatalog;
