@@ -3,7 +3,10 @@
 // .env.production  → ใช้ตอน npm run build / deploy (บริษัท)
 // ถ้าไม่มี env → fallback config (บริษัท)
 import { initializeApp } from "firebase/app";
-import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import {
+  getFirestore, initializeFirestore,
+  persistentLocalCache, persistentMultipleTabManager, memoryLocalCache,
+} from "firebase/firestore";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 
@@ -24,20 +27,28 @@ if (process.env.NODE_ENV === "development") {
 }
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+
+// 💾 Offline cache — ใช้ API ใหม่ (localCache) แทน enableIndexedDbPersistence
+// ⚠️ ตัวเก่า "ค้าง" ใน Safari โหมดส่วนตัว/ปิด storage (IndexedDB เปิดไม่ได้)
+//    → หน้า catalog ค้างที่ "กำลังโหลด" ตลอดกาล ไม่มีทั้งข้อมูลและ error
+//    ตัวใหม่รองรับหลายแท็บ + ถ้า IndexedDB ใช้ไม่ได้ก็ fallback เป็น memory ให้เอง
+function createDb() {
+  try {
+    return initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
+  } catch (e) {
+    console.warn("[firebase] เปิด offline cache ไม่ได้ → ใช้ memory cache แทน:", e?.message || e);
+    try {
+      return initializeFirestore(app, { localCache: memoryLocalCache() });
+    } catch {
+      return getFirestore(app); // ตั้งค่าไปแล้วจากที่อื่น — ใช้ instance เดิม
+    }
+  }
+}
+export const db = createDb();
 export const auth = getAuth(app);
 export const storage = getStorage(app);
-
-// เปิด offline persistence — ข้อมูลยังใช้งานได้แม้เน็ตหลุด
-enableIndexedDbPersistence(db).catch((err) => {
-  if (err.code === 'failed-precondition') {
-    // เปิดหลายแท็บพร้อมกัน — persistence ใช้ได้แค่แท็บเดียว
-    console.warn('PWA offline: multiple tabs open, persistence disabled.');
-  } else if (err.code === 'unimplemented') {
-    // browser ไม่รองรับ
-    console.warn('PWA offline: browser does not support persistence.');
-  }
-});
 
 // ── Anonymous Auth ───────────────────────────────────────────
 // แอปจะ sign in แบบ anonymous เงียบๆ ทันทีที่โหลดเสร็จ

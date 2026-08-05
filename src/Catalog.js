@@ -206,7 +206,12 @@ export default function Catalog() {
         () => {}
       );
     })();
-    return () => { alive = false; if (u1) u1(); if (u2) u2(); };
+    // ⏱️ ตาข่ายกันค้าง — ถ้าไม่มีทั้งข้อมูลและ error ภายใน 12 วิ ให้แสดงทางออก
+    //    (ดีกว่าค้างที่ "กำลังโหลด" ตลอดกาลจนลูกค้าปิดหนี)
+    const stuckTimer = setTimeout(() => {
+      if (alive) setLoadState(s => s === "loading" ? "error" : s);
+    }, 12000);
+    return () => { alive = false; clearTimeout(stuckTimer); if (u1) u1(); if (u2) u2(); };
   }, [retryTick]); // retryTick เปลี่ยน = subscribe ใหม่หลัง sign-in ซ้ำ
 
   // 🏷️ Categories: predefined (เสื้อผ้า/รองเท้า ตาม sizeType) + custom (item.category)
