@@ -280,7 +280,10 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
                                   <span style={{ width: 12, height: 12, borderRadius: 3, background: colorHex, border: "1px solid rgba(0,0,0,.2)", display: "inline-block" }} />
                                   สี: <b>{colorName}</b>
                                 </span>
-                                <span style={{ minWidth: 80 }}>ไซส์: <b>{ln.size}</b></span>
+                                <span style={{ minWidth: 80 }}>
+                                  ไซส์: <b>{ln.size}</b>
+                                  {ln.customSize && <span title="ไซส์พิเศษที่ลูกค้าพิมพ์เอง" style={{ marginLeft: 4, fontSize: 9, padding: "1px 5px", background: "rgba(124,58,237,0.12)", color: "#7c3aed", borderRadius: 4, fontWeight: 700 }}>พิเศษ</span>}
+                                </span>
                                 <span style={{ minWidth: 78 }}>จำนวน: <b style={{ color: T.blue }}>{ln.qty}</b></span>
                                 {/* 💰 ราคา — ดึงจากระบบให้เลย ไม่ต้องเปิดไปดูเอง */}
                                 {(() => {

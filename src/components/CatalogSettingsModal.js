@@ -20,6 +20,7 @@ export default function CatalogSettingsModal({ item, user, onClose }) {
     Array.isArray(item.catalogSizes) ? item.catalogSizes : available
   );
   const [hidden, setHidden] = useState(!!item.hideFromCatalog);
+  const [allowCustom, setAllowCustom] = useState(!!item.allowCustomSize);
   const [saving, setSaving] = useState(false);
 
   const toggle = (sz) => setPicked(prev => prev.includes(sz) ? prev.filter(s => s !== sz) : [...prev, sz]);
@@ -31,11 +32,11 @@ export default function CatalogSettingsModal({ item, user, onClose }) {
     try {
       // เลือกครบทุกไซส์ = เหมือนไม่ได้จำกัด → เก็บ null ให้ยืดหยุ่น (เพิ่มไซส์ใหม่ทีหลังจะโชว์เอง)
       const catalogSizes = allOn ? null : [...picked].sort(compareSizes);
-      await updateDoc(doc(db, "clothing", item.id), { catalogSizes, hideFromCatalog: hidden });
+      await updateDoc(doc(db, "clothing", item.id), { catalogSizes, hideFromCatalog: hidden, allowCustomSize: allowCustom });
       logAudit(user, {
         action: AUDIT_ACTIONS.UPDATE, collection: "clothing", targetId: item.id,
         targetLabel: item.model || item.name || "",
-        note: `Catalog: ${hidden ? "ซ่อน" : "แสดง"} · ไซส์ ${catalogSizes ? catalogSizes.join(",") : "ทั้งหมด"}`,
+        note: `Catalog: ${hidden ? "ซ่อน" : "แสดง"} · ไซส์ ${catalogSizes ? catalogSizes.join(",") : "ทั้งหมด"}${allowCustom ? " · รับไซส์พิเศษ" : ""}`,
       });
       onClose && onClose();
     } catch (e) {
@@ -95,6 +96,18 @@ export default function CatalogSettingsModal({ item, user, onClose }) {
             💡 เลือกครบทุกไซส์ = ไม่จำกัด — ถ้าเพิ่มไซส์ใหม่ในคลังทีหลัง จะแสดงใน Catalog อัตโนมัติ
           </div>
         )}
+
+        {/* ✏️ ไซส์พิเศษ — ให้ลูกค้าพิมพ์เอง (สำหรับรุ่นที่รับตัดตามสั่ง) */}
+        <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, padding: "10px 14px", background: allowCustom ? "rgba(124,58,237,0.07)" : "#f8fafc", border: `1px solid ${allowCustom ? "rgba(124,58,237,0.3)" : T.border}`, borderRadius: 10, cursor: "pointer" }}>
+          <input type="checkbox" checked={allowCustom} onChange={e => setAllowCustom(e.target.checked)} style={{ width: 16, height: 16, cursor: "pointer" }}/>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: allowCustom ? "#7c3aed" : T.text }}>✏️ ให้ลูกค้าพิมพ์ไซส์พิเศษเองได้</div>
+            <div style={{ fontSize: 11, color: T.muted, marginTop: 2, lineHeight: 1.6 }}>
+              ลูกค้าจะมีปุ่ม “+ ไซส์พิเศษ” ในตารางสั่งซื้อ — เหมาะกับรุ่นที่รับตัดตามสั่ง<br/>
+              ⚠️ ไซส์พิเศษไม่มีราคาในระบบ ต้องแจ้งยอดเองตอนยืนยันออเดอร์
+            </div>
+          </div>
+        </label>
       </div>
 
       <div style={{ display: "flex", gap: 10, marginTop: 20 }}>

@@ -41,6 +41,8 @@ export default function Catalog() {
   const [filterCat, setFilterCat] = useState("");
   const [detail, setDetail] = useState(null);
   const [order, setOrder] = useState(null); // {item, qtyMap} — สร้างก่อน add to cart
+  const [customSizes, setCustomSizes] = useState([]); // ✏️ ไซส์พิเศษที่ลูกค้าพิมพ์เอง (ต่อการสั่ง 1 ครั้ง)
+  const [newCustomSize, setNewCustomSize] = useState("");
   const [cart, setCart] = useState([]); // [{itemId, itemName, itemCategory, lines:[{colorIdx,color,colorHex,size,qty}]}]
   const [showCart, setShowCart] = useState(false);
   const [checkout, setCheckout] = useState(null); // {name, phone, address, note}
@@ -56,6 +58,34 @@ export default function Catalog() {
   useEffect(() => {
     try { localStorage.setItem("cpu_cart", JSON.stringify(cart)); } catch (e) {}
   }, [cart]);
+
+  // ✏️ เพิ่ม/ลบไซส์พิเศษ — กันชื่อซ้ำกับไซส์ที่มีอยู่แล้ว (เทียบแบบไม่สนตัวพิมพ์)
+  const addCustomSize = () => {
+    const v = newCustomSize.trim();
+    if (!v) return;
+    const existing = [
+      ...customSizes,
+      ...((order?.item?.colors || []).flatMap(c => Object.keys(c.stock || {}))),
+    ].map(s => s.toLowerCase());
+    if (existing.includes(v.toLowerCase())) { setNewCustomSize(""); return; }
+    setCustomSizes(prev => [...prev, v]);
+    setNewCustomSize("");
+  };
+  // ปิดฟอร์มสั่ง → ล้างไซส์พิเศษด้วย ไม่งั้นติดไปสินค้าถัดไป
+  const closeOrderForm = () => { setOrder(null); setCustomSizes([]); setNewCustomSize(""); };
+  const removeCustomSize = (sz) => {
+    setCustomSizes(prev => prev.filter(s => s !== sz));
+    // ลบจำนวนที่กรอกไว้ในคอลัมน์นั้นด้วย ไม่งั้นค้างในตะกร้าทั้งที่คอลัมน์หายแล้ว
+    setOrder(o => {
+      if (!o?.qtyMap) return o;
+      const qtyMap = {};
+      Object.entries(o.qtyMap).forEach(([ci, row]) => {
+        const r = { ...row }; delete r[sz];
+        if (Object.keys(r).length > 0) qtyMap[ci] = r;
+      });
+      return { ...o, qtyMap };
+    });
+  };
 
   const cartTotalQty = cart.reduce((s, it) => s + it.lines.reduce((a,l)=>a+(l.qty||0),0), 0);
   const cartTotalItems = cart.length;
@@ -309,7 +339,7 @@ export default function Catalog() {
               {lineHref && (
                 <a href={lineHref} target="_blank" rel="noreferrer" style={{ flex: 1, background: T.line, color: "white", padding: "12px", textAlign: "center", borderRadius: 8, textDecoration: "none", fontWeight: 700, fontSize: 13 }}>💬 ติดต่อ LINE</a>
               )}
-              <button onClick={() => { setOrder({ item: detail, qtyMap: {} }); setDetail(null); }}
+              <button onClick={() => { setOrder({ item: detail, qtyMap: {} }); setCustomSizes([]); setNewCustomSize(""); setDetail(null); }}
                 style={{ flex: 1, background: T.blue, color: "white", padding: "12px", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>➕ เพิ่มลงตะกร้า</button>
             </div>
           </div>
@@ -318,7 +348,7 @@ export default function Catalog() {
 
       {/* ORDER FORM — เลือกขนาด/สี แล้วใส่ตะกร้า */}
       {order && (
-        <div onClick={() => setOrder(null)} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 110, padding: 12 }}>
+        <div onClick={() => closeOrderForm()} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 110, padding: 12 }}>
           <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: 14, maxWidth: 720, width: "100%", maxHeight: "92vh", overflowY: "auto" }}>
               <>
                 <div style={{ padding: 16, borderBottom: `1px solid ${T.border}` }}>
@@ -339,9 +369,11 @@ export default function Catalog() {
                     const baseSizes = foundSizes.length > 0 ? foundSizes : getSizesFor(order.item);
                     // 🛍️ จำกัดเฉพาะไซส์ที่ตั้งไว้ว่ารับผลิต (ไม่ได้ตั้ง = ทุกไซส์)
                     const limit = order.item.catalogSizes;
-                    const allSizes = Array.isArray(limit) && limit.length > 0
+                    const listedSizes = Array.isArray(limit) && limit.length > 0
                       ? baseSizes.filter(sz => limit.includes(sz))
                       : baseSizes;
+                    // ✏️ ไซส์พิเศษที่ลูกค้าพิมพ์เอง (เฉพาะรุ่นที่เปิดรับตัดตามสั่ง)
+                    const allSizes = [...listedSizes, ...customSizes.filter(s => !listedSizes.includes(s))];
                     const setQty = (ci, sz, v) => {
                       const qtyMap = { ...(order.qtyMap || {}) };
                       qtyMap[ci] = { ...(qtyMap[ci] || {}) };
@@ -406,9 +438,38 @@ export default function Catalog() {
                     );
                   })()}
 
+                  {/* ✏️ ไซส์พิเศษ — เฉพาะรุ่นที่เปิดรับตัดตามสั่ง */}
+                  {order.item.allowCustomSize && (
+                    <div style={{ padding: "10px 12px", background: "rgba(124,58,237,0.05)", border: "1px solid rgba(124,58,237,0.25)", borderRadius: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed", marginBottom: 6 }}>✏️ ต้องการไซส์พิเศษ?</div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                        <input value={newCustomSize} onChange={e => setNewCustomSize(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addCustomSize(); } }}
+                          placeholder="เช่น 7XL, รอบอก 50 นิ้ว"
+                          style={{ flex: "1 1 180px", padding: "8px 12px", borderRadius: 7, border: `1px solid ${T.border}`, fontSize: 13, fontFamily: "inherit", outline: "none" }}/>
+                        <button onClick={addCustomSize} disabled={!newCustomSize.trim()}
+                          style={{ padding: "8px 16px", borderRadius: 7, border: "none", background: newCustomSize.trim() ? "#7c3aed" : "#e2e5ea", color: "white", cursor: newCustomSize.trim() ? "pointer" : "default", fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>+ เพิ่มไซส์</button>
+                      </div>
+                      {customSizes.length > 0 && (
+                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 8 }}>
+                          {customSizes.map(sz => (
+                            <span key={sz} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 6px 3px 10px", background: "white", border: "1px solid rgba(124,58,237,0.35)", borderRadius: 12, fontSize: 12, color: "#7c3aed", fontWeight: 600 }}>
+                              {sz}
+                              <button onClick={() => removeCustomSize(sz)} title="เอาออก"
+                                style={{ border: "none", background: "transparent", color: T.muted, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0 }}>✕</button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ fontSize: 11, color: T.muted, marginTop: 7, lineHeight: 1.6 }}>
+                        เพิ่มแล้วจะมีคอลัมน์ใหม่ในตาราง — กรอกจำนวนได้เลย<br/>
+                        ทีมงานจะติดต่อยืนยันราคาไซส์พิเศษอีกครั้ง
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div style={{ padding: 14, borderTop: `1px solid ${T.border}`, display: "flex", gap: 8, background: "#f8fafc", borderRadius: "0 0 14px 14px" }}>
-                  <button onClick={() => setOrder(null)} style={{ flex: 1, background: "white", border: `1px solid ${T.border}`, padding: 12, borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>ยกเลิก</button>
+                  <button onClick={() => closeOrderForm()} style={{ flex: 1, background: "white", border: `1px solid ${T.border}`, padding: 12, borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>ยกเลิก</button>
                   <button onClick={() => {
                     // flatten qtyMap → lines
                     const valid = [];
@@ -423,6 +484,8 @@ export default function Catalog() {
                           colorHex: col.hex || "",
                           size: size || "",
                           qty: Number(qty) || 0,
+                          // 🏷️ ไซส์ที่ลูกค้าพิมพ์เอง → ทีมงานต้องรู้ว่าไม่มีราคาในระบบ
+                          ...(customSizes.includes(size) ? { customSize: true } : {}),
                         });
                       });
                     });
@@ -433,7 +496,7 @@ export default function Catalog() {
                       itemCategory: order.item?.category || "",
                       lines: valid,
                     });
-                    setOrder(null);
+                    closeOrderForm();
                     setShowCart(true); // เปิดตะกร้าเลย — เห็นสิ่งที่เพิ่งใส่
                   }} style={{ flex: 2, background: T.green, color: "white", padding: 12, border: "none", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontWeight: 700 }}>➕ เพิ่มลงตะกร้า</button>
                 </div>
