@@ -56,9 +56,10 @@ export default function ClothingInventoryTab({
     <div style={{ animation: "fadeUp 0.4s ease" }}>
       <input ref={clothingImgRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleClothingImageUpload} />
 
-      {/* 🏷️ แท็บแบรนด์ — โผล่เมื่อมีการตั้งแบรนด์แล้วอย่างน้อย 1 รุ่น */}
+      {/* 🏷️ แบรนด์ (ขนาดปกติ) + หมวดย่อย (เล็กลง) — บรรทัดเดียวกัน */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
       {brandList.length > 0 && (
-        <div style={{ display: "flex", gap: 5, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
           <button onClick={() => setBrandFilter("")}
             style={{ padding: "6px 14px", borderRadius: 8, cursor: "pointer", fontFamily: "'Sarabun',sans-serif", fontSize: 12,
               border: `1px solid ${!brandFilter ? T.accent : T.border}`, background: !brandFilter ? "rgba(59,91,139,0.1)" : "white",
@@ -84,8 +85,8 @@ export default function ClothingInventoryTab({
         </div>
       )}
       {inventoryTab === "clothing" && (
-        <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-          <div style={{ display: "flex", gap: 5, padding: 3, background: T.card, borderRadius: 9, border: `1px solid ${T.border}`, flexWrap: "wrap" }}>
+        <>
+          <div style={{ display: "flex", gap: 3, padding: 2, background: T.card, borderRadius: 8, border: `1px solid ${T.border}`, flexWrap: "wrap" }}>
             {[
               { id: "all", icon: "👕", label: "ทั้งหมด" },
               { id: "sleeveless", icon: "🎽", label: "แขนกุด" },
@@ -93,19 +94,20 @@ export default function ClothingInventoryTab({
               { id: "other", icon: "👔", label: "แขนสั้น" },
             ].map(s => (
               <button key={s.id} onClick={() => setClothingSubTab(s.id)}
-                style={{ padding: "5px 12px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "'Sarabun',sans-serif", background: clothingSubTab === s.id ? T.accent : "transparent", color: clothingSubTab === s.id ? "white" : T.sub, transition: "all 0.15s" }}>
-                {s.icon} {s.label} <span style={{ opacity: 0.7, fontSize: 10, marginLeft: 2 }}>({subCounts[s.id]})</span>
+                style={{ padding: "3px 9px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "'Sarabun',sans-serif", background: clothingSubTab === s.id ? T.accent : "transparent", color: clothingSubTab === s.id ? "white" : T.sub, transition: "all 0.15s", whiteSpace: "nowrap" }}>
+                {s.icon} {s.label} <span style={{ opacity: 0.7, fontSize: 9, marginLeft: 1 }}>({subCounts[s.id]})</span>
               </button>
             ))}
           </div>
           {(pendingMixSales || []).length > 0 && (
             <button onClick={() => setPendingMixListOpen(true)}
-              style={{ padding: "7px 14px", borderRadius: 9, border: "1px solid rgba(184,134,0,0.5)", background: "rgba(184,134,0,0.15)", color: T.amber, cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "'Sarabun',sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
-              🕐 รอระบุรายละเอียด <span style={{ background: T.amber, color: "white", padding: "1px 8px", borderRadius: 10, fontSize: 11 }}>{pendingMixSales.length}</span>
+              style={{ padding: "5px 11px", borderRadius: 8, border: "1px solid rgba(184,134,0,0.5)", background: "rgba(184,134,0,0.15)", color: T.amber, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "'Sarabun',sans-serif", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+              🕐 รอระบุ <span style={{ background: T.amber, color: "white", padding: "1px 7px", borderRadius: 10, fontSize: 10 }}>{pendingMixSales.length}</span>
             </button>
           )}
-        </div>
+        </>
       )}
+      </div>
       {tabItems.length === 0 && (
         <div style={{ textAlign: "center", padding: 60, background: T.card, borderRadius: 16, border: `1px solid ${T.border}` }}>
           <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.3 }}>{inventoryTab === "sports" ? "👟" : "👕"}</div>
