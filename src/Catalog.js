@@ -34,6 +34,13 @@ function guessColorName(hex, fallbackIdx) {
   return COLOR_NAME_FROM_HEX[h] || `สี #${fallbackIdx+1}`;
 }
 
+// 👟 กรองไซส์ให้ตรงชนิดสินค้า — บางสีมีข้อมูลไซส์ผิดชนิดค้างอยู่ในคลัง
+// (เช่น รองเท้าแต่สีนึงมี S,M,L,XL ติดมา) ถ้าไม่กรอง ลูกค้าจะเห็นไซส์มั่ว
+// เกณฑ์: เบอร์รองเท้า = ตัวเลข ≥ 30 · ไซส์เด็ก = ตัวเลข < 30
+const isShoeSize = (sz) => /^\d+$/.test(String(sz)) && Number(sz) >= 30;
+const sizeFitsItem = (item, sz) =>
+  (item?.sizeType === "shoe") ? isShoeSize(sz) : !isShoeSize(sz);
+
 export default function Catalog() {
   const [items, setItems] = useState([]);
   const [company, setCompany] = useState({ name: "CPU", phone: "", lineId: "", lineUrl: "" });
@@ -313,6 +320,7 @@ export default function Catalog() {
                 // 🛍️ แสดงเฉพาะไซส์ที่รับผลิต (ตั้งไว้ที่ ERP → catalogSizes)
                 const limitD = detail.catalogSizes;
                 const sizes = Object.keys(c.stock || {})
+                  .filter(sz => sizeFitsItem(detail, sz))   // 👟 กันไซส์ผิดชนิดที่ค้างในคลัง
                   .filter(sz => !Array.isArray(limitD) || limitD.length === 0 || limitD.includes(sz))
                   .sort(compareSizes);
                 const colorLabel = c.colorName || c.name || guessColorName(c.hex, ci);
@@ -363,6 +371,7 @@ export default function Catalog() {
                     //    ไซส์เด็ก (6,8,10,12) มาก่อน แล้วค่อย S,M,L,XL,2XL...
                     //    เดิม sort เองด้วย localeCompare → "10","12","6","8" (เรียงแบบข้อความ ผิด)
                     const foundSizes = [...new Set(colors.flatMap(c => Object.keys(c.stock || {})))]
+                      .filter(sz => sizeFitsItem(order.item, sz))   // 👟 กันไซส์ผิดชนิดที่ค้างในคลัง
                       .sort(compareSizes);
                     // ไม่มีข้อมูลไซส์เลย (สินค้ายังไม่ตั้งสต๊อก) → ใช้ไซส์มาตรฐานตามชนิดสินค้า
                     // ⚠️ รองเท้าใช้เบอร์ 36-45 ไม่ใช่ S-XL → ต้องดู sizeType
