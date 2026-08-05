@@ -510,32 +510,41 @@ export default function Catalog() {
               </div>
             )}
 
-            <div style={{ padding: 18 }}>
-              {/* 🚫 ไม่บอกสถานะสต๊อก (มี/หมด) — ให้ลูกค้าเลือกได้ทุกไซส์
-                     ของมี/ไม่มี พนักงานจะแจ้งลูกค้าเองตอนยืนยันออเดอร์ */}
-              {(detail.colors || []).map((c, ci) => {
-                // 🛍️ แสดงเฉพาะไซส์ที่รับผลิต (ตั้งไว้ที่ ERP → catalogSizes)
-                const limitD = detail.catalogSizes;
-                const sizes = Object.keys(c.stock || {})
-                  .filter(sz => sizeFitsItem(detail, sz))   // 👟 กันไซส์ผิดชนิดที่ค้างในคลัง
-                  .filter(sz => !Array.isArray(limitD) || limitD.length === 0 || limitD.includes(sz))
-                  .sort(compareSizes);
-                const colorLabel = c.colorName || c.name || guessColorName(c.hex, ci);
-                return (
-                  // 📏 ไซส์แสดงเป็นบรรทัดเดียว (ช่วงย่อ) — พอให้รู้ว่ามีอะไรบ้าง
-                  //    เลือกจริงไปทำในหน้าสั่งซื้อ ไม่ต้องโชว์ชิปเต็มหน้า
-                  <div key={ci} style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 7, padding: "9px 12px", background: "#f8fafc", borderRadius: 9, flexWrap: "wrap" }}>
-                    <div style={{ width: 20, height: 20, borderRadius: "50%", background: c.hex || "#ddd", border: "1px solid rgba(0,0,0,.2)", flexShrink: 0 }} />
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>{colorLabel}</div>
-                    {sizes.length > 0 && (
-                      <div style={{ marginLeft: "auto", fontSize: 12, color: T.sub }}>
-                        ไซส์ <b style={{ color: T.text }}>{summarizeSizes(sizes)}</b>
+            {/* 🎨 สีทั้งหมดเรียงกัน + ไซส์รวมบรรทัดเดียว
+                   (เดิมแยกแถวต่อสี → ยาวมากเมื่อมีหลายสี และไซส์ก็ซ้ำกันทุกแถว)
+                   🚫 ไม่บอกสถานะสต๊อก — พนักงานแจ้งลูกค้าเองตอนยืนยัน */}
+            {(() => {
+              const limitD = detail.catalogSizes;
+              const okSize = (sz) => sizeFitsItem(detail, sz)
+                && (!Array.isArray(limitD) || limitD.length === 0 || limitD.includes(sz));
+              const allSizes = [...new Set((detail.colors || []).flatMap(c => Object.keys(c.stock || {})))]
+                .filter(okSize).sort(compareSizes);
+              const colors = detail.colors || [];
+              if (colors.length === 0 && allSizes.length === 0) return null;
+              return (
+                <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+                  {colors.length > 0 && (
+                    <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 13, color: T.sub, flexShrink: 0, paddingTop: 3 }}>สี</span>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: 1 }}>
+                        {colors.map((c, ci) => (
+                          <span key={ci} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px 3px 4px", background: "#f1f5f9", borderRadius: 12, fontSize: 12, color: T.text, fontWeight: 600 }}>
+                            <span style={{ width: 15, height: 15, borderRadius: "50%", background: c.hex || "#ddd", border: "1px solid rgba(0,0,0,.2)" }}/>
+                            {c.colorName || c.name || guessColorName(c.hex, ci)}
+                          </span>
+                        ))}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                    </div>
+                  )}
+                  {allSizes.length > 0 && (
+                    <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 13, color: T.sub, flexShrink: 0 }}>ไซส์</span>
+                      <b style={{ fontSize: 14, color: T.text }}>{summarizeSizes(allSizes)}</b>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             <div style={{ padding: 14, borderTop: `1px solid ${T.border}`, display: "flex", gap: 8, background: "#f8fafc", borderRadius: "0 0 14px 14px" }}>
               {lineHref && (
                 <a href={lineHref} target="_blank" rel="noreferrer" style={{ flex: 1, background: T.line, color: "white", padding: "12px", textAlign: "center", borderRadius: 8, textDecoration: "none", fontWeight: 700, fontSize: 13 }}>💬 ติดต่อ LINE</a>
