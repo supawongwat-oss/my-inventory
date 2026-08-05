@@ -66,6 +66,28 @@ export default function Catalog() {
     try { localStorage.setItem("cpu_cart", JSON.stringify(cart)); } catch (e) {}
   }, [cart]);
 
+  // 💾 จำชื่อ/เบอร์/ที่อยู่ไว้ในเครื่องลูกค้า — สั่งครั้งหน้าไม่ต้องพิมพ์ใหม่
+  //    เก็บเฉพาะเครื่องนั้น (localStorage) ไม่ได้ส่งไปไหน · ไม่เก็บหมายเหตุ (เปลี่ยนทุกออเดอร์)
+  const SAVED_KEY = "cpu_customer_info";
+  const loadSavedInfo = () => {
+    try {
+      const s = JSON.parse(localStorage.getItem(SAVED_KEY) || "{}");
+      return { name: s.name || "", phone: s.phone || "", address: s.address || "" };
+    } catch { return { name: "", phone: "", address: "" }; }
+  };
+  const saveInfo = (info) => {
+    try {
+      localStorage.setItem(SAVED_KEY, JSON.stringify({
+        name: (info.name || "").trim(), phone: (info.phone || "").trim(), address: (info.address || "").trim(),
+      }));
+    } catch {}
+  };
+  const clearSavedInfo = () => {
+    try { localStorage.removeItem(SAVED_KEY); } catch {}
+    setCheckout(c => c ? { ...c, name: "", phone: "", address: "" } : c);
+  };
+  const hasSavedInfo = () => !!loadSavedInfo().name;
+
   // ✏️ เพิ่ม/ลบไซส์พิเศษ — กันชื่อซ้ำกับไซส์ที่มีอยู่แล้ว (เทียบแบบไม่สนตัวพิมพ์)
   const addCustomSize = () => {
     const v = newCustomSize.trim();
@@ -593,7 +615,7 @@ export default function Catalog() {
             {cart.length > 0 && (
               <div style={{ padding: 14, borderTop: `1px solid ${T.border}`, background: "#f8fafc" }}>
                 <button onClick={clearCart} style={{ width: "100%", background: "white", color: T.red, border: `1px solid #fecaca`, padding: 10, borderRadius: 8, marginBottom: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600 }}>🗑 ล้างตะกร้า</button>
-                <button onClick={()=>{ setCheckout({ name: "", phone: "", address: "", note: "" }); }}
+                <button onClick={()=>{ setCheckout({ ...loadSavedInfo(), note: "" }); }}
                   style={{ width: "100%", background: T.green, color: "white", border: "none", padding: 14, borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: 14 }}>
                   💳 ดำเนินการสั่งซื้อ ({cartTotalQty} ชิ้น)
                 </button>
@@ -621,6 +643,16 @@ export default function Catalog() {
                   <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>{cartTotalItems} รุ่น · {cartTotalQty} ชิ้น · ทีมงานจะติดต่อยืนยันยอด</div>
                 </div>
                 <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+                  {/* 💾 เติมข้อมูลเดิมให้ — บอกให้รู้ว่ามาจากไหน + ล้างได้ (เผื่อสั่งแทนคนอื่น) */}
+                  {hasSavedInfo() && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "7px 11px", background: "rgba(58,122,82,0.07)", border: `1px solid rgba(58,122,82,0.25)`, borderRadius: 8, fontSize: 11, color: T.green }}>
+                      ✅ กรอกข้อมูลเดิมให้แล้ว — แก้ไขได้ตามต้องการ
+                      <button onClick={clearSavedInfo}
+                        style={{ marginLeft: "auto", background: "white", border: `1px solid ${T.border}`, color: T.sub, padding: "3px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
+                        ล้าง / สั่งให้คนอื่น
+                      </button>
+                    </div>
+                  )}
                   <Field label="ชื่อ / ร้านค้า *" value={checkout.name} onChange={v=>setCheckout({...checkout, name: v})} />
                   <Field label="เบอร์โทร *" value={checkout.phone} onChange={v=>setCheckout({...checkout, phone: v})} />
                   <Field label="ที่อยู่จัดส่ง" value={checkout.address} onChange={v=>setCheckout({...checkout, address: v})} textarea />
@@ -630,6 +662,7 @@ export default function Catalog() {
                   <button onClick={()=>setCheckout(null)} style={{ flex: 1, background: "white", border: `1px solid ${T.border}`, padding: 12, borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>← กลับ</button>
                   <button onClick={async()=>{
                     if (!checkout.name.trim() || !checkout.phone.trim()) { alert("กรุณากรอกชื่อและเบอร์โทร"); return; }
+                    saveInfo(checkout); // 💾 จำไว้ให้ครั้งหน้า
                     try {
                       // 🛒 multi-item payload
                       const payload = {
