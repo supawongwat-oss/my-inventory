@@ -42,6 +42,40 @@ const isShoeSize = (sz) => /^\d+$/.test(String(sz)) && Number(sz) >= 30;
 const sizeFitsItem = (item, sz) =>
   (item?.sizeType === "shoe") ? isShoeSize(sz) : !isShoeSize(sz);
 
+// 📏 ย่อรายการไซส์ให้อ่านง่ายในบรรทัดเดียว
+// ["6","8","10","12","S","M","L","XL","2XL","5XL"] → "6-12 · S-2XL, 5XL"
+// (ไซส์ที่เรียงต่อกันยุบเป็นช่วง — ดูจาก sizeRank ว่าติดกันไหม)
+function summarizeSizes(sizes = []) {
+  if (sizes.length === 0) return "";
+  if (sizes.length <= 2) return sizes.join(", ");
+  const ORDER = ["XS","S","M","L","XL","2XL","3XL","4XL","5XL","6XL","7XL","8XL","9XL"];
+  const seqIdx = (sz) => {
+    const s = String(sz).trim().toUpperCase();
+    if (/^\d+$/.test(s)) return { group: "num", n: Number(s) };
+    const i = ORDER.indexOf(s);
+    return i >= 0 ? { group: "letter", n: i } : null;
+  };
+  const parts = [];
+  let run = [];
+  const flush = () => {
+    if (run.length === 0) return;
+    parts.push(run.length >= 3 ? `${run[0]}-${run[run.length-1]}` : run.join(", "));
+    run = [];
+  };
+  let prev = null;
+  sizes.forEach(sz => {
+    const cur = seqIdx(sz);
+    // ต่อเนื่องกัน = กลุ่มเดียวกัน + ลำดับถัดไปพอดี (ไซส์เด็กเว้นทีละ 2: 6,8,10,12)
+    const contiguous = prev && cur && prev.group === cur.group &&
+      (cur.group === "letter" ? cur.n === prev.n + 1 : (cur.n - prev.n === 2 || cur.n - prev.n === 1));
+    if (!contiguous) flush();
+    run.push(sz);
+    prev = cur;
+  });
+  flush();
+  return parts.join(" · ");
+}
+
 export default function Catalog() {
   const [items, setItems] = useState([]);
   const [company, setCompany] = useState({ name: "CPU", phone: "", lineId: "", lineUrl: "" });
@@ -445,10 +479,37 @@ export default function Catalog() {
             <div style={{ padding: 18, display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: `1px solid ${T.border}` }}>
               <div>
                 <div style={{ fontSize: 18, fontWeight: 800, color: T.text }}>{detail.model || detail.name}</div>
-                {detail.category && <div style={{ fontSize: 12, color: T.sub, marginTop: 2 }}>{detail.category}</div>}
+                {(detail.brand || detail.category) && (
+                  <div style={{ fontSize: 12, color: T.sub, marginTop: 2 }}>
+                    {detail.brand && <span style={{ color: T.blue, fontWeight: 700 }}>{detail.brand}</span>}
+                    {detail.brand && detail.category && " › "}
+                    {detail.category}
+                  </div>
+                )}
               </div>
               <button onClick={() => setDetail(null)} style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>✕</button>
             </div>
+
+            {/* 📖 เล่าเรื่องสินค้า — คำบรรยาย + รูปประกอบ (ตั้งที่ ERP) */}
+            {(detail.description || (detail.gallery || []).length > 0) && (
+              <div style={{ padding: "16px 18px 0" }}>
+                {detail.description && (
+                  <div style={{ fontSize: 14, color: T.text, lineHeight: 1.9, whiteSpace: "pre-wrap", marginBottom: (detail.gallery||[]).length > 0 ? 14 : 4 }}>
+                    {detail.description}
+                  </div>
+                )}
+                {(detail.gallery || []).map((im, gi) => (
+                  <div key={gi} style={{ marginBottom: 12 }}>
+                    <img src={im.url} alt={im.caption || ""} loading="lazy"
+                      style={{ width: "100%", borderRadius: 10, display: "block" }}/>
+                    {im.caption && (
+                      <div style={{ fontSize: 12, color: T.sub, marginTop: 5, textAlign: "center", lineHeight: 1.6 }}>{im.caption}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div style={{ padding: 18 }}>
               {/* 🚫 ไม่บอกสถานะสต๊อก (มี/หมด) — ให้ลูกค้าเลือกได้ทุกไซส์
                      ของมี/ไม่มี พนักงานจะแจ้งลูกค้าเองตอนยืนยันออเดอร์ */}
@@ -461,18 +522,14 @@ export default function Catalog() {
                   .sort(compareSizes);
                 const colorLabel = c.colorName || c.name || guessColorName(c.hex, ci);
                 return (
-                  <div key={ci} style={{ marginBottom: 14, padding: 12, background: "#f8fafc", borderRadius: 10 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                      <div style={{ width: 22, height: 22, borderRadius: "50%", background: c.hex || "#ddd", border: "1px solid rgba(0,0,0,.2)" }} />
-                      <div style={{ fontWeight: 700, fontSize: 14 }}>{colorLabel}</div>
-                    </div>
+                  // 📏 ไซส์แสดงเป็นบรรทัดเดียว (ช่วงย่อ) — พอให้รู้ว่ามีอะไรบ้าง
+                  //    เลือกจริงไปทำในหน้าสั่งซื้อ ไม่ต้องโชว์ชิปเต็มหน้า
+                  <div key={ci} style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 7, padding: "9px 12px", background: "#f8fafc", borderRadius: 9, flexWrap: "wrap" }}>
+                    <div style={{ width: 20, height: 20, borderRadius: "50%", background: c.hex || "#ddd", border: "1px solid rgba(0,0,0,.2)", flexShrink: 0 }} />
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{colorLabel}</div>
                     {sizes.length > 0 && (
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        {sizes.map(sz => (
-                          <div key={sz} style={{ padding: "5px 10px", background: "#eef2f7", color: T.sub, borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
-                            {sz}
-                          </div>
-                        ))}
+                      <div style={{ marginLeft: "auto", fontSize: 12, color: T.sub }}>
+                        ไซส์ <b style={{ color: T.text }}>{summarizeSizes(sizes)}</b>
                       </div>
                     )}
                   </div>

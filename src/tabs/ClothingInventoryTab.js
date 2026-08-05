@@ -22,7 +22,7 @@ export default function ClothingInventoryTab({
   draggingClothingId, setDraggingClothingId,
   dragOverClothingId, setDragOverClothingId, reorderClothing,
   collapsedItems, toggleCollapse,
-  setShowAddColor, openMix, openBomModal, openCatalogSettings, openItemCategory,
+  setShowAddColor, openMix, openBomModal, openCatalogSettings, openItemCategory, openItemStory,
   brandFilter, setBrandFilter,
   manageColorMode, setManageColorMode,
   setDeleteClothingTarget, setDeleteConfirmText,
@@ -183,6 +183,18 @@ export default function ClothingInventoryTab({
                   🏷️ {item.brand ? "หมวดหมู่" : "ตั้งหมวดหมู่"}
                 </button>
               )}
+              {role.canAdd && openItemStory && (() => {
+                const hasStory = !!item.description || (item.gallery||[]).length > 0;
+                return (
+                  <button onClick={() => openItemStory(item)} title="คำบรรยาย + รูปเพิ่มเติมที่ลูกค้าเห็น"
+                    style={{ padding: "7px 14px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: 600,
+                      border: `1px solid ${hasStory ? "rgba(124,58,237,0.35)" : "rgba(59,91,139,0.2)"}`,
+                      background: hasStory ? "rgba(124,58,237,0.08)" : "transparent",
+                      color: hasStory ? "#7c3aed" : T.muted }}>
+                    📖 {hasStory ? "รายละเอียด ✓" : "รายละเอียด"}
+                  </button>
+                );
+              })()}
               {role.canAdd && openCatalogSettings && (() => {
                 const limited = Array.isArray(item.catalogSizes) && item.catalogSizes.length > 0;
                 const hidden = !!item.hideFromCatalog;

@@ -38,6 +38,7 @@ const CatalogInboxTab = lazy(() => import("./tabs/CatalogInboxTab"));
 const ShareCatalogModal = lazy(() => import("./components/ShareCatalogModal"));
 const CatalogSettingsModal = lazy(() => import("./components/CatalogSettingsModal"));
 const ItemCategoryModal = lazy(() => import("./components/ItemCategoryModal"));
+const ItemStoryModal = lazy(() => import("./components/ItemStoryModal"));
 const PayrollTab = lazy(() => import("./tabs/PayrollTab"));
 const ProductionHistoryTab = lazy(() => import("./tabs/ProductionHistoryTab"));
 const OrdersTab = lazy(() => import("./tabs/OrdersTab"));
@@ -286,6 +287,7 @@ export default function App() {
   const [showShareCatalog, setShowShareCatalog] = useState(false); // 📱 QR/ลิงก์สั่งของให้ลูกค้า
   const [catalogSettingsItem, setCatalogSettingsItem] = useState(null); // 🛍️ ตั้งค่า Catalog ต่อสินค้า
   const [itemCategoryItem, setItemCategoryItem] = useState(null); // 🏷️ ตั้งแบรนด์/หมวดย่อย
+  const [itemStoryItem, setItemStoryItem] = useState(null); // 📖 รายละเอียด/รูปเล่าเรื่อง
   const [brandFilter, setBrandFilter] = useState(""); // "" = ทุกแบรนด์, "__none__" = ยังไม่ตั้ง
   const [showPrintOrder, setShowPrintOrder] = useState(null);
   const [editingOrderId, setEditingOrderId] = useState(null); // null = สร้างใหม่, string = แก้ไข
@@ -2868,7 +2870,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   draggingClothingId={draggingClothingId} setDraggingClothingId={setDraggingClothingId}
                   dragOverClothingId={dragOverClothingId} setDragOverClothingId={setDragOverClothingId} reorderClothing={reorderClothing}
                   collapsedItems={collapsedItems} toggleCollapse={toggleCollapse}
-                  setShowAddColor={setShowAddColor} openMix={openMix} openBomModal={openBomModal} openCatalogSettings={setCatalogSettingsItem} openItemCategory={setItemCategoryItem} brandFilter={brandFilter} setBrandFilter={setBrandFilter}
+                  setShowAddColor={setShowAddColor} openMix={openMix} openBomModal={openBomModal} openCatalogSettings={setCatalogSettingsItem} openItemCategory={setItemCategoryItem} openItemStory={setItemStoryItem} brandFilter={brandFilter} setBrandFilter={setBrandFilter}
                   manageColorMode={manageColorMode} setManageColorMode={setManageColorMode}
                   setDeleteClothingTarget={setDeleteClothingTarget} setDeleteConfirmText={setDeleteConfirmText}
                   linkedInvColors={linkedInvColors} toggleLinkInvColor={toggleLinkInvColor}
@@ -4177,6 +4179,13 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           handleConfirmOrder={handleConfirmOrder}
           addOrderMixItem={addOrderMixItem}
         />
+      )}
+
+      {/* ── MODAL: รายละเอียดสินค้า (เล่าเรื่อง + รูป) ── */}
+      {itemStoryItem && (
+        <Suspense fallback={null}>
+          <ItemStoryModal item={itemStoryItem} user={user} onClose={() => setItemStoryItem(null)}/>
+        </Suspense>
       )}
 
       {/* ── MODAL: ตั้งแบรนด์ / หมวดย่อย ── */}
