@@ -29,10 +29,7 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
   const openQuote = (o) => {
     setQuoteEdit({
       order: o,
-      text: buildQuoteMessage(o, clothingItems, {
-        companyName: companyInfo.name || "",
-        billingNote: "สิ้นเดือนจะวางบิลรวมให้นะคะ",
-      }),
+      text: buildQuoteMessage(o, clothingItems),
     });
   };
   const copyQuoteText = async () => {
@@ -138,17 +135,6 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
                 onChange={e => setQuoteEdit(q => ({ ...q, text: e.target.value }))}
                 rows={14}
                 style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 10, border: `1px solid ${T.border}`, fontSize: 14, fontFamily: "inherit", lineHeight: 1.7, outline: "none", resize: "vertical" }}/>
-
-              {(() => {
-                const q = quoteCatalogOrder(quoteEdit.order, clothingItems);
-                if (q.unknownCount === 0) return null;
-                return (
-                  <div style={{ marginTop: 10, padding: "9px 13px", background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.3)", borderRadius: 9, fontSize: 12, color: "#b45309", lineHeight: 1.7 }}>
-                    ⚠️ มี <b>{q.unknownCount}</b> รายการที่ยังไม่มีราคาในระบบ (เช่นไซส์พิเศษ)<br/>
-                    ระบบจึงไม่ใส่ยอดรวมให้ — <b>พิมพ์ยอดเองในข้อความ</b>ก่อนส่งนะครับ
-                  </div>
-                );
-              })()}
 
               <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
                 <button onClick={() => openQuote(quoteEdit.order)}

@@ -56,17 +56,16 @@ export function quoteCatalogOrder(order, clothingItems = []) {
   return { entries, totalQty, totalAmount, unknownCount };
 }
 
-const fmtB = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtI = (n) => Number(n || 0).toLocaleString("th-TH");
 
 // ประกอบข้อความแจ้งยอด — พร้อมคัดลอกไปวางในไลน์
-// opts.companyName, opts.billingNote (เช่น "สิ้นเดือนจะวางบิลรวมให้นะคะ")
-export function buildQuoteMessage(order, clothingItems = [], opts = {}) {
-  const { entries, totalQty, totalAmount, unknownCount } = quoteCatalogOrder(order, clothingItems);
+// สั้น ๆ พอ: ทักทาย → รายการ → รวมกี่ตัว (ยอดเงิน/ที่อยู่ พิมพ์เพิ่มเองได้ในหน้าต่างแก้ไข)
+export function buildQuoteMessage(order, clothingItems = []) {
+  const { entries, totalQty } = quoteCatalogOrder(order, clothingItems);
   const lines = [];
 
   lines.push(`สวัสดีค่ะ${order?.customerName ? ` คุณ${order.customerName}` : ""}`);
-  lines.push("รับออเดอร์แล้วนะคะ 🙏");
+  lines.push("รับออเดอร์แล้วนะคะ");
   lines.push("");
 
   entries.forEach(e => {
@@ -85,15 +84,8 @@ export function buildQuoteMessage(order, clothingItems = [], opts = {}) {
 
   lines.push("");
   lines.push(`รวม ${fmtI(totalQty)} ตัว`);
-  if (unknownCount === 0) {
-    lines.push(`ยอดรวม ${fmtB(totalAmount)} บาท`);
-  } else {
-    // ⚠️ มีรายการที่ยังไม่รู้ราคา → ไม่ใส่ยอดรวมลงข้อความ กันแจ้งลูกค้าผิด
-    lines.push("(ยอดรวม — รอทีมงานยืนยันอีกครั้ง)");
-  }
-  if (order?.address) { lines.push(""); lines.push(`จัดส่ง: ${order.address}`); }
-  if (opts.billingNote) { lines.push(""); lines.push(opts.billingNote); }
-  if (opts.companyName) { lines.push(""); lines.push(opts.companyName); }
+  lines.push("");
+  lines.push(`จัดส่ง ${order?.address || ""}`);
 
   return lines.join("\n");
 }
