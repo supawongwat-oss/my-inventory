@@ -330,6 +330,17 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
 
                 <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
                   <a href={`tel:${o.phone}`} style={{ background: T.blue, color: "white", padding: "6px 12px", borderRadius: 6, textDecoration: "none", fontSize: 12, fontWeight: 600 }}>📞 โทรกลับ</a>
+                  {/* 👥 มีคนอื่นกำลังแปลงใบนี้อยู่ — เห็นก่อนกด ไม่ต้องรอโดนเด้ง */}
+                  {(() => {
+                    const busyBy = o.convertingBy;
+                    const age = o.convertingAt?.toMillis ? Date.now() - o.convertingAt.toMillis() : Infinity;
+                    if (!busyBy || age > 120000 || o.status === "converted") return null;
+                    return (
+                      <span style={{ background: "#fef3c7", color: "#b45309", padding: "6px 12px", borderRadius: 6, fontSize: 12, fontWeight: 700 }}>
+                        ⏳ {busyBy} กำลังแปลงใบนี้อยู่
+                      </span>
+                    );
+                  })()}
                   {o.status !== "converted" && onConvert && (
                     <button onClick={() => {
                       // หาลูกค้าเดิมที่เบอร์ตรงกัน (suggest)

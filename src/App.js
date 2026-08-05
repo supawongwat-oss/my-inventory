@@ -1,6 +1,6 @@
 ﻿import React, { useState, useRef, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import { db, authReady } from "./firebase";
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, serverTimestamp, query, orderBy, where, Timestamp, limit } from "firebase/firestore";
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, runTransaction, serverTimestamp, query, orderBy, where, Timestamp, limit } from "firebase/firestore";
 import { T, SIZES, SHOE_SIZES, getSizesFor, mergeSizes, PRESET_COLORS, MASTER_KEY, SIZE_GROUPS, getPriceForSize, compareSizes, splitSizesIntoRows } from "./theme";
 import { INIT_USERS, ROLES, INIT_CATS } from "./constants";
 import { BarcodeDisplay, Modal, MHead, Toast, Input, BtnPrimary, BtnSuccess, BtnDanger, BtnGhost, Badge, CardBox } from "./components/ui";
@@ -3357,6 +3357,28 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               companyInfo={companyInfo}
               user={user}
               onConvert={async (co, customerChoice) => {
+                // 🔒 จองสิทธิ์แบบ atomic ก่อน — กันสองคนกดแปลงใบเดียวกันพร้อมกัน
+                // (มีหลายคนทำงานพร้อมกัน ถ้าไม่กันจะได้ใบสั่งของซ้ำ 2 ใบ)
+                try {
+                  await runTransaction(db, async (tx) => {
+                    const ref = doc(db, "catalogOrders", co.id);
+                    const snap = await tx.get(ref);
+                    if (!snap.exists()) throw new Error("ORDER_GONE");
+                    const d = snap.data();
+                    if (d.status === "converted") throw new Error("ALREADY_CONVERTED");
+                    // มีคนอื่นกำลังทำอยู่ (จองไว้ไม่เกิน 2 นาที — กันค้างถ้าเขาปิดจอไปเฉย ๆ)
+                    const lockAge = d.convertingAt?.toMillis ? Date.now() - d.convertingAt.toMillis() : Infinity;
+                    if (d.convertingBy && d.convertingBy !== user.name && lockAge < 120000) throw new Error("LOCKED:" + d.convertingBy);
+                    tx.update(ref, { convertingBy: user.name, convertingAt: serverTimestamp() });
+                  });
+                } catch (e) {
+                  const m = String(e.message || "");
+                  if (m === "ALREADY_CONVERTED") { alert("⚠️ ใบนี้ถูกแปลงเป็นคำสั่งซื้อไปแล้ว\n(อาจมีคนอื่นทำไปพร้อมกัน) — ลองรีเฟรชดู"); return; }
+                  if (m === "ORDER_GONE") { alert("⚠️ ไม่พบใบนี้แล้ว — อาจถูกลบไป"); return; }
+                  if (m.startsWith("LOCKED:")) { alert(`⚠️ ${m.slice(7)} กำลังแปลงใบนี้อยู่\nรอสักครู่แล้วลองใหม่`); return; }
+                  alert("เริ่มแปลงไม่สำเร็จ: " + m); return;
+                }
+
                 // customerChoice = { mode: "new" | "existing" | "none", existingId?: string }
                 let customerId = "";
                 if (customerChoice?.mode === "existing") {
@@ -3420,12 +3442,22 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   createdAt: serverTimestamp(),
                   fromCatalog: co.id,
                 };
-                const oref = await addDoc(collection(db, "orders"), newOrder);
-                // 4) อัพเดต catalogOrder = converted
+                let oref;
+                try {
+                  oref = await addDoc(collection(db, "orders"), newOrder);
+                } catch (e) {
+                  // สร้างใบสั่งของไม่สำเร็จ → ปลดล็อกทันที ไม่งั้นคนอื่นทำต่อไม่ได้ 2 นาที
+                  try { await updateDoc(doc(db, "catalogOrders", co.id), { convertingBy: null, convertingAt: null }); } catch {}
+                  alert("สร้างคำสั่งซื้อไม่สำเร็จ: " + (e.message || e));
+                  return;
+                }
+                // 4) อัพเดต catalogOrder = converted (+ ปลดล็อก)
                 await updateDoc(doc(db, "catalogOrders", co.id), {
                   status: "converted",
                   convertedOrderId: oref.id,
                   convertedOrderNo: orderNo,
+                  convertingBy: null,
+                  convertingAt: null,
                 });
                 logAudit(user, {
                   action: AUDIT_ACTIONS.CREATE,
