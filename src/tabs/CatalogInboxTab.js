@@ -3,6 +3,9 @@ import { useState } from "react";
 import { db } from "../firebase";
 import { doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { T } from "../theme";
+import { quoteCatalogOrder, unitPriceFor, buildQuoteMessage } from "../utils/catalogQuote";
+
+const fmtB = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // 🎨 hex → ชื่อสีไทย — fallback (sync กับใน Catalog.js)
 const HEX_NAMES = { "#000000":"ดำ","#000":"ดำ","#ffffff":"ขาว","#fff":"ขาว","#ff0000":"แดง","#f00":"แดง","#dc2626":"แดง","#ef4444":"แดง","#b94a48":"แดง","#0000ff":"น้ำเงิน","#00f":"น้ำเงิน","#2563eb":"น้ำเงิน","#3b82f6":"น้ำเงิน","#3b5b8b":"น้ำเงิน","#008000":"เขียว","#22c55e":"เขียว","#16a34a":"เขียว","#3a7a52":"เขียว","#ffff00":"เหลือง","#ff0":"เหลือง","#facc15":"เหลือง","#eab308":"เหลือง","#ffa500":"ส้ม","#f97316":"ส้ม","#fb923c":"ส้ม","#800080":"ม่วง","#a855f7":"ม่วง","#7c3aed":"ม่วง","#ffc0cb":"ชมพู","#ec4899":"ชมพู","#f472b6":"ชมพู","#a52a2a":"น้ำตาล","#92400e":"น้ำตาล","#78350f":"น้ำตาล","#808080":"เทา","#6b7280":"เทา","#9ca3af":"เทา","#f5deb3":"ครีม","#fef3c7":"ครีม","#fde68a":"ครีม"};
@@ -16,8 +19,24 @@ const STATUS = {
   cancelled: { label: "ยกเลิก",      color: "#b94a48", bg: "#fee2e2" },
 };
 
-export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothingItems = [], customers = [] }) {
+export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothingItems = [], customers = [], companyInfo = {} }) {
   const [filter, setFilter] = useState("");
+  const [copiedId, setCopiedId] = useState("");
+
+  // 📋 คัดลอกข้อความแจ้งยอด → วางในไลน์ได้เลย (แทนการโทร)
+  const copyQuote = async (o) => {
+    const msg = buildQuoteMessage(o, clothingItems, {
+      companyName: companyInfo.name || "",
+      billingNote: "สิ้นเดือนจะวางบิลรวมให้นะคะ",
+    });
+    try {
+      await navigator.clipboard.writeText(msg);
+      setCopiedId(o.id);
+      setTimeout(() => setCopiedId(""), 2000);
+    } catch {
+      window.prompt("คัดลอกข้อความนี้ไปวางในไลน์:", msg);
+    }
+  };
   const [convertModal, setConvertModal] = useState(null); // { order, suggestedCustomer, mode, existingId, search }
 
   const list = catalogOrders.filter(o => !filter || o.status === filter);
@@ -113,7 +132,13 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
                                   สี: <b>{colorName}</b>
                                 </span>
                                 <span style={{ minWidth: 80 }}>ไซส์: <b>{ln.size}</b></span>
-                                <span>จำนวน: <b style={{ color: T.blue }}>{ln.qty}</b></span>
+                                <span style={{ minWidth: 78 }}>จำนวน: <b style={{ color: T.blue }}>{ln.qty}</b></span>
+                                {/* 💰 ราคา — ดึงจากระบบให้เลย ไม่ต้องเปิดไปดูเอง */}
+                                {(() => {
+                                  const unit = unitPriceFor(liveItem, ln.colorIdx, ln.size);
+                                  if (unit == null) return <span style={{ fontSize: 11, color: "#b45309" }}>· ⚠️ ยังไม่ตั้งราคา</span>;
+                                  return <span style={{ fontSize: 11, color: T.sub, fontFamily: "monospace" }}>· ฿{fmtB(unit)} × {ln.qty} = <b style={{ color: T.text }}>฿{fmtB(unit * (Number(ln.qty)||0))}</b></span>;
+                                })()}
                               </div>
                             );
                           })}
@@ -121,6 +146,31 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
                       </div>
                     );
                   });
+                })()}
+
+                {/* 💬 สรุปยอด + ปุ่มคัดลอกข้อความแจ้งลูกค้า (แทนการโทร) */}
+                {(() => {
+                  const q = quoteCatalogOrder(o, clothingItems);
+                  return (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "9px 12px", marginBottom: 8, borderRadius: 9,
+                      background: q.unknownCount > 0 ? "rgba(217,119,6,0.08)" : "rgba(22,163,74,0.07)",
+                      border: `1px solid ${q.unknownCount > 0 ? "rgba(217,119,6,0.3)" : "rgba(22,163,74,0.25)"}` }}>
+                      <span style={{ fontSize: 12, color: T.sub }}>
+                        รวม <b style={{ color: T.text }}>{q.totalQty.toLocaleString("th-TH")}</b> ตัว
+                      </span>
+                      <span style={{ fontSize: 15, fontWeight: 800, color: q.unknownCount > 0 ? "#b45309" : T.green, fontFamily: "monospace" }}>
+                        ฿{fmtB(q.totalAmount)}
+                      </span>
+                      {q.unknownCount > 0 && (
+                        <span style={{ fontSize: 11, color: "#b45309" }}>⚠️ มี {q.unknownCount} รายการยังไม่ตั้งราคา — ยอดยังไม่ครบ</span>
+                      )}
+                      <button onClick={() => copyQuote(o)}
+                        style={{ marginLeft: "auto", background: copiedId === o.id ? T.green : "white", color: copiedId === o.id ? "white" : T.accent,
+                          border: `1px solid ${copiedId === o.id ? T.green : T.accent}`, padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                        {copiedId === o.id ? "✅ คัดลอกแล้ว — วางในไลน์ได้เลย" : "📋 คัดลอกข้อความแจ้งยอด"}
+                      </button>
+                    </div>
+                  );
                 })()}
 
                 {o.address && <div style={{ fontSize: 12, color: T.sub, marginBottom: 4 }}>📍 {o.address}</div>}

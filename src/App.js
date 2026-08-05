@@ -3352,6 +3352,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               catalogOrders={catalogOrders}
               clothingItems={clothingItems}
               customers={customers}
+              companyInfo={companyInfo}
               user={user}
               onConvert={async (co, customerChoice) => {
                 // customerChoice = { mode: "new" | "existing" | "none", existingId?: string }
