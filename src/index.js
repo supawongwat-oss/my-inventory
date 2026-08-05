@@ -7,8 +7,11 @@ import reportWebVitals from './reportWebVitals';
 import * as serviceWorkerRegistration from './serviceWorkerRegistration';
 
 // 🛣️ Path-based routing — public catalog แยกจาก ERP
+// ลูกค้าพิมพ์สั้น ๆ ได้: /c, /shop, /order (ทางลัดของ /catalog)
 const path = window.location.pathname;
-const isCatalog = path === "/catalog" || path.startsWith("/catalog/");
+const CATALOG_ALIASES = ["/catalog", "/c", "/shop", "/order", "/สั่งของ"];
+const norm = decodeURIComponent(path).replace(/\/+$/, "") || "/"; // ตัด / ท้าย
+const isCatalog = CATALOG_ALIASES.includes(norm) || norm.startsWith("/catalog/");
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(

@@ -35,6 +35,7 @@ const StocktakeTab = lazy(() => import("./tabs/StocktakeTab"));
 const EmployeeTab = lazy(() => import("./tabs/EmployeeTab"));
 const TaxDocsTab = lazy(() => import("./tabs/TaxDocsTab"));
 const CatalogInboxTab = lazy(() => import("./tabs/CatalogInboxTab"));
+const ShareCatalogModal = lazy(() => import("./components/ShareCatalogModal"));
 const PayrollTab = lazy(() => import("./tabs/PayrollTab"));
 const ProductionHistoryTab = lazy(() => import("./tabs/ProductionHistoryTab"));
 const OrdersTab = lazy(() => import("./tabs/OrdersTab"));
@@ -280,6 +281,7 @@ export default function App() {
   const [selectedOrders, setSelectedOrders] = useState(new Set()); // 🔗 เลือกใบสั่งของเพื่อออกบิลรวม
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [showImportCustomers, setShowImportCustomers] = useState(false);
+  const [showShareCatalog, setShowShareCatalog] = useState(false); // 📱 QR/ลิงก์สั่งของให้ลูกค้า
   const [showPrintOrder, setShowPrintOrder] = useState(null);
   const [editingOrderId, setEditingOrderId] = useState(null); // null = สร้างใหม่, string = แก้ไข
   const [orderForm, setOrderForm] = useState({
@@ -3339,6 +3341,13 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
           {/* ── CATALOG INBOX — order จาก /catalog ── */}
           {activeTab==="catalogInbox"&&(
+            <>
+            <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+              <button onClick={()=>setShowShareCatalog(true)}
+                style={{padding:"9px 18px",borderRadius:9,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>
+                📱 ลิงก์ + QR สั่งของ (ให้ลูกค้า)
+              </button>
+            </div>
             <CatalogInboxTab
               catalogOrders={catalogOrders}
               clothingItems={clothingItems}
@@ -3425,6 +3434,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                 alert(`✅ สร้างคำสั่งซื้อ ${orderNo} แล้ว\nไปที่ tab "คำสั่งซื้อ" เพื่อยืนยัน/ปริ้น/ตัดสต็อก`);
               }}
             />
+            </>
           )}
 
           {/* ── STATEMENTS (ใบวางบิลรวมเดือน) ── */}
@@ -4129,6 +4139,13 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           handleConfirmOrder={handleConfirmOrder}
           addOrderMixItem={addOrderMixItem}
         />
+      )}
+
+      {/* ── MODAL: ลิงก์ + QR สั่งของสำหรับลูกค้า ── */}
+      {showShareCatalog && (
+        <Suspense fallback={null}>
+          <ShareCatalogModal companyInfo={companyInfo} onClose={() => setShowShareCatalog(false)}/>
+        </Suspense>
       )}
 
       {/* ── MODAL: นำเข้าลูกค้าจาก Excel ── */}
