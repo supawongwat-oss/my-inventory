@@ -173,6 +173,19 @@ export default function NewInvoiceModal({
                   onChange={e=>setInvoiceForm(f=>({...f,hideCompanyDetails:e.target.checked}))} style={{cursor:invoiceDocType==="tax"?"not-allowed":"pointer"}}/>
                 <span style={{fontSize:12,color:invoiceForm.hideCompanyDetails?"#b45309":T.sub,fontWeight:invoiceForm.hideCompanyDetails?700:400}}>🕶️ ซ่อนชื่อเต็ม/ที่อยู่บริษัท {invoiceDocType==="tax"&&<span style={{color:T.red,fontSize:10,marginLeft:4}}>🔒 ปิดอยู่</span>}</span>
               </label>
+              {/* 🖼️ รูปงาน custom — บางใบไม่อยากให้รูปติดไปกับบิลลูกค้า (และช่วยให้บิลสั้นลงด้วย) */}
+              {(()=>{
+                const imgCount=((invoiceForm.customDetails||{}).jobs||[]).reduce((s,j)=>s+((j.images||[]).length),0);
+                if(!imgCount) return null;
+                const on=invoiceForm.showJobImages!==false;
+                return (
+                  <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",padding:"7px 14px",borderRadius:8,border:`1px solid ${on?"#059669":T.border}`,background:on?"rgba(5,150,105,0.12)":"transparent"}}
+                    title="แสดง/ซ่อนรูปงานในกล่องรายละเอียดงานบนบิลที่พิมพ์">
+                    <input type="checkbox" checked={on} onChange={e=>setInvoiceForm(f=>({...f,showJobImages:e.target.checked}))} style={{cursor:"pointer"}}/>
+                    <span style={{fontSize:12,color:on?"#059669":T.sub,fontWeight:on?700:400}}>🖼️ แสดงรูปงานบนบิล <span style={{fontSize:10,color:T.muted}}>({imgCount} รูป)</span></span>
+                  </label>
+                );
+              })()}
             </div>
           </div>
 

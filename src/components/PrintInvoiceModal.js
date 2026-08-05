@@ -122,7 +122,8 @@ export default function PrintInvoiceModal({
                 <div style={{marginBottom:7,padding:"7px 10px",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8}}>
                   <div style={{fontSize:10,color:"#3b5b8b",fontWeight:800,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:5}}>รายละเอียดงาน</div>
                   {(invoice.customDetails.jobs||[]).map((j,ji)=>{
-                    const imgs=j.images||[];
+                    // 🖼️ ปิดรูปได้จากหน้าออกบิล (ค่าเริ่มต้น = แสดง)
+                    const imgs=invoice.showJobImages===false?[]:(j.images||[]);
                     const cols=imgs.length<=1?1:(imgs.length===2?2:3);
                     return (
                       <div key={ji} style={{marginBottom:ji<(invoice.customDetails.jobs.length-1)?7:0,paddingBottom:ji<(invoice.customDetails.jobs.length-1)?7:0,borderBottom:ji<(invoice.customDetails.jobs.length-1)?"1px dashed #cbd5e1":"none"}}>

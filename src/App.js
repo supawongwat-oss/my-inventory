@@ -50,6 +50,7 @@ const HexColorPicker = lazy(() => import("react-colorful").then(m => ({ default:
 const INVOICE_DISPLAY_DEFAULTS = {
   showCompanyTaxId: false,  // ไม่ติ๊ก — กดเองถ้าลูกค้าต้องการเลขภาษี
   hideCompanyDetails: true, // ติ๊กไว้ — กดออกเองถ้าลูกค้าต้องการข้อมูลบริษัทเต็ม
+  showJobImages: true,      // 🖼️ รูปงาน custom บนบิล — แสดงไว้ก่อน กดปิดเองถ้าไม่ต้องการ
 };
 
 // ── MAIN APP ───────────────────────────────────────────────────
@@ -2214,6 +2215,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       // 🧾 แก้บิลเดิม — คงหน้าตาเดิมของบิลไว้ ไม่ใช้ค่า default ของบิลใหม่
       showCompanyTaxId: inv.showCompanyTaxId !== false,
       hideCompanyDetails: inv.hideCompanyDetails === true,
+      showJobImages: inv.showJobImages !== false,
       // 📋 รายละเอียดงาน custom (ผ้า/คอ/รูป) — ต้องพกติดมาด้วย ไม่งั้นแก้บิลแล้วรายละเอียดหาย
       ...(inv.customDetails ? { customDetails: inv.customDetails } : {}),
       ...(inv.payments ? { payments: inv.payments } : {}),
