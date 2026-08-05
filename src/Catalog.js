@@ -232,21 +232,21 @@ export default function Catalog() {
         </select>
       </div>
 
-      {/* CATEGORY TABS */}
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 20px 14px", display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {tabs.map(t => {
+      {/* CATEGORY TABS — 3 บรรทัด: ชนิดสินค้า / แบรนด์ / หมวดย่อย */}
+      {(() => {
+        const renderTab = (t, small) => {
           const active = (filterCat || TAB_ALL) === t.key;
           return (
             <button key={t.key} onClick={() => setFilterCat(t.key === TAB_ALL ? "" : t.key)}
               style={{
-                padding: "8px 16px", borderRadius: 20,
+                padding: small ? "4px 11px" : "8px 16px", borderRadius: 20,
                 border: active ? `2px solid ${T.blue}` : `1px solid ${T.border}`,
                 background: active ? T.blue : "white",
                 color: active ? "white" : T.sub,
-                fontSize: 13, fontWeight: active ? 700 : 500,
+                fontSize: small ? 11 : 13, fontWeight: active ? 700 : 500,
                 cursor: "pointer", fontFamily: "inherit",
-                display: "flex", alignItems: "center", gap: 6,
-                transition: "all 0.15s",
+                display: "flex", alignItems: "center", gap: small ? 4 : 6,
+                transition: "all 0.15s", whiteSpace: "nowrap",
                 boxShadow: active ? "0 4px 12px rgba(59,91,139,0.25)" : "none",
               }}>
               <span>{t.icon}</span>
@@ -254,12 +254,27 @@ export default function Catalog() {
               <span style={{
                 background: active ? "rgba(255,255,255,0.25)" : "rgba(59,91,139,0.08)",
                 color: active ? "white" : T.blue,
-                padding: "1px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700,
+                padding: small ? "0 6px" : "1px 8px", borderRadius: 10, fontSize: small ? 10 : 11, fontWeight: 700,
               }}>{t.count}</span>
             </button>
           );
-        })}
-      </div>
+        };
+        const typeTabs  = tabs.filter(t => [TAB_ALL, TAB_APPAREL, TAB_SHOE].includes(t.key));
+        const brandTabs = tabs.filter(t => t.key.startsWith(BRAND_PREFIX));
+        const subTabs   = tabs.filter(t => !typeTabs.includes(t) && !brandTabs.includes(t));
+        const Row = ({ children, gap = 8, pb = 8 }) => (
+          <div style={{ maxWidth: 1100, margin: "0 auto", padding: `0 20px ${pb}px`, display: "flex", gap, flexWrap: "wrap", alignItems: "center" }}>
+            {children}
+          </div>
+        );
+        return (
+          <>
+            <Row>{typeTabs.map(t => renderTab(t, false))}</Row>
+            {brandTabs.length > 0 && <Row>{brandTabs.map(t => renderTab(t, false))}</Row>}
+            {subTabs.length > 0 && <Row gap={5} pb={14}>{subTabs.map(t => renderTab(t, true))}</Row>}
+          </>
+        );
+      })()}
 
       {/* GRID */}
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 20px 40px" }}>
