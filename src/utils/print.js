@@ -138,6 +138,8 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
         thead { display: table-header-group; }
         tfoot { display: table-footer-group; }
         img { max-width: 100%; height: auto; }
+        /* บังคับพิมพ์สีพื้นหลัง — Galaxy Tab ไม่มีตัวเลือก Background graphics ให้ติ๊ก */
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         .no-print, [data-no-print="true"], .print-hide { display: none !important; }
         #__print_btn { position: fixed; top: 12px; right: 12px; padding: 10px 18px; background: #3b5b8b; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.2); z-index: 9999; }
         @media print { #__print_btn { display: none !important; } }
@@ -258,7 +260,9 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
     #__print_root__ thead { display: table-header-group; }
     #__print_root__ tfoot { display: table-footer-group; }
     #__print_root__ img { max-width: 100%; height: auto; }
-    .no-print, [data-no-print="true"], .print-hide { display: none !important; }
+    /* บังคับพิมพ์สีพื้นหลัง — Galaxy Tab ไม่มีตัวเลือก Background graphics ให้ติ๊ก */
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        .no-print, [data-no-print="true"], .print-hide { display: none !important; }
     ${extraThermal}
   `;
   document.head.appendChild(style);
@@ -336,6 +340,8 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
         thead { display: table-header-group; }
         tfoot { display: table-footer-group; }
         img { max-width: 100%; height: auto; }
+        /* บังคับพิมพ์สีพื้นหลัง — Galaxy Tab ไม่มีตัวเลือก Background graphics ให้ติ๊ก */
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         .no-print, [data-no-print="true"], .print-hide { display: none !important; }
         #__print_btn { position: fixed; top: 12px; right: 12px; padding: 10px 18px; background: #3b5b8b; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.2); z-index: 9999; }
         @media print { #__print_btn { display: none !important; } }
@@ -444,7 +450,9 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
     #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
     #__print_root__ thead { display: table-header-group; }
     #__print_root__ img { max-width: 100%; height: auto; }
-    .no-print, [data-no-print="true"], .print-hide { display: none !important; }
+    /* บังคับพิมพ์สีพื้นหลัง — Galaxy Tab ไม่มีตัวเลือก Background graphics ให้ติ๊ก */
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        .no-print, [data-no-print="true"], .print-hide { display: none !important; }
   `;
   document.head.appendChild(style);
 

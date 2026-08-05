@@ -34,3 +34,13 @@ code {
   /* ทุกตารางบนมือถือ → ให้ scroll x ได้อัตโนมัติถ้ายาวเกิน */
   table { max-width: 100%; }
 }
+
+/* 🖨️ บังคับพิมพ์สีพื้นหลัง/เส้นกรอบเสมอ
+   เครื่องบางรุ่น (Galaxy Tab) ไม่มีตัวเลือก "Background graphics" ในหน้าพิมพ์
+   ทำให้หัวตาราง/ป้ายสี/กล่องพื้นเทา หายไปตอนพิมพ์ — กฎนี้ override ให้พิมพ์สีเสมอ */
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
