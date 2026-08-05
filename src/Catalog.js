@@ -224,8 +224,6 @@ export default function Catalog() {
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 14 }}>
             {filtered.map(it => {
-              const totalStock = (it.colors || []).reduce((s, c) => s + Object.values(c.stock || {}).reduce((a, v) => a + (Number(v)||0), 0), 0);
-              const inStock = totalStock > 0;
               const cover = it.image || (it.colors && it.colors[0] && it.colors[0].image);
               return (
                 <div key={it.id} onClick={() => setDetail(it)}
@@ -239,15 +237,23 @@ export default function Catalog() {
                   <div style={{ padding: 12 }}>
                     <div style={{ fontWeight: 700, fontSize: 14, color: T.text, marginBottom: 4 }}>{it.model || it.name || `(ไม่ระบุชื่อ — ${it.id.slice(0,6)})`}</div>
                     {it.category && <div style={{ fontSize: 11, color: T.muted, marginBottom: 6 }}>{it.category}</div>}
-                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
-                      {(it.colors || []).slice(0, 8).map((c, i) => (
-                        <div key={i} title={c.name} style={{ width: 16, height: 16, borderRadius: "50%", background: c.hex || "#ddd", border: "1px solid rgba(0,0,0,.2)" }} />
-                      ))}
+                    {/* 🎨 จุดสี + ชื่อสี (ไม่ได้ตั้งชื่อ → เดาจากรหัสสีให้) */}
+                    <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
+                      {(it.colors || []).slice(0, 6).map((c, i) => {
+                        const label = c.name || guessColorName(c.hex, i);
+                        return (
+                          <span key={i} title={label} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 7px 2px 3px", background: "#f1f5f9", borderRadius: 10, fontSize: 10, color: T.sub, fontWeight: 600 }}>
+                            <span style={{ width: 12, height: 12, borderRadius: "50%", background: c.hex || "#ddd", border: "1px solid rgba(0,0,0,.2)" }} />
+                            {label}
+                          </span>
+                        );
+                      })}
+                      {(it.colors || []).length > 6 && (
+                        <span style={{ fontSize: 10, color: T.muted, alignSelf: "center" }}>+{(it.colors||[]).length - 6}</span>
+                      )}
                     </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontSize: 11, color: inStock ? T.green : "#b94a48", fontWeight: 600 }}>
-                        {inStock ? `✓ มีสินค้า` : "✗ สินค้าหมด"}
-                      </span>
+                    {/* 🚫 ไม่บอกสถานะสต๊อก — พนักงานแจ้งลูกค้าเองตอนยืนยันออเดอร์ */}
+                    <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
                       <span style={{ fontSize: 11, color: T.blue, fontWeight: 600 }}>ดูรายละเอียด →</span>
                     </div>
                   </div>
@@ -270,21 +276,26 @@ export default function Catalog() {
               <button onClick={() => setDetail(null)} style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>✕</button>
             </div>
             <div style={{ padding: 18 }}>
+              {/* 🚫 ไม่บอกสถานะสต๊อก (มี/หมด) — ให้ลูกค้าเลือกได้ทุกไซส์
+                     ของมี/ไม่มี พนักงานจะแจ้งลูกค้าเองตอนยืนยันออเดอร์ */}
               {(detail.colors || []).map((c, ci) => {
-                const stocks = c.stock || {};
+                const sizes = Object.keys(c.stock || {});
+                const colorLabel = c.name || guessColorName(c.hex, ci);
                 return (
                   <div key={ci} style={{ marginBottom: 14, padding: 12, background: "#f8fafc", borderRadius: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                       <div style={{ width: 22, height: 22, borderRadius: "50%", background: c.hex || "#ddd", border: "1px solid rgba(0,0,0,.2)" }} />
-                      <div style={{ fontWeight: 700, fontSize: 14 }}>{c.name}</div>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{colorLabel}</div>
                     </div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {Object.entries(stocks).map(([sz, n]) => (
-                        <div key={sz} style={{ padding: "5px 10px", background: Number(n) > 0 ? "#dcfce7" : "#fee2e2", color: Number(n) > 0 ? "#166534" : "#991b1b", borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
-                          {sz}: {Number(n) > 0 ? "มี" : "หมด"}
-                        </div>
-                      ))}
-                    </div>
+                    {sizes.length > 0 && (
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {sizes.map(sz => (
+                          <div key={sz} style={{ padding: "5px 10px", background: "#eef2f7", color: T.sub, borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
+                            {sz}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -315,13 +326,15 @@ export default function Catalog() {
                     const colors = order.item.colors || [];
                     // union sizes across all colors, sorted by SIZES order
                     const SIZES_ORDER = ["XS","S","M","L","XL","2XL","3XL","4XL","5XL","6XL"];
-                    const allSizes = [...new Set(colors.flatMap(c => Object.keys(c.stock || {})))]
+                    const foundSizes = [...new Set(colors.flatMap(c => Object.keys(c.stock || {})))]
                       .sort((a,b) => {
                         const ia = SIZES_ORDER.indexOf(a), ib = SIZES_ORDER.indexOf(b);
                         if (ia >= 0 && ib >= 0) return ia - ib;
                         if (ia >= 0) return -1; if (ib >= 0) return 1;
                         return a.localeCompare(b);
                       });
+                    // ไม่มีข้อมูลไซส์เลย (สินค้ายังไม่ตั้งสต๊อก) → ใช้ไซส์มาตรฐาน ลูกค้าจะได้สั่งได้
+                    const allSizes = foundSizes.length > 0 ? foundSizes : ["S","M","L","XL","2XL","3XL"];
                     const setQty = (ci, sz, v) => {
                       const qtyMap = { ...(order.qtyMap || {}) };
                       qtyMap[ci] = { ...(qtyMap[ci] || {}) };
@@ -356,20 +369,17 @@ export default function Catalog() {
                                       <span style={{ fontSize: 12, fontWeight: 600 }}>{colorLabel}</span>
                                     </div>
                                   </td>
+                                  {/* ✅ กรอกได้ทุกช่อง — ไม่ล็อก/ไม่ระบายสีตามสต๊อก
+                                         ของมี/ไม่มี พนักงานแจ้งลูกค้าเองตอนยืนยัน */}
                                   {allSizes.map(sz => {
-                                    const inStock = (c.stock || {})[sz];
-                                    const has = inStock !== undefined && inStock !== null;
-                                    const isOut = has && Number(inStock) <= 0;
                                     const val = ((order.qtyMap||{})[ci] || {})[sz] || "";
                                     return (
-                                      <td key={sz} style={{ padding: 3, borderLeft: `1px solid ${T.border}`, borderBottom: `1px solid ${T.border}`, background: !has ? "#f1f5f9" : isOut ? "#fef2f2" : "transparent" }}>
-                                        {has ? (
-                                          <input type="number" min="0" value={val}
-                                            onFocus={e => e.target.select()}
-                                            onChange={e => setQty(ci, sz, e.target.value)}
-                                            style={{ width: "100%", padding: "6px 4px", border: "none", background: "transparent", textAlign: "center", fontSize: 13, fontWeight: 600, color: val ? T.blue : T.text, outline: "none", fontFamily: "inherit" }}
-                                          />
-                                        ) : <div style={{ textAlign: "center", color: T.muted, fontSize: 11 }}>—</div>}
+                                      <td key={sz} style={{ padding: 3, borderLeft: `1px solid ${T.border}`, borderBottom: `1px solid ${T.border}` }}>
+                                        <input type="number" min="0" value={val}
+                                          onFocus={e => e.target.select()}
+                                          onChange={e => setQty(ci, sz, e.target.value)}
+                                          style={{ width: "100%", padding: "6px 4px", border: "none", background: "transparent", textAlign: "center", fontSize: 13, fontWeight: 600, color: val ? T.blue : T.text, outline: "none", fontFamily: "inherit" }}
+                                        />
                                       </td>
                                     );
                                   })}
