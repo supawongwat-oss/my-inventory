@@ -5,6 +5,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { db } from "./firebase";
 import { collection, doc, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
+import { compareSizes } from "./theme";
 
 const T = {
   bg: "#f4f5f7", card: "#ffffff", border: "#e2e5ea",
@@ -279,7 +280,7 @@ export default function Catalog() {
               {/* 🚫 ไม่บอกสถานะสต๊อก (มี/หมด) — ให้ลูกค้าเลือกได้ทุกไซส์
                      ของมี/ไม่มี พนักงานจะแจ้งลูกค้าเองตอนยืนยันออเดอร์ */}
               {(detail.colors || []).map((c, ci) => {
-                const sizes = Object.keys(c.stock || {});
+                const sizes = Object.keys(c.stock || {}).sort(compareSizes);
                 const colorLabel = c.colorName || c.name || guessColorName(c.hex, ci);
                 return (
                   <div key={ci} style={{ marginBottom: 14, padding: 12, background: "#f8fafc", borderRadius: 10 }}>
@@ -324,15 +325,11 @@ export default function Catalog() {
                   <div style={{ fontSize: 12, color: T.sub, fontWeight: 600, marginTop: 6 }}>รายการสั่งซื้อ (กรอกจำนวนในช่องไซส์ที่ต้องการ)</div>
                   {(() => {
                     const colors = order.item.colors || [];
-                    // union sizes across all colors, sorted by SIZES order
-                    const SIZES_ORDER = ["XS","S","M","L","XL","2XL","3XL","4XL","5XL","6XL"];
+                    // 📏 เรียงไซส์ด้วย compareSizes (ตัวเดียวกับที่ ERP ใช้)
+                    //    ไซส์เด็ก (6,8,10,12) มาก่อน แล้วค่อย S,M,L,XL,2XL...
+                    //    เดิม sort เองด้วย localeCompare → "10","12","6","8" (เรียงแบบข้อความ ผิด)
                     const foundSizes = [...new Set(colors.flatMap(c => Object.keys(c.stock || {})))]
-                      .sort((a,b) => {
-                        const ia = SIZES_ORDER.indexOf(a), ib = SIZES_ORDER.indexOf(b);
-                        if (ia >= 0 && ib >= 0) return ia - ib;
-                        if (ia >= 0) return -1; if (ib >= 0) return 1;
-                        return a.localeCompare(b);
-                      });
+                      .sort(compareSizes);
                     // ไม่มีข้อมูลไซส์เลย (สินค้ายังไม่ตั้งสต๊อก) → ใช้ไซส์มาตรฐาน ลูกค้าจะได้สั่งได้
                     const allSizes = foundSizes.length > 0 ? foundSizes : ["S","M","L","XL","2XL","3XL"];
                     const setQty = (ci, sz, v) => {
