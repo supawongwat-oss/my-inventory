@@ -2,8 +2,9 @@
 // URL: /catalog
 // อ่าน clothing + settings/company จาก Firestore
 // ลูกค้ากดสั่ง → เขียน catalogOrders → ทีมรับใน ERP
-import { useEffect, useState, useMemo } from "react";
-import { db } from "./firebase";
+import { useEffect, useState, useMemo, useRef } from "react";
+import { db, auth, authReady } from "./firebase";
+import { signInAnonymously } from "firebase/auth";
 import { collection, doc, getDoc, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
 import { compareSizes, getSizesFor } from "./theme";
 
@@ -54,6 +55,9 @@ export default function Catalog() {
   const [showCart, setShowCart] = useState(false);
   const [checkout, setCheckout] = useState(null); // {name, phone, address, note}
   const [sent, setSent] = useState(false);
+  const [loadState, setLoadState] = useState("loading"); // loading | ok | denied | error
+  const [retryTick, setRetryTick] = useState(0);
+  const retriedRef = useRef(false);
 
   // 💾 persist cart in localStorage
   useEffect(() => {
@@ -168,16 +172,42 @@ export default function Catalog() {
   }));
   const clearCart = () => setCart([]);
 
+  // 📡 โหลดสินค้า — ต้องรอ anonymous auth ให้พร้อมก่อน
+  //    (Firestore rules ต้องการ request.auth != null)
+  //    Safari บล็อก storage บ่อย (ITP/โหมดส่วนตัว) → auth ช้า/ล้มเหลว
+  //    เดิมไม่รอ + ไม่มี error handler → ขึ้น "ไม่พบสินค้า" ทั้งที่มีของ
   useEffect(() => {
-    const u1 = onSnapshot(collection(db, "clothing"), s =>
-      setItems(s.docs.map(d => ({ ...d.data(), id: d.id }))
-        .filter(it => !it.hideFromCatalog))
-    );
-    const u2 = onSnapshot(doc(db, "settings", "company"), s => {
-      if (s.exists()) setCompany(prev => ({ ...prev, ...s.data() }));
-    });
-    return () => { u1(); u2(); };
-  }, []);
+    let u1 = null, u2 = null, alive = true;
+    (async () => {
+      await authReady;               // รอให้ auth พร้อม (มี timeout 10 วิ ในตัว)
+      if (!alive) return;
+      u1 = onSnapshot(collection(db, "clothing"),
+        s => {
+          setItems(s.docs.map(d => ({ ...d.data(), id: d.id })).filter(it => !it.hideFromCatalog));
+          setLoadState("ok");
+        },
+        async err => {
+          console.error("[catalog] โหลดสินค้าไม่สำเร็จ:", err);
+          // permission-denied มักแปลว่า anonymous auth ยังไม่ติด (Safari บล็อก storage)
+          // → ลอง sign-in ใหม่ 1 ครั้ง แล้ว subscribe ใหม่ ก่อนจะยอมแพ้
+          if (err?.code === "permission-denied" && !retriedRef.current) {
+            retriedRef.current = true;
+            try {
+              await signInAnonymously(auth);
+              if (alive) { u1 && u1(); u1 = null; setLoadState("loading"); setRetryTick(t => t + 1); }
+              return;
+            } catch (e2) { console.error("[catalog] sign-in ใหม่ไม่สำเร็จ:", e2); }
+          }
+          setLoadState(err?.code === "permission-denied" ? "denied" : "error");
+        }
+      );
+      u2 = onSnapshot(doc(db, "settings", "company"),
+        s => { if (s.exists()) setCompany(prev => ({ ...prev, ...s.data() })); },
+        () => {}
+      );
+    })();
+    return () => { alive = false; if (u1) u1(); if (u2) u2(); };
+  }, [retryTick]); // retryTick เปลี่ยน = subscribe ใหม่หลัง sign-in ซ้ำ
 
   // 🏷️ Categories: predefined (เสื้อผ้า/รองเท้า ตาม sizeType) + custom (item.category)
   const customCats = useMemo(() => [...new Set(items.map(i => i.category).filter(Boolean))], [items]);
@@ -326,8 +356,33 @@ export default function Catalog() {
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 20px 40px" }}>
         {filtered.length === 0 ? (
           <div style={{ textAlign: "center", padding: 60, color: T.muted }}>
-            <div style={{ fontSize: 48 }}>📦</div>
-            <div style={{ marginTop: 10 }}>ไม่พบสินค้า</div>
+            {/* บอกสถานะจริง — เดิมขึ้น "ไม่พบสินค้า" หมด แม้โหลดยังไม่เสร็จ/โหลดพัง */}
+            {loadState === "loading" && (
+              <><div style={{ fontSize: 48 }}>⏳</div><div style={{ marginTop: 10 }}>กำลังโหลดสินค้า...</div></>
+            )}
+            {(loadState === "denied" || loadState === "error") && (
+              <>
+                <div style={{ fontSize: 48 }}>😕</div>
+                <div style={{ marginTop: 10, color: T.text, fontWeight: 700 }}>โหลดสินค้าไม่สำเร็จ</div>
+                <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.8 }}>
+                  ถ้าใช้ Safari ลองปิด <b>โหมดส่วนตัว (Private Browsing)</b><br/>
+                  หรือปิด <b>ป้องกันการติดตามข้ามเว็บไซต์</b> ในตั้งค่า → Safari<br/>
+                  แล้วกดโหลดใหม่
+                </div>
+                <button onClick={() => window.location.reload()}
+                  style={{ marginTop: 14, background: T.blue, color: "white", border: "none", padding: "10px 22px", borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                  🔄 โหลดใหม่
+                </button>
+                {company.phone && (
+                  <div style={{ marginTop: 12, fontSize: 12 }}>
+                    หรือโทรสั่งได้ที่ <a href={`tel:${company.phone}`} style={{ color: T.blue, fontWeight: 700 }}>{company.phone}</a>
+                  </div>
+                )}
+              </>
+            )}
+            {loadState === "ok" && (
+              <><div style={{ fontSize: 48 }}>📦</div><div style={{ marginTop: 10 }}>ไม่พบสินค้าตามที่เลือก</div></>
+            )}
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 14 }}>
