@@ -42,6 +42,17 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
   const list = catalogOrders.filter(o => !filter || o.status === filter);
   const counts = catalogOrders.reduce((m, o) => { m[o.status||"new"] = (m[o.status||"new"]||0) + 1; return m; }, {});
 
+  // 📦 แยก "ที่ต้องทำ" กับ "จบแล้ว" — ใบที่แปลงเป็นใบสั่งของ/ยกเลิกแล้ว ไม่ต้องมาเกะกะ
+  const isDone = (o) => o.status === "converted" || o.status === "cancelled";
+  const todoList = list.filter(o => !isDone(o));
+  const doneList = list.filter(isDone);
+
+  // พับ: กลุ่ม "จบแล้ว" พับไว้ตั้งแต่แรก · การ์ดที่จบแล้วก็พับ (ใบที่ยังไม่ทำ = กางไว้)
+  const [doneOpen, setDoneOpen] = useState(false);
+  const [expanded, setExpanded] = useState({}); // { [id]: true/false } — override ค่า default
+  const isCardOpen = (o) => expanded[o.id] !== undefined ? expanded[o.id] : !isDone(o);
+  const toggleCard = (o) => setExpanded(prev => ({ ...prev, [o.id]: !isCardOpen(o) }));
+
   const setStatus = async (id, status) => {
     await updateDoc(doc(db, "catalogOrders", id), { status });
   };
@@ -80,131 +91,25 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {list.map(o => {
-            const s = STATUS[o.status||"new"] || STATUS.new;
-            return (
-              <div key={o.id} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10, flexWrap:"wrap" }}>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>{o.customerName} · 📞 {o.phone}</div>
-                    <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{fmtDate(o.createdAt)}</div>
-                  </div>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                    <span style={{ background: s.bg, color: s.color, padding: "4px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700 }}>{s.label}</span>
-                    <select value={o.status||"new"} onChange={e=>setStatus(o.id, e.target.value)}
-                      style={{ padding: "5px 8px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 11, fontFamily:"inherit" }}>
-                      {Object.entries(STATUS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
-                    </select>
-                    <button onClick={()=>remove(o.id)} style={{ background: "#fee2e2", border:"none", borderRadius: 6, padding: "5px 9px", color: "#991b1b", cursor: "pointer", fontSize: 12 }}>🗑</button>
-                  </div>
-                </div>
+          {renderCards(todoList)}
+        </div>
+      )}
 
-                {(() => {
-                  // 🛒 รองรับ 2 format:
-                  //  - ใหม่: o.items = [{itemId, itemName, lines:[...]}, ...] — multi-item cart
-                  //  - เก่า: o.itemId/itemName + o.lines (single item)
-                  const entries = (o.items && o.items.length > 0)
-                    ? o.items
-                    : [{ itemId: o.itemId, itemName: o.itemName, lines: o.lines || [] }];
-                  return entries.map((entry, ei) => {
-                    const liveItem = clothingItems.find(c => c.id === entry.itemId);
-                    const itemName = (liveItem && (liveItem.model || liveItem.name)) || entry.itemName || "(ไม่ระบุชื่อสินค้า)";
-                    const itemMissing = !liveItem && entry.itemId;
-                    const entryQty = (entry.lines||[]).reduce((s,l)=>s+(Number(l.qty)||0),0);
-                    return (
-                      <div key={ei} style={{ background:"#f8fafc", borderRadius: 8, padding: 10, marginBottom: 8 }}>
-                        <div style={{ fontSize: 12, color: T.sub, fontWeight: 600, marginBottom: 6, display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
-                          📦 {itemName}
-                          <span style={{ fontSize: 10, color: T.blue, background: "#dbeafe", padding: "1px 6px", borderRadius: 4 }}>{entryQty} ชิ้น</span>
-                          {itemMissing && <span style={{ fontSize: 10, color: "#b94a48", background: "#fee2e2", padding: "1px 6px", borderRadius: 4 }}>⚠️ สินค้าถูกลบจาก ERP</span>}
-                          {!entry.itemId && <span style={{ fontSize: 10, color: "#b94a48", background: "#fee2e2", padding: "1px 6px", borderRadius: 4 }}>⚠️ ไม่มี itemId</span>}
-                          {entry.itemId && <span style={{ fontSize: 9, color: T.muted, fontFamily: "monospace" }}>id: {String(entry.itemId).slice(0,8)}…</span>}
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          {(entry.lines||[]).map((ln, i) => {
-                            const liveCol = (liveItem && typeof ln.colorIdx === "number") ? (liveItem.colors||[])[ln.colorIdx] : null;
-                            const colorHex = (liveCol && liveCol.hex) || ln.colorHex || "#ddd";
-                            // ⚠️ คลังเก็บชื่อสีที่ field "colorName" (ไม่ใช่ "name")
-                            const colorName = (liveCol && (liveCol.colorName || liveCol.name)) || ln.color || guessColor(colorHex) || "(ไม่ระบุสี)";
-                            return (
-                              <div key={i} style={{ fontSize: 12, color: T.text, display: "flex", gap: 8, alignItems: "center" }}>
-                                <span style={{ minWidth: 110, display: "flex", alignItems: "center", gap: 5 }}>
-                                  <span style={{ width: 12, height: 12, borderRadius: 3, background: colorHex, border: "1px solid rgba(0,0,0,.2)", display: "inline-block" }} />
-                                  สี: <b>{colorName}</b>
-                                </span>
-                                <span style={{ minWidth: 80 }}>ไซส์: <b>{ln.size}</b></span>
-                                <span style={{ minWidth: 78 }}>จำนวน: <b style={{ color: T.blue }}>{ln.qty}</b></span>
-                                {/* 💰 ราคา — ดึงจากระบบให้เลย ไม่ต้องเปิดไปดูเอง */}
-                                {(() => {
-                                  const unit = unitPriceFor(liveItem, ln.colorIdx, ln.size);
-                                  if (unit == null) return <span style={{ fontSize: 11, color: "#b45309" }}>· ⚠️ ยังไม่ตั้งราคา</span>;
-                                  return <span style={{ fontSize: 11, color: T.sub, fontFamily: "monospace" }}>· ฿{fmtB(unit)} × {ln.qty} = <b style={{ color: T.text }}>฿{fmtB(unit * (Number(ln.qty)||0))}</b></span>;
-                                })()}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  });
-                })()}
-
-                {/* 💬 สรุปยอด + ปุ่มคัดลอกข้อความแจ้งลูกค้า (แทนการโทร) */}
-                {(() => {
-                  const q = quoteCatalogOrder(o, clothingItems);
-                  return (
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "9px 12px", marginBottom: 8, borderRadius: 9,
-                      background: q.unknownCount > 0 ? "rgba(217,119,6,0.08)" : "rgba(22,163,74,0.07)",
-                      border: `1px solid ${q.unknownCount > 0 ? "rgba(217,119,6,0.3)" : "rgba(22,163,74,0.25)"}` }}>
-                      <span style={{ fontSize: 12, color: T.sub }}>
-                        รวม <b style={{ color: T.text }}>{q.totalQty.toLocaleString("th-TH")}</b> ตัว
-                      </span>
-                      <span style={{ fontSize: 15, fontWeight: 800, color: q.unknownCount > 0 ? "#b45309" : T.green, fontFamily: "monospace" }}>
-                        ฿{fmtB(q.totalAmount)}
-                      </span>
-                      {q.unknownCount > 0 && (
-                        <span style={{ fontSize: 11, color: "#b45309" }}>⚠️ มี {q.unknownCount} รายการยังไม่ตั้งราคา — ยอดยังไม่ครบ</span>
-                      )}
-                      <button onClick={() => copyQuote(o)}
-                        style={{ marginLeft: "auto", background: copiedId === o.id ? T.green : "white", color: copiedId === o.id ? "white" : T.accent,
-                          border: `1px solid ${copiedId === o.id ? T.green : T.accent}`, padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
-                        {copiedId === o.id ? "✅ คัดลอกแล้ว — วางในไลน์ได้เลย" : "📋 คัดลอกข้อความแจ้งยอด"}
-                      </button>
-                    </div>
-                  );
-                })()}
-
-                {o.address && <div style={{ fontSize: 12, color: T.sub, marginBottom: 4 }}>📍 {o.address}</div>}
-                {o.note && <div style={{ fontSize: 12, color: T.amber, background: "#fffbeb", padding: 6, borderRadius: 6 }}>📝 {o.note}</div>}
-
-                <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-                  <a href={`tel:${o.phone}`} style={{ background: T.blue, color: "white", padding: "6px 12px", borderRadius: 6, textDecoration: "none", fontSize: 12, fontWeight: 600 }}>📞 โทรกลับ</a>
-                  {o.status !== "converted" && onConvert && (
-                    <button onClick={() => {
-                      // หาลูกค้าเดิมที่เบอร์ตรงกัน (suggest)
-                      const normPhone = (s) => String(s||"").replace(/\D/g, "");
-                      const phoneKey = normPhone(o.phone);
-                      const matched = phoneKey ? customers.find(c => normPhone(c.phone) === phoneKey) : null;
-                      setConvertModal({
-                        order: o,
-                        suggestedCustomer: matched,
-                        mode: matched ? "existing" : "new",
-                        existingId: matched?.id || "",
-                        search: "",
-                      });
-                    }} style={{ background: T.green, color: "white", border: "none", padding: "6px 12px", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
-                      ➡️ สร้างเป็นคำสั่งซื้อ
-                    </button>
-                  )}
-                  {o.status === "converted" && o.convertedOrderNo && (
-                    <span style={{ background: "#ede9fe", color: "#7c3aed", padding: "6px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
-                      ✅ Order: {o.convertedOrderNo}
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+      {/* 📦 กลุ่มที่จบแล้ว — พับไว้ ไม่ให้เกะกะงานที่ต้องทำ */}
+      {doneList.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div onClick={()=>setDoneOpen(v=>!v)}
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#f1f5f9", border: `1px solid ${T.border}`, borderRadius: 10, cursor: "pointer", userSelect: "none" }}>
+            <span style={{ fontSize: 11, color: T.muted }}>{doneOpen ? "▼" : "▶"}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: T.sub }}>✅ จบแล้ว</span>
+            <span style={{ fontSize: 11, color: T.muted }}>— แปลงเป็นใบสั่งของ/ยกเลิกแล้ว</span>
+            <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: T.sub }}>{doneList.length} ใบ</span>
+          </div>
+          {doneOpen && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+              {renderCards(doneList)}
+            </div>
+          )}
         </div>
       )}
 
@@ -310,6 +215,146 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
       })()}
     </div>
   );
+  // ── การ์ดออเดอร์ (ใช้ทั้ง 2 กลุ่ม) ──
+  function renderCards(arr) {
+    return arr.map(o => {
+            const s = STATUS[o.status||"new"] || STATUS.new;
+            const open = isCardOpen(o);
+            const q = quoteCatalogOrder(o, clothingItems);
+            return (
+              <div key={o.id} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 16, opacity: isDone(o) && !open ? 0.75 : 1 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: open ? 10 : 0, flexWrap:"wrap" }}>
+                  <div onClick={()=>toggleCard(o)} style={{ cursor: "pointer", flex: 1, minWidth: 0, display: "flex", alignItems: "flex-start", gap: 8 }}>
+                    <span style={{ fontSize: 11, color: T.muted, marginTop: 3 }}>{open ? "▼" : "▶"}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>{o.customerName} · 📞 {o.phone}</div>
+                      <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>
+                        {fmtDate(o.createdAt)}
+                        {/* ตอนพับ — สรุปให้เห็นว่ากี่ตัว กี่บาท โดยไม่ต้องกาง */}
+                        {!open && <> · <b style={{color:T.sub}}>{q.totalQty.toLocaleString("th-TH")} ตัว</b> · <b style={{color:T.green}}>฿{fmtB(q.totalAmount)}</b></>}
+                        {!open && o.convertedOrderNo && <> · <b style={{color:"#7c3aed"}}>{o.convertedOrderNo}</b></>}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                    <span style={{ background: s.bg, color: s.color, padding: "4px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700 }}>{s.label}</span>
+                    <select value={o.status||"new"} onChange={e=>setStatus(o.id, e.target.value)}
+                      style={{ padding: "5px 8px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 11, fontFamily:"inherit" }}>
+                      {Object.entries(STATUS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+                    </select>
+                    <button onClick={()=>remove(o.id)} style={{ background: "#fee2e2", border:"none", borderRadius: 6, padding: "5px 9px", color: "#991b1b", cursor: "pointer", fontSize: 12 }}>🗑</button>
+                  </div>
+                </div>
+
+                {open && <>
+                {(() => {
+                  // 🛒 รองรับ 2 format:
+                  //  - ใหม่: o.items = [{itemId, itemName, lines:[...]}, ...] — multi-item cart
+                  //  - เก่า: o.itemId/itemName + o.lines (single item)
+                  const entries = (o.items && o.items.length > 0)
+                    ? o.items
+                    : [{ itemId: o.itemId, itemName: o.itemName, lines: o.lines || [] }];
+                  return entries.map((entry, ei) => {
+                    const liveItem = clothingItems.find(c => c.id === entry.itemId);
+                    const itemName = (liveItem && (liveItem.model || liveItem.name)) || entry.itemName || "(ไม่ระบุชื่อสินค้า)";
+                    const itemMissing = !liveItem && entry.itemId;
+                    const entryQty = (entry.lines||[]).reduce((s,l)=>s+(Number(l.qty)||0),0);
+                    return (
+                      <div key={ei} style={{ background:"#f8fafc", borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                        <div style={{ fontSize: 12, color: T.sub, fontWeight: 600, marginBottom: 6, display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+                          📦 {itemName}
+                          <span style={{ fontSize: 10, color: T.blue, background: "#dbeafe", padding: "1px 6px", borderRadius: 4 }}>{entryQty} ชิ้น</span>
+                          {itemMissing && <span style={{ fontSize: 10, color: "#b94a48", background: "#fee2e2", padding: "1px 6px", borderRadius: 4 }}>⚠️ สินค้าถูกลบจาก ERP</span>}
+                          {!entry.itemId && <span style={{ fontSize: 10, color: "#b94a48", background: "#fee2e2", padding: "1px 6px", borderRadius: 4 }}>⚠️ ไม่มี itemId</span>}
+                          {entry.itemId && <span style={{ fontSize: 9, color: T.muted, fontFamily: "monospace" }}>id: {String(entry.itemId).slice(0,8)}…</span>}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {(entry.lines||[]).map((ln, i) => {
+                            const liveCol = (liveItem && typeof ln.colorIdx === "number") ? (liveItem.colors||[])[ln.colorIdx] : null;
+                            const colorHex = (liveCol && liveCol.hex) || ln.colorHex || "#ddd";
+                            // ⚠️ คลังเก็บชื่อสีที่ field "colorName" (ไม่ใช่ "name")
+                            const colorName = (liveCol && (liveCol.colorName || liveCol.name)) || ln.color || guessColor(colorHex) || "(ไม่ระบุสี)";
+                            return (
+                              <div key={i} style={{ fontSize: 12, color: T.text, display: "flex", gap: 8, alignItems: "center" }}>
+                                <span style={{ minWidth: 110, display: "flex", alignItems: "center", gap: 5 }}>
+                                  <span style={{ width: 12, height: 12, borderRadius: 3, background: colorHex, border: "1px solid rgba(0,0,0,.2)", display: "inline-block" }} />
+                                  สี: <b>{colorName}</b>
+                                </span>
+                                <span style={{ minWidth: 80 }}>ไซส์: <b>{ln.size}</b></span>
+                                <span style={{ minWidth: 78 }}>จำนวน: <b style={{ color: T.blue }}>{ln.qty}</b></span>
+                                {/* 💰 ราคา — ดึงจากระบบให้เลย ไม่ต้องเปิดไปดูเอง */}
+                                {(() => {
+                                  const unit = unitPriceFor(liveItem, ln.colorIdx, ln.size);
+                                  if (unit == null) return <span style={{ fontSize: 11, color: "#b45309" }}>· ⚠️ ยังไม่ตั้งราคา</span>;
+                                  return <span style={{ fontSize: 11, color: T.sub, fontFamily: "monospace" }}>· ฿{fmtB(unit)} × {ln.qty} = <b style={{ color: T.text }}>฿{fmtB(unit * (Number(ln.qty)||0))}</b></span>;
+                                })()}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+
+                {/* 💬 สรุปยอด + ปุ่มคัดลอกข้อความแจ้งลูกค้า (แทนการโทร) */}
+                {(() => {
+                  const q = quoteCatalogOrder(o, clothingItems);
+                  return (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "9px 12px", marginBottom: 8, borderRadius: 9,
+                      background: q.unknownCount > 0 ? "rgba(217,119,6,0.08)" : "rgba(22,163,74,0.07)",
+                      border: `1px solid ${q.unknownCount > 0 ? "rgba(217,119,6,0.3)" : "rgba(22,163,74,0.25)"}` }}>
+                      <span style={{ fontSize: 12, color: T.sub }}>
+                        รวม <b style={{ color: T.text }}>{q.totalQty.toLocaleString("th-TH")}</b> ตัว
+                      </span>
+                      <span style={{ fontSize: 15, fontWeight: 800, color: q.unknownCount > 0 ? "#b45309" : T.green, fontFamily: "monospace" }}>
+                        ฿{fmtB(q.totalAmount)}
+                      </span>
+                      {q.unknownCount > 0 && (
+                        <span style={{ fontSize: 11, color: "#b45309" }}>⚠️ มี {q.unknownCount} รายการยังไม่ตั้งราคา — ยอดยังไม่ครบ</span>
+                      )}
+                      <button onClick={() => copyQuote(o)}
+                        style={{ marginLeft: "auto", background: copiedId === o.id ? T.green : "white", color: copiedId === o.id ? "white" : T.accent,
+                          border: `1px solid ${copiedId === o.id ? T.green : T.accent}`, padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                        {copiedId === o.id ? "✅ คัดลอกแล้ว — วางในไลน์ได้เลย" : "📋 คัดลอกข้อความแจ้งยอด"}
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                {o.address && <div style={{ fontSize: 12, color: T.sub, marginBottom: 4 }}>📍 {o.address}</div>}
+                {o.note && <div style={{ fontSize: 12, color: T.amber, background: "#fffbeb", padding: 6, borderRadius: 6 }}>📝 {o.note}</div>}
+
+                <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                  <a href={`tel:${o.phone}`} style={{ background: T.blue, color: "white", padding: "6px 12px", borderRadius: 6, textDecoration: "none", fontSize: 12, fontWeight: 600 }}>📞 โทรกลับ</a>
+                  {o.status !== "converted" && onConvert && (
+                    <button onClick={() => {
+                      // หาลูกค้าเดิมที่เบอร์ตรงกัน (suggest)
+                      const normPhone = (s) => String(s||"").replace(/\D/g, "");
+                      const phoneKey = normPhone(o.phone);
+                      const matched = phoneKey ? customers.find(c => normPhone(c.phone) === phoneKey) : null;
+                      setConvertModal({
+                        order: o,
+                        suggestedCustomer: matched,
+                        mode: matched ? "existing" : "new",
+                        existingId: matched?.id || "",
+                        search: "",
+                      });
+                    }} style={{ background: T.green, color: "white", border: "none", padding: "6px 12px", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                      ➡️ สร้างเป็นคำสั่งซื้อ
+                    </button>
+                  )}
+                  {o.status === "converted" && o.convertedOrderNo && (
+                    <span style={{ background: "#ede9fe", color: "#7c3aed", padding: "6px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
+                      ✅ Order: {o.convertedOrderNo}
+                    </span>
+                  )}
+                </div>
+                </>}
+              </div>
+            );
+    });
+  }
 }
 
 function Chip({ active, onClick, label, color, bg }) {
