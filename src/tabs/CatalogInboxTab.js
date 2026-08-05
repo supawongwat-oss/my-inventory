@@ -23,18 +23,27 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
   const [filter, setFilter] = useState("");
   const [copiedId, setCopiedId] = useState("");
 
-  // 📋 คัดลอกข้อความแจ้งยอด → วางในไลน์ได้เลย (แทนการโทร)
-  const copyQuote = async (o) => {
-    const msg = buildQuoteMessage(o, clothingItems, {
-      companyName: companyInfo.name || "",
-      billingNote: "สิ้นเดือนจะวางบิลรวมให้นะคะ",
+  // 📋 ข้อความแจ้งยอด — เปิดให้ตรวจ/แก้ก่อนคัดลอก (แทนการโทร)
+  //    ต้องแก้ได้จริง เพราะไซส์พิเศษไม่มีราคา + บางเคสต้องเพิ่มเงื่อนไขเอง
+  const [quoteEdit, setQuoteEdit] = useState(null); // { order, text }
+  const openQuote = (o) => {
+    setQuoteEdit({
+      order: o,
+      text: buildQuoteMessage(o, clothingItems, {
+        companyName: companyInfo.name || "",
+        billingNote: "สิ้นเดือนจะวางบิลรวมให้นะคะ",
+      }),
     });
+  };
+  const copyQuoteText = async () => {
+    if (!quoteEdit) return;
     try {
-      await navigator.clipboard.writeText(msg);
-      setCopiedId(o.id);
+      await navigator.clipboard.writeText(quoteEdit.text);
+      setCopiedId(quoteEdit.order.id);
       setTimeout(() => setCopiedId(""), 2000);
+      setQuoteEdit(null);
     } catch {
-      window.prompt("คัดลอกข้อความนี้ไปวางในไลน์:", msg);
+      window.prompt("คัดลอกข้อความนี้ไปวางในไลน์:", quoteEdit.text);
     }
   };
   const [convertModal, setConvertModal] = useState(null); // { order, suggestedCustomer, mode, existingId, search }
@@ -110,6 +119,54 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
               {renderCards(doneList)}
             </div>
           )}
+        </div>
+      )}
+
+      {/* 📋 MODAL: ตรวจ/แก้ข้อความแจ้งยอด ก่อนคัดลอกไปส่งลูกค้า */}
+      {quoteEdit && (
+        <div onClick={()=>setQuoteEdit(null)} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 12 }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background: "white", borderRadius: 14, maxWidth: 560, width: "100%", maxHeight: "92vh", display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: 18, borderBottom: `1px solid ${T.border}` }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: T.text }}>📋 ข้อความแจ้งยอด</div>
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>
+                ถึง <b>{quoteEdit.order.customerName}</b> · แก้ไขได้ก่อนคัดลอก
+              </div>
+            </div>
+
+            <div style={{ padding: 18, overflowY: "auto" }}>
+              <textarea value={quoteEdit.text}
+                onChange={e => setQuoteEdit(q => ({ ...q, text: e.target.value }))}
+                rows={14}
+                style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 10, border: `1px solid ${T.border}`, fontSize: 14, fontFamily: "inherit", lineHeight: 1.7, outline: "none", resize: "vertical" }}/>
+
+              {(() => {
+                const q = quoteCatalogOrder(quoteEdit.order, clothingItems);
+                if (q.unknownCount === 0) return null;
+                return (
+                  <div style={{ marginTop: 10, padding: "9px 13px", background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.3)", borderRadius: 9, fontSize: 12, color: "#b45309", lineHeight: 1.7 }}>
+                    ⚠️ มี <b>{q.unknownCount}</b> รายการที่ยังไม่มีราคาในระบบ (เช่นไซส์พิเศษ)<br/>
+                    ระบบจึงไม่ใส่ยอดรวมให้ — <b>พิมพ์ยอดเองในข้อความ</b>ก่อนส่งนะครับ
+                  </div>
+                );
+              })()}
+
+              <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button onClick={() => openQuote(quoteEdit.order)}
+                  style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
+                  ↺ กลับเป็นข้อความเดิม
+                </button>
+              </div>
+            </div>
+
+            <div style={{ padding: 14, borderTop: `1px solid ${T.border}`, display: "flex", gap: 8, background: "#f8fafc", borderRadius: "0 0 14px 14px" }}>
+              <button onClick={()=>setQuoteEdit(null)}
+                style={{ flex: 1, background: "white", border: `1px solid ${T.border}`, padding: 12, borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>ปิด</button>
+              <button onClick={copyQuoteText}
+                style={{ flex: 2, background: T.green, color: "white", border: "none", padding: 12, borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: 14 }}>
+                📋 คัดลอก — วางในไลน์ได้เลย
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -316,10 +373,10 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
                       {q.unknownCount > 0 && (
                         <span style={{ fontSize: 11, color: "#b45309" }}>⚠️ มี {q.unknownCount} รายการยังไม่ตั้งราคา — ยอดยังไม่ครบ</span>
                       )}
-                      <button onClick={() => copyQuote(o)}
+                      <button onClick={() => openQuote(o)}
                         style={{ marginLeft: "auto", background: copiedId === o.id ? T.green : "white", color: copiedId === o.id ? "white" : T.accent,
                           border: `1px solid ${copiedId === o.id ? T.green : T.accent}`, padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
-                        {copiedId === o.id ? "✅ คัดลอกแล้ว — วางในไลน์ได้เลย" : "📋 คัดลอกข้อความแจ้งยอด"}
+                        {copiedId === o.id ? "✅ คัดลอกแล้ว — วางในไลน์ได้เลย" : "📋 ข้อความแจ้งยอด"}
                       </button>
                     </div>
                   );
