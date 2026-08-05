@@ -280,7 +280,11 @@ export default function Catalog() {
               {/* 🚫 ไม่บอกสถานะสต๊อก (มี/หมด) — ให้ลูกค้าเลือกได้ทุกไซส์
                      ของมี/ไม่มี พนักงานจะแจ้งลูกค้าเองตอนยืนยันออเดอร์ */}
               {(detail.colors || []).map((c, ci) => {
-                const sizes = Object.keys(c.stock || {}).sort(compareSizes);
+                // 🛍️ แสดงเฉพาะไซส์ที่รับผลิต (ตั้งไว้ที่ ERP → catalogSizes)
+                const limitD = detail.catalogSizes;
+                const sizes = Object.keys(c.stock || {})
+                  .filter(sz => !Array.isArray(limitD) || limitD.length === 0 || limitD.includes(sz))
+                  .sort(compareSizes);
                 const colorLabel = c.colorName || c.name || guessColorName(c.hex, ci);
                 return (
                   <div key={ci} style={{ marginBottom: 14, padding: 12, background: "#f8fafc", borderRadius: 10 }}>
@@ -332,7 +336,12 @@ export default function Catalog() {
                       .sort(compareSizes);
                     // ไม่มีข้อมูลไซส์เลย (สินค้ายังไม่ตั้งสต๊อก) → ใช้ไซส์มาตรฐานตามชนิดสินค้า
                     // ⚠️ รองเท้าใช้เบอร์ 36-45 ไม่ใช่ S-XL → ต้องดู sizeType
-                    const allSizes = foundSizes.length > 0 ? foundSizes : getSizesFor(order.item);
+                    const baseSizes = foundSizes.length > 0 ? foundSizes : getSizesFor(order.item);
+                    // 🛍️ จำกัดเฉพาะไซส์ที่ตั้งไว้ว่ารับผลิต (ไม่ได้ตั้ง = ทุกไซส์)
+                    const limit = order.item.catalogSizes;
+                    const allSizes = Array.isArray(limit) && limit.length > 0
+                      ? baseSizes.filter(sz => limit.includes(sz))
+                      : baseSizes;
                     const setQty = (ci, sz, v) => {
                       const qtyMap = { ...(order.qtyMap || {}) };
                       qtyMap[ci] = { ...(qtyMap[ci] || {}) };

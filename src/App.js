@@ -36,6 +36,7 @@ const EmployeeTab = lazy(() => import("./tabs/EmployeeTab"));
 const TaxDocsTab = lazy(() => import("./tabs/TaxDocsTab"));
 const CatalogInboxTab = lazy(() => import("./tabs/CatalogInboxTab"));
 const ShareCatalogModal = lazy(() => import("./components/ShareCatalogModal"));
+const CatalogSettingsModal = lazy(() => import("./components/CatalogSettingsModal"));
 const PayrollTab = lazy(() => import("./tabs/PayrollTab"));
 const ProductionHistoryTab = lazy(() => import("./tabs/ProductionHistoryTab"));
 const OrdersTab = lazy(() => import("./tabs/OrdersTab"));
@@ -282,6 +283,7 @@ export default function App() {
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [showImportCustomers, setShowImportCustomers] = useState(false);
   const [showShareCatalog, setShowShareCatalog] = useState(false); // 📱 QR/ลิงก์สั่งของให้ลูกค้า
+  const [catalogSettingsItem, setCatalogSettingsItem] = useState(null); // 🛍️ ตั้งค่า Catalog ต่อสินค้า
   const [showPrintOrder, setShowPrintOrder] = useState(null);
   const [editingOrderId, setEditingOrderId] = useState(null); // null = สร้างใหม่, string = แก้ไข
   const [orderForm, setOrderForm] = useState({
@@ -2863,7 +2865,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   draggingClothingId={draggingClothingId} setDraggingClothingId={setDraggingClothingId}
                   dragOverClothingId={dragOverClothingId} setDragOverClothingId={setDragOverClothingId} reorderClothing={reorderClothing}
                   collapsedItems={collapsedItems} toggleCollapse={toggleCollapse}
-                  setShowAddColor={setShowAddColor} openMix={openMix} openBomModal={openBomModal}
+                  setShowAddColor={setShowAddColor} openMix={openMix} openBomModal={openBomModal} openCatalogSettings={setCatalogSettingsItem}
                   manageColorMode={manageColorMode} setManageColorMode={setManageColorMode}
                   setDeleteClothingTarget={setDeleteClothingTarget} setDeleteConfirmText={setDeleteConfirmText}
                   linkedInvColors={linkedInvColors} toggleLinkInvColor={toggleLinkInvColor}
@@ -4140,6 +4142,13 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           handleConfirmOrder={handleConfirmOrder}
           addOrderMixItem={addOrderMixItem}
         />
+      )}
+
+      {/* ── MODAL: ตั้งค่า Catalog ต่อสินค้า (ไซส์ที่รับผลิต / ซ่อน) ── */}
+      {catalogSettingsItem && (
+        <Suspense fallback={null}>
+          <CatalogSettingsModal item={catalogSettingsItem} user={user} onClose={() => setCatalogSettingsItem(null)}/>
+        </Suspense>
       )}
 
       {/* ── MODAL: ลิงก์ + QR สั่งของสำหรับลูกค้า ── */}
