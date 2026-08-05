@@ -22,7 +22,7 @@ export default function ClothingInventoryTab({
   draggingClothingId, setDraggingClothingId,
   dragOverClothingId, setDragOverClothingId, reorderClothing,
   collapsedItems, toggleCollapse,
-  setShowAddColor, openMix, openBomModal, openCatalogSettings, openItemCategory, openItemStory,
+  setShowAddColor, openMix, openBomModal, openProductCatalog,
   brandFilter, setBrandFilter,
   manageColorMode, setManageColorMode,
   setDeleteClothingTarget, setDeleteConfirmText,
@@ -174,37 +174,18 @@ export default function ClothingInventoryTab({
                 const hasBom = boms.some(b => (b.id === item.id || b.clothingId === item.id) && (b.variants || []).some(v => (v.materials || []).length > 0));
                 return <button onClick={() => openBomModal(item)} title="ตั้งสูตรวัตถุดิบ (BOM)" style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${hasBom ? "rgba(22,163,74,0.35)" : "rgba(124,58,237,0.3)"}`, background: hasBom ? "rgba(22,163,74,0.08)" : "rgba(124,58,237,0.08)", color: hasBom ? "#16a34a" : "#7c3aed", cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: 600 }}>📐 {hasBom ? "BOM ✓" : "ตั้งสูตร BOM"}</button>;
               })()}
-              {role.canAdd && openItemCategory && (
-                <button onClick={() => openItemCategory(item)} title="ตั้งแบรนด์ / หมวดย่อย"
-                  style={{ padding: "7px 14px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: 600,
-                    border: `1px solid ${item.brand ? "rgba(59,91,139,0.35)" : "rgba(59,91,139,0.2)"}`,
-                    background: item.brand ? "rgba(59,91,139,0.08)" : "transparent",
-                    color: item.brand ? T.accent : T.muted }}>
-                  🏷️ {item.brand ? "หมวดหมู่" : "ตั้งหมวดหมู่"}
-                </button>
-              )}
-              {role.canAdd && openItemStory && (() => {
+              {role.canAdd && openProductCatalog && (() => {
                 const hasStory = !!item.description || (item.gallery||[]).length > 0;
-                return (
-                  <button onClick={() => openItemStory(item)} title="คำบรรยาย + รูปเพิ่มเติมที่ลูกค้าเห็น"
-                    style={{ padding: "7px 14px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: 600,
-                      border: `1px solid ${hasStory ? "rgba(124,58,237,0.35)" : "rgba(59,91,139,0.2)"}`,
-                      background: hasStory ? "rgba(124,58,237,0.08)" : "transparent",
-                      color: hasStory ? "#7c3aed" : T.muted }}>
-                    📖 {hasStory ? "รายละเอียด ✓" : "รายละเอียด"}
-                  </button>
-                );
-              })()}
-              {role.canAdd && openCatalogSettings && (() => {
                 const limited = Array.isArray(item.catalogSizes) && item.catalogSizes.length > 0;
-                const hidden = !!item.hideFromCatalog;
+                const hiddenC = !!item.hideFromCatalog;
+                const set = hiddenC ? "ซ่อนอยู่" : [item.brand, hasStory ? "มีรายละเอียด" : null, limited ? `${item.catalogSizes.length} ไซส์` : null].filter(Boolean).join(" · ");
                 return (
-                  <button onClick={() => openCatalogSettings(item)} title="เลือกไซส์ที่ให้ลูกค้าสั่งได้ / ซ่อนจาก Catalog"
-                    style={{ padding: "7px 14px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: 600,
-                      border: `1px solid ${hidden ? "rgba(185,74,72,0.35)" : limited ? "rgba(59,91,139,0.35)" : "rgba(59,91,139,0.2)"}`,
-                      background: hidden ? "rgba(185,74,72,0.08)" : limited ? "rgba(59,91,139,0.08)" : "transparent",
-                      color: hidden ? "#b94a48" : limited ? T.accent : T.muted }}>
-                    🛍️ {hidden ? "ซ่อนจาก Catalog" : limited ? `Catalog: ${item.catalogSizes.length} ไซส์` : "ตั้งค่า Catalog"}
+                  <button onClick={() => openProductCatalog(item)} title="แบรนด์ / รายละเอียด / ไซส์ที่ขาย — ทุกอย่างที่ลูกค้าเห็น"
+                    style={{ padding: "7px 14px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: 600, maxWidth: 230, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      border: `1px solid ${hiddenC ? "rgba(185,74,72,0.35)" : set ? "rgba(59,91,139,0.35)" : "rgba(59,91,139,0.2)"}`,
+                      background: hiddenC ? "rgba(185,74,72,0.08)" : set ? "rgba(59,91,139,0.08)" : "transparent",
+                      color: hiddenC ? "#b94a48" : set ? T.accent : T.muted }}>
+                    🛍️ {set || "หน้าร้าน"}
                   </button>
                 );
               })()}

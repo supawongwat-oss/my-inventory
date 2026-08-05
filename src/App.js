@@ -36,9 +36,7 @@ const EmployeeTab = lazy(() => import("./tabs/EmployeeTab"));
 const TaxDocsTab = lazy(() => import("./tabs/TaxDocsTab"));
 const CatalogInboxTab = lazy(() => import("./tabs/CatalogInboxTab"));
 const ShareCatalogModal = lazy(() => import("./components/ShareCatalogModal"));
-const CatalogSettingsModal = lazy(() => import("./components/CatalogSettingsModal"));
-const ItemCategoryModal = lazy(() => import("./components/ItemCategoryModal"));
-const ItemStoryModal = lazy(() => import("./components/ItemStoryModal"));
+const ProductCatalogModal = lazy(() => import("./components/ProductCatalogModal"));
 const PayrollTab = lazy(() => import("./tabs/PayrollTab"));
 const ProductionHistoryTab = lazy(() => import("./tabs/ProductionHistoryTab"));
 const OrdersTab = lazy(() => import("./tabs/OrdersTab"));
@@ -285,9 +283,7 @@ export default function App() {
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [showImportCustomers, setShowImportCustomers] = useState(false);
   const [showShareCatalog, setShowShareCatalog] = useState(false); // 📱 QR/ลิงก์สั่งของให้ลูกค้า
-  const [catalogSettingsItem, setCatalogSettingsItem] = useState(null); // 🛍️ ตั้งค่า Catalog ต่อสินค้า
-  const [itemCategoryItem, setItemCategoryItem] = useState(null); // 🏷️ ตั้งแบรนด์/หมวดย่อย
-  const [itemStoryItem, setItemStoryItem] = useState(null); // 📖 รายละเอียด/รูปเล่าเรื่อง
+  const [productCatalogItem, setProductCatalogItem] = useState(null); // 🛍️ หน้าร้าน: แบรนด์/รายละเอียด/ไซส์ที่ขาย
   const [brandFilter, setBrandFilter] = useState(""); // "" = ทุกแบรนด์, "__none__" = ยังไม่ตั้ง
   const [showPrintOrder, setShowPrintOrder] = useState(null);
   const [editingOrderId, setEditingOrderId] = useState(null); // null = สร้างใหม่, string = แก้ไข
@@ -2870,7 +2866,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   draggingClothingId={draggingClothingId} setDraggingClothingId={setDraggingClothingId}
                   dragOverClothingId={dragOverClothingId} setDragOverClothingId={setDragOverClothingId} reorderClothing={reorderClothing}
                   collapsedItems={collapsedItems} toggleCollapse={toggleCollapse}
-                  setShowAddColor={setShowAddColor} openMix={openMix} openBomModal={openBomModal} openCatalogSettings={setCatalogSettingsItem} openItemCategory={setItemCategoryItem} openItemStory={setItemStoryItem} brandFilter={brandFilter} setBrandFilter={setBrandFilter}
+                  setShowAddColor={setShowAddColor} openMix={openMix} openBomModal={openBomModal} openProductCatalog={setProductCatalogItem} brandFilter={brandFilter} setBrandFilter={setBrandFilter}
                   manageColorMode={manageColorMode} setManageColorMode={setManageColorMode}
                   setDeleteClothingTarget={setDeleteClothingTarget} setDeleteConfirmText={setDeleteConfirmText}
                   linkedInvColors={linkedInvColors} toggleLinkInvColor={toggleLinkInvColor}
@@ -4181,24 +4177,10 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         />
       )}
 
-      {/* ── MODAL: รายละเอียดสินค้า (เล่าเรื่อง + รูป) ── */}
-      {itemStoryItem && (
+      {/* ── MODAL: หน้าร้าน (แบรนด์ / รายละเอียด / ไซส์ที่ขาย) ── */}
+      {productCatalogItem && (
         <Suspense fallback={null}>
-          <ItemStoryModal item={itemStoryItem} user={user} onClose={() => setItemStoryItem(null)}/>
-        </Suspense>
-      )}
-
-      {/* ── MODAL: ตั้งแบรนด์ / หมวดย่อย ── */}
-      {itemCategoryItem && (
-        <Suspense fallback={null}>
-          <ItemCategoryModal item={itemCategoryItem} allItems={clothingItems} user={user} onClose={() => setItemCategoryItem(null)}/>
-        </Suspense>
-      )}
-
-      {/* ── MODAL: ตั้งค่า Catalog ต่อสินค้า (ไซส์ที่รับผลิต / ซ่อน) ── */}
-      {catalogSettingsItem && (
-        <Suspense fallback={null}>
-          <CatalogSettingsModal item={catalogSettingsItem} user={user} onClose={() => setCatalogSettingsItem(null)}/>
+          <ProductCatalogModal item={productCatalogItem} allItems={clothingItems} user={user} onClose={() => setProductCatalogItem(null)}/>
         </Suspense>
       )}
 
