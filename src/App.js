@@ -2386,7 +2386,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
   if (!user) return <LoginPage users={users} usersLoaded={usersLoaded} onLogin={(u, rememberMe) => handleLogin(u, rememberMe)} onResetPassword={handleResetPassword} onRegister={handleRegisterUser}/>;
 
-  // โครงสร้างเมนู: รวมกลุ่มย่อย — คลัง&ผลิต / บิล&เก็บเงิน / เอกสาร&บุคลากร / รายงาน&ผู้ดูแล
+  // 🗂 ลำดับเมนู — เรียงตามลำดับงานที่ใช้จริงต่อวัน (ขาย → เก็บเงิน → หลังบ้าน)
   const navStructure = [
     { type:"item",  id:"dashboard", icon:"📊", label:"ภาพรวม" },
     { type:"group", id:"warehouse", icon:"📦", label:"คลัง & ผลิต", children:[
@@ -2395,23 +2395,23 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       { id:"production",icon:"🏭", label:"การผลิต" },
       { id:"productionHistory",icon:"📜", label:"ประวัติการผลิต" },
     ]},
-    { type:"item",  id:"materials", icon:"🧪", label:"วัตถุดิบ" },
-    { type:"item",  id:"transactions", icon:"🔄", label:"รับ/จ่ายสินค้า" },
-    { type:"item",  id:"barcode",      icon:"▦",  label:"สแกนบาร์โค้ด" },
     { type:"item",  id:"orders",       icon:"📋", label:"ใบสั่งของ" },
     { type:"group", id:"billing", icon:"🧾", label:"บิล & เก็บเงิน", children:[
       { id:"invoice",    icon:"🧾", label:"ออกบิล" },
       { id:"statements", icon:"📃", label:"วางบิลเก็บเงิน" },
     ]},
-    { type:"item",  id:"customers", icon:"👤", label:"ลูกค้า" },
-    { type:"item",  id:"suppliers", icon:"🏭", label:"ซัพพลายเออร์" },
-    { type:"item",  id:"alerts",    icon:"🔔", label:"แจ้งเตือน", badge: lowStock.length },
     { type:"item",  id:"catalogInbox", icon:"📥", label:"Inbox (Catalog)", badge: (catalogOrders||[]).filter(o=>!o.status||o.status==="new").length },
+    { type:"item",  id:"customers", icon:"👤", label:"ลูกค้า" },
+    { type:"item",  id:"transactions", icon:"🔄", label:"รับ/จ่ายสินค้า" },
+    { type:"item",  id:"barcode",      icon:"▦",  label:"สแกนบาร์โค้ด" },
+    { type:"item",  id:"materials", icon:"🧪", label:"วัตถุดิบ" },
+    { type:"item",  id:"suppliers", icon:"🏭", label:"ซัพพลายเออร์" },
     { type:"group", id:"hrdocs", icon:"📂", label:"เอกสาร & บุคลากร", children:[
       { id:"employees", icon:"👷", label:"บัตรลูกจ้าง" },
       { id:"payroll",   icon:"💰", label:"เงินเดือน", adminOnly:true },
       { id:"taxdocs",   icon:"🧾", label:"คลังเอกสารภาษี" },
     ]},
+    { type:"item",  id:"alerts",    icon:"🔔", label:"แจ้งเตือน", badge: lowStock.length },
     { type:"group", id:"adminhub", icon:"⚙️", label:"รายงาน & ผู้ดูแล", children:[
       { id:"reports",  icon:"📊", label:"รายงาน" },
       { id:"users",    icon:"👥", label:"จัดการผู้ใช้",   adminOnly:true },
