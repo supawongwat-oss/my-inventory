@@ -4,7 +4,7 @@
 // ลูกค้ากดสั่ง → เขียน catalogOrders → ทีมรับใน ERP
 import { useEffect, useState, useMemo } from "react";
 import { db } from "./firebase";
-import { collection, doc, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
 import { compareSizes, getSizesFor } from "./theme";
 
 const T = {
@@ -66,10 +66,30 @@ export default function Catalog() {
     try { localStorage.setItem("cpu_cart", JSON.stringify(cart)); } catch (e) {}
   }, [cart]);
 
+  // 🔗 ลิงก์ส่วนตัวของลูกค้า: /c?id=<customerId>
+  //    เปิดจากเครื่องไหนก็ได้ ข้อมูลเติมให้ครบ — ไม่ต้อง login
+  //    ใช้ id ของ Firestore (สุ่ม 20 ตัว) ไม่ใช่เบอร์โทร → เดาไม่ได้ ข้อมูลลูกค้าไม่รั่ว
+  const [linkedCustomer, setLinkedCustomer] = useState(null);
+  useEffect(() => {
+    const cid = new URLSearchParams(window.location.search).get("id");
+    if (!cid) return;
+    getDoc(doc(db, "customers", cid))
+      .then(s => { if (s.exists()) setLinkedCustomer({ id: s.id, ...s.data() }); })
+      .catch(e => console.warn("[catalog] โหลดข้อมูลลูกค้าไม่สำเร็จ:", e));
+  }, []);
+
   // 💾 จำชื่อ/เบอร์/ที่อยู่ไว้ในเครื่องลูกค้า — สั่งครั้งหน้าไม่ต้องพิมพ์ใหม่
   //    เก็บเฉพาะเครื่องนั้น (localStorage) ไม่ได้ส่งไปไหน · ไม่เก็บหมายเหตุ (เปลี่ยนทุกออเดอร์)
   const SAVED_KEY = "cpu_customer_info";
   const loadSavedInfo = () => {
+    // มาจากลิงก์ส่วนตัว → ใช้ข้อมูลจากระบบ (ถูกต้องกว่าที่ค้างในเครื่อง)
+    if (linkedCustomer) {
+      return {
+        name: linkedCustomer.name || "",
+        phone: linkedCustomer.phone || "",
+        address: linkedCustomer.address || "",
+      };
+    }
     try {
       const s = JSON.parse(localStorage.getItem(SAVED_KEY) || "{}");
       return { name: s.name || "", phone: s.phone || "", address: s.address || "" };
@@ -212,7 +232,11 @@ export default function Catalog() {
         <div style={{ maxWidth: 1100, margin: "0 auto", padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: 22, fontWeight: 800, color: T.blue, letterSpacing: 1 }}>{company.name || "CPU"}</div>
-            <div style={{ fontSize: 12, color: T.sub }}>แคตตาล็อกสินค้า • Catalog</div>
+            <div style={{ fontSize: 12, color: T.sub }}>
+              {linkedCustomer
+                ? <>สวัสดีค่ะ <b style={{ color: T.blue }}>{linkedCustomer.name}</b> 👋</>
+                : "แคตตาล็อกสินค้า • Catalog"}
+            </div>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             {/* 🛒 Cart button */}
@@ -666,6 +690,8 @@ export default function Catalog() {
                     try {
                       // 🛒 multi-item payload
                       const payload = {
+                        // 🔗 มาจากลิงก์ส่วนตัว → ติด id ไปด้วย ตอนแปลงเป็นใบสั่งของจะจับคู่ลูกค้าให้เลย
+                        ...(linkedCustomer ? { customerId: linkedCustomer.id } : {}),
                         customerName: (checkout.name||"").trim(),
                         phone: (checkout.phone||"").trim(),
                         address: (checkout.address||"").trim(),

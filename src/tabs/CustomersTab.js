@@ -34,6 +34,19 @@ export default function CustomersTab({
 
   // 🔢 จำนวนครั้งที่สั่ง — นับที่เซิร์ฟเวอร์ ไม่ใช่นับจาก orders ที่โหลดมา
   // (orders ในหน่วยความจำมีแค่ช่วง 7 วัน → ถ้านับจากตรงนั้นจะได้เลขผิดมาก)
+  // 🔗 ลิงก์สั่งของส่วนตัว — id สุ่มของ Firestore เดาไม่ได้ (ต่างจากใช้เบอร์โทร)
+  const [copiedLinkId, setCopiedLinkId] = useState("");
+  const copyOrderLink = async (c) => {
+    const url = `${window.location.origin}/c?id=${c.id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedLinkId(c.id);
+      setTimeout(() => setCopiedLinkId(""), 2000);
+    } catch {
+      window.prompt(`ลิงก์สั่งของของ ${c.name} — ส่งให้ลูกค้าเก็บไว้:`, url);
+    }
+  };
+
   const [orderCounts, setOrderCounts] = useState({});   // { [customerId]: number | null }
   const [countingBusy, setCountingBusy] = useState(false);
   const COUNT_LIMIT = 60; // นับเฉพาะรายที่อยู่ต้น ๆ ของผลกรอง — กันยิง query เป็นร้อยพร้อมกัน
@@ -132,6 +145,12 @@ export default function CustomersTab({
                   </div>
                   <div style={{ color: T.accent, fontSize: 10, marginTop: 2 }}>👁 ดูโปรไฟล์</div>
                 </div>
+                {/* 🔗 ลิงก์สั่งของส่วนตัว — ลูกค้าเปิดจากเครื่องไหนก็ได้ ข้อมูลเติมให้ครบ */}
+                <button onClick={(e) => { e.stopPropagation(); copyOrderLink(c); }}
+                  title="คัดลอกลิงก์สั่งของส่วนตัวของลูกค้ารายนี้ (ส่งให้ทางไลน์)"
+                  style={{ padding: "5px 9px", borderRadius: 7, border: `1px solid ${copiedLinkId === c.id ? T.green : "rgba(59,91,139,0.25)"}`, background: copiedLinkId === c.id ? "rgba(58,122,82,0.1)" : "rgba(59,91,139,0.08)", color: copiedLinkId === c.id ? T.green : T.accent, cursor: "pointer", fontSize: 11, whiteSpace: "nowrap" }}>
+                  {copiedLinkId === c.id ? "✅ คัดลอกแล้ว" : "🔗 ลิงก์สั่งของ"}
+                </button>
                 {role.canAdd && <button onClick={(e) => { e.stopPropagation(); setEditingCustomer({ ...c }); }}
                   title="แก้ไขชื่อ/ที่อยู่/เบอร์"
                   style={{ padding: "5px 9px", borderRadius: 7, border: "1px solid rgba(59,91,139,0.25)", background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 11 }}>✏️</button>}

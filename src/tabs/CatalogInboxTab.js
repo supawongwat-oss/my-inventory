@@ -343,10 +343,12 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
                   })()}
                   {o.status !== "converted" && onConvert && (
                     <button onClick={() => {
-                      // หาลูกค้าเดิมที่เบอร์ตรงกัน (suggest)
+                      // 🔗 สั่งผ่านลิงก์ส่วนตัว → รู้ตัวลูกค้าแน่นอน ใช้เลย
+                      // ไม่งั้นค่อยเดาจากเบอร์ที่ตรงกัน
                       const normPhone = (s) => String(s||"").replace(/\D/g, "");
                       const phoneKey = normPhone(o.phone);
-                      const matched = phoneKey ? customers.find(c => normPhone(c.phone) === phoneKey) : null;
+                      const matched = (o.customerId && customers.find(c => c.id === o.customerId))
+                        || (phoneKey ? customers.find(c => normPhone(c.phone) === phoneKey) : null);
                       setConvertModal({
                         order: o,
                         suggestedCustomer: matched,
