@@ -5,7 +5,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { db } from "./firebase";
 import { collection, doc, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
-import { compareSizes } from "./theme";
+import { compareSizes, getSizesFor } from "./theme";
 
 const T = {
   bg: "#f4f5f7", card: "#ffffff", border: "#e2e5ea",
@@ -330,8 +330,9 @@ export default function Catalog() {
                     //    เดิม sort เองด้วย localeCompare → "10","12","6","8" (เรียงแบบข้อความ ผิด)
                     const foundSizes = [...new Set(colors.flatMap(c => Object.keys(c.stock || {})))]
                       .sort(compareSizes);
-                    // ไม่มีข้อมูลไซส์เลย (สินค้ายังไม่ตั้งสต๊อก) → ใช้ไซส์มาตรฐาน ลูกค้าจะได้สั่งได้
-                    const allSizes = foundSizes.length > 0 ? foundSizes : ["S","M","L","XL","2XL","3XL"];
+                    // ไม่มีข้อมูลไซส์เลย (สินค้ายังไม่ตั้งสต๊อก) → ใช้ไซส์มาตรฐานตามชนิดสินค้า
+                    // ⚠️ รองเท้าใช้เบอร์ 36-45 ไม่ใช่ S-XL → ต้องดู sizeType
+                    const allSizes = foundSizes.length > 0 ? foundSizes : getSizesFor(order.item);
                     const setQty = (ci, sz, v) => {
                       const qtyMap = { ...(order.qtyMap || {}) };
                       qtyMap[ci] = { ...(qtyMap[ci] || {}) };
