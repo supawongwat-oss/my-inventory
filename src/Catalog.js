@@ -122,7 +122,7 @@ export default function Catalog() {
     if (search) {
       const norm = (s) => String(s||"").toLowerCase().replace(/\s+/g, "");
       const q = norm(search);
-      const text = norm(`${i.model||i.name||""} ${i.category||""} ${(i.colors||[]).map(c=>c.name).join(" ")}`);
+      const text = norm(`${i.model||i.name||""} ${i.category||""} ${(i.colors||[]).map(c=>c.colorName||c.name||"").join(" ")}`);
       if (!text.includes(q)) return false;
     }
     return true;
@@ -240,7 +240,7 @@ export default function Catalog() {
                     {/* 🎨 จุดสี + ชื่อสี (ไม่ได้ตั้งชื่อ → เดาจากรหัสสีให้) */}
                     <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
                       {(it.colors || []).slice(0, 6).map((c, i) => {
-                        const label = c.name || guessColorName(c.hex, i);
+                        const label = c.colorName || c.name || guessColorName(c.hex, i);
                         return (
                           <span key={i} title={label} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 7px 2px 3px", background: "#f1f5f9", borderRadius: 10, fontSize: 10, color: T.sub, fontWeight: 600 }}>
                             <span style={{ width: 12, height: 12, borderRadius: "50%", background: c.hex || "#ddd", border: "1px solid rgba(0,0,0,.2)" }} />
@@ -280,7 +280,7 @@ export default function Catalog() {
                      ของมี/ไม่มี พนักงานจะแจ้งลูกค้าเองตอนยืนยันออเดอร์ */}
               {(detail.colors || []).map((c, ci) => {
                 const sizes = Object.keys(c.stock || {});
-                const colorLabel = c.name || guessColorName(c.hex, ci);
+                const colorLabel = c.colorName || c.name || guessColorName(c.hex, ci);
                 return (
                   <div key={ci} style={{ marginBottom: 14, padding: 12, background: "#f8fafc", borderRadius: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -360,7 +360,7 @@ export default function Catalog() {
                           <tbody>
                             {colors.map((c, ci) => {
                               const rowQty = Object.values((order.qtyMap||{})[ci] || {}).reduce((a,b) => a+b, 0);
-                              const colorLabel = c.name || guessColorName(c.hex, ci);
+                              const colorLabel = c.colorName || c.name || guessColorName(c.hex, ci);
                               return (
                                 <tr key={ci} style={{ background: ci % 2 ? "#fafbfc" : "white" }}>
                                   <td style={{ padding: "6px 10px", borderBottom: `1px solid ${T.border}` }}>
@@ -412,7 +412,7 @@ export default function Catalog() {
                       Object.entries(row).forEach(([size, qty]) => {
                         if (qty > 0) valid.push({
                           colorIdx: idx,
-                          color: col.name || guessColorName(col.hex, idx),
+                          color: col.colorName || col.name || guessColorName(col.hex, idx),
                           colorHex: col.hex || "",
                           size: size || "",
                           qty: Number(qty) || 0,

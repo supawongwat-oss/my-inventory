@@ -124,7 +124,8 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
                           {(entry.lines||[]).map((ln, i) => {
                             const liveCol = (liveItem && typeof ln.colorIdx === "number") ? (liveItem.colors||[])[ln.colorIdx] : null;
                             const colorHex = (liveCol && liveCol.hex) || ln.colorHex || "#ddd";
-                            const colorName = (liveCol && liveCol.name) || ln.color || guessColor(colorHex) || "(ไม่ระบุสี)";
+                            // ⚠️ คลังเก็บชื่อสีที่ field "colorName" (ไม่ใช่ "name")
+                            const colorName = (liveCol && (liveCol.colorName || liveCol.name)) || ln.color || guessColor(colorHex) || "(ไม่ระบุสี)";
                             return (
                               <div key={i} style={{ fontSize: 12, color: T.text, display: "flex", gap: 8, alignItems: "center" }}>
                                 <span style={{ minWidth: 110, display: "flex", alignItems: "center", gap: 5 }}>
