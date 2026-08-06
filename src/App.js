@@ -2762,6 +2762,10 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
+        /* 🐛 flex column + maxHeight → ลูกถูก "บีบ" ให้แบนแทนที่จะ scroll
+           (เป็นค่าเริ่มต้นของ flex: flex-shrink 1) — ทำให้การ์ดในลิสต์ที่ยาว
+           แบนจนอ่านไม่ออก เหลือแต่เส้น · ใส่คลาสนี้ที่กล่อง scroll แนวตั้งทุกที่ */
+        .scroll-col > *{flex-shrink:0}
         ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-track{background:#f4f5f7}::-webkit-scrollbar-thumb{background:#cbd2d9;border-radius:4px}::-webkit-scrollbar-thumb:hover{background:#9aa5b1}
         input::placeholder{color:#475569}
         input:focus{outline:none;border-color:#3b5b8b !important;box-shadow:0 0 0 3px rgba(59,91,139,0.15)}select:focus{outline:none;border-color:#3b5b8b !important}
@@ -4626,7 +4630,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               {salesTxLoading ? "กำลังโหลด..." : q ? `ไม่พบรุ่นที่ค้น "${salesSearch}"` : (isMonth?"ยังไม่มีการจ่ายออกในเดือนนี้":"ยังไม่มีการจ่ายออกในวันนี้")}
             </div>
           ) : (
-            <div style={{display:"flex",flexDirection:"column",gap:12,maxHeight:"60vh",overflowY:"auto"}}>
+            <div className="scroll-col" style={{display:"flex",flexDirection:"column",gap:12,maxHeight:"60vh",overflowY:"auto"}}>
               {models.map(model=>{
                 const m = byModel[model];
                 // จัดกลุ่มตามสีก่อน → แต่ละสีเรียงไซส์
@@ -4713,7 +4717,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           {cellTx.length===0 ? (
             <div style={{textAlign:"center",padding:30,color:T.muted,fontSize:13}}>ไม่พบรายการ</div>
           ) : (
-            <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"50vh",overflowY:"auto"}}>
+            <div className="scroll-col" style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"50vh",overflowY:"auto"}}>
               {cellTx.map(t=>(
                 <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",border:`1px solid ${T.border}`,borderRadius:10}}>
                   <div style={{flex:1,minWidth:0}}>
@@ -4803,7 +4807,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         return (
         <Modal onClose={()=>{setFillOrderMix(null);setFillRowsByIdx({});}} w={1000}>
           <MHead title={`✏️ กรอกรายละเอียด — ${order.orderNo}`} sub={`ลูกค้า: ${order.customerName} · รายการคละ ${mixItems.length} รายการ`} onClose={()=>{setFillOrderMix(null);setFillRowsByIdx({});}} color={T.amber}/>
-          <div style={{display:"flex",flexDirection:"column",gap:16,maxHeight:"72vh",overflowY:"auto"}}>
+          <div className="scroll-col" style={{display:"flex",flexDirection:"column",gap:16,maxHeight:"72vh",overflowY:"auto"}}>
             {mixItems.map(({it,idx})=>{
               const cItem = clothingItems.find(c=>c.id===it.clothingId);
               const grid = fillRowsByIdx[idx]||{};
@@ -4891,7 +4895,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           {(pendingMixSales||[]).length===0?(
             <div style={{padding:40,textAlign:"center",color:T.muted,fontSize:13}}>ไม่มีรายการค้าง 🎉</div>
           ):(
-            <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"60vh",overflowY:"auto"}}>
+            <div className="scroll-col" style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"60vh",overflowY:"auto"}}>
               {pendingMixSales.map(p=>{
                 const item = clothingItems.find(i=>i.id===p.itemId);
                 const total = (p.rows||[]).reduce((s,r)=>s+(Number(r.qty)||0),0);
@@ -5087,7 +5091,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               </div>
             </label>
             <div style={{fontSize:11,color:T.muted,marginBottom:8,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>ราคาขาย (฿/ชิ้น) ตามไซส์ของรุ่นนี้</div>
-            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:18,maxHeight:340,overflowY:"auto"}}>
+            <div className="scroll-col" style={{display:"flex",flexDirection:"column",gap:8,marginBottom:18,maxHeight:340,overflowY:"auto"}}>
               {priceRows.length===0
                 ? <div style={{padding:"18px",textAlign:"center",color:T.muted,fontSize:12}}>รุ่นนี้ยังไม่มีไซส์ — เพิ่มไซส์ที่ปุ่ม ⚙️ สี/ไซส์ ก่อน</div>
                 : priceRows.map(g=>(
@@ -5138,7 +5142,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               </div>
               {cols.length===0
                 ? <div style={{padding:"24px",textAlign:"center",color:T.muted,fontSize:12,marginBottom:12}}>ยังไม่มีสีในรุ่นนี้</div>
-                : <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12,maxHeight:300,overflowY:"auto"}}>
+                : <div className="scroll-col" style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12,maxHeight:300,overflowY:"auto"}}>
                     {cols.map((c,ci)=>{
                       const qty = Object.values(c.stock||{}).reduce((s,q)=>s+(Number(q)||0),0);
                       const locked = qty>0;
@@ -5428,7 +5432,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               <button onClick={()=>setAll(true)} style={{flex:1,padding:"7px",borderRadius:7,border:`1px solid ${T.border}`,background:"rgba(52,211,153,0.08)",color:"#34d399",cursor:"pointer",fontSize:11,fontFamily:"'Sarabun',sans-serif",fontWeight:600}}>✓ เปิดทั้งหมด</button>
               <button onClick={()=>setAll(false)} style={{flex:1,padding:"7px",borderRadius:7,border:`1px solid ${T.border}`,background:"rgba(248,113,113,0.08)",color:"#f87171",cursor:"pointer",fontSize:11,fontFamily:"'Sarabun',sans-serif",fontWeight:600}}>✕ ปิดทั้งหมด</button>
             </div>
-            <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14,maxHeight:"50vh",overflowY:"auto"}}>
+            <div className="scroll-col" style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14,maxHeight:"50vh",overflowY:"auto"}}>
               {allNavItems.map(it=>{
                 const on=current.includes(it.id);
                 return (

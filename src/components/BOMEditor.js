@@ -96,7 +96,7 @@ export default function BOMEditor({ initialBom, clothingItems = [], products = [
         </div>
       )}
 
-      <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14,maxHeight:280,overflowY:"auto"}}>
+      <div className="scroll-col" style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14,maxHeight:280,overflowY:"auto"}}>
         {materials.map((m, idx) => (
           <div key={idx} style={{display:"grid",gridTemplateColumns:"2fr 90px 90px 90px 36px",gap:8,alignItems:"end",padding:10,background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:10}}>
             <div>
