@@ -248,7 +248,7 @@ export default function NewOrderModal({
                                   setOrderForm(f=>({...f,items:f.items.filter(i=>!(i.clothingId===orderItemForm.clothingId&&i.colorIdx===Number(orderItemForm.colorIdx)&&i.size===sz))}));
                                 }
                               }}
-                              style={{flex:1,minWidth:0,maxWidth:64,textAlign:"center",background:noStock?"rgba(203,210,217,0.3)":stock===0&&defer?"rgba(124,58,237,0.08)":"rgba(59,91,139,0.1)",border:`1px solid ${noStock?"rgba(203,210,217,0.5)":stock===0&&defer?"rgba(124,58,237,0.35)":"rgba(59,91,139,0.25)"}`,borderRadius:6,color:noStock?"#9aa5b1":stock===0&&defer?"#7c3aed":"#3b5b8b",fontFamily:"monospace",fontSize:13,fontWeight:600,padding:"6px 4px",outline:"none",cursor:noStock?"not-allowed":"text"}}
+                              style={{flex:1,minWidth:0,width:"100%",textAlign:"center",background:noStock?"rgba(203,210,217,0.3)":stock===0&&defer?"rgba(124,58,237,0.08)":"rgba(59,91,139,0.1)",border:`1px solid ${noStock?"rgba(203,210,217,0.5)":stock===0&&defer?"rgba(124,58,237,0.35)":"rgba(59,91,139,0.25)"}`,borderRadius:6,color:noStock?"#9aa5b1":stock===0&&defer?"#7c3aed":"#3b5b8b",fontFamily:"monospace",fontSize:13,fontWeight:600,padding:"6px 4px",outline:"none",cursor:noStock?"not-allowed":"text"}}
                             />
                           </div>
                         );
