@@ -4917,7 +4917,9 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         const col = item?.colors?.[priceModal.ci];
         if(!item||!col) return null;
         // 📏 แถวราคาสร้างจากไซส์จริงของรุ่นนี้ (สนับแข้ง/รองเท้า ไม่ได้ใช้ไซส์เสื้อ)
-        const priceRows = priceRowsForSizes(sizesFor(item));
+        const itemSizes = sizesFor(item);
+        const bySize = !!priceModal.bySize;
+        const priceRows = priceRowsForSizes(itemSizes, bySize);
         const handleSavePrices = async () => {
           // คงคีย์เดิมที่ไม่ได้อยู่ในแถวตอนนี้ไว้ (เช่น ไซส์ที่ซ่อนไป — เผื่อเอากลับมา)
           const salePrices = { ...(col.salePrices || {}) };
@@ -4935,7 +4937,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
             }
             return c;
           });
-          await updateDoc(doc(db,"clothing",priceModal.itemId),{colors:newColors});
+          await updateDoc(doc(db,"clothing",priceModal.itemId),{colors:newColors, priceBySize: bySize});
           const oldColor = item.colors[priceModal.ci];
           logAudit(user, {
             action: AUDIT_ACTIONS.PRICE,
@@ -4972,6 +4974,27 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               <input type="number" value={priceForm.costPrice} onFocus={e=>e.target.select()} onChange={e=>setPriceForm(f=>({...f,costPrice:e.target.value}))} placeholder="0"
                 style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 12px",fontFamily:"monospace",fontSize:13,outline:"none"}}/>
             </div>
+            {/* 🎯 บางสินค้า (เช่น สนับแข้ง) S/M/L คนละราคา — ไม่ควรรวมเป็นกลุ่ม S-XL */}
+            <label style={{display:"flex",alignItems:"center",gap:9,padding:"8px 12px",marginBottom:10,cursor:"pointer",borderRadius:8,
+              background:bySize?"rgba(124,58,237,0.10)":"rgba(241,243,246,0.5)",border:`1px solid ${bySize?"#8b5cf6":T.border}`}}>
+              <input type="checkbox" checked={bySize} style={{cursor:"pointer",width:16,height:16}}
+                onChange={e=>{
+                  const on=e.target.checked;
+                  const rows=priceRowsForSizes(itemSizes,on);
+                  const sp=col.salePrices||{};
+                  // เติมค่าเริ่มต้นให้แถวใหม่ — ใช้ราคาที่เคยตั้งของไซส์นั้น/กลุ่มนั้น ไม่งั้นเป็นราคาขายหลัก
+                  setPriceForm(f=>{
+                    const next={...f};
+                    rows.forEach(r=>{ if(next[r.key]==null||next[r.key]==="") next[r.key]=sp[r.key] ?? getPriceForSize(col,r.sizes[0]) ?? ""; });
+                    return next;
+                  });
+                  setPriceModal(p=>({...p,bySize:on}));
+                }}/>
+              <div style={{flex:1}}>
+                <div style={{fontSize:12,fontWeight:700,color:bySize?"#7c3aed":T.text}}>🎯 แยกราคาทีละไซส์</div>
+                <div style={{fontSize:10,color:T.muted,marginTop:2}}>{bySize?`ตั้งได้ทีละไซส์ (${itemSizes.length} ไซส์)`:"ตอนนี้รวมเป็นกลุ่ม (6-12 / S-XL) — ติ๊กถ้า S, M, L คนละราคา"}</div>
+              </div>
+            </label>
             <div style={{fontSize:11,color:T.muted,marginBottom:8,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>ราคาขาย (฿/ชิ้น) ตามไซส์ของรุ่นนี้</div>
             <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:18,maxHeight:340,overflowY:"auto"}}>
               {priceRows.length===0

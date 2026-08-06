@@ -151,7 +151,9 @@ export const splitSizesIntoRows = (items, maxPerRow = 4, options = {}) => {
 
 // 🧾 แถวสำหรับหน้าตั้งราคา — สร้างจาก "ไซส์จริงของรุ่น" ไม่ใช่ชุดมาตรฐานตายตัว
 // ไซส์มาตรฐานจับเป็นกลุ่ม (6-12 / S-XL) · ไซส์อื่น (SS, 37-45, ฟรีไซส์) แยกแถวละไซส์
-export const priceRowsForSizes = (sizes = []) => {
+// bySize = true → แยกราคาทีละไซส์ทั้งหมด (เช่น สนับแข้ง S/M/L คนละราคา)
+export const priceRowsForSizes = (sizes = [], bySize = false) => {
+  if (bySize) return sizes.map(sz => ({ key: String(sz), label: `ไซส์ ${sz}`, sizes: [sz] }));
   const rows = [];
   const seen = new Set();
   sizes.forEach(sz => {

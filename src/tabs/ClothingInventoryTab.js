@@ -261,7 +261,8 @@ export default function ClothingInventoryTab({
                           {(() => {
                             const sp = col.salePrices || {};
                             // 📏 แถวราคาอิงไซส์จริงของรุ่นนี้ (สนับแข้ง/รองเท้า ใช้คนละชุดกับเสื้อ)
-                            const rows = priceRowsForSizes(sizesFor(item));
+                            const bySize = !!item.priceBySize; // 🎯 รุ่นที่ตั้งราคาแยกทีละไซส์ (เช่น สนับแข้ง)
+                            const rows = priceRowsForSizes(sizesFor(item), bySize);
                             const hasAny = rows.some(r => sp[r.key] != null && sp[r.key] !== "" && Number(sp[r.key]) > 0) || Number(col.salePrice) > 0;
                             const cost = Number(col.costPrice) || 0;
                             return (
@@ -269,7 +270,7 @@ export default function ClothingInventoryTab({
                                 const seed = { costPrice: col.costPrice || "" };
                                 rows.forEach(r => { seed[r.key] = sp[r.key] ?? col.salePrice ?? ""; });
                                 setPriceForm(seed);
-                                setPriceModal({ itemId: item.id, ci });
+                                setPriceModal({ itemId: item.id, ci, bySize });
                               }}
                                 style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${hasAny ? "rgba(52,211,153,0.3)" : T.border}`, background: hasAny ? "rgba(52,211,153,0.08)" : "rgba(59,91,139,0.05)", color: hasAny ? "#34d399" : T.sub, cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "'Sarabun',sans-serif", whiteSpace: "nowrap" }}>
                                 💰 {hasAny ? "แก้ไขราคา" : "ตั้งราคา"}
