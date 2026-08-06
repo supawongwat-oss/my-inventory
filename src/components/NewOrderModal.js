@@ -113,13 +113,14 @@ export default function NewOrderModal({
               <div>
                 <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:5,fontWeight:600}}>{label}</label>
                 <div style={{position:"relative"}}>
-                  <input placeholder={ph} disabled={disabled}
+                  <input placeholder={picked?"":ph} disabled={disabled}
                     value={picked?"":search}
                     onChange={e=>setSearch(e.target.value)}
                     style={{width:"100%",boxSizing:"border-box",background:disabled?"rgba(0,0,0,0.04)":T.input,border:`1px solid ${picked?"#34d399":T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 32px 9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
                   {picked&&(
+                    // ทับบนช่อง input — ต้องมีพื้นหลังทึบ ไม่งั้นข้อความซ้อนกับที่อยู่ข้างหลัง
                     <div onClick={onClear} title="เปลี่ยน — กดเพื่อค้นหาใหม่"
-                      style={{position:"absolute",inset:0,display:"flex",alignItems:"center",gap:7,padding:"0 32px 0 14px",cursor:"pointer",fontSize:13,color:T.text,fontWeight:600}}>
+                      style={{position:"absolute",inset:1,borderRadius:8,background:T.input||"#fff",display:"flex",alignItems:"center",gap:7,padding:"0 32px 0 13px",cursor:"pointer",fontSize:13,color:T.text,fontWeight:600,overflow:"hidden",whiteSpace:"nowrap"}}>
                       {pickedNode}
                     </div>
                   )}
