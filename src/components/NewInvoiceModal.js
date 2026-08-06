@@ -154,6 +154,23 @@ export default function NewInvoiceModal({
                 ))}
               </div>
             </div>
+            {/* 📅 วันที่เอกสาร — ออก/แก้ย้อนหลังได้ (ยอดจะไปลงเดือนตามวันที่นี้) */}
+            {(()=>{
+              const today=new Date();
+              const iso=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+              const back=invoiceForm.docDate&&invoiceForm.docDate!==iso;
+              return (
+                <div>
+                  <label style={{fontSize:11,color:back?"#b45309":T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>
+                    วันที่เอกสาร {back&&<span style={{fontSize:10,fontWeight:700}}>· ย้อนหลัง</span>}
+                  </label>
+                  <input type="date" value={invoiceForm.docDate||iso} max={iso}
+                    onChange={e=>setInvoiceForm(f=>({...f,docDate:e.target.value||iso}))}
+                    title="วันที่ที่จะแสดงบนบิลและใช้คิดยอดในรายงาน — เลือกย้อนหลังได้"
+                    style={{background:back?"rgba(245,158,11,0.10)":T.input,border:`1px solid ${back?"#f59e0b":T.inputBorder}`,color:T.text,borderRadius:8,padding:"7px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none",cursor:"pointer"}}/>
+                </div>
+              );
+            })()}
             <div style={{display:"flex",alignItems:"flex-end",gap:10,flexWrap:"wrap"}}>
               <label style={{display:"flex",alignItems:"center",gap:8,cursor:invoiceDocType==="tax"?"not-allowed":"pointer",padding:"7px 14px",borderRadius:8,border:`1px solid ${invoiceVat?"#3b5b8b":T.border}`,background:invoiceVat?"rgba(59,91,139,0.15)":"transparent",opacity:invoiceDocType==="tax"?0.8:1}}
                 title={invoiceDocType==="tax"?"ใบกำกับภาษีต้องมี VAT 7% เสมอ":""}>

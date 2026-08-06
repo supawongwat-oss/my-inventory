@@ -4,9 +4,10 @@
 
 import { doc, runTransaction, serverTimestamp } from "firebase/firestore";
 
-// เลข monthCode ของ "ตอนนี้" (พ.ศ. 2 หลัก + เดือน 2 หลัก)
-function monthCodeNow() {
-  const now = new Date();
+// เลข monthCode ของวันที่ที่กำหนด (พ.ศ. 2 หลัก + เดือน 2 หลัก) — ไม่ส่งมา = วันนี้
+// ส่ง forDate เข้ามาได้ตอนออกเอกสารย้อนหลัง → เลขจะอยู่ในชุดของเดือนนั้น
+function monthCodeNow(forDate) {
+  const now = forDate instanceof Date && !isNaN(forDate) ? forDate : new Date();
   const yy = String(now.getFullYear() + 543).slice(-2);
   const mm = String(now.getMonth() + 1).padStart(2, "0");
   return `${yy}${mm}`;
@@ -38,8 +39,8 @@ export function generateDocNo(prefix, existingDocs = [], field = "invoiceNo") {
 // - counters/{PREFIX+monthCode}.seq ถูก increment ใน transaction เดียว → ไม่มีทางได้เลขซ้ำ
 // - ครั้งแรกของเดือน (counter ยังไม่มี) จะ seed จากเลขสูงสุดใน docs ที่โหลดมา
 // - ถ้า transaction ล้มเหลว (เช่น rules ยังไม่อนุญาต counters) → fallback เป็น max+1 แบบเดิม (ไม่แย่กว่าเดิม)
-export async function reserveDocNo(db, prefix, existingDocs = [], field = "invoiceNo") {
-  const monthCode = monthCodeNow();
+export async function reserveDocNo(db, prefix, existingDocs = [], field = "invoiceNo", forDate = null) {
+  const monthCode = monthCodeNow(forDate);
   const pattern = `${prefix}${monthCode}-`;
   const seedMax = maxRunInMonth(pattern, existingDocs, field);
   const ref = doc(db, "counters", `${prefix}${monthCode}`);

@@ -49,11 +49,37 @@ const ProductionTab = lazy(() => import("./tabs/ProductionTab"));
 const HexColorPicker = lazy(() => import("react-colorful").then(m => ({ default: m.HexColorPicker })));
 // 🧾 ค่าเริ่มต้นการแสดงข้อมูลบริษัทบนบิล — ใช้ทุกที่ที่รีเซ็ต/เปิดฟอร์มออกบิลใหม่
 // ตั้งให้ "ปลอดภัยไว้ก่อน" สำหรับลูกค้าที่ไม่รับ VAT — พนักงานกดเปิดเองเมื่อลูกค้าขอ
+// 📅 วันที่เอกสาร (ออก/แก้ย้อนหลังได้) — ระบบเก็บเป็น "DD/MM/YYYY HH:mm"
+//    ส่วนช่องกรอกใน UI ใช้ <input type="date"> ที่เป็น "YYYY-MM-DD" จึงต้องแปลงกลับไปมา
+const pad2 = (n) => String(n).padStart(2, "0");
+export const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; };
+// "DD/MM/YYYY HH:mm" → "YYYY-MM-DD" (รองรับปี พ.ศ. ในข้อมูลเก่า)
+export const docDateToISO = (s) => {
+  const part = String(s || "").split(" ")[0];
+  const [d, m, y] = part.split("/").map(Number);
+  if (!d || !m || !y) return todayISO();
+  return `${y > 2500 ? y - 543 : y}-${pad2(m)}-${pad2(d)}`;
+};
+// "YYYY-MM-DD" → "DD/MM/YYYY HH:mm" — คงเวลาเดิมไว้ถ้าเป็นการแก้เอกสารเก่า
+// วันนี้ = ใช้เวลาจริงตอนกด | ย้อนหลัง = 09:00 (ไม่มีเวลาจริงให้อ้าง)
+export const isoToDocDate = (iso, prevDateStr = "") => {
+  const [y, m, d] = String(iso || "").split("-").map(Number);
+  const t = new Date();
+  if (!y || !m || !d) return `${pad2(t.getDate())}/${pad2(t.getMonth()+1)}/${t.getFullYear()} ${pad2(t.getHours())}:${pad2(t.getMinutes())}`;
+  const prevTime = String(prevDateStr || "").split(" ")[1];
+  const isToday = iso === todayISO();
+  const time = prevTime || (isToday ? `${pad2(t.getHours())}:${pad2(t.getMinutes())}` : "09:00");
+  return `${pad2(d)}/${pad2(m)}/${y} ${time}`;
+};
+export const isoToJsDate = (iso) => { const [y, m, d] = String(iso || "").split("-").map(Number); return (y && m && d) ? new Date(y, m - 1, d) : new Date(); };
+
 const INVOICE_DISPLAY_DEFAULTS = {
   showCompanyTaxId: false,  // ไม่ติ๊ก — กดเองถ้าลูกค้าต้องการเลขภาษี
   hideCompanyDetails: true, // ติ๊กไว้ — กดออกเองถ้าลูกค้าต้องการข้อมูลบริษัทเต็ม
   showJobImages: true,      // 🖼️ รูปงาน custom บนบิล — แสดงไว้ก่อน กดปิดเองถ้าไม่ต้องการ
 };
+// ต้องเป็นฟังก์ชัน — docDate ต้องเป็น "วันนี้" ตอนเปิดฟอร์ม ไม่ใช่ตอนโหลดแอป (เปิดค้างข้ามวันได้)
+const invoiceDefaults = () => ({ ...INVOICE_DISPLAY_DEFAULTS, docDate: todayISO() });
 
 // ── MAIN APP ───────────────────────────────────────────────────
 export default function App() {
@@ -377,7 +403,7 @@ export default function App() {
     customerId:"", customerName:"", customerPhone:"", customerAddress:"", customerTaxId:"",
     items:[], note:"", dueDate:"", vatRate:7,
     discount:0, discountType:"amount", // ส่วนลดท้ายบิล (amount หรือ percent)
-    ...INVOICE_DISPLAY_DEFAULTS, // showCompanyTaxId / hideCompanyDetails
+    ...invoiceDefaults(), // showCompanyTaxId / hideCompanyDetails
     useShipping: false, shippingFee: 0, // ค่าจัดส่ง (เลือกเปิด/ปิด)
   });
   const [invoiceItemForm, setInvoiceItemForm] = useState({ description:"", qty:"", unitPrice:"", unit:"ชิ้น" });
@@ -2019,10 +2045,11 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         ...invoiceForm, ...calc,
         docType:invoiceDocType, useVat:invoiceVat,
         bankAccount: bank,
-        // คงค่าเดิม: invoiceNo, by, date, createdAt, status
+        // คงค่าเดิม: invoiceNo, by, createdAt, status
         invoiceNo: existing?.invoiceNo,
         by: existing?.by,
-        date: existing?.date,
+        // 📅 วันที่เอกสาร — แก้ย้อนหลังได้ (คงเวลาเดิมของใบไว้) | createdAt คือเวลาบันทึกจริง ไม่แตะ
+        date: isoToDocDate(invoiceForm.docDate, existing?.date),
         createdAt: existing?.createdAt,
         status: existing?.status || "ออกแล้ว",
         revisions,
@@ -2030,39 +2057,43 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         lastEditedAt: now(),
       };
       delete updated.depositAmount; delete updated.depositMethod; // ฟิลด์ชั่วคราวของฟอร์ม (แก้บิลจัดการชำระผ่านปุ่ม 💵)
+      delete updated.docDate; // ฟิลด์ของฟอร์มเท่านั้น — ตัวจริงเก็บใน date
       await updateDoc(doc(db,"invoices",editingInvoiceId), updated);
       logAudit(user, {
         action: AUDIT_ACTIONS.UPDATE,
         collection: "invoices",
         targetId: editingInvoiceId,
         targetLabel: `${existing?.invoiceNo} · ${invoiceForm.customerName}`,
-        before: { total: existing?.total, items: (existing?.items||[]).length, discount: existing?.discount },
-        after: { total: calc.total, items: invoiceForm.items.length, discount: invoiceForm.discount },
-        note: `แก้ไขครั้งที่ ${revisions}`,
+        before: { total: existing?.total, items: (existing?.items||[]).length, discount: existing?.discount, date: existing?.date },
+        after: { total: calc.total, items: invoiceForm.items.length, discount: invoiceForm.discount, date: updated.date },
+        note: `แก้ไขครั้งที่ ${revisions}${updated.date!==existing?.date?` · เปลี่ยนวันที่เอกสาร ${existing?.date||"-"} → ${updated.date}`:""}`,
       });
       setShowPrintInvoice({...updated, id:editingInvoiceId});
       setShowNewInvoice(false);
       setEditingInvoiceId(null);
-      setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0,...INVOICE_DISPLAY_DEFAULTS});
+      setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0,...invoiceDefaults()});
       return;
     }
 
     // ── โหมดสร้างใหม่ ──
-    const invNo = await reserveDocNo(db, "INV", invoices, "invoiceNo");
+    // 📅 ออกบิลย้อนหลังได้ — เลขที่เอกสารจะอยู่ในชุดของเดือนตามวันที่ที่เลือก
+    const docDateStr = isoToDocDate(invoiceForm.docDate);
+    const invNo = await reserveDocNo(db, "INV", invoices, "invoiceNo", isoToJsDate(invoiceForm.docDate));
     // 💰 มัดจำที่กรอกในหน้าออกบิล → เพิ่มเป็นการชำระ (รวมกับมัดจำที่ผูกจากใบสั่ง ถ้ามี)
     const inlineDep = Number(invoiceForm.depositAmount) || 0;
     const finalPayments = [
       ...(invoiceForm.payments || []),
-      ...(inlineDep > 0 ? [{ id: `dep_inline_${Date.now()}`, amount: inlineDep, method: invoiceForm.depositMethod || "โอน", date: now(), bank: "", note: "มัดจำ (ตอนออกบิล)", receivedBy: user.name }] : []),
+      ...(inlineDep > 0 ? [{ id: `dep_inline_${Date.now()}`, amount: inlineDep, method: invoiceForm.depositMethod || "โอน", date: docDateStr, bank: "", note: "มัดจำ (ตอนออกบิล)", receivedBy: user.name }] : []),
     ];
     const data = {
       ...invoiceForm, ...calc,
       payments: finalPayments,
       invoiceNo:invNo, docType:invoiceDocType, useVat:invoiceVat,
       bankAccount: bank,
-      by:user.name, date:now(), createdAt:serverTimestamp(), status:"ออกแล้ว"
+      by:user.name, date:docDateStr, createdAt:serverTimestamp(), status:"ออกแล้ว"
     };
     delete data.depositAmount; delete data.depositMethod; // ฟิลด์ชั่วคราวของฟอร์ม ไม่ต้องเก็บลง doc
+    delete data.docDate; // ฟิลด์ของฟอร์มเท่านั้น — ตัวจริงเก็บใน date
     const ref = await addDoc(collection(db,"invoices"), data);
     logAudit(user, {
       action: AUDIT_ACTIONS.CREATE,
@@ -2073,7 +2104,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     });
     setShowPrintInvoice({...data, id:ref.id});
     setShowNewInvoice(false);
-    setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0,...INVOICE_DISPLAY_DEFAULTS});
+    setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0,...invoiceDefaults()});
     // 🧭 เด้งไปหน้า "ออกบิล" ให้เห็นบิลใหม่ในรายการทันที (โดยเฉพาะตอนออกบิลรวมจากหน้าใบสั่งของ)
     setActiveTab("invoice");
   };
@@ -2221,6 +2252,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       showCompanyTaxId: inv.showCompanyTaxId !== false,
       hideCompanyDetails: inv.hideCompanyDetails === true,
       showJobImages: inv.showJobImages !== false,
+      docDate: docDateToISO(inv.date), // 📅 วันที่เอกสารเดิม — แก้ย้อนหลังได้
       // 📋 รายละเอียดงาน custom (ผ้า/คอ/รูป) — ต้องพกติดมาด้วย ไม่งั้นแก้บิลแล้วรายละเอียดหาย
       ...(inv.customDetails ? { customDetails: inv.customDetails } : {}),
       ...(inv.payments ? { payments: inv.payments } : {}),
@@ -3016,7 +3048,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                     discount: 0,
                     discountType: "amount",
                     useShipping: false, shippingFee: 0,
-                    ...INVOICE_DISPLAY_DEFAULTS,
+                    ...invoiceDefaults(),
                     customDetails,
                   });
                 }, 50);
