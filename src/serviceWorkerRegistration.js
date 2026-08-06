@@ -67,10 +67,25 @@ function checkValidServiceWorker(swUrl, config) {
     });
 }
 
+// 🧹 ล้าง service worker + cache เก่าทิ้งให้หมด
+// ⚠️ เดิมรอ navigator.serviceWorker.ready ซึ่ง "ไม่มีวัน resolve" ถ้า SW ตัวเก่าพัง
+//    (โปรเจกต์นี้ไม่มี workbox → ไม่เคยมีไฟล์ service-worker.js จริง แต่โค้ดสั่ง register
+//     → เบราว์เซอร์ได้หน้า 404 HTML กลับมา → SW ค้างครึ่ง ๆ กลาง ๆ
+//     → ถ้าเคยลงทะเบียนสำเร็จมาก่อน จะเสิร์ฟไฟล์เก่าค้าง deploy ใหม่ไม่มีผล)
+//    ใช้ getRegistrations() แทน — ได้ทุกตัวที่มีอยู่จริง ไม่ต้องรอ ready
 export function unregister() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.ready
-      .then((registration) => registration.unregister())
-      .catch((error) => console.error(error.message));
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.getRegistrations()
+    .then(regs => {
+      if (regs.length === 0) return;
+      console.info(`[sw] ล้าง service worker เก่า ${regs.length} ตัว`);
+      return Promise.all(regs.map(r => r.unregister()));
+    })
+    .catch(e => console.warn('[sw] unregister failed:', e?.message || e));
+  // ล้าง cache ที่ SW เก่าทิ้งไว้ด้วย — ไม่งั้นไฟล์เก่ายังค้างในเครื่อง
+  if ('caches' in window) {
+    caches.keys()
+      .then(keys => Promise.all(keys.map(k => caches.delete(k))))
+      .catch(() => {});
   }
 }
