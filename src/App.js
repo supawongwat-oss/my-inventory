@@ -2169,10 +2169,21 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   const handleMergeInvoices = async () => {
     const sel = invoices.filter(i => selectedInvoices.has(i.id));
     if (sel.length < 2) { alert("เลือกอย่างน้อย 2 บิล"); return; }
+    // 👤 เทียบลูกค้าแบบไม่ซีเรียสช่องว่าง/ตัวพิมพ์ — ถ้ามีรหัสลูกค้าให้ใช้รหัสก่อน
+    //    (เดิมเทียบชื่อแบบเป๊ะ ๆ ทำให้ชื่อที่ต่างกันแค่เว้นวรรค/จุด รวมไม่ได้)
+    const idOf = (i) => i.customerId || `name:${String(i.customerName || "").trim().toLowerCase().replace(/\s+/g, " ")}`;
     const cname = sel[0].customerName;
-    if (!sel.every(i => i.customerName === cname)) { alert("รวมได้เฉพาะบิลของลูกค้าคนเดียวกัน"); return; }
-    if (sel.some(i => i.mergedInto)) { alert("มีบิลที่ถูกรวมไปแล้วในรายการที่เลือก"); return; }
-    if (sel.some(i => i.convertedTo)) { alert("มีบิลที่แปลงเป็นเอกสารอื่นแล้ว — รวมไม่ได้"); return; }
+    const key0 = idOf(sel[0]);
+    const otherCust = sel.filter(i => idOf(i) !== key0);
+    if (otherCust.length) {
+      const names = [...new Set(otherCust.map(i => `${i.invoiceNo} (${i.customerName || "-"})`))].slice(0, 8);
+      alert(`รวมได้เฉพาะบิลของลูกค้าคนเดียวกัน\n\nลูกค้าหลัก: ${cname}\nบิลที่เป็นคนละลูกค้า ${otherCust.length} ใบ:\n${names.join("\n")}${otherCust.length > 8 ? "\n..." : ""}`);
+      return;
+    }
+    const alreadyMerged = sel.filter(i => i.mergedInto);
+    if (alreadyMerged.length) { alert(`มีบิลที่ถูกรวมไปแล้ว ${alreadyMerged.length} ใบ — เอาออกจากรายการที่เลือกก่อน\n\n${alreadyMerged.map(i => `${i.invoiceNo} → ${i.mergedInto?.invoiceNo || ""}`).slice(0, 10).join("\n")}`); return; }
+    const converted = sel.filter(i => i.convertedTo);
+    if (converted.length) { alert(`มีบิลที่แปลงเป็นเอกสารอื่นแล้ว ${converted.length} ใบ — รวมไม่ได้\n\n${converted.map(i => i.invoiceNo).slice(0, 10).join(", ")}`); return; }
     const days = new Set(sel.map(i => (i.date || "").slice(0, 10)));
     if (days.size > 1 && !window.confirm("บิลที่เลือกอยู่คนละวัน — ยืนยันรวมต่อไหม?")) return;
     if (!window.confirm(`รวม ${sel.length} บิลของ "${cname}" เป็นบิลเดียว?\n\nบิลเดิมจะถูกทำเครื่องหมาย "รวมแล้ว" (ไม่ถูกลบ — ย้อนได้)`)) return;
@@ -2200,6 +2211,12 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       note: [base.note, `🔗 รวมจาก ${ordered.map(i => i.invoiceNo).join(", ")}`].filter(Boolean).join(" · "),
     };
     delete newData.id; delete newData.convertedTo; delete newData.mergedInto;
+    // 📦 Firestore จำกัดขนาดเอกสาร 1MB — รวมหลายใบที่มีรายการเยอะอาจทะลุ
+    const approxKB = Math.round(JSON.stringify(newData).length / 1024);
+    if (approxKB > 900) {
+      alert(`รวมไม่ได้ — บิลรวมจะใหญ่เกินขีดจำกัด (${approxKB} KB / สูงสุด ~1000 KB)\n\nรวมทีละน้อยใบลงก่อน แล้วค่อยรวมบิลรวมเข้าด้วยกันอีกทีได้`);
+      return;
+    }
     try {
       const ref = await addDoc(collection(db, "invoices"), newData);
       for (const i of ordered) {
