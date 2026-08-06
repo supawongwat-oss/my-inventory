@@ -339,6 +339,9 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, onBulkC
                   </div>
                   <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                     <span style={{ background: s.bg, color: s.color, padding: "4px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700 }}>{s.label}</span>
+                    {o.cancelledByCustomer && (
+                      <span title="ลูกค้ากดยกเลิกเองจากหน้าสั่งของ" style={{ background: "#fef3c7", color: "#b45309", padding: "4px 9px", borderRadius: 12, fontSize: 10, fontWeight: 700 }}>ลูกค้ายกเลิกเอง</span>
+                    )}
                     <select value={o.status||"new"} onChange={e=>setStatus(o.id, e.target.value)}
                       style={{ padding: "5px 8px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 11, fontFamily:"inherit" }}>
                       {Object.entries(STATUS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}

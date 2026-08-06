@@ -5,7 +5,7 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { db, auth, authReady } from "./firebase";
 import { signInAnonymously } from "firebase/auth";
-import { collection, doc, getDoc, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, addDoc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { compareSizes, getSizesFor } from "./theme";
 
 const T = {
@@ -38,6 +38,15 @@ function guessColorName(hex, fallbackIdx) {
 // 👟 กรองไซส์ให้ตรงชนิดสินค้า — บางสีมีข้อมูลไซส์ผิดชนิดค้างอยู่ในคลัง
 // (เช่น รองเท้าแต่สีนึงมี S,M,L,XL ติดมา) ถ้าไม่กรอง ลูกค้าจะเห็นไซส์มั่ว
 // เกณฑ์: เบอร์รองเท้า = ตัวเลข ≥ 30 · ไซส์เด็ก = ตัวเลข < 30
+// Firestore timestamp → "21/07 14:30"
+const fmtOrderDate = (ts) => {
+  if (!ts) return "—";
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  if (isNaN(d.getTime())) return "—";
+  const p = n => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth()+1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+
 const isShoeSize = (sz) => /^\d+$/.test(String(sz)) && Number(sz) >= 30;
 const sizeFitsItem = (item, sz) =>
   (item?.sizeType === "shoe") ? isShoeSize(sz) : !isShoeSize(sz);
@@ -118,6 +127,65 @@ export default function Catalog() {
       .then(s => { if (s.exists()) setLinkedCustomer({ id: s.id, ...s.data() }); })
       .catch(e => console.warn("[catalog] โหลดข้อมูลลูกค้าไม่สำเร็จ:", e));
   }, []);
+
+  // 🧾 ออเดอร์ของฉัน — จำ id ที่เคยส่งไว้ในเครื่อง เพื่อให้ลูกค้าตามดู/ยกเลิกเองได้
+  //    (ไม่ต้อง login — id ของ Firestore สุ่ม 20 ตัว เดาไม่ได้)
+  const MY_ORDERS_KEY = "cpu_my_orders";
+  const [myOrders, setMyOrders] = useState([]);      // [{id, ...data}]
+  const [showMyOrders, setShowMyOrders] = useState(false);
+  const [cancelling, setCancelling] = useState("");
+
+  const readMyOrderIds = () => {
+    try { const a = JSON.parse(localStorage.getItem(MY_ORDERS_KEY) || "[]"); return Array.isArray(a) ? a : []; }
+    catch { return []; }
+  };
+  const rememberMyOrder = (id) => {
+    try {
+      const next = [id, ...readMyOrderIds().filter(x => x !== id)].slice(0, 30); // เก็บ 30 ใบล่าสุดพอ
+      localStorage.setItem(MY_ORDERS_KEY, JSON.stringify(next));
+    } catch {}
+  };
+
+  // โหลดออเดอร์ของฉัน (ตอนเปิดหน้าต่าง) — อ่านทีละใบด้วย id ที่จำไว้
+  const loadMyOrders = async () => {
+    const ids = readMyOrderIds();
+    if (ids.length === 0) { setMyOrders([]); return; }
+    const rows = await Promise.all(ids.map(async id => {
+      try {
+        const s = await getDoc(doc(db, "catalogOrders", id));
+        return s.exists() ? { id: s.id, ...s.data() } : null;
+      } catch { return null; }
+    }));
+    setMyOrders(rows.filter(Boolean));
+  };
+  const openMyOrders = () => { setShowMyOrders(true); loadMyOrders(); };
+
+  // ❌ ยกเลิก — ได้เฉพาะใบที่ทีมยังไม่แตะ (status = new)
+  //    ใช้ transaction เช็คสถานะตอนกดจริง กันกรณีทีมเพิ่งเริ่มทำพอดี
+  const cancelMyOrder = async (o) => {
+    if (cancelling) return;
+    if (!window.confirm(`ยกเลิกออเดอร์นี้?\n\n${o.totalQty || 0} ตัว · ส่งเมื่อ ${fmtOrderDate(o.createdAt)}\n\n⚠️ ยกเลิกแล้วกู้คืนไม่ได้ ต้องสั่งใหม่`)) return;
+    setCancelling(o.id);
+    try {
+      await runTransaction(db, async (tx) => {
+        const ref = doc(db, "catalogOrders", o.id);
+        const s = await tx.get(ref);
+        if (!s.exists()) throw new Error("GONE");
+        const st = s.data().status || "new";
+        if (st !== "new") throw new Error("STARTED:" + st);
+        tx.update(ref, { status: "cancelled", cancelledByCustomer: true, cancelledAt: serverTimestamp() });
+      });
+      await loadMyOrders();
+    } catch (e) {
+      const m = String(e.message || "");
+      if (m === "GONE") alert("ไม่พบออเดอร์นี้แล้ว");
+      else if (m.startsWith("STARTED:")) alert("ยกเลิกเองไม่ได้แล้วค่ะ 🙏\nทีมงานเริ่มดำเนินการแล้ว — กรุณาติดต่อร้านโดยตรง");
+      else alert("ยกเลิกไม่สำเร็จ: " + m);
+      await loadMyOrders();
+    } finally {
+      setCancelling("");
+    }
+  };
 
   // 💾 จำชื่อ/เบอร์/ที่อยู่ไว้ในเครื่องลูกค้า — สั่งครั้งหน้าไม่ต้องพิมพ์ใหม่
   //    เก็บเฉพาะเครื่องนั้น (localStorage) ไม่ได้ส่งไปไหน · ไม่เก็บหมายเหตุ (เปลี่ยนทุกออเดอร์)
@@ -324,6 +392,13 @@ export default function Catalog() {
                 </span>
               )}
             </button>
+            {/* 🧾 ออเดอร์ของฉัน — โผล่เมื่อเคยสั่งไปแล้ว */}
+            {readMyOrderIds().length > 0 && (
+              <button onClick={openMyOrders}
+                style={{ background: "white", color: T.blue, border: `1px solid ${T.blue}`, padding: "10px 16px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                🧾 ออเดอร์ของฉัน
+              </button>
+            )}
             {lineHref && (
               <a href={lineHref} target="_blank" rel="noreferrer" style={{ background: T.line, color: "white", padding: "10px 16px", borderRadius: 8, fontSize: 13, fontWeight: 700, textDecoration: "none", display: "flex", alignItems: "center", gap: 6 }}>
                 💬 LINE {company.lineId || ""}
@@ -481,6 +556,60 @@ export default function Catalog() {
           </div>
         )}
       </div>
+
+      {/* 🧾 ออเดอร์ของฉัน — ตามดูสถานะ + ยกเลิกเองได้ถ้ายังไม่เริ่มทำ */}
+      {showMyOrders && (
+        <div onClick={() => setShowMyOrders(false)} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 120, padding: 12 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: 14, maxWidth: 520, width: "100%", maxHeight: "92vh", overflowY: "auto" }}>
+            <div style={{ padding: 18, borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: T.text }}>🧾 ออเดอร์ของฉัน</div>
+                <div style={{ fontSize: 11, color: T.muted, marginTop: 3 }}>ยกเลิกเองได้ถ้าทีมงานยังไม่เริ่มทำ</div>
+              </div>
+              <button onClick={() => setShowMyOrders(false)} style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>✕</button>
+            </div>
+
+            <div style={{ padding: 16 }}>
+              {myOrders.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 30, color: T.muted, fontSize: 13 }}>ยังไม่มีออเดอร์</div>
+              ) : myOrders.map(o => {
+                const st = o.status || "new";
+                const meta = st === "new"       ? { label: "รอทีมงานรับเรื่อง", color: T.blue,  bg: "#dbeafe" }
+                          : st === "cancelled"  ? { label: "ยกเลิกแล้ว",        color: "#b94a48", bg: "#fee2e2" }
+                          : st === "converted"  ? { label: "รับออเดอร์แล้ว",     color: "#7c3aed", bg: "#ede9fe" }
+                          :                        { label: "กำลังดำเนินการ",   color: "#b88600", bg: "#fef3c7" };
+                const canCancel = st === "new";
+                const lines = (o.items?.length ? o.items : [{ itemName: o.itemName, lines: o.lines || [] }]);
+                return (
+                  <div key={o.id} style={{ border: `1px solid ${T.border}`, borderRadius: 10, padding: 12, marginBottom: 10, opacity: st === "cancelled" ? 0.6 : 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                      <span style={{ background: meta.bg, color: meta.color, padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700 }}>{meta.label}</span>
+                      <span style={{ fontSize: 11, color: T.muted }}>{fmtOrderDate(o.createdAt)}</span>
+                      <span style={{ marginLeft: "auto", fontSize: 13, fontWeight: 800, color: T.text }}>{o.totalQty || 0} ตัว</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: T.sub, lineHeight: 1.7 }}>
+                      {lines.map((e, i) => (
+                        <div key={i}>• {e.itemName || "(ไม่ระบุ)"} — {(e.lines || []).reduce((s, l) => s + (Number(l.qty) || 0), 0)} ตัว</div>
+                      ))}
+                    </div>
+                    {canCancel ? (
+                      <button onClick={() => cancelMyOrder(o)} disabled={cancelling === o.id}
+                        style={{ marginTop: 9, width: "100%", padding: "8px", borderRadius: 8, border: "1px solid rgba(185,74,72,0.35)", background: "rgba(185,74,72,0.06)", color: "#b94a48", cursor: cancelling === o.id ? "wait" : "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>
+                        {cancelling === o.id ? "⏳ กำลังยกเลิก..." : "❌ ยกเลิกออเดอร์นี้"}
+                      </button>
+                    ) : st !== "cancelled" && (
+                      <div style={{ marginTop: 9, fontSize: 11, color: T.muted, textAlign: "center", lineHeight: 1.7 }}>
+                        ทีมงานเริ่มดำเนินการแล้ว — ต้องการแก้ไข/ยกเลิก กรุณาติดต่อร้าน
+                        {company.phone && <> <a href={`tel:${company.phone}`} style={{ color: T.blue, fontWeight: 700 }}>{company.phone}</a></>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* DETAIL MODAL */}
       {detail && (
@@ -859,7 +988,8 @@ export default function Catalog() {
                       };
                       const clean = JSON.parse(JSON.stringify(payload, (k,v) => v === undefined ? null : v));
                       clean.createdAt = serverTimestamp();
-                      await addDoc(collection(db,"catalogOrders"), clean);
+                      const ref = await addDoc(collection(db,"catalogOrders"), clean);
+                      rememberMyOrder(ref.id); // 🧾 จำไว้ให้ลูกค้าตามดู/ยกเลิกเองได้
                       setSent(true);
                     } catch (e) {
                       alert("เกิดข้อผิดพลาด: " + e.message);
