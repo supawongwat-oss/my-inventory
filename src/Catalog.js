@@ -80,7 +80,10 @@ export default function Catalog() {
   const [items, setItems] = useState([]);
   const [company, setCompany] = useState({ name: "CPU", phone: "", lineId: "", lineUrl: "" });
   const [search, setSearch] = useState("");
-  const [filterCat, setFilterCat] = useState("");
+  // 🔎 Filter 3 ชั้น ใช้ร่วมกันได้ (AND) — เลือกแบรนด์แล้วกรองหมวดย่อยต่อได้
+  const [fType, setFType] = useState("");   // "" | apparel | shoe
+  const [fBrand, setFBrand] = useState(""); // ชื่อแบรนด์
+  const [fCat, setFCat] = useState("");     // หมวดย่อย
   const [detail, setDetail] = useState(null);
   const [order, setOrder] = useState(null); // {item, qtyMap} — สร้างก่อน add to cart
   const [customSizes, setCustomSizes] = useState([]); // ✏️ ไซส์พิเศษที่ลูกค้าพิมพ์เอง (ต่อการสั่ง 1 ครั้ง)
@@ -249,42 +252,45 @@ export default function Catalog() {
   }, [retryTick]); // retryTick เปลี่ยน = subscribe ใหม่หลัง sign-in ซ้ำ
 
   // 🏷️ Categories: predefined (เสื้อผ้า/รองเท้า ตาม sizeType) + custom (item.category)
-  const customCats = useMemo(() => [...new Set(items.map(i => i.category).filter(Boolean))], [items]);
-  const TAB_ALL = "__all__";
-  const TAB_APPAREL = "__apparel__";
-  const TAB_SHOE = "__shoe__";
-  const BRAND_PREFIX = "brand:";
-  // 🏢 แบรนด์มาก่อนหมวดอื่น — ลูกค้าเลือกแบรนด์ก่อน แล้วค่อยดูหมวดย่อย
-  const brands = useMemo(
-    () => [...new Set(items.map(i => i.brand).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"th")),
-    [items]
-  );
-  const tabs = useMemo(() => {
-    const list = [
-      { key: TAB_ALL, label: "ทั้งหมด", icon: "📦", count: items.length },
-      ...brands.map(b => ({ key: BRAND_PREFIX + b, label: b, icon: "🏢", count: items.filter(i => i.brand === b).length })),
-      { key: TAB_APPAREL, label: "เสื้อผ้า", icon: "👕", count: items.filter(i => i.sizeType !== "shoe").length },
-      { key: TAB_SHOE, label: "รองเท้า & กีฬา", icon: "👟", count: items.filter(i => i.sizeType === "shoe").length },
-    ];
-    customCats.forEach(c => list.push({ key: c, label: c, icon: "🏷️", count: items.filter(i => i.category === c).length }));
-    return list.filter(t => t.count > 0 || t.key === TAB_ALL);
-  }, [items, customCats, brands]);
+  // 🔎 ตัวกรองแต่ละชั้นทำงานร่วมกัน (AND) และ "นับจำนวนตามชั้นอื่นที่เลือกไว้แล้ว"
+  //    เช่น เลือกแบรนด์ X → ตัวเลขในหมวดย่อยจะนับเฉพาะของแบรนด์ X
+  //    → ไม่มีปุ่มที่กดแล้วได้ 0 รายการ
+  const matchType  = (i) => !fType  || (fType === "shoe" ? i.sizeType === "shoe" : i.sizeType !== "shoe");
+  const matchBrand = (i) => !fBrand || i.brand === fBrand;
+  const matchCat   = (i) => !fCat   || i.category === fCat;
+  const matchSearch = (i) => {
+    if (!search) return true;
+    const norm = (s) => String(s||"").toLowerCase().replace(/\s+/g, "");
+    const text = norm(`${i.model||i.name||""} ${i.brand||""} ${i.category||""} ${(i.colors||[]).map(c=>c.colorName||c.name||"").join(" ")}`);
+    return text.includes(norm(search));
+  };
 
-  const filtered = useMemo(() => items.filter(i => {
-    // tab filter
-    if (filterCat === TAB_APPAREL && i.sizeType === "shoe") return false;
-    if (filterCat === TAB_SHOE && i.sizeType !== "shoe") return false;
-    if (filterCat && filterCat.startsWith(BRAND_PREFIX)) {
-      if (i.brand !== filterCat.slice(BRAND_PREFIX.length)) return false;
-    } else if (filterCat && filterCat !== TAB_ALL && filterCat !== TAB_APPAREL && filterCat !== TAB_SHOE && i.category !== filterCat) return false;
-    if (search) {
-      const norm = (s) => String(s||"").toLowerCase().replace(/\s+/g, "");
-      const q = norm(search);
-      const text = norm(`${i.model||i.name||""} ${i.brand||""} ${i.category||""} ${(i.colors||[]).map(c=>c.colorName||c.name||"").join(" ")}`);
-      if (!text.includes(q)) return false;
-    }
-    return true;
-  }), [items, search, filterCat]);
+  const typeOptions = useMemo(() => {
+    const base = items.filter(i => matchBrand(i) && matchCat(i) && matchSearch(i));
+    return [
+      { key: "",        label: "ทั้งหมด",        icon: "📦", count: base.length },
+      { key: "apparel", label: "เสื้อผ้า",       icon: "👕", count: base.filter(i => i.sizeType !== "shoe").length },
+      { key: "shoe",    label: "รองเท้า & กีฬา", icon: "👟", count: base.filter(i => i.sizeType === "shoe").length },
+    ].filter(t => t.count > 0 || t.key === "" || t.key === fType);
+  }, [items, fBrand, fCat, search, fType]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const brandOptions = useMemo(() => {
+    const base = items.filter(i => matchType(i) && matchCat(i) && matchSearch(i));
+    const names = [...new Set(base.map(i => i.brand).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"th"));
+    return names.map(b => ({ key: b, label: b, icon: "🏢", count: base.filter(i => i.brand === b).length }));
+  }, [items, fType, fCat, search]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const catOptions = useMemo(() => {
+    const base = items.filter(i => matchType(i) && matchBrand(i) && matchSearch(i));
+    const names = [...new Set(base.map(i => i.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"th"));
+    return names.map(c => ({ key: c, label: c, icon: "🏷️", count: base.filter(i => i.category === c).length }));
+  }, [items, fType, fBrand, search]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const filtered = useMemo(
+    () => items.filter(i => matchType(i) && matchBrand(i) && matchCat(i) && matchSearch(i)),
+    [items, fType, fBrand, fCat, search] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const hasFilter = !!(fType || fBrand || fCat);
 
   // 💬 LINE link: @xxx (OA) → ใช้ตรงๆ, ส่วน personal ID → prefix ~
   const lineHref = company.lineUrl
@@ -339,20 +345,13 @@ export default function Catalog() {
           value={search} onChange={e => setSearch(e.target.value)}
           style={{ flex: 1, minWidth: 200, padding: "10px 14px", borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 14, fontFamily: "inherit" }}
         />
-        {/* legacy dropdown kept as hidden — replaced by chip tabs below */}
-        <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
-          style={{ display: "none" }}>
-          <option value="">ทุกหมวด</option>
-          {customCats.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
       </div>
 
-      {/* CATEGORY TABS — 3 บรรทัด: ชนิดสินค้า / แบรนด์ / หมวดย่อย */}
+      {/* 🔎 FILTER 3 ชั้น — ใช้ร่วมกันได้: ชนิด × แบรนด์ × หมวดย่อย */}
       {(() => {
-        const renderTab = (t, small) => {
-          const active = (filterCat || TAB_ALL) === t.key;
+        const renderTab = (t, small, active, onClick) => {
           return (
-            <button key={t.key} onClick={() => setFilterCat(t.key === TAB_ALL ? "" : t.key)}
+            <button key={t.key} onClick={onClick}
               style={{
                 padding: small ? "4px 11px" : "8px 16px", borderRadius: 20,
                 border: active ? `2px solid ${T.blue}` : `1px solid ${T.border}`,
@@ -374,9 +373,6 @@ export default function Catalog() {
             </button>
           );
         };
-        const typeTabs  = tabs.filter(t => [TAB_ALL, TAB_APPAREL, TAB_SHOE].includes(t.key));
-        const brandTabs = tabs.filter(t => t.key.startsWith(BRAND_PREFIX));
-        const subTabs   = tabs.filter(t => !typeTabs.includes(t) && !brandTabs.includes(t));
         const Row = ({ children, gap = 8, pb = 8 }) => (
           <div style={{ maxWidth: 1100, margin: "0 auto", padding: `0 20px ${pb}px`, display: "flex", gap, flexWrap: "wrap", alignItems: "center" }}>
             {children}
@@ -384,9 +380,23 @@ export default function Catalog() {
         );
         return (
           <>
-            <Row>{typeTabs.map(t => renderTab(t, false))}</Row>
-            {brandTabs.length > 0 && <Row>{brandTabs.map(t => renderTab(t, false))}</Row>}
-            {subTabs.length > 0 && <Row gap={5} pb={14}>{subTabs.map(t => renderTab(t, true))}</Row>}
+            <Row>
+              {typeOptions.map(t => renderTab(t, false, fType === t.key, () => setFType(t.key)))}
+              {/* ล้างทั้งหมด — โผล่เมื่อมีการกรองอยู่ */}
+              {hasFilter && (
+                <button onClick={() => { setFType(""); setFBrand(""); setFCat(""); }}
+                  style={{ padding: "6px 14px", borderRadius: 20, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontFamily: "inherit", fontSize: 12, whiteSpace: "nowrap" }}>
+                  ✕ ล้างตัวกรอง
+                </button>
+              )}
+            </Row>
+            {/* กดซ้ำที่อันเดิม = ยกเลิกตัวกรองนั้น */}
+            {brandOptions.length > 0 && (
+              <Row>{brandOptions.map(t => renderTab(t, false, fBrand === t.key, () => setFBrand(fBrand === t.key ? "" : t.key)))}</Row>
+            )}
+            {catOptions.length > 0 && (
+              <Row gap={5} pb={14}>{catOptions.map(t => renderTab(t, true, fCat === t.key, () => setFCat(fCat === t.key ? "" : t.key)))}</Row>
+            )}
           </>
         );
       })()}
