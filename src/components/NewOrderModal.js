@@ -23,6 +23,8 @@ export default function NewOrderModal({
   // 🔍 ช่องพิมพ์ค้นหารุ่น/สี — กรองรายการใน dropdown (ค้นแบบสลับลำดับคำได้)
   const [modelSearch, setModelSearch] = React.useState("");
   const [colorSearch, setColorSearch] = React.useState("");
+  // เปิดรายการค้างไว้ตอนโฟกัส — ไม่พิมพ์ก็เห็นรายการทั้งหมด (ใช้แทน dropdown เดิม)
+  const [openList, setOpenList] = React.useState("");
   return (
         <Modal onClose={()=>onClose()} w={880}>
           <MHead title={editingOrderId ? "✏️ แก้ไขใบสั่งของ" : "📋 สร้างใบสั่งของ"} onClose={()=>onClose()} color={T.accent}/>
@@ -109,30 +111,34 @@ export default function NewOrderModal({
               .filter(({c})=>matchTokens(colorSearch, c.colorName));
             const curColor = orderItemForm.colorIdx!=="" ? curItem?.colors?.[Number(orderItemForm.colorIdx)] : null;
             // 🔍 กล่องค้นหาแบบเดียวกับ "ค้นหาลูกค้า" — พิมพ์แล้วขึ้นรายการให้กดเลือก
-            const picker = ({label,ph,picked,pickedNode,search,setSearch,rows,onPick,onClear,disabled})=>(
+            const picker = ({id,label,ph,picked,pickedNode,search,setSearch,rows,onPick,onClear,disabled})=>(
               <div>
                 <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:5,fontWeight:600}}>{label}</label>
                 <div style={{position:"relative"}}>
                   <input placeholder={picked?"":ph} disabled={disabled}
                     value={picked?"":search}
                     onChange={e=>setSearch(e.target.value)}
+                    onFocus={()=>setOpenList(id)}
+                    onBlur={()=>setTimeout(()=>setOpenList(o=>o===id?"":o),180)}
                     style={{width:"100%",boxSizing:"border-box",background:disabled?"rgba(0,0,0,0.04)":T.input,border:`1px solid ${picked?"#34d399":T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 32px 9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
                   {picked&&(
                     // ทับบนช่อง input — ต้องมีพื้นหลังทึบ ไม่งั้นข้อความซ้อนกับที่อยู่ข้างหลัง
-                    <div onClick={onClear} title="เปลี่ยน — กดเพื่อค้นหาใหม่"
+                    <div onClick={()=>{onClear();setOpenList(id);}} title="เปลี่ยน — กดเพื่อเลือกใหม่"
                       style={{position:"absolute",inset:1,borderRadius:8,background:T.input||"#fff",display:"flex",alignItems:"center",gap:7,padding:"0 32px 0 13px",cursor:"pointer",fontSize:13,color:T.text,fontWeight:600,overflow:"hidden",whiteSpace:"nowrap"}}>
                       {pickedNode}
                     </div>
                   )}
-                  {(picked||search)&&(
-                    <button onClick={onClear} title="ล้าง" style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",border:"none",background:"transparent",color:T.muted,cursor:"pointer",fontSize:14,lineHeight:1,padding:0,zIndex:2}}>✕</button>
-                  )}
-                  {!picked&&search&&(
-                    <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#ffffff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:50,maxHeight:260,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.25)",marginTop:2}}>
+                  {(picked||search)
+                    ? <button onMouseDown={e=>e.preventDefault()} onClick={onClear} title="ล้าง" style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",border:"none",background:"transparent",color:T.muted,cursor:"pointer",fontSize:14,lineHeight:1,padding:0,zIndex:2}}>✕</button>
+                    : !disabled&&<span style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:10,pointerEvents:"none"}}>▼</span>}
+                  {/* รายการทั้งหมด — เปิดค้างไว้ตอนโฟกัส ไม่ต้องพิมพ์ก็เลือกได้ */}
+                  {!picked&&!disabled&&openList===id&&(
+                    <div onMouseDown={e=>e.preventDefault()}
+                      style={{position:"absolute",top:"100%",left:0,right:0,background:"#ffffff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:50,maxHeight:260,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.25)",marginTop:2}}>
                       <div style={{padding:"6px 14px",background:"#eff6ff",fontSize:10,color:T.accent,fontWeight:700,borderBottom:`1px solid ${T.border}`,position:"sticky",top:0}}>
-                        {rows.length>0?`เจอ ${rows.length} รายการ`:"ไม่พบ — ลองพิมพ์สั้นลง"}
+                        {rows.length>0?(search?`เจอ ${rows.length} รายการ`:`ทั้งหมด ${rows.length} รายการ — พิมพ์เพื่อกรอง`):"ไม่พบ — ลองพิมพ์สั้นลง"}
                       </div>
-                      {rows.slice(0,40).map(r=>(
+                      {rows.slice(0,60).map(r=>(
                         <div key={r.key} onClick={()=>onPick(r)}
                           style={{padding:"9px 14px",cursor:"pointer",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}
                           onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.08)"}
@@ -148,8 +154,9 @@ export default function NewOrderModal({
             return (
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
                 {picker({
+                  id:"model",
                   label:"รุ่นเสื้อ",
-                  ph:"🔍 พิมพ์ค้นหารุ่น / แบรนด์...",
+                  ph:"🔍 พิมพ์ค้นหา หรือกดเพื่อดูรุ่นทั้งหมด",
                   picked:!!curItem,
                   pickedNode:<span>✓ {curItem?.model}{curItem?.brand?<span style={{color:T.muted,fontWeight:400}}> · {curItem.brand}</span>:null}</span>,
                   search:modelSearch, setSearch:setModelSearch,
@@ -160,12 +167,13 @@ export default function NewOrderModal({
                       <span style={{marginLeft:"auto",fontSize:10,color:T.muted}}>{(i.colors||[]).length} สี</span>
                     </>
                   )})),
-                  onPick:r=>{setOrderItemForm(f=>({...f,clothingId:r.item.id,colorIdx:""}));setModelSearch("");setColorSearch("");},
+                  onPick:r=>{setOrderItemForm(f=>({...f,clothingId:r.item.id,colorIdx:""}));setModelSearch("");setColorSearch("");setOpenList("");},
                   onClear:()=>{setOrderItemForm(f=>({...f,clothingId:"",colorIdx:""}));setModelSearch("");setColorSearch("");},
                 })}
                 {picker({
+                  id:"color",
                   label:"สี",
-                  ph:curItem?"🔍 พิมพ์ค้นหาสี...":"เลือกรุ่นก่อน",
+                  ph:curItem?"🔍 พิมพ์ค้นหา หรือกดเพื่อดูสีทั้งหมด":"เลือกรุ่นก่อน",
                   disabled:!curItem,
                   picked:!!curColor,
                   pickedNode:<><span style={{width:14,height:14,borderRadius:4,background:curColor?.hex||"#999",border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/><span>{curColor?.colorName}</span></>,
@@ -177,7 +185,7 @@ export default function NewOrderModal({
                       <span style={{marginLeft:"auto",fontSize:10,color:T.muted}}>{Object.values(c.stock||{}).reduce((s,q)=>s+(Number(q)||0),0)} ตัว</span>
                     </>
                   )})),
-                  onPick:r=>{setOrderItemForm(f=>({...f,colorIdx:r.ci}));setColorSearch("");},
+                  onPick:r=>{setOrderItemForm(f=>({...f,colorIdx:r.ci}));setColorSearch("");setOpenList("");},
                   onClear:()=>{setOrderItemForm(f=>({...f,colorIdx:""}));setColorSearch("");},
                 })}
               </div>
@@ -205,9 +213,9 @@ export default function NewOrderModal({
                   <span style={{fontSize:10,color:T.muted,marginLeft:"auto"}}>กรอกจำนวนที่ต้องการสั่ง</span>
                 </div>
                 <div style={{padding:10,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
-                  <div style={{display:"flex",flexDirection:"column",gap:8,minWidth:480}}>
+                  <div style={{display:"flex",flexDirection:"column",gap:8,minWidth:390}}>
                   {sizeRows.map((row,ri)=>(
-                    <div key={ri} style={{display:"grid",gridTemplateColumns:`repeat(${row.length},1fr)`,gap:6,minWidth:480}}>
+                    <div key={ri} style={{display:"grid",gridTemplateColumns:`repeat(${row.length},1fr)`,gap:6,minWidth:390}}>
                       {row.map(sz=>{
                         const stock=(col.stock||{})[sz]||0;
                         const curVal=orderForm.items.find(i=>i.clothingId===orderItemForm.clothingId&&i.colorIdx===Number(orderItemForm.colorIdx)&&i.size===sz)?.qty||0;
@@ -215,7 +223,7 @@ export default function NewOrderModal({
                         const defer = !!orderForm.deferStockCut;
                         const noStock = stock===0 && !defer;
                         return (
-                          <div key={sz} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:noStock?"rgba(203,210,217,0.25)":stock===0&&defer?"rgba(124,58,237,0.06)":"rgba(241,243,246,0.5)",borderRadius:7,border:`1px solid ${noStock?"rgba(203,210,217,0.5)":stock===0&&defer?"rgba(124,58,237,0.25)":"rgba(59,91,139,0.18)"}`}}>
+                          <div key={sz} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 7px",background:noStock?"rgba(203,210,217,0.25)":stock===0&&defer?"rgba(124,58,237,0.06)":"rgba(241,243,246,0.5)",borderRadius:7,border:`1px solid ${noStock?"rgba(203,210,217,0.5)":stock===0&&defer?"rgba(124,58,237,0.25)":"rgba(59,91,139,0.18)"}`}}>
                             <div style={{minWidth:38,display:"flex",flexDirection:"column"}}>
                               <span style={{fontFamily:"monospace",fontWeight:700,fontSize:13,color:noStock?"#9aa5b1":T.accent}}>{sz}</span>
                               <span style={{fontSize:9,color:noStock?"#9aa5b1":stock===0&&defer?"#7c3aed":stock<5?"#fbbf24":"#22d3ee",fontFamily:"monospace"}}>{stock===0&&defer?"🔓":"มี "+stock}</span>
@@ -240,7 +248,7 @@ export default function NewOrderModal({
                                   setOrderForm(f=>({...f,items:f.items.filter(i=>!(i.clothingId===orderItemForm.clothingId&&i.colorIdx===Number(orderItemForm.colorIdx)&&i.size===sz))}));
                                 }
                               }}
-                              style={{flex:1,minWidth:0,textAlign:"center",background:noStock?"rgba(203,210,217,0.3)":stock===0&&defer?"rgba(124,58,237,0.08)":"rgba(59,91,139,0.1)",border:`1px solid ${noStock?"rgba(203,210,217,0.5)":stock===0&&defer?"rgba(124,58,237,0.35)":"rgba(59,91,139,0.25)"}`,borderRadius:6,color:noStock?"#9aa5b1":stock===0&&defer?"#7c3aed":"#3b5b8b",fontFamily:"monospace",fontSize:13,fontWeight:600,padding:"6px 4px",outline:"none",cursor:noStock?"not-allowed":"text"}}
+                              style={{flex:1,minWidth:0,maxWidth:64,textAlign:"center",background:noStock?"rgba(203,210,217,0.3)":stock===0&&defer?"rgba(124,58,237,0.08)":"rgba(59,91,139,0.1)",border:`1px solid ${noStock?"rgba(203,210,217,0.5)":stock===0&&defer?"rgba(124,58,237,0.35)":"rgba(59,91,139,0.25)"}`,borderRadius:6,color:noStock?"#9aa5b1":stock===0&&defer?"#7c3aed":"#3b5b8b",fontFamily:"monospace",fontSize:13,fontWeight:600,padding:"6px 4px",outline:"none",cursor:noStock?"not-allowed":"text"}}
                             />
                           </div>
                         );
