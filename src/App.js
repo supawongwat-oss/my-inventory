@@ -96,10 +96,13 @@ export default function App() {
   const shoeSizes = useMemo(() => mergeSizes(SHOE_SIZES, customSizes?.shoe), [customSizes]);
   // 📏 ไซส์ของรุ่นหนึ่งๆ = ไซส์มาตรฐาน + ไซส์ที่เพิ่มในตั้งค่า (ใช้ทุกรุ่น) + ไซส์เฉพาะรุ่นนี้ (item.extraSizes)
   //    ไซส์เฉพาะรุ่นตั้งชื่อเองได้ เช่น "ฟรีไซส์", "รอบอก 40" — เพิ่มได้จากหน้าคลังเลย
+  //    และตัดไซส์ที่ "ซ่อนไว้สำหรับรุ่นนี้" (item.hiddenSizes) ออก เช่น รุ่นผู้ใหญ่ไม่ต้องมีไซส์เด็ก
   const sizesFor = useCallback((item) => {
     const base = (item && item.sizeType === "shoe") ? shoeSizes : apparelSizes;
     const own = Array.isArray(item?.extraSizes) ? item.extraSizes : [];
-    return own.length ? mergeSizes(base, own) : base;
+    const hidden = Array.isArray(item?.hiddenSizes) ? item.hiddenSizes : [];
+    const all = own.length ? mergeSizes(base, own) : base;
+    return hidden.length ? all.filter(s => !hidden.includes(s)) : all;
   }, [apparelSizes, shoeSizes]);
   // ใช้แทน ROLES[role].label เพื่อให้ admin เปลี่ยนชื่อบทบาทได้
   const rLabel = (key) => roleLabels[key] || ROLES[key]?.label || key;
@@ -1238,16 +1241,28 @@ export default function App() {
     setNewItemSize("");
   };
 
-  // 📏 ลบไซส์เฉพาะรุ่น — กันลบทิ้งทั้งที่ยังมีของอยู่
+  // 📏 เอาไซส์ออกจากรุ่นนี้ — กันลบทิ้งทั้งที่ยังมีของอยู่
+  //    ไซส์ที่เพิ่มเองในรุ่น → ลบทิ้งจริง | ไซส์มาตรฐาน/จากตั้งค่า → ซ่อนเฉพาะรุ่นนี้ (เอากลับมาได้)
   const removeItemSize = async (item, sz) => {
     if (!item) return;
     const inStock = (item.colors || []).reduce((s, c) => s + (Number(c.stock?.[sz]) || 0), 0);
-    if (inStock > 0) { alert(`ลบไม่ได้ — ไซส์ "${sz}" ยังมีของอยู่ ${inStock} ตัว\nตัดสต็อกให้เหลือ 0 ก่อน`); return; }
-    if (!window.confirm(`ลบไซส์ "${sz}" ออกจากรุ่น ${item.model}?`)) return;
-    const extra = (item.extraSizes || []).filter(s => s !== sz);
+    if (inStock > 0) { alert(`เอาออกไม่ได้ — ไซส์ "${sz}" ยังมีของอยู่ ${inStock} ตัว\nตัดสต็อกให้เหลือ 0 ก่อน`); return; }
+    const isOwn = (item.extraSizes || []).includes(sz);
+    if (!window.confirm(`เอาไซส์ "${sz}" ออกจากรุ่น ${item.model}?\n\n${isOwn ? "(ไซส์ที่เพิ่มเอง — จะถูกลบทิ้ง)" : "(ไซส์มาตรฐาน — แค่ซ่อนจากรุ่นนี้ กดเอากลับมาได้)"}`)) return;
     const colors = (item.colors || []).map(c => { const st = { ...(c.stock || {}) }; delete st[sz]; return { ...c, stock: st }; });
-    await updateDoc(doc(db, "clothing", item.id), { extraSizes: extra, colors });
-    logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: "clothing", targetId: item.id, targetLabel: `${item.model} · ลบไซส์`, note: `- ไซส์: ${sz}` });
+    const patch = isOwn
+      ? { extraSizes: (item.extraSizes || []).filter(s => s !== sz), colors }
+      : { hiddenSizes: [...(item.hiddenSizes || []), sz], colors };
+    await updateDoc(doc(db, "clothing", item.id), patch);
+    logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: "clothing", targetId: item.id, targetLabel: `${item.model} · ${isOwn ? "ลบไซส์" : "ซ่อนไซส์"}`, note: `- ไซส์: ${sz}` });
+  };
+
+  // 📏 เอาไซส์ที่ซ่อนไว้กลับมาใช้กับรุ่นนี้
+  const unhideItemSize = async (item, sz) => {
+    if (!item) return;
+    const colors = (item.colors || []).map(c => ({ ...c, stock: { ...(c.stock || {}), [sz]: Number(c.stock?.[sz]) || 0 } }));
+    await updateDoc(doc(db, "clothing", item.id), { hiddenSizes: (item.hiddenSizes || []).filter(s => s !== sz), colors });
+    logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: "clothing", targetId: item.id, targetLabel: `${item.model} · เอาไซส์กลับมา`, note: `+ ไซส์: ${sz}` });
   };
 
   // 🎨 บันทึก buffer ทั้งหมดทีเดียว — update doc ครั้งเดียว
@@ -4940,20 +4955,39 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               ไซส์ที่เพิ่มตรงนี้ใช้<b>เฉพาะรุ่นนี้</b> — จะขึ้นในตารางสต็อก รับ/จ่าย ใบสั่งของ และบิล<br/>
               ถ้าอยากให้ขึ้นทุกรุ่น ให้เพิ่มที่ <b>⚙️ ตั้งค่า → 📏 จัดการไซส์</b> แทน
             </div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
               {all.map(sz=>{
                 const mine = own.has(String(sz));
                 const qty = (item.colors||[]).reduce((s,c)=>s+(Number(c.stock?.[sz])||0),0);
+                const locked = qty > 0; // ยังมีของ → เอาออกไม่ได้
                 return (
-                  <span key={sz} style={{display:"inline-flex",alignItems:"center",gap:6,padding:mine?"5px 8px 5px 12px":"5px 12px",borderRadius:8,
+                  <span key={sz} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"5px 8px 5px 12px",borderRadius:8,
                     border:`1px solid ${mine?"#7c3aed":T.border}`,background:mine?"rgba(124,58,237,0.10)":"rgba(241,243,246,0.7)",
                     color:mine?"#7c3aed":T.sub,fontFamily:"monospace",fontSize:12,fontWeight:mine?700:600}}>
                     {sz}<span style={{fontSize:9,opacity:0.7}}>({qty})</span>
-                    {mine&&role?.canDelete&&<button onClick={()=>removeItemSize(item,sz)} title="ลบไซส์นี้" style={{border:"none",background:"transparent",color:T.red,cursor:"pointer",fontSize:13,lineHeight:1,padding:0}}>✕</button>}
+                    <button onClick={()=>removeItemSize(item,sz)}
+                      title={locked?`ยังมีของ ${qty} ตัว — ตัดสต็อกให้เหลือ 0 ก่อน`:(mine?"ลบไซส์นี้ทิ้ง":"ซ่อนไซส์นี้จากรุ่นนี้")}
+                      style={{border:"none",background:"transparent",color:locked?T.muted:T.red,cursor:locked?"not-allowed":"pointer",fontSize:13,lineHeight:1,padding:0,opacity:locked?0.45:1}}>
+                      {locked?"🔒":"✕"}
+                    </button>
                   </span>
                 );
               })}
             </div>
+            {/* ไซส์ที่ซ่อนไว้ — กดเอากลับมาได้ */}
+            {(item.hiddenSizes||[]).length>0&&(
+              <div style={{marginBottom:14,padding:"8px 10px",background:"rgba(148,163,184,0.10)",border:`1px dashed ${T.border}`,borderRadius:9}}>
+                <div style={{fontSize:10,color:T.muted,fontWeight:700,marginBottom:6}}>🚫 ซ่อนอยู่ในรุ่นนี้ — กดเพื่อเอากลับมา</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {(item.hiddenSizes||[]).slice().sort(compareSizes).map(sz=>(
+                    <button key={sz} onClick={()=>unhideItemSize(item,sz)} title={`เอาไซส์ ${sz} กลับมาใช้`}
+                      style={{display:"inline-flex",alignItems:"center",gap:5,padding:"4px 10px",borderRadius:8,border:`1px solid ${T.border}`,background:"white",color:T.sub,fontFamily:"monospace",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                      {sz} <span style={{color:"#16a34a",fontSize:11}}>↩</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div style={{display:"flex",gap:8}}>
               <input value={newItemSize} onChange={e=>setNewItemSize(e.target.value)}
                 onKeyDown={e=>e.key==="Enter"&&addItemSize(item,newItemSize)}

@@ -20,6 +20,9 @@ export default function NewOrderModal({
   handleConfirmOrder,
   addOrderMixItem,
 }) {
+  // 🔍 ช่องพิมพ์ค้นหารุ่น/สี — กรองรายการใน dropdown (ค้นแบบสลับลำดับคำได้)
+  const [modelSearch, setModelSearch] = React.useState("");
+  const [colorSearch, setColorSearch] = React.useState("");
   return (
         <Modal onClose={()=>onClose()} w={880}>
           <MHead title={editingOrderId ? "✏️ แก้ไขใบสั่งของ" : "📋 สร้างใบสั่งของ"} onClose={()=>onClose()} color={T.accent}/>
@@ -97,27 +100,50 @@ export default function NewOrderModal({
             )}
           </div>
 
-          {/* Step 1: เลือกรุ่น + สี */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-            <div>
-              <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:5,fontWeight:600}}>รุ่นเสื้อ</label>
-              <select value={orderItemForm.clothingId} onChange={e=>setOrderItemForm(f=>({...f,clothingId:e.target.value,colorIdx:""}))}
-                style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
-                <option value="">-- เลือกรุ่น --</option>
-                {clothingItems.map(i=><option key={i.id} value={i.id}>{i.model}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:5,fontWeight:600}}>สี</label>
-              <select value={orderItemForm.colorIdx} onChange={e=>setOrderItemForm(f=>({...f,colorIdx:e.target.value}))}
-                style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
-                <option value="">-- เลือกสี --</option>
-                {orderItemForm.clothingId&&(clothingItems.find(i=>i.id===orderItemForm.clothingId)?.colors||[]).map((c,ci)=>(
-                  <option key={ci} value={ci}>{c.colorName}</option>
-                ))}
-              </select>
-            </div>
-          </div>
+          {/* Step 1: เลือกรุ่น + สี — พิมพ์ค้นหาได้ (สลับตำแหน่งคำได้ เช่น "ดำ โปโล") */}
+          {(()=>{
+            const curItem = clothingItems.find(i=>i.id===orderItemForm.clothingId);
+            const models = clothingItems.filter(i=>matchTokens(modelSearch, i.model, i.brand, i.category));
+            const colors = (curItem?.colors||[])
+              .map((c,ci)=>({c,ci}))
+              .filter(({c})=>matchTokens(colorSearch, c.colorName));
+            const searchBox = (val,set,ph,n,total)=>(
+              <div style={{position:"relative",marginBottom:5}}>
+                <input value={val} onChange={e=>set(e.target.value)} placeholder={ph}
+                  style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${val?T.accent:T.inputBorder}`,color:T.text,borderRadius:8,padding:"6px 26px 6px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}/>
+                {val
+                  ? <button onClick={()=>set("")} title="ล้างคำค้นหา" style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",border:"none",background:"transparent",color:T.muted,cursor:"pointer",fontSize:13,lineHeight:1,padding:0}}>✕</button>
+                  : <span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:11,pointerEvents:"none"}}>🔍</span>}
+                {val&&<div style={{fontSize:9,color:n===0?T.red:T.muted,marginTop:2}}>{n===0?"ไม่พบ — ลองพิมพ์สั้นลง":`พบ ${n} จาก ${total}`}</div>}
+              </div>
+            );
+            return (
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+                <div>
+                  <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:5,fontWeight:600}}>รุ่นเสื้อ</label>
+                  {searchBox(modelSearch,setModelSearch,"ค้นหารุ่น / แบรนด์...",models.length,clothingItems.length)}
+                  <select value={orderItemForm.clothingId} onChange={e=>{setOrderItemForm(f=>({...f,clothingId:e.target.value,colorIdx:""}));setColorSearch("");}}
+                    style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
+                    <option value="">-- เลือกรุ่น --</option>
+                    {/* รุ่นที่เลือกไว้ต้องอยู่ในลิสต์เสมอ แม้คำค้นหาจะกรองออก */}
+                    {curItem&&!models.some(m=>m.id===curItem.id)&&<option value={curItem.id}>{curItem.model}</option>}
+                    {models.map(i=><option key={i.id} value={i.id}>{i.model}{i.brand?` · ${i.brand}`:""}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:5,fontWeight:600}}>สี</label>
+                  {searchBox(colorSearch,setColorSearch,"ค้นหาสี...",colors.length,(curItem?.colors||[]).length)}
+                  <select value={orderItemForm.colorIdx} onChange={e=>setOrderItemForm(f=>({...f,colorIdx:e.target.value}))}
+                    style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
+                    <option value="">-- เลือกสี --</option>
+                    {orderItemForm.colorIdx!==""&&!colors.some(({ci})=>String(ci)===String(orderItemForm.colorIdx))&&curItem?.colors?.[Number(orderItemForm.colorIdx)]&&
+                      <option value={orderItemForm.colorIdx}>{curItem.colors[Number(orderItemForm.colorIdx)].colorName}</option>}
+                    {colors.map(({c,ci})=><option key={ci} value={ci}>{c.colorName}</option>)}
+                  </select>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Step 2: ตารางไซส์ */}
           {orderItemForm.clothingId&&orderItemForm.colorIdx!==""&&(()=>{
