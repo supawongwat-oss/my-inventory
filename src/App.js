@@ -94,7 +94,13 @@ export default function App() {
   // 📏 ไซส์ที่ใช้จริง = มาตรฐาน + ที่เพิ่มเอง
   const apparelSizes = useMemo(() => mergeSizes(SIZES, customSizes?.apparel), [customSizes]);
   const shoeSizes = useMemo(() => mergeSizes(SHOE_SIZES, customSizes?.shoe), [customSizes]);
-  const sizesFor = useCallback((item) => (item && item.sizeType === "shoe") ? shoeSizes : apparelSizes, [apparelSizes, shoeSizes]);
+  // 📏 ไซส์ของรุ่นหนึ่งๆ = ไซส์มาตรฐาน + ไซส์ที่เพิ่มในตั้งค่า (ใช้ทุกรุ่น) + ไซส์เฉพาะรุ่นนี้ (item.extraSizes)
+  //    ไซส์เฉพาะรุ่นตั้งชื่อเองได้ เช่น "ฟรีไซส์", "รอบอก 40" — เพิ่มได้จากหน้าคลังเลย
+  const sizesFor = useCallback((item) => {
+    const base = (item && item.sizeType === "shoe") ? shoeSizes : apparelSizes;
+    const own = Array.isArray(item?.extraSizes) ? item.extraSizes : [];
+    return own.length ? mergeSizes(base, own) : base;
+  }, [apparelSizes, shoeSizes]);
   // ใช้แทน ROLES[role].label เพื่อให้ admin เปลี่ยนชื่อบทบาทได้
   const rLabel = (key) => roleLabels[key] || ROLES[key]?.label || key;
 
@@ -325,6 +331,8 @@ export default function App() {
 
   const [showAddClothing, setShowAddClothing] = useState(false);
   const [showAddColor, setShowAddColor] = useState(null);
+  const [sizeEditorItem, setSizeEditorItem] = useState(null); // 📏 เพิ่ม/ตั้งชื่อไซส์เฉพาะรุ่น (จากหน้าคลัง)
+  const [newItemSize, setNewItemSize] = useState("");
   const [pickedColors, setPickedColors] = useState([]); // multi-select buffer: [{colorName, hex}]
   const [priceModal, setPriceModal] = useState(null); // {itemId, ci}
   const [priceForm, setPriceForm] = useState({ costPrice:"", kids:"", reg:"", "2XL":"", "3XL":"", "4XL":"", "5XL":"" });
@@ -1215,6 +1223,31 @@ export default function App() {
     setPickedColors(prev => [...prev, { colorName: name, hex: newColorHex }]);
     setCustomColorName("");
     setNewColorHex("#ffffff");
+  };
+
+  // 📏 เพิ่มไซส์เฉพาะรุ่น (ตั้งชื่อเองได้ เช่น "ฟรีไซส์") — เพิ่มช่องสต็อก 0 ให้ทุกสีด้วย
+  const addItemSize = async (item, raw) => {
+    const sz = String(raw || "").trim();
+    if (!item || !sz) return;
+    const already = sizesFor(item).some(s => String(s).toUpperCase() === sz.toUpperCase());
+    if (already) { alert(`ไซส์ "${sz}" มีอยู่แล้วในรุ่นนี้`); return; }
+    const extra = [...(item.extraSizes || []), sz];
+    const colors = (item.colors || []).map(c => ({ ...c, stock: { ...(c.stock || {}), [sz]: Number(c.stock?.[sz]) || 0 } }));
+    await updateDoc(doc(db, "clothing", item.id), { extraSizes: extra, colors });
+    logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: "clothing", targetId: item.id, targetLabel: `${item.model} · เพิ่มไซส์`, note: `+ ไซส์: ${sz}` });
+    setNewItemSize("");
+  };
+
+  // 📏 ลบไซส์เฉพาะรุ่น — กันลบทิ้งทั้งที่ยังมีของอยู่
+  const removeItemSize = async (item, sz) => {
+    if (!item) return;
+    const inStock = (item.colors || []).reduce((s, c) => s + (Number(c.stock?.[sz]) || 0), 0);
+    if (inStock > 0) { alert(`ลบไม่ได้ — ไซส์ "${sz}" ยังมีของอยู่ ${inStock} ตัว\nตัดสต็อกให้เหลือ 0 ก่อน`); return; }
+    if (!window.confirm(`ลบไซส์ "${sz}" ออกจากรุ่น ${item.model}?`)) return;
+    const extra = (item.extraSizes || []).filter(s => s !== sz);
+    const colors = (item.colors || []).map(c => { const st = { ...(c.stock || {}) }; delete st[sz]; return { ...c, stock: st }; });
+    await updateDoc(doc(db, "clothing", item.id), { extraSizes: extra, colors });
+    logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: "clothing", targetId: item.id, targetLabel: `${item.model} · ลบไซส์`, note: `- ไซส์: ${sz}` });
   };
 
   // 🎨 บันทึก buffer ทั้งหมดทีเดียว — update doc ครั้งเดียว
@@ -2898,7 +2931,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   draggingClothingId={draggingClothingId} setDraggingClothingId={setDraggingClothingId}
                   dragOverClothingId={dragOverClothingId} setDragOverClothingId={setDragOverClothingId} reorderClothing={reorderClothing}
                   collapsedItems={collapsedItems} toggleCollapse={toggleCollapse}
-                  setShowAddColor={setShowAddColor} openMix={openMix} openBomModal={openBomModal} openProductCatalog={setProductCatalogItem} brandFilter={brandFilter} setBrandFilter={setBrandFilter}
+                  setShowAddColor={setShowAddColor} openSizeEditor={setSizeEditorItem} openMix={openMix} openBomModal={openBomModal} openProductCatalog={setProductCatalogItem} brandFilter={brandFilter} setBrandFilter={setBrandFilter}
                   manageColorMode={manageColorMode} setManageColorMode={setManageColorMode}
                   setDeleteClothingTarget={setDeleteClothingTarget} setDeleteConfirmText={setDeleteConfirmText}
                   linkedInvColors={linkedInvColors} toggleLinkInvColor={toggleLinkInvColor}
@@ -4895,6 +4928,43 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       })()}
 
       {/* ── MODAL: เพิ่มสีเสื้อผ้า (multi-select) ── */}
+      {/* 📏 จัดการไซส์ของรุ่นนี้ — เพิ่ม/ตั้งชื่อไซส์เองได้จากหน้าคลัง */}
+      {sizeEditorItem&&(()=>{
+        const item = clothingItems.find(i=>i.id===sizeEditorItem.id) || sizeEditorItem;
+        const own = new Set((item.extraSizes||[]).map(s=>String(s)));
+        const all = sizesFor(item);
+        return (
+          <Modal onClose={()=>{setSizeEditorItem(null);setNewItemSize("");}} w={560}>
+            <MHead title={`📏 ไซส์ของรุ่น — ${item.model}`} sub="เพิ่มไซส์ใหม่ หรือตั้งชื่อไซส์เองได้ เช่น ฟรีไซส์ / รอบอก 40" onClose={()=>{setSizeEditorItem(null);setNewItemSize("");}}/>
+            <div style={{fontSize:12,color:T.sub,marginBottom:14,padding:"10px 12px",background:"rgba(59,91,139,0.06)",borderRadius:9,lineHeight:1.6}}>
+              ไซส์ที่เพิ่มตรงนี้ใช้<b>เฉพาะรุ่นนี้</b> — จะขึ้นในตารางสต็อก รับ/จ่าย ใบสั่งของ และบิล<br/>
+              ถ้าอยากให้ขึ้นทุกรุ่น ให้เพิ่มที่ <b>⚙️ ตั้งค่า → 📏 จัดการไซส์</b> แทน
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+              {all.map(sz=>{
+                const mine = own.has(String(sz));
+                const qty = (item.colors||[]).reduce((s,c)=>s+(Number(c.stock?.[sz])||0),0);
+                return (
+                  <span key={sz} style={{display:"inline-flex",alignItems:"center",gap:6,padding:mine?"5px 8px 5px 12px":"5px 12px",borderRadius:8,
+                    border:`1px solid ${mine?"#7c3aed":T.border}`,background:mine?"rgba(124,58,237,0.10)":"rgba(241,243,246,0.7)",
+                    color:mine?"#7c3aed":T.sub,fontFamily:"monospace",fontSize:12,fontWeight:mine?700:600}}>
+                    {sz}<span style={{fontSize:9,opacity:0.7}}>({qty})</span>
+                    {mine&&role?.canDelete&&<button onClick={()=>removeItemSize(item,sz)} title="ลบไซส์นี้" style={{border:"none",background:"transparent",color:T.red,cursor:"pointer",fontSize:13,lineHeight:1,padding:0}}>✕</button>}
+                  </span>
+                );
+              })}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <input value={newItemSize} onChange={e=>setNewItemSize(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&addItemSize(item,newItemSize)}
+                placeholder='พิมพ์ไซส์ เช่น 6XL, ฟรีไซส์, รอบอก 40'
+                style={{flex:1,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+              <BtnPrimary onClick={()=>addItemSize(item,newItemSize)} disabled={!newItemSize.trim()}>➕ เพิ่ม</BtnPrimary>
+            </div>
+          </Modal>
+        );
+      })()}
+
       {showAddColor&&(
         <Modal onClose={()=>{setShowAddColor(null);setPickedColors([]);setCustomColorName("");setNewColorHex("#ffffff");}} w={520}>
           <MHead title="🎨 เพิ่มสีใหม่" sub="เลือกได้หลายสีพร้อมกัน" onClose={()=>{setShowAddColor(null);setPickedColors([]);setCustomColorName("");setNewColorHex("#ffffff");}}/>

@@ -22,7 +22,7 @@ export default function ClothingInventoryTab({
   draggingClothingId, setDraggingClothingId,
   dragOverClothingId, setDragOverClothingId, reorderClothing,
   collapsedItems, toggleCollapse,
-  setShowAddColor, openMix, openBomModal, openProductCatalog,
+  setShowAddColor, openSizeEditor, openMix, openBomModal, openProductCatalog,
   brandFilter, setBrandFilter,
   manageColorMode, setManageColorMode,
   setDeleteClothingTarget, setDeleteConfirmText,
@@ -169,6 +169,16 @@ export default function ClothingInventoryTab({
             </div>
             <div style={{ display: "flex", gap: 6 }} onClick={e => e.stopPropagation()}>
               <button onClick={() => setShowAddColor(item.id)} style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid rgba(59,91,139,0.25)", background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: 500 }}>️ สี</button>
+              {/* 📏 เพิ่ม/ตั้งชื่อไซส์เฉพาะรุ่นนี้ */}
+              {role.canAdd && openSizeEditor && (() => {
+                const own = (item.extraSizes || []).length;
+                return (
+                  <button onClick={() => openSizeEditor(item)} title="เพิ่มไซส์ หรือตั้งชื่อไซส์เองสำหรับรุ่นนี้"
+                    style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${own ? "rgba(124,58,237,0.4)" : "rgba(59,91,139,0.25)"}`, background: own ? "rgba(124,58,237,0.10)" : "rgba(59,91,139,0.08)", color: own ? "#7c3aed" : T.accent, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: own ? 700 : 500 }}>
+                    📏 ไซส์{own ? ` +${own}` : ""}
+                  </button>
+                );
+              })()}
               {(item.colors || []).length > 0 && <button onClick={() => openMix(item)} title="ขายคละสีคละไซส์" style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid rgba(184,134,0,0.3)", background: "rgba(184,134,0,0.08)", color: T.amber, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: 600 }}>🧺 ขายคละ</button>}
               {item.sizeType !== "shoe" && role.canAdd && (() => {
                 const hasBom = boms.some(b => (b.id === item.id || b.clothingId === item.id) && (b.variants || []).some(v => (v.materials || []).length > 0));
