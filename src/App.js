@@ -1787,6 +1787,165 @@ export default function App() {
   };
 
   // ✏️ เปิดหน้าแก้ไขใบสั่งของ — โหลดข้อมูลลง orderForm แล้วเปิด modal เดียวกับตอนสร้าง
+  // ── 📥 แปลงออเดอร์จาก Catalog → ใบสั่งของ ────────────────────
+  // แยกออกมาเป็นฟังก์ชันกลาง เพราะใช้ 2 ทาง: กดทีละใบ กับ แปลงเป็นชุด
+  // คืน { ok, orderNo?, message? } แทนการ alert เอง — ฝั่งเรียกจัดการเอง
+  //   (แปลงเป็นชุดต้องสรุปทีเดียว ไม่ใช่เด้ง alert 235 ครั้ง)
+  const convertCatalogOrder = async (co, customerChoice) => {
+    // 🔒 จองสิทธิ์แบบ atomic — กันสองคนแปลงใบเดียวกันพร้อมกัน
+    try {
+      await runTransaction(db, async (tx) => {
+        const ref = doc(db, "catalogOrders", co.id);
+        const snap = await tx.get(ref);
+        if (!snap.exists()) throw new Error("ORDER_GONE");
+        const d = snap.data();
+        if (d.status === "converted") throw new Error("ALREADY_CONVERTED");
+        const lockAge = d.convertingAt?.toMillis ? Date.now() - d.convertingAt.toMillis() : Infinity;
+        if (d.convertingBy && d.convertingBy !== user.name && lockAge < 120000) throw new Error("LOCKED:" + d.convertingBy);
+        tx.update(ref, { convertingBy: user.name, convertingAt: serverTimestamp() });
+      });
+    } catch (e) {
+      const m = String(e.message || "");
+      if (m === "ALREADY_CONVERTED") return { ok: false, reason: "converted", message: "⚠️ ใบนี้ถูกแปลงเป็นคำสั่งซื้อไปแล้ว\n(อาจมีคนอื่นทำไปพร้อมกัน) — ลองรีเฟรชดู" };
+      if (m === "ORDER_GONE") return { ok: false, reason: "gone", message: "⚠️ ไม่พบใบนี้แล้ว — อาจถูกลบไป" };
+      if (m.startsWith("LOCKED:")) return { ok: false, reason: "locked", message: `⚠️ ${m.slice(7)} กำลังแปลงใบนี้อยู่\nรอสักครู่แล้วลองใหม่` };
+      return { ok: false, reason: "lock-failed", message: "เริ่มแปลงไม่สำเร็จ: " + m };
+    }
+
+    const unlock = async () => {
+      try { await updateDoc(doc(db, "catalogOrders", co.id), { convertingBy: null, convertingAt: null }); } catch {}
+    };
+
+    try {
+      // 1) ลูกค้า
+      let customerId = "";
+      if (customerChoice?.mode === "existing") {
+        customerId = customerChoice.existingId || "";
+      } else if (customerChoice?.mode === "new") {
+        const cref = await addDoc(collection(db, "customers"), {
+          name: co.customerName || "(ลูกค้าใหม่)",
+          phone: co.phone || "",
+          address: co.address || "",
+          taxId: "",
+          note: "จาก Catalog",
+          createdAt: serverTimestamp(),
+        });
+        customerId = cref.id;
+      }
+      // mode === "none" → customerId = "" (ขายครั้งเดียว ไม่ผูกลูกค้า)
+
+      // 2) แปลง entries → items (รองรับ multi-item cart + single-item เก่า)
+      const items = [];
+      const cartEntries = (co.items && co.items.length > 0)
+        ? co.items
+        : [{ itemId: co.itemId, itemName: co.itemName, lines: co.lines || [] }];
+      for (const entry of cartEntries) {
+        const ci = clothingItems.find(c => c.id === entry.itemId);
+        if (!ci) continue;
+        for (const ln of (entry.lines || [])) {
+          let colorIdx = (typeof ln.colorIdx === "number" && ln.colorIdx >= 0)
+            ? ln.colorIdx
+            : (ci.colors || []).findIndex(c => (c.colorName || c.name) === ln.color);
+          if (colorIdx < 0 || colorIdx >= (ci.colors || []).length) continue;
+          const colorData = ci.colors[colorIdx];
+          items.push({
+            clothingId: ci.id,
+            clothingName: ci.model || ci.name || `สินค้า ${ci.id.slice(0,6)}`,
+            colorIdx,
+            colorName: colorData.colorName || colorData.name || ln.color || `สี #${colorIdx+1}`,
+            size: ln.size,
+            qty: Number(ln.qty) || 0,
+            unitPrice: getPriceForSize(colorData, ln.size) || 0,
+          });
+        }
+      }
+      if (items.length === 0) {
+        await unlock();
+        return { ok: false, reason: "no-items", message: "⚠️ แปลงไม่ได้ — ไม่พบสินค้า/สี/ไซส์ ที่ตรงกับในระบบ\n(สินค้าอาจถูกลบไปแล้ว)" };
+      }
+
+      // 3) สร้างใบสั่งของ (ยังไม่ตัดสต๊อก)
+      const orderNo = await reserveDocNo(db, "ORD", orders, "orderNo");
+      const oref = await addDoc(collection(db, "orders"), {
+        orderNo, customerId,
+        customerName: co.customerName || "",
+        customerPhone: co.phone || "",
+        customerAddress: co.address || "",
+        note: `จาก Catalog Inbox${co.note ? ` · ${co.note}` : ""}`,
+        items,
+        status: "รอดำเนินการ",
+        by: user.name,
+        date: now(),
+        createdAt: serverTimestamp(),
+        fromCatalog: co.id,
+      });
+
+      // 4) ปิดใบใน Inbox + ปลดล็อก
+      await updateDoc(doc(db, "catalogOrders", co.id), {
+        status: "converted",
+        convertedOrderId: oref.id,
+        convertedOrderNo: orderNo,
+        convertingBy: null,
+        convertingAt: null,
+      });
+      logAudit(user, {
+        action: AUDIT_ACTIONS.CREATE, collection: "orders", targetId: oref.id,
+        targetLabel: `${orderNo} · ${co.customerName}`,
+        note: `แปลงจาก Catalog · ${items.length} รายการ`,
+      });
+      return { ok: true, orderNo, orderId: oref.id };
+    } catch (e) {
+      await unlock(); // พังกลางทาง → ปลดล็อก ไม่ให้คนอื่นติด 2 นาที
+      return { ok: false, reason: "failed", message: "สร้างคำสั่งซื้อไม่สำเร็จ: " + (e.message || e) };
+    }
+  };
+
+  // 📦 แปลงเป็นชุด — ทำเฉพาะใบที่ "มั่นใจว่าเป็นลูกค้าคนไหน" ที่เหลือกองไว้ให้ทำมือ
+  const [bulkConverting, setBulkConverting] = useState(null); // { done, total } | null
+  const handleBulkConvert = async (list) => {
+    if (!list?.length || bulkConverting) return;
+    const normPhone = (s) => String(s || "").replace(/\D/g, "");
+    // มั่นใจ = มาจากลิงก์ส่วนตัว (customerId) หรือเบอร์ตรงกับลูกค้าในระบบ "รายเดียว"
+    const decide = (co) => {
+      if (co.customerId && customers.some(c => c.id === co.customerId)) return { mode: "existing", existingId: co.customerId };
+      const key = normPhone(co.phone);
+      if (!key) return null;
+      const hits = customers.filter(c => normPhone(c.phone) === key);
+      return hits.length === 1 ? { mode: "existing", existingId: hits[0].id } : null; // เบอร์ซ้ำหลายราย = ไม่มั่นใจ
+    };
+
+    const ready = [], unsure = [];
+    list.forEach(co => { const d = decide(co); (d ? ready : unsure).push({ co, choice: d }); });
+
+    if (ready.length === 0) {
+      alert(`ไม่มีใบที่ระบบมั่นใจว่าเป็นลูกค้าคนไหน (${unsure.length} ใบ)\n\nกดแปลงทีละใบเพื่อเลือกลูกค้าเองนะครับ`);
+      return;
+    }
+    if (!window.confirm(
+      `แปลง ${ready.length} ใบเป็นใบสั่งของ?\n\n` +
+      `✅ จะแปลงเลย ${ready.length} ใบ (รู้แน่ว่าเป็นลูกค้าคนไหน)\n` +
+      (unsure.length > 0 ? `⏸ ข้าม ${unsure.length} ใบ (ไม่แน่ใจลูกค้า — ค่อยกดทีละใบ)\n` : "") +
+      `\n⚠️ ยังไม่ตัดสต๊อก — ไปยืนยันที่หน้าใบสั่งของอีกที`
+    )) return;
+
+    setBulkConverting({ done: 0, total: ready.length });
+    const fails = [];
+    let okCount = 0;
+    for (let i = 0; i < ready.length; i++) {
+      const { co, choice } = ready[i];
+      const r = await convertCatalogOrder(co, choice);
+      if (r.ok) okCount++;
+      else fails.push(`• ${co.customerName || "(ไม่ระบุชื่อ)"} — ${r.message.replace(/⚠️\s*/g, "").split("\n")[0]}`);
+      setBulkConverting({ done: i + 1, total: ready.length });
+    }
+    setBulkConverting(null);
+    alert(
+      `✅ แปลงสำเร็จ ${okCount} ใบ\n` +
+      (fails.length > 0 ? `\n❌ ไม่สำเร็จ ${fails.length} ใบ:\n${fails.slice(0, 10).join("\n")}${fails.length > 10 ? `\n... และอีก ${fails.length - 10} ใบ` : ""}\n` : "") +
+      (unsure.length > 0 ? `\n⏸ ข้าม ${unsure.length} ใบ (ไม่แน่ใจลูกค้า)` : "")
+    );
+  };
+
   const openEditOrder = (o) => {
     if (!o) return;
     // เช็คว่าออกบิลไปแล้วหรือยัง — ดูจากลิงก์จริงเท่านั้น
@@ -3481,117 +3640,12 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               companyInfo={companyInfo}
               user={user}
               onConvert={async (co, customerChoice) => {
-                // 🔒 จองสิทธิ์แบบ atomic ก่อน — กันสองคนกดแปลงใบเดียวกันพร้อมกัน
-                // (มีหลายคนทำงานพร้อมกัน ถ้าไม่กันจะได้ใบสั่งของซ้ำ 2 ใบ)
-                try {
-                  await runTransaction(db, async (tx) => {
-                    const ref = doc(db, "catalogOrders", co.id);
-                    const snap = await tx.get(ref);
-                    if (!snap.exists()) throw new Error("ORDER_GONE");
-                    const d = snap.data();
-                    if (d.status === "converted") throw new Error("ALREADY_CONVERTED");
-                    // มีคนอื่นกำลังทำอยู่ (จองไว้ไม่เกิน 2 นาที — กันค้างถ้าเขาปิดจอไปเฉย ๆ)
-                    const lockAge = d.convertingAt?.toMillis ? Date.now() - d.convertingAt.toMillis() : Infinity;
-                    if (d.convertingBy && d.convertingBy !== user.name && lockAge < 120000) throw new Error("LOCKED:" + d.convertingBy);
-                    tx.update(ref, { convertingBy: user.name, convertingAt: serverTimestamp() });
-                  });
-                } catch (e) {
-                  const m = String(e.message || "");
-                  if (m === "ALREADY_CONVERTED") { alert("⚠️ ใบนี้ถูกแปลงเป็นคำสั่งซื้อไปแล้ว\n(อาจมีคนอื่นทำไปพร้อมกัน) — ลองรีเฟรชดู"); return; }
-                  if (m === "ORDER_GONE") { alert("⚠️ ไม่พบใบนี้แล้ว — อาจถูกลบไป"); return; }
-                  if (m.startsWith("LOCKED:")) { alert(`⚠️ ${m.slice(7)} กำลังแปลงใบนี้อยู่\nรอสักครู่แล้วลองใหม่`); return; }
-                  alert("เริ่มแปลงไม่สำเร็จ: " + m); return;
-                }
-
-                // customerChoice = { mode: "new" | "existing" | "none", existingId?: string }
-                let customerId = "";
-                if (customerChoice?.mode === "existing") {
-                  customerId = customerChoice.existingId || "";
-                } else if (customerChoice?.mode === "new") {
-                  const newCust = {
-                    name: co.customerName || "(ลูกค้าใหม่)",
-                    phone: co.phone || "",
-                    address: co.address || "",
-                    taxId: "",
-                    note: "จาก Catalog",
-                    createdAt: serverTimestamp(),
-                  };
-                  const cref = await addDoc(collection(db, "customers"), newCust);
-                  customerId = cref.id;
-                }
-                // mode === "none" → customerId = "" (one-time)
-                // 2) แปลง entries → items (รองรับ multi-item cart + single-item เก่า)
-                const items = [];
-                const cartEntries = (co.items && co.items.length > 0)
-                  ? co.items
-                  : [{ itemId: co.itemId, itemName: co.itemName, lines: co.lines || [] }];
-                for (const entry of cartEntries) {
-                  const ci = clothingItems.find(c => c.id === entry.itemId);
-                  if (!ci) continue;
-                  for (const ln of (entry.lines||[])) {
-                    let colorIdx = (typeof ln.colorIdx === "number" && ln.colorIdx >= 0)
-                      ? ln.colorIdx
-                      : (ci.colors||[]).findIndex(c => c.name === ln.color);
-                    if (colorIdx < 0 || colorIdx >= (ci.colors||[]).length) continue;
-                    const colorData = ci.colors[colorIdx];
-                    const unitPrice = getPriceForSize(colorData, ln.size) || 0;
-                    items.push({
-                      clothingId: ci.id,
-                      clothingName: ci.model || ci.name || `สินค้า ${ci.id.slice(0,6)}`,
-                      colorIdx,
-                      colorName: colorData.name || ln.color || `สี #${colorIdx+1}`,
-                      size: ln.size,
-                      qty: Number(ln.qty)||0,
-                      unitPrice,
-                    });
-                  }
-                }
-                if (items.length === 0) {
-                  alert("⚠️ ไม่สามารถแปลงได้ — ไม่พบสินค้า/สี/ไซส์ ที่ตรงกับในระบบ\n(สินค้าอาจถูกลบไปแล้ว)");
-                  return;
-                }
-                // 3) สร้าง order (status: รอดำเนินการ — ยังไม่ตัดสต็อก)
-                const orderNo = await reserveDocNo(db, "ORD", orders, "orderNo");
-                const newOrder = {
-                  orderNo,
-                  customerId,
-                  customerName: co.customerName || "",
-                  customerPhone: co.phone || "",
-                  customerAddress: co.address || "",
-                  note: `จาก Catalog Inbox${co.note?` · ${co.note}`:""}`,
-                  items,
-                  status: "รอดำเนินการ",
-                  by: user.name,
-                  date: now(),
-                  createdAt: serverTimestamp(),
-                  fromCatalog: co.id,
-                };
-                let oref;
-                try {
-                  oref = await addDoc(collection(db, "orders"), newOrder);
-                } catch (e) {
-                  // สร้างใบสั่งของไม่สำเร็จ → ปลดล็อกทันที ไม่งั้นคนอื่นทำต่อไม่ได้ 2 นาที
-                  try { await updateDoc(doc(db, "catalogOrders", co.id), { convertingBy: null, convertingAt: null }); } catch {}
-                  alert("สร้างคำสั่งซื้อไม่สำเร็จ: " + (e.message || e));
-                  return;
-                }
-                // 4) อัพเดต catalogOrder = converted (+ ปลดล็อก)
-                await updateDoc(doc(db, "catalogOrders", co.id), {
-                  status: "converted",
-                  convertedOrderId: oref.id,
-                  convertedOrderNo: orderNo,
-                  convertingBy: null,
-                  convertingAt: null,
-                });
-                logAudit(user, {
-                  action: AUDIT_ACTIONS.CREATE,
-                  collection: "orders",
-                  targetId: oref.id,
-                  targetLabel: `${orderNo} · ${co.customerName}`,
-                  note: `แปลงจาก Catalog · ${items.length} รายการ`,
-                });
-                alert(`✅ สร้างคำสั่งซื้อ ${orderNo} แล้ว\nไปที่ tab "คำสั่งซื้อ" เพื่อยืนยัน/ปริ้น/ตัดสต็อก`);
+                const r = await convertCatalogOrder(co, customerChoice);
+                if (!r.ok) { alert(r.message); return; }
+                alert(`✅ สร้างคำสั่งซื้อ ${r.orderNo} แล้ว
+ไปที่ tab "คำสั่งซื้อ" เพื่อยืนยัน/ปริ้น/ตัดสต็อก`);
               }}
+              onBulkConvert={handleBulkConvert}
             />
             </>
           )}
@@ -4298,6 +4352,23 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           handleConfirmOrder={handleConfirmOrder}
           addOrderMixItem={addOrderMixItem}
         />
+      )}
+
+      {/* ⏳ กำลังแปลงเป็นชุด — กันปิดหน้าจอกลางคัน */}
+      {bulkConverting && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(15,23,42,.6)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:9999 }}>
+          <div style={{ background:"white", borderRadius:14, padding:"26px 34px", textAlign:"center", minWidth:280 }}>
+            <div style={{ fontSize:34, marginBottom:8 }}>⏳</div>
+            <div style={{ fontSize:15, fontWeight:800, color:T.text }}>กำลังแปลงเป็นใบสั่งของ...</div>
+            <div style={{ fontSize:22, fontWeight:800, color:T.accent, fontFamily:"monospace", margin:"10px 0" }}>
+              {bulkConverting.done} / {bulkConverting.total}
+            </div>
+            <div style={{ height:6, background:"#f1f5f9", borderRadius:3, overflow:"hidden" }}>
+              <div style={{ width:`${Math.round((bulkConverting.done/Math.max(1,bulkConverting.total))*100)}%`, height:"100%", background:T.accent, transition:"width .2s" }}/>
+            </div>
+            <div style={{ fontSize:11, color:T.muted, marginTop:10 }}>ห้ามปิดหน้าจอจนกว่าจะเสร็จ</div>
+          </div>
+        </div>
       )}
 
       {/* ── MODAL: หน้าร้าน (แบรนด์ / รายละเอียด / ไซส์ที่ขาย) ── */}

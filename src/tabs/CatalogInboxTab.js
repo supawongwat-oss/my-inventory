@@ -19,7 +19,10 @@ const STATUS = {
   cancelled: { label: "ยกเลิก",      color: "#b94a48", bg: "#fee2e2" },
 };
 
-export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothingItems = [], customers = [], companyInfo = {} }) {
+export default function CatalogInboxTab({ catalogOrders = [], onConvert, onBulkConvert, clothingItems = [], customers = [], companyInfo = {} }) {
+  // ☑️ เลือกหลายใบ — ที่ 200-300 ใบ/วัน กดทีละใบไม่ไหว
+  const [selected, setSelected] = useState(new Set());
+  const toggleSel = (id) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [filter, setFilter] = useState("");
   const [copiedId, setCopiedId] = useState("");
 
@@ -43,6 +46,19 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
       window.prompt("คัดลอกข้อความนี้ไปวางในไลน์:", quoteEdit.text);
     }
   };
+  // 📋 คัดลอกข้อความหลายคนพร้อมกัน — แยกบล็อกด้วยเส้นคั่น วางไลน์ทีละคนได้เร็ว
+  const copyBulkQuotes = async (sel) => {
+    const text = sel
+      .map(o => buildQuoteMessage(o, clothingItems))
+      .join("\n\n────────────────\n\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      alert(`📋 คัดลอกข้อความ ${sel.length} คนแล้ว\n\nแต่ละคนคั่นด้วยเส้น ──── วางแล้วตัดส่งทีละคนได้เลย`);
+    } catch {
+      window.prompt(`ข้อความ ${sel.length} คน (คั่นด้วยเส้น):`, text);
+    }
+  };
+
   const [convertModal, setConvertModal] = useState(null); // { order, suggestedCustomer, mode, existingId, search }
 
   const list = catalogOrders.filter(o => !filter || o.status === filter);
@@ -89,6 +105,43 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
           <Chip key={k} active={filter===k} onClick={()=>setFilter(k)} label={`${s.label} (${counts[k]||0})`} color={s.color} bg={s.bg} />
         ))}
       </div>
+
+      {/* ☑️ เลือกหลายใบ → แปลง/คัดลอกทีเดียว */}
+      {onBulkConvert && todoList.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap", fontSize: 12, color: T.sub }}>
+          <button onClick={() => setSelected(new Set(todoList.map(o => o.id)))}
+            style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
+            ☑️ เลือกทั้งหมด ({todoList.length})
+          </button>
+          {selected.size > 0 && (
+            <button onClick={() => setSelected(new Set())}
+              style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
+              ล้างที่เลือก
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* แถบลอย — โผล่เมื่อเลือกอย่างน้อย 1 ใบ */}
+      {selected.size > 0 && (() => {
+        const sel = todoList.filter(o => selected.has(o.id));
+        const totalQty = sel.reduce((s, o) => s + quoteCatalogOrder(o, clothingItems).totalQty, 0);
+        return (
+          <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 200, display: "flex", alignItems: "center", gap: 14, background: T.card, border: `1px solid ${T.accent}`, borderRadius: 14, padding: "12px 18px", boxShadow: "0 10px 40px rgba(0,0,0,0.25)", flexWrap: "wrap", maxWidth: "94vw" }}>
+            <div style={{ fontSize: 13, color: T.text }}>
+              เลือก <b style={{ color: T.accent }}>{sel.length}</b> ใบ · รวม <b>{totalQty.toLocaleString("th-TH")}</b> ตัว
+            </div>
+            <button onClick={() => { copyBulkQuotes(sel); }}
+              style={{ background: "white", color: T.accent, border: `1px solid ${T.accent}`, padding: "8px 14px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: 12 }}>
+              📋 คัดลอกข้อความทั้งหมด
+            </button>
+            <button onClick={() => { onBulkConvert(sel); setSelected(new Set()); }}
+              style={{ background: T.green, color: "white", border: "none", padding: "8px 18px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: 13 }}>
+              ➡️ แปลงเป็นใบสั่งของ
+            </button>
+          </div>
+        );
+      })()}
 
       {list.length === 0 ? (
         <div style={{ textAlign:"center", padding: 60, color: T.muted, background: T.card, borderRadius: 14, border: `1px solid ${T.border}` }}>
@@ -267,6 +320,11 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, clothin
             return (
               <div key={o.id} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 16, opacity: isDone(o) && !open ? 0.75 : 1 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: open ? 10 : 0, flexWrap:"wrap" }}>
+                  {!isDone(o) && onBulkConvert && (
+                    <input type="checkbox" checked={selected.has(o.id)} onChange={()=>toggleSel(o.id)}
+                      onClick={e=>e.stopPropagation()} title="เลือกเพื่อแปลงเป็นชุด"
+                      style={{ width: 16, height: 16, cursor: "pointer", marginTop: 3, flexShrink: 0 }}/>
+                  )}
                   <div onClick={()=>toggleCard(o)} style={{ cursor: "pointer", flex: 1, minWidth: 0, display: "flex", alignItems: "flex-start", gap: 8 }}>
                     <span style={{ fontSize: 11, color: T.muted, marginTop: 3 }}>{open ? "▼" : "▶"}</span>
                     <div style={{ minWidth: 0 }}>
