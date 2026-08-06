@@ -466,6 +466,8 @@ export default function App() {
   const [salesTxNonce, setSalesTxNonce] = useState(0);   // bump เพื่อ refetch หลังลบรายการ
   const [reportTx, setReportTx] = useState([]);          // tx 90 วันล่าสุด (สำหรับหน้ารายงาน)
   const [collapsedSalesModels, setCollapsedSalesModels] = useState({}); // ย่อรุ่นใน "ขายวันนี้"
+  const [salesSearch, setSalesSearch] = useState("");       // 🔍 ค้นรุ่นใน "ขายวันนี้"
+  const [salesShowCount, setSalesShowCount] = useState(30); // จำนวนรุ่นที่วาด (กันค้างเมื่อมีเป็นร้อยรุ่น)
   const [newApparelSize, setNewApparelSize] = useState("");
   const [newShoeSize, setNewShoeSize] = useState("");
   const [clothingTxNote, setClothingTxNote] = useState("");
@@ -1002,6 +1004,9 @@ export default function App() {
     })();
     return () => { cancelled = true; };
   }, [showSalesToday, salesDate, salesMode, salesTxNonce]);
+
+  // เปลี่ยนวัน/โหมด/เปิดใหม่ → เริ่มนับใหม่ ไม่ให้ค้างที่จำนวนเดิม
+  useEffect(() => { setSalesShowCount(30); setSalesSearch(""); }, [showSalesToday, salesDate, salesMode]);
 
   // หน้ารายงาน — โหลด tx 90 วันล่าสุด (กราฟรับ/จ่าย + ยอดต่อสินค้า) ไม่ให้ขาดข้อมูลเมื่อออกใบเยอะ
   useEffect(() => {
@@ -4574,7 +4579,12 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           const k = `${color}|||${size}`;
           byModel[model].rows[k] = (byModel[model].rows[k]||0) + (Number(t.qty)||0);
         });
-        const models = Object.keys(byModel).sort((a,b)=>byModel[b].total-byModel[a].total);
+        const allModels = Object.keys(byModel).sort((a,b)=>byModel[b].total-byModel[a].total);
+        // 🔎 ค้นหา + จำกัดจำนวนที่วาด — ยอดหลักพันมีรุ่นเป็นร้อย วาดหมดทีเดียวเบราว์เซอร์ค้าง
+        const q = (salesSearch||"").trim().toLowerCase();
+        const matched = q ? allModels.filter(m => m.toLowerCase().includes(q)) : allModels;
+        const models = matched.slice(0, salesShowCount);
+        const hiddenCount = matched.length - models.length;
         const grandTotal = todays.reduce((s,t)=>s+(Number(t.qty)||0),0);
         const isToday = salesDate === new Date().toISOString().slice(0,10);
         const isMonth = salesMode === "month";
@@ -4598,6 +4608,11 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                 style={{background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
             )}
             <button onClick={()=>setSalesDate(new Date().toISOString().slice(0,10))} style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif"}}>{isMonth?"เดือนนี้":"วันนี้"}</button>
+            {allModels.length>8&&(
+              <input value={salesSearch} onChange={e=>{setSalesSearch(e.target.value); setSalesShowCount(30);}}
+                placeholder={`🔍 ค้นรุ่น (${allModels.length} รุ่น)`}
+                style={{flex:"1 1 150px",minWidth:130,background:T.input,border:`1px solid ${salesSearch?T.green:T.inputBorder}`,color:T.text,borderRadius:9,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+            )}
             {models.length>1&&(()=>{const allCollapsed=models.every(mm=>collapsedSalesModels[mm]);return(
               <button onClick={()=>setCollapsedSalesModels(allCollapsed?{}:Object.fromEntries(models.map(mm=>[mm,true])))} style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.sub,cursor:"pointer",fontSize:12,fontFamily:"'Sarabun',sans-serif"}}>{allCollapsed?"⊞ กางทั้งหมด":"⊟ ย่อทั้งหมด"}</button>
             );})()}
@@ -4606,8 +4621,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
           {models.length===0 ? (
             <div style={{textAlign:"center",padding:40,color:T.muted,fontSize:13}}>
-              <div style={{fontSize:40,marginBottom:8,opacity:0.3}}>📭</div>
-              ยังไม่มีการจ่ายออกในวันนี้
+              <div style={{fontSize:40,marginBottom:8,opacity:0.3}}>{salesTxLoading?"⏳":q?"🔍":"📭"}</div>
+              {salesTxLoading ? "กำลังโหลด..." : q ? `ไม่พบรุ่นที่ค้น "${salesSearch}"` : (isMonth?"ยังไม่มีการจ่ายออกในเดือนนี้":"ยังไม่มีการจ่ายออกในวันนี้")}
             </div>
           ) : (
             <div style={{display:"flex",flexDirection:"column",gap:12,maxHeight:"60vh",overflowY:"auto"}}>
@@ -4663,6 +4678,12 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   </div>
                 );
               })}
+              {hiddenCount>0 && (
+                <button onClick={()=>setSalesShowCount(c=>c+30)}
+                  style={{padding:"11px",borderRadius:10,border:`1px dashed ${T.border}`,background:"transparent",color:T.sub,cursor:"pointer",fontSize:13,fontFamily:"'Sarabun',sans-serif",fontWeight:600}}>
+                  ⬇️ ดูเพิ่ม (เหลืออีก {hiddenCount.toLocaleString("th-TH")} รุ่น)
+                </button>
+              )}
             </div>
           )}
           <div style={{marginTop:16}}>
