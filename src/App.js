@@ -1990,9 +1990,10 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       if (!window.confirm(`⚠️ ติ๊กไว้ ${selectedOrders.size} ใบ แต่ตอนนี้เห็นแค่ ${sel.length} ใบ (หายไป ${miss} ใบ เพราะไม่อยู่ในรายการที่แสดง)\n\nออกบิลรวมเฉพาะ ${sel.length} ใบที่เห็นต่อไหม?`)) return;
     }
     // เตือนถ้าลูกค้าต่างกัน
-    const customers = new Set(sel.map(o => (o.customerName||"").trim()));
-    if (customers.size > 1) {
-      if (!window.confirm(`⚠️ ใบสั่งของที่เลือกมีลูกค้าต่างกัน ${customers.size} ราย:\n${[...customers].join(", ")}\n\nต้องการรวมเป็นบิลเดียวจริงๆ? (จะใช้ข้อมูลลูกค้าจากใบแรก)`)) return;
+    // ⚠️ ห้ามตั้งชื่อว่า customers — จะไปทับ state customers (ทะเบียนลูกค้า) ที่ใช้ .find() ด้านล่าง
+    const custNames = new Set(sel.map(o => (o.customerName||"").trim()));
+    if (custNames.size > 1) {
+      if (!window.confirm(`⚠️ ใบสั่งของที่เลือกมีลูกค้าต่างกัน ${custNames.size} ราย:\n${[...custNames].join(", ")}\n\nต้องการรวมเป็นบิลเดียวจริงๆ? (จะใช้ข้อมูลลูกค้าจากใบแรก)`)) return;
     }
     // รวม items: ถ้า (clothingId+colorIdx+size+variant) ตรงกัน → บวก qty
     const merged = new Map();
