@@ -1977,8 +1977,18 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     setSelectedOrders(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   };
   const handleMergeOrdersToInvoice = () => {
+   try {
     const sel = orders.filter(o => selectedOrders.has(o.id));
-    if (sel.length === 0) return;
+    // ⚠️ เดิม return เงียบ ๆ — ถ้าใบที่ติ๊กไว้หลุดออกจากรายการที่โหลดอยู่ (เปลี่ยนช่วงวันที่/ตัวกรอง)
+    //    จะกดแล้วไม่มีอะไรเกิดขึ้น หาสาเหตุไม่ได้ → บอกให้ชัด
+    if (sel.length === 0) {
+      alert(`ออกบิลรวมไม่ได้ — ใบสั่งที่ติ๊กไว้ ${selectedOrders.size} ใบ ไม่อยู่ในรายการที่แสดงอยู่ตอนนี้\n\nอาจเพราะเปลี่ยนช่วงวันที่หรือตัวกรองหลังจากติ๊กไปแล้ว\nกด "ยกเลิก" แล้วเลือกใหม่อีกครั้ง`);
+      return;
+    }
+    if (sel.length < selectedOrders.size) {
+      const miss = selectedOrders.size - sel.length;
+      if (!window.confirm(`⚠️ ติ๊กไว้ ${selectedOrders.size} ใบ แต่ตอนนี้เห็นแค่ ${sel.length} ใบ (หายไป ${miss} ใบ เพราะไม่อยู่ในรายการที่แสดง)\n\nออกบิลรวมเฉพาะ ${sel.length} ใบที่เห็นต่อไหม?`)) return;
+    }
     // เตือนถ้าลูกค้าต่างกัน
     const customers = new Set(sel.map(o => (o.customerName||"").trim()));
     if (customers.size > 1) {
@@ -2005,6 +2015,10 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         }
       });
     });
+    // 📦 รวมหลายใบที่รายการเยอะ → บิลจะยาวมากและฟอร์มอาจหน่วง เตือนก่อน
+    if (merged.size > 400) {
+      if (!window.confirm(`บิลรวมนี้จะมี ${merged.size.toLocaleString("th-TH")} แถว (จาก ${sel.length} ใบสั่ง)\n\nฟอร์มออกบิลอาจหน่วงและบิลจะยาวหลายหน้า\nแนะนำให้แบ่งออกเป็นหลายบิล — จะไปต่อไหม?`)) return;
+    }
     const first = sel[0];
     const orderNos = sel.map(o => o.orderNo).filter(Boolean).join(", ");
     // 🔎 ดึงเลขภาษี/ข้อมูลลูกค้าจากทะเบียน (ใบสั่งของไม่ได้เก็บ taxId)
@@ -2029,6 +2043,12 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     }));
     setSelectedOrders(new Set());
     setShowNewInvoice(true);
+    setActiveTab("invoice"); // เด้งไปหน้าออกบิล ให้เห็นว่าเปิดฟอร์มแล้วจริง
+   } catch (err) {
+    // เดิมไม่มีดักพลาด — พังตรงไหนก็เงียบ หาสาเหตุไม่ได้
+    console.error("[mergeOrders] failed:", err);
+    alert(`ออกบิลรวมไม่สำเร็จ: ${err?.message || err}\n\nลองลดจำนวนใบที่เลือกลง แล้วรวมทีละชุด`);
+   }
   };
 
   const handleImportFromOrder = (order) => {
@@ -2143,6 +2163,12 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     };
     delete data.depositAmount; delete data.depositMethod; // ฟิลด์ชั่วคราวของฟอร์ม ไม่ต้องเก็บลง doc
     delete data.docDate; // ฟิลด์ของฟอร์มเท่านั้น — ตัวจริงเก็บใน date
+    // 📦 Firestore จำกัดเอกสารละ 1MB — บิลที่รวมมาจากใบสั่งเยอะ ๆ อาจทะลุแล้วบันทึกไม่ผ่าน
+    const invKB = Math.round(JSON.stringify(data).length / 1024);
+    if (invKB > 900) {
+      alert(`บันทึกไม่ได้ — บิลนี้ใหญ่เกินขีดจำกัด (${invKB} KB / สูงสุด ~1000 KB)\n\nมี ${data.items.length.toLocaleString("th-TH")} แถว — แบ่งออกเป็นหลายบิลก่อนครับ`);
+      return;
+    }
     const ref = await addDoc(collection(db,"invoices"), data);
     logAudit(user, {
       action: AUDIT_ACTIONS.CREATE,
