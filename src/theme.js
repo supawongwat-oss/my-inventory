@@ -149,12 +149,32 @@ export const splitSizesIntoRows = (items, maxPerRow = 4, options = {}) => {
   return rows;
 };
 
+// 🧾 แถวสำหรับหน้าตั้งราคา — สร้างจาก "ไซส์จริงของรุ่น" ไม่ใช่ชุดมาตรฐานตายตัว
+// ไซส์มาตรฐานจับเป็นกลุ่ม (6-12 / S-XL) · ไซส์อื่น (SS, 37-45, ฟรีไซส์) แยกแถวละไซส์
+export const priceRowsForSizes = (sizes = []) => {
+  const rows = [];
+  const seen = new Set();
+  sizes.forEach(sz => {
+    const g = SIZE_GROUPS.find(gr => gr.sizes.includes(sz));
+    const key = g ? g.key : String(sz);
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push({
+      key,
+      label: g ? g.label : `ไซส์ ${sz}`,
+      sizes: g ? g.sizes.filter(s => sizes.includes(s)) : [sz],
+    });
+  });
+  return rows;
+};
+
 export const getPriceForSize = (col, sz) => {
   if (!col) return 0;
+  const sp = col.salePrices || {};
+  // ราคาที่ตั้งไว้ตรงตัวไซส์ก่อน (รองรับไซส์นอกมาตรฐาน เช่น SS / 37 / ฟรีไซส์)
+  if (sz && sp[sz] != null && sp[sz] !== "") return Number(sp[sz]) || 0;
   const k = sizeGroupKey(sz);
-  if (col.salePrices && k && col.salePrices[k] != null && col.salePrices[k] !== "") {
-    return Number(col.salePrices[k]) || 0;
-  }
+  if (k && sp[k] != null && sp[k] !== "") return Number(sp[k]) || 0;
   return Number(col.salePrice) || 0;
 };
 

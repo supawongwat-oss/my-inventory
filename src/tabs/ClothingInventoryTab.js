@@ -1,5 +1,5 @@
 import React from "react";
-import { SIZE_GROUPS } from "../theme";
+import { priceRowsForSizes } from "../theme";
 
 const T = {
   card:"#ffffff", border:"#e3e8ef", text:"#1f2a44", sub:"#5b6b85", muted:"#8a9bb3",
@@ -260,19 +260,15 @@ export default function ClothingInventoryTab({
                         <td colSpan={2} style={{ padding: "4px 6px", textAlign: "center" }}>
                           {(() => {
                             const sp = col.salePrices || {};
-                            const hasAny = SIZE_GROUPS.some(g => sp[g.key] != null && sp[g.key] !== "" && Number(sp[g.key]) > 0) || Number(col.salePrice) > 0;
+                            // 📏 แถวราคาอิงไซส์จริงของรุ่นนี้ (สนับแข้ง/รองเท้า ใช้คนละชุดกับเสื้อ)
+                            const rows = priceRowsForSizes(sizesFor(item));
+                            const hasAny = rows.some(r => sp[r.key] != null && sp[r.key] !== "" && Number(sp[r.key]) > 0) || Number(col.salePrice) > 0;
                             const cost = Number(col.costPrice) || 0;
                             return (
                               <button onClick={() => {
-                                setPriceForm({
-                                  costPrice: col.costPrice || "",
-                                  kids: sp.kids ?? col.salePrice ?? "",
-                                  reg: sp.reg ?? col.salePrice ?? "",
-                                  "2XL": sp["2XL"] ?? col.salePrice ?? "",
-                                  "3XL": sp["3XL"] ?? col.salePrice ?? "",
-                                  "4XL": sp["4XL"] ?? col.salePrice ?? "",
-                                  "5XL": sp["5XL"] ?? col.salePrice ?? "",
-                                });
+                                const seed = { costPrice: col.costPrice || "" };
+                                rows.forEach(r => { seed[r.key] = sp[r.key] ?? col.salePrice ?? ""; });
+                                setPriceForm(seed);
                                 setPriceModal({ itemId: item.id, ci });
                               }}
                                 style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${hasAny ? "rgba(52,211,153,0.3)" : T.border}`, background: hasAny ? "rgba(52,211,153,0.08)" : "rgba(59,91,139,0.05)", color: hasAny ? "#34d399" : T.sub, cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "'Sarabun',sans-serif", whiteSpace: "nowrap" }}>

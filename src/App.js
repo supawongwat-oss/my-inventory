@@ -1,7 +1,7 @@
 ﻿import React, { useState, useRef, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import { db, authReady } from "./firebase";
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, runTransaction, serverTimestamp, query, orderBy, where, Timestamp, limit } from "firebase/firestore";
-import { T, SIZES, SHOE_SIZES, getSizesFor, mergeSizes, PRESET_COLORS, MASTER_KEY, SIZE_GROUPS, getPriceForSize, compareSizes, splitSizesIntoRows } from "./theme";
+import { T, SIZES, SHOE_SIZES, getSizesFor, mergeSizes, PRESET_COLORS, MASTER_KEY, SIZE_GROUPS, priceRowsForSizes, getPriceForSize, compareSizes, splitSizesIntoRows } from "./theme";
 import { INIT_USERS, ROLES, INIT_CATS } from "./constants";
 import { BarcodeDisplay, Modal, MHead, Toast, Input, BtnPrimary, BtnSuccess, BtnDanger, BtnGhost, Badge, CardBox } from "./components/ui";
 import LoginPage, { CompanyEditor } from "./components/LoginPage";
@@ -4916,10 +4916,13 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         const item = clothingItems.find(i=>i.id===priceModal.itemId);
         const col = item?.colors?.[priceModal.ci];
         if(!item||!col) return null;
+        // 📏 แถวราคาสร้างจากไซส์จริงของรุ่นนี้ (สนับแข้ง/รองเท้า ไม่ได้ใช้ไซส์เสื้อ)
+        const priceRows = priceRowsForSizes(sizesFor(item));
         const handleSavePrices = async () => {
-          const salePrices = {};
-          SIZE_GROUPS.forEach(g => { salePrices[g.key] = Number(priceForm[g.key]) || 0; });
-          const defaultPrice = salePrices.reg || salePrices.kids || Object.values(salePrices).find(v=>v>0) || 0;
+          // คงคีย์เดิมที่ไม่ได้อยู่ในแถวตอนนี้ไว้ (เช่น ไซส์ที่ซ่อนไป — เผื่อเอากลับมา)
+          const salePrices = { ...(col.salePrices || {}) };
+          priceRows.forEach(r => { salePrices[r.key] = Number(priceForm[r.key]) || 0; });
+          const defaultPrice = salePrices.reg || salePrices.kids || priceRows.map(r=>Number(priceForm[r.key])||0).find(v=>v>0) || 0;
           const newColors = item.colors.map((c,i)=>{
             // ถ้าเลือก applyAll = ใช้ราคาเดียวกันกับทุกสีของรุ่นนี้
             if (priceModal.applyAll || i===priceModal.ci) {
@@ -4969,12 +4972,17 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               <input type="number" value={priceForm.costPrice} onFocus={e=>e.target.select()} onChange={e=>setPriceForm(f=>({...f,costPrice:e.target.value}))} placeholder="0"
                 style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 12px",fontFamily:"monospace",fontSize:13,outline:"none"}}/>
             </div>
-            <div style={{fontSize:11,color:T.muted,marginBottom:8,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>ราคาขาย (฿/ชิ้น) ตามกลุ่มไซส์</div>
-            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:18}}>
-              {SIZE_GROUPS.map(g=>(
-                <div key={g.key} style={{display:"grid",gridTemplateColumns:"120px 1fr",alignItems:"center",gap:10,padding:"6px 10px",background:"rgba(241,243,246,0.5)",borderRadius:7,border:`1px solid ${T.border}`}}>
-                  <span style={{fontSize:12,color:T.accent,fontWeight:600}}>{g.label}</span>
-                  <input type="number" value={priceForm[g.key]} onFocus={e=>e.target.select()} onChange={e=>setPriceForm(f=>({...f,[g.key]:e.target.value}))} placeholder="0"
+            <div style={{fontSize:11,color:T.muted,marginBottom:8,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>ราคาขาย (฿/ชิ้น) ตามไซส์ของรุ่นนี้</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:18,maxHeight:340,overflowY:"auto"}}>
+              {priceRows.length===0
+                ? <div style={{padding:"18px",textAlign:"center",color:T.muted,fontSize:12}}>รุ่นนี้ยังไม่มีไซส์ — เพิ่มไซส์ที่ปุ่ม ⚙️ สี/ไซส์ ก่อน</div>
+                : priceRows.map(g=>(
+                <div key={g.key} style={{display:"grid",gridTemplateColumns:"130px 1fr",alignItems:"center",gap:10,padding:"6px 10px",background:"rgba(241,243,246,0.5)",borderRadius:7,border:`1px solid ${T.border}`}}>
+                  <div style={{display:"flex",flexDirection:"column",lineHeight:1.25}}>
+                    <span style={{fontSize:12,color:T.accent,fontWeight:600}}>{g.label}</span>
+                    {g.sizes.length>1&&<span style={{fontSize:9,color:T.muted,fontFamily:"monospace"}}>{g.sizes.join(", ")}</span>}
+                  </div>
+                  <input type="number" value={priceForm[g.key]??""} onFocus={e=>e.target.select()} onChange={e=>setPriceForm(f=>({...f,[g.key]:e.target.value}))} placeholder="0"
                     style={{width:"100%",background:"rgba(52,211,153,0.06)",border:"1px solid rgba(52,211,153,0.2)",color:"#34d399",borderRadius:6,padding:"6px 10px",fontFamily:"monospace",fontSize:13,fontWeight:600,outline:"none",textAlign:"right"}}/>
                 </div>
               ))}
