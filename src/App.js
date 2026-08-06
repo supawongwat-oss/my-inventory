@@ -4570,10 +4570,11 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         const todays = salesTx.filter(t => t.type==="จ่าย" && t.category==="เสื้อผ้า");
         const byModel = {};
         todays.forEach(t => {
-          const parts = (t.name||"").split(" / ");
-          const model = (parts[0]||t.name||"-").trim();
-          const color = (parts[1]||"-").trim();
-          const size = (parts[2]||"-").trim();
+          const parts = String(t.name||"").split(" / ");
+          // 🛡️ กันชื่อว่าง/ช่องว่างล้วน → เดิม trim() แล้วได้ "" ทำให้แถวโล่ง มองไม่เห็นอะไรเลย
+          const model = (parts[0]||"").trim() || String(t.name||"").trim() || "(ไม่ระบุรุ่น)";
+          const color = (parts[1]||"").trim() || "-";
+          const size  = (parts[2]||"").trim() || "-";
           if (!byModel[model]) byModel[model] = { total:0, rows:{} };
           byModel[model].total += Number(t.qty)||0;
           const k = `${color}|||${size}`;
@@ -4645,7 +4646,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                 return (
                   <div key={model} style={{border:`1px solid ${T.border}`,borderRadius:12,overflow:"hidden"}}>
                     <div onClick={()=>setCollapsedSalesModels(p=>({...p,[model]:!p[model]}))}
-                      style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"10px 14px",background:"rgba(58,122,82,0.08)",cursor:"pointer",userSelect:"none"}}>
+                      style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"10px 14px",minHeight:42,background:"rgba(58,122,82,0.08)",cursor:"pointer",userSelect:"none",lineHeight:1.4}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
                         <span style={{width:18,height:18,borderRadius:5,background:"rgba(58,122,82,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:T.green,transition:"transform 0.2s",transform:mCollapsed?"rotate(-90deg)":"rotate(0deg)",flexShrink:0}}>▼</span>
                         <div style={{fontSize:14,fontWeight:800,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>👕 {model}</div>
