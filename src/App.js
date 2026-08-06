@@ -334,7 +334,8 @@ export default function App() {
 
   const [showAddClothing, setShowAddClothing] = useState(false);
   const [showAddColor, setShowAddColor] = useState(null);
-  const [sizeEditorItem, setSizeEditorItem] = useState(null); // 📏 เพิ่ม/ตั้งชื่อไซส์เฉพาะรุ่น (จากหน้าคลัง)
+  const [sizeEditorItem, setSizeEditorItem] = useState(null); // ⚙️ จัดการรุ่น (สี + ไซส์) จากหน้าคลัง
+  const [itemMgrTab, setItemMgrTab] = useState("colors");
   const [newItemSize, setNewItemSize] = useState("");
   const [pickedColors, setPickedColors] = useState([]); // multi-select buffer: [{colorName, hex}]
   const [priceModal, setPriceModal] = useState(null); // {itemId, ci}
@@ -4943,14 +4944,61 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       })()}
 
       {/* ── MODAL: เพิ่มสีเสื้อผ้า (multi-select) ── */}
-      {/* 📏 จัดการไซส์ของรุ่นนี้ — เพิ่ม/ตั้งชื่อไซส์เองได้จากหน้าคลัง */}
+      {/* 🎨📏 จัดการรุ่น — สี + ไซส์ รวมในที่เดียว */}
       {sizeEditorItem&&(()=>{
         const item = clothingItems.find(i=>i.id===sizeEditorItem.id) || sizeEditorItem;
         const own = new Set((item.extraSizes||[]).map(s=>String(s)));
         const all = sizesFor(item);
+        const closeMgr = ()=>{setSizeEditorItem(null);setNewItemSize("");setItemMgrTab("colors");};
+        const cols = item.colors||[];
         return (
-          <Modal onClose={()=>{setSizeEditorItem(null);setNewItemSize("");}} w={560}>
-            <MHead title={`📏 ไซส์ของรุ่น — ${item.model}`} sub="เพิ่มไซส์ใหม่ หรือตั้งชื่อไซส์เองได้ เช่น ฟรีไซส์ / รอบอก 40" onClose={()=>{setSizeEditorItem(null);setNewItemSize("");}}/>
+          <Modal onClose={closeMgr} w={600}>
+            <MHead title={`⚙️ จัดการรุ่น — ${item.model}`} sub="สี และ ไซส์ ของรุ่นนี้" onClose={closeMgr}/>
+            {/* แท็บ */}
+            <div style={{display:"flex",gap:6,marginBottom:14}}>
+              {[{k:"colors",l:`🎨 สี (${cols.length})`},{k:"sizes",l:`📏 ไซส์ (${all.length})`}].map(t=>(
+                <button key={t.k} onClick={()=>setItemMgrTab(t.k)}
+                  style={{flex:1,padding:"9px 14px",borderRadius:9,cursor:"pointer",fontSize:13,fontFamily:"'Sarabun',sans-serif",fontWeight:itemMgrTab===t.k?700:500,
+                    border:`1px solid ${itemMgrTab===t.k?T.accent:T.border}`,background:itemMgrTab===t.k?"rgba(59,91,139,0.12)":"transparent",color:itemMgrTab===t.k?T.accent:T.sub}}>
+                  {t.l}
+                </button>
+              ))}
+            </div>
+
+            {/* ── แท็บ สี ── */}
+            {itemMgrTab==="colors"&&(<>
+              <div style={{fontSize:12,color:T.sub,marginBottom:12,padding:"10px 12px",background:"rgba(59,91,139,0.06)",borderRadius:9,lineHeight:1.6}}>
+                ลบสีได้เมื่อ<b>ไม่มีของเหลือในสต็อก</b>แล้วเท่านั้น — สีที่ยังมีของจะขึ้นรูปกุญแจ 🔒
+              </div>
+              {cols.length===0
+                ? <div style={{padding:"24px",textAlign:"center",color:T.muted,fontSize:12,marginBottom:12}}>ยังไม่มีสีในรุ่นนี้</div>
+                : <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12,maxHeight:300,overflowY:"auto"}}>
+                    {cols.map((c,ci)=>{
+                      const qty = Object.values(c.stock||{}).reduce((s,q)=>s+(Number(q)||0),0);
+                      const locked = qty>0;
+                      return (
+                        <div key={ci} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",borderRadius:8,border:`1px solid ${T.border}`,background:"rgba(241,243,246,0.5)"}}>
+                          <span style={{width:18,height:18,borderRadius:5,background:c.hex||c.colorHex||"#999",border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/>
+                          <span style={{flex:1,fontSize:13,fontWeight:600,color:T.text}}>{c.colorName}</span>
+                          <span style={{fontSize:11,color:qty>0?T.accent:T.muted,fontFamily:"monospace",fontWeight:700}}>{qty} ตัว</span>
+                          {role?.canDelete&&(
+                            <button onClick={()=>{
+                              if(locked){alert(`ลบไม่ได้ — สี "${c.colorName}" ยังมีของอยู่ ${qty} ตัว\nตัดสต็อกให้เหลือ 0 ก่อน`);return;}
+                              if(window.confirm(`ลบสี "${c.colorName}" ออกจากรุ่น ${item.model}?`)) handleDeleteClothingColor(item.id,ci);
+                            }} title={locked?`ยังมีของ ${qty} ตัว`:`ลบสี ${c.colorName}`}
+                              style={{border:"none",background:"transparent",color:locked?T.muted:T.red,cursor:locked?"not-allowed":"pointer",fontSize:14,padding:"0 2px",opacity:locked?0.45:1}}>
+                              {locked?"🔒":"✕"}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>}
+              {role?.canAdd&&<BtnPrimary onClick={()=>{setSizeEditorItem(null);setShowAddColor(item.id);}} style={{width:"100%"}}>➕ เพิ่มสีใหม่</BtnPrimary>}
+            </>)}
+
+            {/* ── แท็บ ไซส์ ── */}
+            {itemMgrTab==="sizes"&&(<>
             <div style={{fontSize:12,color:T.sub,marginBottom:14,padding:"10px 12px",background:"rgba(59,91,139,0.06)",borderRadius:9,lineHeight:1.6}}>
               ไซส์ที่เพิ่มตรงนี้ใช้<b>เฉพาะรุ่นนี้</b> — จะขึ้นในตารางสต็อก รับ/จ่าย ใบสั่งของ และบิล<br/>
               ถ้าอยากให้ขึ้นทุกรุ่น ให้เพิ่มที่ <b>⚙️ ตั้งค่า → 📏 จัดการไซส์</b> แทน
@@ -4995,6 +5043,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                 style={{flex:1,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
               <BtnPrimary onClick={()=>addItemSize(item,newItemSize)} disabled={!newItemSize.trim()}>➕ เพิ่ม</BtnPrimary>
             </div>
+            </>)}
           </Modal>
         );
       })()}

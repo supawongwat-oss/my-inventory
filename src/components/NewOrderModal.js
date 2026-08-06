@@ -107,40 +107,78 @@ export default function NewOrderModal({
             const colors = (curItem?.colors||[])
               .map((c,ci)=>({c,ci}))
               .filter(({c})=>matchTokens(colorSearch, c.colorName));
-            const searchBox = (val,set,ph,n,total)=>(
-              <div style={{position:"relative",marginBottom:5}}>
-                <input value={val} onChange={e=>set(e.target.value)} placeholder={ph}
-                  style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${val?T.accent:T.inputBorder}`,color:T.text,borderRadius:8,padding:"6px 26px 6px 10px",fontFamily:"'Sarabun',sans-serif",fontSize:12,outline:"none"}}/>
-                {val
-                  ? <button onClick={()=>set("")} title="ล้างคำค้นหา" style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",border:"none",background:"transparent",color:T.muted,cursor:"pointer",fontSize:13,lineHeight:1,padding:0}}>✕</button>
-                  : <span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:11,pointerEvents:"none"}}>🔍</span>}
-                {val&&<div style={{fontSize:9,color:n===0?T.red:T.muted,marginTop:2}}>{n===0?"ไม่พบ — ลองพิมพ์สั้นลง":`พบ ${n} จาก ${total}`}</div>}
+            const curColor = orderItemForm.colorIdx!=="" ? curItem?.colors?.[Number(orderItemForm.colorIdx)] : null;
+            // 🔍 กล่องค้นหาแบบเดียวกับ "ค้นหาลูกค้า" — พิมพ์แล้วขึ้นรายการให้กดเลือก
+            const picker = ({label,ph,picked,pickedNode,search,setSearch,rows,onPick,onClear,disabled})=>(
+              <div>
+                <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:5,fontWeight:600}}>{label}</label>
+                <div style={{position:"relative"}}>
+                  <input placeholder={ph} disabled={disabled}
+                    value={picked?"":search}
+                    onChange={e=>setSearch(e.target.value)}
+                    style={{width:"100%",boxSizing:"border-box",background:disabled?"rgba(0,0,0,0.04)":T.input,border:`1px solid ${picked?"#34d399":T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 32px 9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+                  {picked&&(
+                    <div onClick={onClear} title="เปลี่ยน — กดเพื่อค้นหาใหม่"
+                      style={{position:"absolute",inset:0,display:"flex",alignItems:"center",gap:7,padding:"0 32px 0 14px",cursor:"pointer",fontSize:13,color:T.text,fontWeight:600}}>
+                      {pickedNode}
+                    </div>
+                  )}
+                  {(picked||search)&&(
+                    <button onClick={onClear} title="ล้าง" style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",border:"none",background:"transparent",color:T.muted,cursor:"pointer",fontSize:14,lineHeight:1,padding:0,zIndex:2}}>✕</button>
+                  )}
+                  {!picked&&search&&(
+                    <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#ffffff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:50,maxHeight:260,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.25)",marginTop:2}}>
+                      <div style={{padding:"6px 14px",background:"#eff6ff",fontSize:10,color:T.accent,fontWeight:700,borderBottom:`1px solid ${T.border}`,position:"sticky",top:0}}>
+                        {rows.length>0?`เจอ ${rows.length} รายการ`:"ไม่พบ — ลองพิมพ์สั้นลง"}
+                      </div>
+                      {rows.slice(0,40).map(r=>(
+                        <div key={r.key} onClick={()=>onPick(r)}
+                          style={{padding:"9px 14px",cursor:"pointer",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}
+                          onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.08)"}
+                          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                          {r.node}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             );
             return (
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-                <div>
-                  <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:5,fontWeight:600}}>รุ่นเสื้อ</label>
-                  {searchBox(modelSearch,setModelSearch,"ค้นหารุ่น / แบรนด์...",models.length,clothingItems.length)}
-                  <select value={orderItemForm.clothingId} onChange={e=>{setOrderItemForm(f=>({...f,clothingId:e.target.value,colorIdx:""}));setColorSearch("");}}
-                    style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
-                    <option value="">-- เลือกรุ่น --</option>
-                    {/* รุ่นที่เลือกไว้ต้องอยู่ในลิสต์เสมอ แม้คำค้นหาจะกรองออก */}
-                    {curItem&&!models.some(m=>m.id===curItem.id)&&<option value={curItem.id}>{curItem.model}</option>}
-                    {models.map(i=><option key={i.id} value={i.id}>{i.model}{i.brand?` · ${i.brand}`:""}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:5,fontWeight:600}}>สี</label>
-                  {searchBox(colorSearch,setColorSearch,"ค้นหาสี...",colors.length,(curItem?.colors||[]).length)}
-                  <select value={orderItemForm.colorIdx} onChange={e=>setOrderItemForm(f=>({...f,colorIdx:e.target.value}))}
-                    style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
-                    <option value="">-- เลือกสี --</option>
-                    {orderItemForm.colorIdx!==""&&!colors.some(({ci})=>String(ci)===String(orderItemForm.colorIdx))&&curItem?.colors?.[Number(orderItemForm.colorIdx)]&&
-                      <option value={orderItemForm.colorIdx}>{curItem.colors[Number(orderItemForm.colorIdx)].colorName}</option>}
-                    {colors.map(({c,ci})=><option key={ci} value={ci}>{c.colorName}</option>)}
-                  </select>
-                </div>
+                {picker({
+                  label:"รุ่นเสื้อ",
+                  ph:"🔍 พิมพ์ค้นหารุ่น / แบรนด์...",
+                  picked:!!curItem,
+                  pickedNode:<span>✓ {curItem?.model}{curItem?.brand?<span style={{color:T.muted,fontWeight:400}}> · {curItem.brand}</span>:null}</span>,
+                  search:modelSearch, setSearch:setModelSearch,
+                  rows:models.map(i=>({key:i.id,item:i,node:(
+                    <>
+                      <span style={{fontWeight:600,fontSize:13,color:T.text}}>{i.model}</span>
+                      {i.brand&&<span style={{fontSize:11,color:T.muted}}>· {i.brand}</span>}
+                      <span style={{marginLeft:"auto",fontSize:10,color:T.muted}}>{(i.colors||[]).length} สี</span>
+                    </>
+                  )})),
+                  onPick:r=>{setOrderItemForm(f=>({...f,clothingId:r.item.id,colorIdx:""}));setModelSearch("");setColorSearch("");},
+                  onClear:()=>{setOrderItemForm(f=>({...f,clothingId:"",colorIdx:""}));setModelSearch("");setColorSearch("");},
+                })}
+                {picker({
+                  label:"สี",
+                  ph:curItem?"🔍 พิมพ์ค้นหาสี...":"เลือกรุ่นก่อน",
+                  disabled:!curItem,
+                  picked:!!curColor,
+                  pickedNode:<><span style={{width:14,height:14,borderRadius:4,background:curColor?.hex||"#999",border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/><span>{curColor?.colorName}</span></>,
+                  search:colorSearch, setSearch:setColorSearch,
+                  rows:colors.map(({c,ci})=>({key:ci,ci,node:(
+                    <>
+                      <span style={{width:14,height:14,borderRadius:4,background:c.hex||"#999",border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/>
+                      <span style={{fontWeight:600,fontSize:13,color:T.text}}>{c.colorName}</span>
+                      <span style={{marginLeft:"auto",fontSize:10,color:T.muted}}>{Object.values(c.stock||{}).reduce((s,q)=>s+(Number(q)||0),0)} ตัว</span>
+                    </>
+                  )})),
+                  onPick:r=>{setOrderItemForm(f=>({...f,colorIdx:r.ci}));setColorSearch("");},
+                  onClear:()=>{setOrderItemForm(f=>({...f,colorIdx:""}));setColorSearch("");},
+                })}
               </div>
             );
           })()}
@@ -150,9 +188,12 @@ export default function NewOrderModal({
             const item=clothingItems.find(i=>i.id===orderItemForm.clothingId);
             const col=item?.colors?.[Number(orderItemForm.colorIdx)];
             if(!item||!col) return null;
-            // 📐 รวมไซส์: base ของประเภท + ไซส์เพิ่มเติมที่มีในสต๊อก (เช่น 6XL/7XL) → แบ่งเป็นแถวละ 4
+            // 📐 รวมไซส์: base ของประเภท + ไซส์เฉพาะรุ่น + ไซส์ที่มีในสต๊อก (เช่น 6XL/7XL)
+            //    แล้วตัดไซส์ที่ "ซ่อนไว้ในรุ่นนี้" ออก (จากหน้าคลัง → ⚙️ สี/ไซส์) → แบ่งเป็นแถวละ 4
             const stockKeys = Object.keys(col.stock || {});
-            const allSizes = mergeSizes(getSizesFor(item), stockKeys);
+            const hiddenS = item.hiddenSizes || [];
+            const allSizes = mergeSizes(getSizesFor(item), [...(item.extraSizes || []), ...stockKeys])
+              .filter(s => !hiddenS.includes(s));
             const sizeRows = [];
             for (let i = 0; i < allSizes.length; i += 4) sizeRows.push(allSizes.slice(i, i + 4));
             return (

@@ -168,14 +168,14 @@ export default function ClothingInventoryTab({
               </div>
             </div>
             <div style={{ display: "flex", gap: 6 }} onClick={e => e.stopPropagation()}>
-              <button onClick={() => setShowAddColor(item.id)} style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid rgba(59,91,139,0.25)", background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: 500 }}>️ สี</button>
-              {/* 📏 เพิ่ม/ตั้งชื่อไซส์เฉพาะรุ่นนี้ */}
-              {role.canAdd && openSizeEditor && (() => {
-                const own = (item.extraSizes || []).length;
+              {/* ⚙️ สี + ไซส์ รวมปุ่มเดียว (เดิมแยกเป็น สี / ไซส์ / จัดการสี) */}
+              {openSizeEditor && (() => {
+                const nColor = (item.colors || []).length;
+                const nSize = sizesFor(item).length;
                 return (
-                  <button onClick={() => openSizeEditor(item)} title="เพิ่มไซส์ หรือตั้งชื่อไซส์เองสำหรับรุ่นนี้"
-                    style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${own ? "rgba(124,58,237,0.4)" : "rgba(59,91,139,0.25)"}`, background: own ? "rgba(124,58,237,0.10)" : "rgba(59,91,139,0.08)", color: own ? "#7c3aed" : T.accent, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: own ? 700 : 500 }}>
-                    📏 ไซส์{own ? ` +${own}` : ""}
+                  <button onClick={() => openSizeEditor(item)} title="จัดการสีและไซส์ของรุ่นนี้ — เพิ่ม / ลบ / ตั้งชื่อเอง"
+                    style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid rgba(59,91,139,0.25)", background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: 600 }}>
+                    ⚙️ สี/ไซส์ <span style={{ opacity: 0.7, fontSize: 10 }}>({nColor}/{nSize})</span>
                   </button>
                 );
               })()}
@@ -199,10 +199,6 @@ export default function ClothingInventoryTab({
                   </button>
                 );
               })()}
-              {role.canDelete && (item.colors || []).length > 0 &&
-                <button onClick={() => setManageColorMode(m => ({ ...m, [item.id]: !m[item.id] }))}
-                  title={manageColorMode[item.id] ? "ปิดโหมดลบสี" : "เปิดโหมดลบสี — ปุ่ม ✕ จะแสดงในแต่ละสี"}
-                  style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${manageColorMode[item.id] ? "rgba(184,134,0,0.4)" : "rgba(59,91,139,0.2)"}`, background: manageColorMode[item.id] ? "rgba(184,134,0,0.15)" : "transparent", color: manageColorMode[item.id] ? T.amber : T.muted, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>🔧 {manageColorMode[item.id] ? "ปิดจัดการสี" : "จัดการสี"}</button>}
               {role.canDelete && <button onClick={() => { setDeleteClothingTarget(item); setDeleteConfirmText(""); }} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid rgba(248,113,113,0.25)", background: "rgba(248,113,113,0.08)", color: "#f87171", cursor: "pointer", fontSize: 12 }}>✕</button>}
             </div>
           </div>

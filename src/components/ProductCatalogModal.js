@@ -70,7 +70,10 @@ export default function ProductCatalogModal({ item, allItems = [], user, onClose
 
   // ── 📏 การขาย ──
   const stockSizes = [...new Set((item.colors || []).flatMap(c => Object.keys(c.stock || {})))];
-  const available = [...new Set([...stockSizes, ...getSizesFor(item)])].sort(compareSizes);
+  // ตัดไซส์ที่ซ่อนไว้ในรุ่นนี้ออก + รวมไซส์เฉพาะรุ่น (ตั้งจากหน้าคลัง → ⚙️ สี/ไซส์)
+  const available = [...new Set([...stockSizes, ...getSizesFor(item), ...(item.extraSizes || [])])]
+    .filter(s => !(item.hiddenSizes || []).includes(s))
+    .sort(compareSizes);
   const [picked, setPicked] = useState(() => Array.isArray(item.catalogSizes) ? item.catalogSizes : available);
   const [hidden, setHidden] = useState(!!item.hideFromCatalog);
   const [allowCustom, setAllowCustom] = useState(!!item.allowCustomSize);
