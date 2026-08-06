@@ -67,9 +67,15 @@ export const getSizesFor = (item) => (item && item.sizeType === "shoe") ? SHOE_S
 // base = SIZES หรือ SHOE_SIZES, extra = array ไซส์ที่เพิ่มจาก settings/sizes
 export const mergeSizes = (base, extra = []) => {
   const seen = new Set(base.map(s => String(s).toUpperCase()));
-  const add = (extra || [])
-    .map(s => String(s || "").trim())
-    .filter(s => s && !seen.has(s.toUpperCase()));
+  const add = [];
+  (extra || []).forEach(s => {
+    const v = String(s || "").trim();
+    if (!v) return;
+    const k = v.toUpperCase();
+    if (seen.has(k)) return; // ซ้ำกับ base หรือกับตัวที่เพิ่งเพิ่มไป
+    seen.add(k);             // ⚠️ ต้องจำไว้ด้วย ไม่งั้น extra ที่ซ้ำกันเองจะหลุดเข้ามาซ้ำ
+    add.push(v);
+  });
   return [...base, ...add].sort(compareSizes);
 };
 
