@@ -21,16 +21,12 @@ const fmtDMY = (d) => d instanceof Date && !isNaN(d)
   ? `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`
   : "—";
 
-// ตรวจสอบว่าใบสั่งนี้ออกบิลแล้วหรือยัง — เช็คตรงก่อน แล้ว fallback ด้วย customer+date
-const isOrderInvoiced = (o, invoices) => {
-  if (invoices.some(inv => (inv.mergedFromOrderIds || []).includes(o.id))) return true;
-  if (!o.customerName || !o.date) return false;
-  const day = String(o.date).slice(0, 10);
-  return invoices.some(inv =>
-    (inv.customerName || "").trim() === o.customerName.trim() &&
-    String(inv.date || "").slice(0, 10) === day
-  );
-};
+// ตรวจว่าใบสั่งนี้ออกบิลแล้วหรือยัง — ดูจากลิงก์จริงเท่านั้น
+// ⚠️ เดิม fallback ด้วย "ชื่อลูกค้า + วันที่ตรงกัน" → ผิดหนัก
+//    ลูกค้าคนเดียวสั่ง 5 ใบในวันเดียว ออกบิลใบเดียว → อีก 4 ใบขึ้น "ออกบิลแล้ว" ด้วย
+//    ตอนนี้ทุกบิลที่ออกจากใบสั่งของจะมี mergedFromOrderIds เสมอ จึงไม่ต้องเดาแล้ว
+const isOrderInvoiced = (o, invoices) =>
+  invoices.some(inv => (inv.mergedFromOrderIds || []).includes(o.id));
 
 export default function OrdersTab({
   orders, invoices, role,

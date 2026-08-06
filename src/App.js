@@ -1789,11 +1789,9 @@ export default function App() {
   // ✏️ เปิดหน้าแก้ไขใบสั่งของ — โหลดข้อมูลลง orderForm แล้วเปิด modal เดียวกับตอนสร้าง
   const openEditOrder = (o) => {
     if (!o) return;
-    // เช็คว่าออกบิลไปแล้วหรือยัง
-    const invoiced = invoices.some(inv =>
-      (inv.mergedFromOrderIds || []).includes(o.id) ||
-      ((inv.customerName||"").trim() === (o.customerName||"").trim() && String(inv.date||"").slice(0,10) === String(o.date||"").slice(0,10))
-    );
+    // เช็คว่าออกบิลไปแล้วหรือยัง — ดูจากลิงก์จริงเท่านั้น
+    // (เดิมเดาจากชื่อลูกค้า+วันที่ → ลูกค้าสั่งหลายใบต่อวันจะเตือนผิดทุกใบ)
+    const invoiced = invoices.some(inv => (inv.mergedFromOrderIds || []).includes(o.id));
     if (invoiced) {
       if (!window.confirm(`⚠️ ใบสั่งของ ${o.orderNo} ถูกออกบิลไปแล้ว\nการแก้ไขจะไม่กระทบกับใบเสร็จเดิม\n\nยืนยันแก้ไข?`)) return;
     }
