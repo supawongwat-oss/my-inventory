@@ -25,8 +25,14 @@ const fmtDMY = (d) => d instanceof Date && !isNaN(d)
 // ⚠️ เดิม fallback ด้วย "ชื่อลูกค้า + วันที่ตรงกัน" → ผิดหนัก
 //    ลูกค้าคนเดียวสั่ง 5 ใบในวันเดียว ออกบิลใบเดียว → อีก 4 ใบขึ้น "ออกบิลแล้ว" ด้วย
 //    ตอนนี้ทุกบิลที่ออกจากใบสั่งของจะมี mergedFromOrderIds เสมอ จึงไม่ต้องเดาแล้ว
-const isOrderInvoiced = (o, invoices) =>
-  invoices.some(inv => (inv.mergedFromOrderIds || []).includes(o.id));
+// ⚡ สร้าง Set ครั้งเดียวแล้วเช็คแบบ O(1)
+//    เดิมวนหาในบิลทุกใบ ต่อใบสั่งทุกใบ = O(ใบสั่ง × บิล)
+//    ที่ 300 ใบ/วัน × บิล 1,000 ใบ = สแกน 2 ล้านครั้งทุกครั้งที่ re-render → หน้าค้าง
+const invoicedOrderIds = (invoices) => {
+  const s = new Set();
+  invoices.forEach(inv => (inv.mergedFromOrderIds || []).forEach(id => s.add(id)));
+  return s;
+};
 
 export default function OrdersTab({
   orders, invoices, role,
@@ -43,6 +49,7 @@ export default function OrdersTab({
   openFillOrderMix, handleCutStockNow, handleDeleteOrder,
   openEditOrder,
 }) {
+  const invoicedIds = React.useMemo(() => invoicedOrderIds(invoices), [invoices]);
   const filteredOrders = orders.filter(o => {
     if (orderSearch) {
       const q = norm(orderSearch);
@@ -62,7 +69,7 @@ export default function OrdersTab({
   });
 
   const totalQtyAll = filteredOrders.reduce((s, o) => s + (o.items || []).reduce((a, i) => a + i.qty, 0), 0);
-  const notInvoiced = filteredOrders.filter(o => !isOrderInvoiced(o, invoices)).length;
+  const notInvoiced = filteredOrders.filter(o => !invoicedIds.has(o.id)).length;
 
   const setPreset = (preset) => {
     const today = new Date(); const y = today.getFullYear(); const m = today.getMonth();
@@ -239,7 +246,7 @@ export default function OrdersTab({
                                   <div>เลขที่</div><div>ลูกค้า</div><div>รายการ</div><div>โดย</div><div>สถานะ</div><div style={{ textAlign: "center" }}>จัดการ</div>
                                 </div>
                                 {list.map((o, i) => {
-                                  const invoiced = isOrderInvoiced(o, invoices);
+                                  const invoiced = invoicedIds.has(o.id);
                                   return (
                                     <div key={o.id} onClick={() => setShowPrintOrder(o)} title="คลิกเพื่อดูใบสั่งของ"
                                       style={{ display: "grid", gridTemplateColumns: "88px 1fr 90px 52px 240px 190px", alignItems: "center", padding: "13px 20px", borderBottom: i < list.length - 1 ? `1px solid ${T.border}` : "none", cursor: "pointer", background: selectedOrders.has(o.id) ? "rgba(59,91,139,0.08)" : "transparent" }}
