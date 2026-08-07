@@ -194,7 +194,18 @@ export default function PrintInvoiceModal({
                         //    → แยกบรรทัดละไซส์ ให้ช่องราคาตรงกับไซส์นั้นจริง ๆ
                         const ciRef = clothingItems.find(c => c.id === group.items[0]?.clothingId);
                         const perSize = !!ciRef && (ciRef.sizeType === "shoe" || ciRef.priceBySize === true);
-                        const withSize = group.items.filter(i => i.size);
+                        // 🔗 สี+ไซส์+ราคาเดียวกัน ที่มาจากคนละใบสั่ง → รวมเป็นช่องเดียว
+                        //    (เช่น S 13 · S 14 · S 16 → S 43) ยอดเงินเท่าเดิมทุกบาท
+                        //    ราคาต่างกันไม่รวม — ไม่งั้นราคาต่อหน่วยจะกลายเป็นค่าเฉลี่ย
+                        const sizeMap = new Map();
+                        group.items.filter(i => i.size).forEach(it => {
+                          const k = `${it.size}|${Number(it.unitPrice) || 0}`;
+                          const prev = sizeMap.get(k);
+                          sizeMap.set(k, prev
+                            ? { ...prev, qty: (Number(prev.qty) || 0) + (Number(it.qty) || 0) }
+                            : { ...it, qty: Number(it.qty) || 0 });
+                        });
+                        const withSize = [...sizeMap.values()];
                         const noSize = group.items.filter(i => !i.size);
                         const rows = splitSizesIntoRows(withSize, perSize ? 1 : 4, { fillPlus: false });
                         noSize.forEach(n => rows.push([n]));
