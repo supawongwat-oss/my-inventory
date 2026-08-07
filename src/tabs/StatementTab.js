@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { db } from "../firebase";
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { T } from "../theme";
@@ -129,7 +129,24 @@ export default function StatementTab({ statements, invoices, customers, companyI
     );
   }, [invoices, form.customerId, form.customerName, form.periodStart, form.periodEnd, form.filterMode]);
 
-  const previewTotal = previewInvoices.reduce((s, inv) => s + (Number(inv.total) || 0), 0);
+  // ☑️ เลือกบิลเองได้ — null = ยังไม่เคยแตะ (เอาทุกใบตามเงื่อนไข)
+  //    เก็บเป็น "ใบที่ตัดออก" แทน "ใบที่เลือก" → เปลี่ยนช่วงวันที่แล้วใบใหม่ยังถูกเลือกอัตโนมัติ
+  const [excludedIds, setExcludedIds] = useState(new Set());
+  // เปลี่ยนลูกค้า/ช่วงเวลา → เริ่มเลือกใหม่ ไม่ให้ค้างของเดิม
+  const pickKey = `${form.customerId}|${form.customerName}|${form.periodStart}|${form.periodEnd}|${form.filterMode}`;
+  useEffect(() => { setExcludedIds(new Set()); }, [pickKey]);
+
+  const toggleInvoice = (id) => setExcludedIds(prev => {
+    const n = new Set(prev);
+    n.has(id) ? n.delete(id) : n.add(id);
+    return n;
+  });
+
+  const pickedInvoices = useMemo(
+    () => previewInvoices.filter(inv => !excludedIds.has(inv.id)),
+    [previewInvoices, excludedIds]
+  );
+  const previewTotal = pickedInvoices.reduce((s, inv) => s + (Number(inv.total) || 0), 0);
 
   // === Filtered list ของ statements ที่แสดงในหน้าหลัก ===
   const filteredStatements = statements.filter(st => {
@@ -202,7 +219,7 @@ export default function StatementTab({ statements, invoices, customers, companyI
         docType: i.docType || "receipt",
       })),
       totalAmount: previewTotal,
-      invoiceCount: previewInvoices.length,
+      invoiceCount: pickedInvoices.length,
       filterMode: form.filterMode,
       status: "ออกแล้ว",
       dueDate: form.dueDate,
@@ -416,24 +433,46 @@ export default function StatementTab({ statements, invoices, customers, companyI
 
           {/* 4. Preview */}
           <div style={{ marginBottom: 14, background: "rgba(241,243,246,0.5)", borderRadius: 10, border: `1px solid ${T.border}`, padding: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: T.text }}>📊 บิลที่จะรวม</span>
-              <span style={{ fontSize: 12, color: T.muted }}>{previewInvoices.length} ใบ · รวม ฿{previewTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
+              {previewInvoices.length > 0 && (
+                <div style={{ display: "flex", gap: 5 }}>
+                  <button onClick={() => setExcludedIds(new Set())}
+                    style={{ padding: "3px 10px", borderRadius: 6, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 10, fontFamily: "inherit" }}>เลือกทั้งหมด</button>
+                  <button onClick={() => setExcludedIds(new Set(previewInvoices.map(i => i.id)))}
+                    style={{ padding: "3px 10px", borderRadius: 6, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 10, fontFamily: "inherit" }}>ล้าง</button>
+                </div>
+              )}
+              <span style={{ fontSize: 12, color: T.muted, marginLeft: "auto" }}>
+                เลือก <b style={{ color: T.text }}>{pickedInvoices.length}</b>/{previewInvoices.length} ใบ · รวม <b style={{ color: T.green }}>฿{previewTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</b>
+              </span>
             </div>
             {previewInvoices.length === 0 ? (
               <div style={{ textAlign: "center", padding: 16, fontSize: 12, color: T.muted }}>
                 {!form.customerName ? "เลือกลูกค้าก่อน" : "ไม่มีบิลในช่วงนี้"}
               </div>
             ) : (
-              <div style={{ maxHeight: 180, overflowY: "auto", background: T.card, borderRadius: 7, border: `1px solid ${T.border}` }}>
-                {previewInvoices.map((inv, i) => (
-                  <div key={inv.id} style={{ display: "grid", gridTemplateColumns: "110px 90px 1fr 100px", alignItems: "center", padding: "7px 12px", borderBottom: i < previewInvoices.length - 1 ? `1px solid ${T.border}` : "none", fontSize: 11 }}>
-                    <span style={{ fontFamily: "monospace", color: T.accent, fontWeight: 700 }}>{inv.invoiceNo}</span>
-                    <span style={{ color: T.sub }}>{(inv.date || "").split(" ")[0]}</span>
-                    <span style={{ color: T.muted, fontSize: 10 }}>{inv.status || "ออกแล้ว"}</span>
-                    <span style={{ textAlign: "right", fontFamily: "monospace", color: T.green, fontWeight: 700 }}>฿{Number(inv.total || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
-                  </div>
-                ))}
+              <div className="scroll-col" style={{ display: "flex", flexDirection: "column", maxHeight: 200, overflowY: "auto", background: T.card, borderRadius: 7, border: `1px solid ${T.border}` }}>
+                {previewInvoices.map((inv, i) => {
+                  const on = !excludedIds.has(inv.id);
+                  return (
+                    <label key={inv.id} title="ติ๊กออกถ้าไม่ต้องการรวมบิลใบนี้"
+                      style={{ display: "grid", gridTemplateColumns: "22px 110px 90px 1fr 100px", alignItems: "center", gap: 4, padding: "7px 12px",
+                        borderBottom: i < previewInvoices.length - 1 ? `1px solid ${T.border}` : "none", fontSize: 11, cursor: "pointer",
+                        background: on ? "transparent" : "rgba(241,243,246,0.7)", opacity: on ? 1 : 0.55 }}>
+                      <input type="checkbox" checked={on} onChange={() => toggleInvoice(inv.id)} style={{ width: 14, height: 14, cursor: "pointer" }}/>
+                      <span style={{ fontFamily: "monospace", color: T.accent, fontWeight: 700 }}>{inv.invoiceNo}</span>
+                      <span style={{ color: T.sub }}>{(inv.date || "").split(" ")[0]}</span>
+                      <span style={{ color: T.muted, fontSize: 10 }}>{inv.status || "ออกแล้ว"}</span>
+                      <span style={{ textAlign: "right", fontFamily: "monospace", color: on ? T.green : T.muted, fontWeight: 700, textDecoration: on ? "none" : "line-through" }}>฿{Number(inv.total || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            {excludedIds.size > 0 && (
+              <div style={{ marginTop: 6, fontSize: 11, color: T.amber }}>
+                ⚠️ ตัดออก {excludedIds.size} ใบ — จะไม่รวมในใบวางบิลนี้
               </div>
             )}
           </div>

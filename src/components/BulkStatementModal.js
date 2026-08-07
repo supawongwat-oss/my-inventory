@@ -210,7 +210,14 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
                     {g.dupe && <span style={{ marginLeft: 6, fontSize: 10, padding: "1px 7px", background: "#fef3c7", color: "#b45309", borderRadius: 8, fontWeight: 700 }}>เคยออกแล้ว</span>}
                     {!g.customerId && <span style={{ marginLeft: 6, fontSize: 10, color: T.muted }}>· ไม่ผูกลูกค้า</span>}
                   </div>
-                  <div style={{ fontSize: 11, color: T.muted }}>{g.invoices.length} บิล{g.phone ? ` · ${g.phone}` : ""}</div>
+                  <div style={{ fontSize: 11, color: T.muted }}>
+                    {g.invoices.length} บิล{g.phone ? ` · ${g.phone}` : ""}
+                    {/* ดูเลขที่บิลได้ว่ารวมใบไหนบ้าง — กันงงว่ายอดมาจากไหน */}
+                    <span title={g.invoices.map(x => `${x.invoiceNo} · ฿${fmtB(x.total)}`).join("\n")}
+                      style={{ marginLeft: 6, color: T.accent, cursor: "help", textDecoration: "underline dotted" }}>
+                      ดูเลขบิล
+                    </span>
+                  </div>
                 </div>
                 <div style={{ fontSize: 14, fontWeight: 800, color: T.green, fontFamily: "monospace", flexShrink: 0 }}>฿{fmtB(g.total)}</div>
               </label>
