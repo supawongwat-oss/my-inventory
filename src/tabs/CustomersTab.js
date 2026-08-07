@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "../utils/thaiRegion";
 import { countOrdersByCustomers } from "../utils/orderStats";
 import { deleteDoc, doc } from "firebase/firestore";
@@ -19,18 +19,37 @@ export default function CustomersTab({
   setShowImportCustomers, setShowNewCustomer,
   setProfileCustomer, setEditingCustomer,
 }) {
-  const enriched = customers.map(c => ({ ...c, _region: c.region || detectRegion(c.address), _province: c.province || detectProvince(c.address) }));
-  const counts = {};
-  REGIONS.forEach(r => counts[r.key] = 0);
-  enriched.forEach(c => { counts[c._region] = (counts[c._region] || 0) + 1; });
-  const filtered = enriched.filter(c => {
+  // ⌨️ ค่าที่กำลังพิมพ์เก็บไว้ในหน้านี้ ส่งขึ้น App หลังหยุดพิมพ์ 250ms
+  // เดิมค่าอยู่ที่ App → กดคีย์ทีนึง App วาดใหม่ทั้งหน้า แล้วแกะที่อยู่ลูกค้าใหม่ทุกคน
+  const [typed, setTyped] = useState(customerSearch || "");
+  useEffect(() => { setTyped(customerSearch || ""); }, [customerSearch]);
+  useEffect(() => {
+    if (typed === (customerSearch || "")) return;
+    const t = setTimeout(() => setCustomerSearch(typed), 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typed]);
+
+  // 🧮 แกะภาค/จังหวัดจากที่อยู่ — งานหนักสุดในหน้านี้ ทำใหม่เฉพาะตอนทะเบียนลูกค้าเปลี่ยน
+  //    เดิมทำใหม่ทุก re-render (รวมถึงทุกตัวอักษรที่พิมพ์) × ลูกค้าทุกคน
+  const enriched = useMemo(
+    () => customers.map(c => ({ ...c, _region: c.region || detectRegion(c.address), _province: c.province || detectProvince(c.address) })),
+    [customers]
+  );
+  const counts = useMemo(() => {
+    const m = {};
+    REGIONS.forEach(r => m[r.key] = 0);
+    enriched.forEach(c => { m[c._region] = (m[c._region] || 0) + 1; });
+    return m;
+  }, [enriched]);
+  const filtered = useMemo(() => enriched.filter(c => {
     if (customerRegion !== "ทั้งหมด" && c._region !== customerRegion) return false;
     if (customerSearch) {
       // 🔍 token search — เว้นวรรคแยกคำ ไม่สนลำดับ ("ดี สม" เจอ "สมชาย ใจดี")
       return matchTokens(customerSearch, c.name, c.phone, c.address, c.email, c._province, c.taxId, c.note);
     }
     return true;
-  });
+  }), [enriched, customerRegion, customerSearch]);
 
   // 🔢 จำนวนครั้งที่สั่ง — นับที่เซิร์ฟเวอร์ ไม่ใช่นับจาก orders ที่โหลดมา
   // (orders ในหน่วยความจำมีแค่ช่วง 7 วัน → ถ้านับจากตรงนั้นจะได้เลขผิดมาก)
@@ -103,7 +122,7 @@ export default function CustomersTab({
       </div>
 
       <div style={{ marginBottom: 14 }}>
-        <input value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} placeholder="🔍 ค้นหาชื่อ เบอร์ ที่อยู่ จังหวัด..."
+        <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="🔍 ค้นหาชื่อ เบอร์ ที่อยู่ จังหวัด..."
           style={{ width: "100%", background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 9, padding: "9px 14px", fontFamily: "'Sarabun',sans-serif", fontSize: 13, outline: "none" }} />
       </div>
 
