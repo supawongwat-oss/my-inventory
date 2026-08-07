@@ -4,6 +4,7 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBa
 import { T } from "../theme";
 import { Modal, MHead, Input, BtnPrimary, BtnGhost, CardBox } from "../components/ui";
 import { matchTokens } from "../utils/search";
+import BulkStatementModal from "../components/BulkStatementModal";
 
 // ── helpers ────────────────────────────────────────────────
 const pad2 = n => String(n).padStart(2, "0");
@@ -79,6 +80,7 @@ export const filterInvoicesForStatement = (invoices, customerId, customerName, s
 // === Main Component ===
 export default function StatementTab({ statements, invoices, customers, companyInfo, user, role, printElementById }) {
   const [showCreate, setShowCreate] = useState(false);
+  const [showBulk, setShowBulk] = useState(false); // 📅 ออกใบวางบิลทั้งเดือนทีเดียว
   const [statusFilter, setStatusFilter] = useState("ทั้งหมด");
   const [search, setSearch] = useState("");
   const [printPreview, setPrintPreview] = useState(null); // statement object ที่กำลังพิมพ์
@@ -279,7 +281,10 @@ export default function StatementTab({ statements, invoices, customers, companyI
           })}
         </div>
         {role.canIssueInvoice !== false && role.canAdd !== false && (
-          <BtnPrimary onClick={() => { resetForm(); setShowCreate(true); }}>＋ สร้างใบวางบิลใหม่</BtnPrimary>
+          <>
+            <BtnGhost onClick={() => setShowBulk(true)} style={{marginRight:8}}>📅 ออกทั้งเดือน</BtnGhost>
+            <BtnPrimary onClick={() => { resetForm(); setShowCreate(true); }}>＋ สร้างใบวางบิลใหม่</BtnPrimary>
+          </>
         )}
       </div>
 
@@ -331,6 +336,14 @@ export default function StatementTab({ statements, invoices, customers, companyI
             );
           })}
         </CardBox>
+      )}
+
+      {showBulk && (
+        <BulkStatementModal
+          invoices={invoices} customers={customers} statements={statements}
+          companyInfo={companyInfo} user={user}
+          onClose={() => setShowBulk(false)}
+        />
       )}
 
       {/* === Modal: สร้างใบวางบิลใหม่ === */}

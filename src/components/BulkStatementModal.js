@@ -1,0 +1,256 @@
+// 📅 ออกใบวางบิลทั้งเดือน — สแกนบิลในช่วงที่เลือก จัดกลุ่มตามลูกค้า
+//    แล้วติ๊กเลือกว่าจะออกให้ใครบ้าง → สร้างทีเดียวทั้งหมด
+// (เดิมต้องสร้างทีละราย — 235 ลูกค้า = 2-3 ชม.)
+import { useState, useMemo } from "react";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../firebase";
+import { Modal, MHead, BtnPrimary, BtnGhost } from "./ui";
+import { T } from "../theme";
+import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
+import { filterInvoicesForStatement, fmtISO, fmtDDMMYYYY, parseISODate as parseISO } from "../utils/statement";
+
+const fmtB = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const now = () => { const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+
+export default function BulkStatementModal({ invoices = [], customers = [], statements = [], companyInfo = {}, user, onClose, onDone }) {
+  const t = new Date();
+  const [periodStart, setPeriodStart] = useState(fmtISO(new Date(t.getFullYear(), t.getMonth(), 1)));
+  const [periodEnd, setPeriodEnd] = useState(fmtISO(new Date(t.getFullYear(), t.getMonth()+1, 0)));
+  const [filterMode, setFilterMode] = useState("unpaid"); // unpaid | all
+  // 💳 ลูกค้าเงินสดจ่ายหน้าร้านแล้ว ไม่ต้องวางบิล — คัดออกให้ตั้งแต่แรก
+  //    (ตั้งประเภทที่หน้าลูกค้า → แก้ไข · ไม่เคยตั้ง = ถือว่าเครดิต)
+  const [onlyCredit, setOnlyCredit] = useState(true);
+  const [dueDate, setDueDate] = useState("");
+  const [search, setSearch] = useState("");
+  const [picked, setPicked] = useState(null);   // Set<key> — null = ยังไม่เคยแตะ (เลือกทั้งหมด)
+  const [busy, setBusy] = useState(null);       // { done, total }
+
+  const startD = parseISO(periodStart), endD = parseISO(periodEnd);
+
+  // 🔍 จัดกลุ่มบิลตามลูกค้า — ใช้ helper ตัวเดียวกับหน้าสร้างทีละใบ (ผลลัพธ์ตรงกันแน่นอน)
+  const groups = useMemo(() => {
+    if (!startD || !endD) return [];
+    // รวมรายชื่อจากทั้งลูกค้าในระบบ + ชื่อที่โผล่ในบิล (เผื่อบิลที่ไม่ได้ผูกลูกค้า)
+    const seen = new Map(); // key → { customerId, customerName, ...ข้อมูลติดต่อ }
+    customers.forEach(c => seen.set(`id:${c.id}`, {
+      customerId: c.id, customerName: c.name || "", phone: c.phone||"", address: c.address||"", taxId: c.taxId||"",
+      billingType: c.billingType || "credit", // ไม่เคยตั้ง = เครดิต (พฤติกรรมเดิม)
+    }));
+    invoices.forEach(inv => {
+      if (inv.customerId) return; // มีลูกค้าในระบบแล้ว
+      const nm = (inv.customerName || "").trim();
+      if (!nm) return;
+      const k = `name:${nm}`;
+      // บิลที่ไม่ผูกลูกค้า → ไม่รู้ประเภท ถือว่าเครดิตไว้ก่อน (จะได้ไม่ตกหล่น)
+      if (!seen.has(k)) seen.set(k, { customerId: "", customerName: nm, phone: inv.customerPhone||"", address: inv.customerAddress||"", taxId: inv.customerTaxId||"", billingType: "credit", unlinked: true });
+    });
+
+    const rows = [];
+    seen.forEach((c, key) => {
+      if (onlyCredit && c.billingType === "cash") return; // 💵 เงินสด — ไม่ต้องวางบิล
+      const invs = filterInvoicesForStatement(invoices, c.customerId, c.customerName, startD, endD, filterMode);
+      if (invs.length === 0) return;
+      // ⚠️ เตือนถ้าเคยออกใบวางบิลช่วงเดียวกันไปแล้ว — กันออกซ้ำ
+      const dupe = statements.some(s =>
+        ((s.customerId && s.customerId === c.customerId) || (!s.customerId && s.customerName === c.customerName)) &&
+        s.periodStart === fmtDDMMYYYY(startD) && s.periodEnd === fmtDDMMYYYY(endD) && s.status !== "ยกเลิก"
+      );
+      rows.push({ key, ...c, invoices: invs, total: invs.reduce((s,i)=>s+(Number(i.total)||0),0), dupe });
+    });
+    return rows.sort((a,b) => b.total - a.total);
+  }, [invoices, customers, statements, periodStart, periodEnd, filterMode, onlyCredit]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? groups.filter(g => (g.customerName||"").toLowerCase().includes(q) || (g.phone||"").includes(q)) : groups;
+  }, [groups, search]);
+
+  // ยังไม่เคยแตะ = เลือกทุกรายที่ยังไม่เคยออก (ที่ออกไปแล้วไม่ติ๊กให้ กันซ้ำ)
+  const isPicked = (g) => picked ? picked.has(g.key) : !g.dupe;
+  const toggle = (g) => {
+    const cur = new Set(picked ?? groups.filter(x => !x.dupe).map(x => x.key));
+    cur.has(g.key) ? cur.delete(g.key) : cur.add(g.key);
+    setPicked(cur);
+  };
+  const selected = groups.filter(isPicked);
+  const selTotal = selected.reduce((s,g) => s + g.total, 0);
+  const selInvCount = selected.reduce((s,g) => s + g.invoices.length, 0);
+  const dupeCount = groups.filter(g => g.dupe).length;
+
+  const createAll = async () => {
+    if (selected.length === 0 || busy) return;
+    const dupeSelected = selected.filter(g => g.dupe).length;
+    if (!window.confirm(
+      `สร้างใบวางบิล ${selected.length} ใบ?\n\n`+
+      `• รวมบิล ${selInvCount.toLocaleString("th-TH")} ใบ\n`+
+      `• ยอดรวม ฿${fmtB(selTotal)}\n`+
+      `• ช่วง ${fmtDDMMYYYY(startD)} – ${fmtDDMMYYYY(endD)}\n`+
+      (dupeSelected > 0 ? `\n⚠️ มี ${dupeSelected} รายที่เคยออกช่วงนี้ไปแล้ว — จะได้ใบซ้ำ\n` : "")
+    )) return;
+
+    setBusy({ done: 0, total: selected.length });
+    const fails = [];
+    for (let i = 0; i < selected.length; i++) {
+      const g = selected[i];
+      try {
+        await addDoc(collection(db, "statements"), {
+          statementNo: "STM-" + Date.now() + "-" + i,
+          customerId: g.customerId || "",
+          customerName: g.customerName,
+          customerPhone: g.phone || "",
+          customerAddress: g.address || "",
+          customerTaxId: g.taxId || "",
+          periodStart: fmtDDMMYYYY(startD),
+          periodEnd: fmtDDMMYYYY(endD),
+          invoiceIds: g.invoices.map(x => x.id),
+          invoicesSnapshot: g.invoices.map(x => ({
+            id: x.id, invoiceNo: x.invoiceNo, date: x.date,
+            total: Number(x.total) || 0, status: x.status || "ออกแล้ว",
+            docType: x.docType || "receipt",
+          })),
+          totalAmount: g.total,
+          invoiceCount: g.invoices.length,
+          filterMode,
+          status: "ออกแล้ว",
+          dueDate,
+          note: "",
+          bankAccount: (companyInfo.bankAccounts || [])[0] || null,
+          showCompanyTaxId: true,
+          by: user?.name || user?.username || "",
+          date: now(),
+          createdAt: serverTimestamp(),
+        });
+      } catch (e) {
+        fails.push(`• ${g.customerName} — ${e.message || e}`);
+      }
+      setBusy({ done: i + 1, total: selected.length });
+    }
+    setBusy(null);
+    logAudit(user, {
+      action: AUDIT_ACTIONS.CREATE, collection: "statements", targetId: "bulk",
+      targetLabel: `วางบิลรวม ${fmtDDMMYYYY(startD)}–${fmtDDMMYYYY(endD)}`,
+      note: `สร้าง ${selected.length - fails.length} ใบ · ฿${fmtB(selTotal)}`,
+    });
+    alert(
+      `✅ สร้างใบวางบิล ${selected.length - fails.length} ใบแล้ว\n` +
+      (fails.length > 0 ? `\n❌ ไม่สำเร็จ ${fails.length} ใบ:\n${fails.slice(0,8).join("\n")}` : "")
+    );
+    onDone && onDone();
+    onClose && onClose();
+  };
+
+  return (
+    <Modal onClose={onClose} w={720}>
+      <MHead title="📅 ออกใบวางบิลทั้งเดือน" sub="สแกนบิลตามช่วงที่เลือก → ติ๊กว่าจะออกให้ใคร → สร้างทีเดียว" onClose={onClose} color={T.green}/>
+
+      {/* ตัวกรอง */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+        <input type="date" value={periodStart} onChange={e=>{setPeriodStart(e.target.value); setPicked(null);}}
+          style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, fontFamily: "inherit" }}/>
+        <span style={{ color: T.muted, fontSize: 12 }}>ถึง</span>
+        <input type="date" value={periodEnd} onChange={e=>{setPeriodEnd(e.target.value); setPicked(null);}}
+          style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, fontFamily: "inherit" }}/>
+        <button onClick={()=>{ const d=new Date(); setPeriodStart(fmtISO(new Date(d.getFullYear(),d.getMonth()-1,1))); setPeriodEnd(fmtISO(new Date(d.getFullYear(),d.getMonth(),0))); setPicked(null); }}
+          style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>เดือนที่แล้ว</button>
+        <div style={{ display: "flex", gap: 3, background: "#eef2f7", borderRadius: 8, padding: 3 }}>
+          {[{k:"unpaid",l:"เฉพาะค้างชำระ"},{k:"all",l:"ทุกบิล"}].map(m=>(
+            <button key={m.k} onClick={()=>{setFilterMode(m.k); setPicked(null);}}
+              style={{ padding: "5px 12px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontFamily: "inherit",
+                fontWeight: filterMode===m.k?700:500, background: filterMode===m.k?"white":"transparent", color: filterMode===m.k?T.green:T.sub }}>{m.l}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* 💳 คัดลูกค้าเงินสดออก — ไม่ต้องวางบิล */}
+      <label style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 13px", marginBottom: 12, borderRadius: 9, cursor: "pointer",
+        background: onlyCredit ? "rgba(59,91,139,0.06)" : "#f8fafc", border: `1px solid ${onlyCredit ? "rgba(59,91,139,0.3)" : T.border}` }}>
+        <input type="checkbox" checked={onlyCredit} onChange={e=>{setOnlyCredit(e.target.checked); setPicked(null);}} style={{ width: 16, height: 16, cursor: "pointer" }}/>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: onlyCredit ? T.accent : T.text }}>📄 เฉพาะลูกค้าเครดิต (ไม่รวมลูกค้าเงินสด)</div>
+          <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>
+            ตั้งประเภทได้ที่หน้าลูกค้า → ✏️ แก้ไข · ลูกค้าที่ยังไม่ได้ตั้ง = นับเป็นเครดิต (จะได้ไม่ตกหล่น)
+          </div>
+        </div>
+      </label>
+
+      {/* สรุป + ค้นหา */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={`🔍 ค้นชื่อ/เบอร์ (${groups.length} ราย)`}
+          style={{ flex: "1 1 180px", padding: "8px 12px", borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, fontFamily: "inherit", outline: "none" }}/>
+        <button onClick={()=>setPicked(new Set(groups.map(g=>g.key)))}
+          style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>เลือกทั้งหมด</button>
+        <button onClick={()=>setPicked(new Set())}
+          style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>ล้าง</button>
+      </div>
+
+      {dupeCount > 0 && (
+        <div style={{ padding: "8px 12px", marginBottom: 10, background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.3)", borderRadius: 8, fontSize: 12, color: "#b45309" }}>
+          ⚠️ มี {dupeCount} รายที่เคยออกใบวางบิลช่วงนี้ไปแล้ว — ระบบไม่ติ๊กให้ (ติ๊กเองได้ถ้าตั้งใจออกซ้ำ)
+        </div>
+      )}
+
+      {/* รายชื่อ */}
+      {groups.length === 0 ? (
+        <div style={{ padding: 40, textAlign: "center", color: T.muted, fontSize: 13 }}>
+          <div style={{ fontSize: 40, marginBottom: 8, opacity: 0.3 }}>📭</div>
+          ไม่มีบิลในช่วงที่เลือก{filterMode === "unpaid" ? " (ลองเปลี่ยนเป็น \"ทุกบิล\")" : ""}
+        </div>
+      ) : (
+        <div className="scroll-col" style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "42vh", overflowY: "auto", marginBottom: 12 }}>
+          {visible.map(g => {
+            const on = isPicked(g);
+            return (
+              <label key={g.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 9, cursor: "pointer",
+                border: `1px solid ${on ? "rgba(58,122,82,0.4)" : T.border}`, background: on ? "rgba(58,122,82,0.05)" : "white" }}>
+                <input type="checkbox" checked={on} onChange={()=>toggle(g)} style={{ width: 16, height: 16, cursor: "pointer", flexShrink: 0 }}/>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {g.customerName || "(ไม่ระบุชื่อ)"}
+                    {g.dupe && <span style={{ marginLeft: 6, fontSize: 10, padding: "1px 7px", background: "#fef3c7", color: "#b45309", borderRadius: 8, fontWeight: 700 }}>เคยออกแล้ว</span>}
+                    {!g.customerId && <span style={{ marginLeft: 6, fontSize: 10, color: T.muted }}>· ไม่ผูกลูกค้า</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: T.muted }}>{g.invoices.length} บิล{g.phone ? ` · ${g.phone}` : ""}</div>
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: T.green, fontFamily: "monospace", flexShrink: 0 }}>฿{fmtB(g.total)}</div>
+              </label>
+            );
+          })}
+        </div>
+      )}
+
+      {/* สรุปที่เลือก */}
+      {groups.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "10px 14px", background: "rgba(58,122,82,0.07)", border: "1px solid rgba(58,122,82,0.25)", borderRadius: 10, marginBottom: 12 }}>
+          <span style={{ fontSize: 13, color: T.sub }}>
+            เลือก <b style={{ color: T.text }}>{selected.length}</b> ราย · รวมบิล <b style={{ color: T.text }}>{selInvCount.toLocaleString("th-TH")}</b> ใบ
+          </span>
+          <span style={{ marginLeft: "auto", fontSize: 17, fontWeight: 800, color: T.green, fontFamily: "monospace" }}>฿{fmtB(selTotal)}</span>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
+        <span style={{ fontSize: 12, color: T.sub }}>ครบกำหนดชำระ</span>
+        <input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)}
+          style={{ padding: "7px 10px", borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, fontFamily: "inherit" }}/>
+        <span style={{ fontSize: 11, color: T.muted }}>(ใส่ครั้งเดียว ใช้กับทุกใบ · ไม่ใส่ก็ได้)</span>
+      </div>
+
+      {busy ? (
+        <div style={{ padding: "14px", textAlign: "center", background: "#f8fafc", borderRadius: 10 }}>
+          <div style={{ fontSize: 20, fontWeight: 800, color: T.green, fontFamily: "monospace" }}>{busy.done} / {busy.total}</div>
+          <div style={{ height: 6, background: "#e3e8ef", borderRadius: 3, overflow: "hidden", marginTop: 8 }}>
+            <div style={{ width: `${Math.round((busy.done/Math.max(1,busy.total))*100)}%`, height: "100%", background: T.green, transition: "width .2s" }}/>
+          </div>
+          <div style={{ fontSize: 11, color: T.muted, marginTop: 8 }}>กำลังสร้าง — ห้ามปิดหน้าจอ</div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: 10 }}>
+          <BtnGhost onClick={onClose} style={{ flex: 1 }}>ยกเลิก</BtnGhost>
+          <BtnPrimary onClick={createAll} disabled={selected.length === 0} style={{ flex: 2 }}>
+            📄 สร้างใบวางบิล {selected.length > 0 ? `${selected.length} ใบ` : ""}
+          </BtnPrimary>
+        </div>
+      )}
+    </Modal>
+  );
+}

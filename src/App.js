@@ -4243,6 +4243,26 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   style={{width:"100%",padding:"9px 12px",border:`1px solid ${T.inputBorder}`,borderRadius:8,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
               </div>
             </div>
+            {/* 💳 ประเภทลูกค้า — ใช้คัดว่าใครต้องวางบิลสิ้นเดือน */}
+            <div>
+              <label style={{fontSize:11,color:T.muted,fontWeight:600,display:"block",marginBottom:5}}>ประเภทลูกค้า</label>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {[
+                  {k:"credit", icon:"📄", label:"เครดิต — วางบิลสิ้นเดือน", color:T.accent},
+                  {k:"cash",   icon:"💵", label:"เงินสด — จ่ายทันที",       color:T.green},
+                ].map(o=>{
+                  const cur = editingCustomer.billingType || "credit"; // ไม่เคยตั้ง = เครดิต (พฤติกรรมเดิม)
+                  const on = cur === o.k;
+                  return (
+                    <button key={o.k} onClick={()=>setEditingCustomer(c=>({...c,billingType:o.k}))}
+                      style={{flex:"1 1 180px",padding:"9px 12px",borderRadius:9,cursor:"pointer",fontFamily:"inherit",fontSize:12,textAlign:"left",
+                        border:`1px solid ${on?o.color:T.inputBorder}`,background:on?`${o.color}14`:"white",color:on?o.color:T.sub,fontWeight:on?700:500}}>
+                      {o.icon} {o.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <div>
               <label style={{fontSize:11,color:T.muted,fontWeight:600,display:"block",marginBottom:4}}>หมายเหตุ</label>
               <input value={editingCustomer.note||""} onChange={e=>setEditingCustomer(c=>({...c,note:e.target.value}))}
@@ -4263,6 +4283,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   address: (editingCustomer.address||"").trim(),
                   taxId: (editingCustomer.taxId||"").trim(),
                   email: (editingCustomer.email||"").trim(),
+                  billingType: editingCustomer.billingType || "credit",
                   note: (editingCustomer.note||"").trim(),
                   region: detectRegion(editingCustomer.address||""),
                   province: detectProvince(editingCustomer.address||"") || "",
