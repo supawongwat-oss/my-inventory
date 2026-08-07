@@ -173,7 +173,7 @@ export default function PrintInvoiceModal({
                     <thead>
                       <tr style={{background:"#f1f5f9",color:"#000"}}>
                         <th style={{padding:"9px 4px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,color:"#000",width:72}}>รุ่น</th>
-                        <th style={{padding:"9px 5px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,color:"#000",width:92}}>สี</th>
+                        <th style={{padding:"9px 5px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:9,color:"#000",width:92}}>สี</th>
                         {[1,2,3,4].flatMap(i=>[
                           <th key={`sh${i}`} style={{padding:"9px 2px",textAlign:"center",fontWeight:700,border:"1px solid #000",background:"#f1f5f9",color:"#000",minWidth:36,fontSize:13}}>SIZE</th>,
                           <th key={`qh${i}`} style={{padding:"9px 2px",textAlign:"center",fontWeight:700,border:"1px solid #000",minWidth:26,fontSize:13,color:"#000"}}></th>
@@ -215,7 +215,7 @@ export default function PrintInvoiceModal({
                               <td style={{padding:"8px 4px",fontWeight:600,color:"#000",verticalAlign:"middle",border:"1px solid #000",fontSize:11,textAlign:"center",whiteSpace:"nowrap",width:72}}>
                                 {ci===0 ? group.clothingName : " "}
                               </td>
-                              <td style={{padding:"8px 5px",verticalAlign:"middle",border:"1px solid #000",fontSize:12,color:"#000",whiteSpace:"nowrap"}}>
+                              <td style={{padding:"8px 5px",verticalAlign:"middle",border:"1px solid #000",fontSize:10,color:"#000",whiteSpace:"nowrap"}}>
                                 {ci===0 ? (
                                   <div style={{display:"flex",alignItems:"center",gap:5,justifyContent:"center"}}>
                                     <div style={{width:11,height:11,borderRadius:2,background:group.colorHex,border:"1px solid #000",flexShrink:0}}/>
