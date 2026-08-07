@@ -133,6 +133,10 @@ export default function NewInvoiceModal({
   apparelSizes = [],
   shoeSizes = [],
 }) {
+  // 🧊 ตรึงการจัดแถวไว้ระหว่างพิมพ์ราคา — ไม่งั้นแถวจะกระโดดไปกลุ่มราคาใหม่ทุกตัวอักษร
+  //    (ค่าที่แสดงยังอัปเดตสด ๆ อยู่ — ตรึงแค่ "ลำดับแถว")
+  const [priceEditing, setPriceEditing] = React.useState(false);
+  const layoutRef = React.useRef(null);
   return (
         <Modal onClose={()=>{onClose();}} w={1100}>
           <MHead title={editingInvoiceId?"✏️ แก้ไขบิล":"🧾 ออกบิลใหม่"} sub={editingInvoiceId?`${invoices.find(i=>i.id===editingInvoiceId)?.invoiceNo || ""} · เลขที่บิลคงเดิม`:""} onClose={()=>{onClose();}} color={editingInvoiceId?T.amber:T.accent}/>
@@ -288,7 +292,11 @@ export default function NewInvoiceModal({
           {invoiceForm.items.length>0&&(()=>{
             const isPlus=(sz)=>/^[2-9]XL$/.test(sz);
             // index-aware items (เก็บ index เดิมไว้ใช้แก้/ลบ)
-            const indexed=invoiceForm.items.map((it,idx)=>({...it,__i:idx}));
+            const live=invoiceForm.items.map((it,idx)=>({...it,__i:idx}));
+            // ใช้ snapshot จัดลำดับแถวตอนกำลังพิมพ์ราคา — ค่าที่แสดงอ่านจาก live เสมอ
+            if(!priceEditing) layoutRef.current=live;
+            const indexed=(priceEditing&&layoutRef.current)?layoutRef.current:live;
+            const liveOf=(it)=>live[it.__i]||it;
             // มีชื่อรุ่น = เข้าตาราง group | ไม่มี = แถวเดียว
             const structured=indexed.filter(i=>i.clothingId||i.clothingName);
             const generic=indexed.filter(i=>!(i.clothingId||i.clothingName));
@@ -331,17 +339,29 @@ export default function NewInvoiceModal({
                   </thead>
                   <tbody>
                     {groups.flatMap((group,gi)=>{
-                      // ✨ ใช้ splitSizesIntoRows — sort + split อัตโนมัติ
-                      // S/M/L/XL 4 ต่อแถว, 2XL+ และ 6XL/7XL/9XL ต่างๆ 1 ต่อแถว
+                      // 💰 แยกแถวตามราคาต่อหน่วยก่อน แล้วค่อยจัดไซส์แถวละ 4
+                      //    → ช่องราคาของแต่ละแถวคุมเฉพาะไซส์ที่ราคาเท่ากันอยู่แล้ว
+                      //      พิมพ์ทับจึงไม่ทำให้ราคาที่ต่างกันหายไปทั้งแถวเหมือนเดิม
+                      //    (ไม่ยุบไซส์ที่ซ้ำ — ช่องจำนวนต้องผูกกับรายการจริงทีละบรรทัด)
                       const withSize = group.items.filter(i => i.size);
                       const noSize = group.items.filter(i => !i.size);
-                      const rows = splitSizesIntoRows(withSize, 4, { fillPlus: false });
+                      const byPrice = new Map();
+                      withSize.forEach(it => {
+                        const p = Number(liveOf(it).unitPrice) || 0;
+                        if (!byPrice.has(p)) byPrice.set(p, []);
+                        byPrice.get(p).push(it);
+                      });
+                      const rows = [];
+                      [...byPrice.entries()].sort((a,b)=>a[0]-b[0]).forEach(([,list])=>{
+                        rows.push(...splitSizesIntoRows(list, 4, { fillPlus: false }));
+                      });
                       noSize.forEach(n => rows.push([n]));
                       if(rows.length===0) rows.push([]);
                       return rows.map((chunk,ci)=>{
-                        const rowUnit=chunk[0]?.unitPrice||0;
-                        const rowQty=chunk.reduce((s,i)=>s+(Number(i.qty)||0),0);
-                        const rowSub=chunk.reduce((s,i)=>s+(Number(i.unitPrice)||0)*(Number(i.qty)||0),0);
+                        const rowUnit=Number(chunk[0]?liveOf(chunk[0]).unitPrice:0)||0;
+                        const rowQty=chunk.reduce((s,i)=>s+(Number(liveOf(i).qty)||0),0);
+                        const rowSub=chunk.reduce((s,i)=>s+(Number(liveOf(i).unitPrice)||0)*(Number(liveOf(i).qty)||0),0);
+                        const mixed=new Set(chunk.map(i=>Number(liveOf(i).unitPrice)||0)).size>1;
                         return (
                           <tr key={`${gi}-${ci}`} style={{background:gi%2===0?"transparent":"rgba(59,91,139,0.03)"}}>
                             <td style={{padding:"6px 10px",fontWeight:600,verticalAlign:"middle",border:`1px solid ${T.border}`}}>{ci===0&&<div><div>{group.clothingName}</div>{(group.fabricType||group.collarType||group.jobDescription)&&<div style={{fontSize:10,color:"#64748b",fontWeight:400,marginTop:2,display:"flex",flexWrap:"wrap",gap:3}}>{group.fabricType&&<span>🧵 {group.fabricType}</span>}{group.collarType&&<span>· 👔 {group.collarType}</span>}{group.jobDescription&&<span>· {group.jobDescription}</span>}</div>}</div>}</td>
@@ -352,9 +372,9 @@ export default function NewInvoiceModal({
                               </div>}
                             </td>
                             {chunk.map(it=>[
-                              <td key={`s-${it.size}`} style={{padding:"5px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:T.accent,border:`1px solid ${T.border}`,background:"rgba(59,91,139,0.06)"}}>{it.size}</td>,
-                              <td key={`q-${it.size}`} style={{padding:"4px 4px",textAlign:"center",border:`1px solid ${T.border}`}}>
-                                <input type="number" defaultValue={it.qty} min="1" {...liveInput(it.__i,it.qty,updateQty)}
+                              <td key={`s-${it.__i}`} style={{padding:"5px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:T.accent,border:`1px solid ${T.border}`,background:"rgba(59,91,139,0.06)"}}>{it.size}</td>,
+                              <td key={`q-${it.__i}`} style={{padding:"4px 4px",textAlign:"center",border:`1px solid ${T.border}`}}>
+                                <input type="number" defaultValue={liveOf(it).qty} min="1" {...liveInput(it.__i,liveOf(it).qty,updateQty)}
                                   style={{width:42,textAlign:"center",background:"rgba(59,91,139,0.08)",border:`1px solid ${T.border}`,borderRadius:5,color:T.text,fontFamily:"monospace",fontSize:11,padding:"3px 2px",outline:"none"}}/>
                               </td>
                             ])}
@@ -364,12 +384,16 @@ export default function NewInvoiceModal({
                             ])}
                             <td style={{padding:"6px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:T.accent,verticalAlign:"middle",border:`1px solid ${T.border}`}}>{rowQty}</td>
                             <td style={{padding:"4px 8px",textAlign:"right",verticalAlign:"middle",border:`1px solid ${T.border}`}}>
-                              <input type="number" defaultValue={rowUnit} min="0" step="0.01"
-                                onFocus={e=>e.target.select()}
+                              <input type="number" key={`u-${chunk.map(c=>c.__i).join("_")}`} defaultValue={rowUnit} min="0" step="0.01"
+                                title={mixed
+                                  ? `⚠️ ไซส์ในแถวนี้ราคาไม่เท่ากัน (${[...new Set(chunk.map(i=>Number(liveOf(i).unitPrice)||0))].join(" / ")}) — พิมพ์ทับจะเปลี่ยนทุกไซส์ในแถว`
+                                  : `ใช้กับไซส์: ${chunk.map(c=>c.size).join(", ")}`}
+                                onFocus={e=>{setPriceEditing(true);e.target.select();}}
                                 onChange={e=>{if(e.target.value==="")return;const v=Math.max(0,Number(e.target.value)||0);const ids=chunk.map(c=>c.__i);setInvoiceForm(f=>({...f,items:f.items.map((x,j)=>ids.includes(j)?{...x,unitPrice:v}:x)}));}}
-                                onBlur={e=>{if(e.target.value===""){e.target.value=rowUnit;return;}const v=Math.max(0,Number(e.target.value)||0);const ids=chunk.map(c=>c.__i);setInvoiceForm(f=>({...f,items:f.items.map((x,j)=>ids.includes(j)?{...x,unitPrice:v}:x)}));}}
+                                onBlur={e=>{setPriceEditing(false);if(e.target.value===""){e.target.value=rowUnit;return;}const v=Math.max(0,Number(e.target.value)||0);const ids=chunk.map(c=>c.__i);setInvoiceForm(f=>({...f,items:f.items.map((x,j)=>ids.includes(j)?{...x,unitPrice:v}:x)}));}}
                                 onKeyDown={e=>e.key==="Enter"&&e.target.blur()}
-                                style={{width:72,textAlign:"right",background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.3)",borderRadius:5,color:"#34d399",fontFamily:"monospace",fontSize:11,fontWeight:600,padding:"4px 6px",outline:"none"}}/>
+                                style={{width:72,textAlign:"right",background:mixed?"rgba(245,158,11,0.12)":"rgba(52,211,153,0.08)",border:`1px solid ${mixed?"#f59e0b":"rgba(52,211,153,0.3)"}`,borderRadius:5,color:mixed?"#b45309":"#34d399",fontFamily:"monospace",fontSize:11,fontWeight:600,padding:"4px 6px",outline:"none"}}/>
+                              {mixed&&<div style={{fontSize:9,color:"#b45309",fontWeight:700,marginTop:1}}>⚠️ ราคาผสม</div>}
                             </td>
                             <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#34d399",verticalAlign:"middle",border:`1px solid ${T.border}`}}>
                               ฿{rowSub.toLocaleString("th-TH",{minimumFractionDigits:2})}
