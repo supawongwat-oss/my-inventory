@@ -16,6 +16,7 @@ import PrintInvoiceModal from "./components/PrintInvoiceModal";
 import NewInvoiceModal from "./components/NewInvoiceModal";
 import NewOrderModal from "./components/NewOrderModal";
 import PrintOrderModal from "./components/PrintOrderModal";
+import GlobalSearchModal from "./components/GlobalSearchModal";
 import PaymentModal from "./components/PaymentModal";
 import DeleteClothingConfirm from "./components/DeleteClothingConfirm";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
@@ -25,6 +26,7 @@ import { compressImage } from "./utils/imageCompress";
 import { uploadImage, deleteFile } from "./utils/upload";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiRegion";
 import { reserveDocNo } from "./utils/docNumber";
+import { withSearchKeys, phoneKeyOf, nameKeyOf } from "./utils/searchKeys";
 
 // 🚀 Code splitting — tabs โหลดเฉพาะตอนคลิกใช้งาน (ลด first-load bundle)
 const ReportsTab = lazy(() => import("./tabs/ReportsTab"));
@@ -321,6 +323,15 @@ export default function App() {
   const [productCatalogItem, setProductCatalogItem] = useState(null); // 🛍️ หน้าร้าน: แบรนด์/รายละเอียด/ไซส์ที่ขาย
   const [brandFilter, setBrandFilter] = useState(""); // "" = ทุกแบรนด์, "__none__" = ยังไม่ตั้ง
   const [showPrintOrder, setShowPrintOrder] = useState(null);
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false); // 🔎 ค้นหาทั้งระบบ (Ctrl+K)
+  // ⌨️ Ctrl/Cmd + K เปิดค้นหาได้ทุกหน้า — ไม่ต้องเลื่อนหาปุ่ม
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); setShowGlobalSearch(true); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const [editingOrderId, setEditingOrderId] = useState(null); // null = สร้างใหม่, string = แก้ไข
   const [orderForm, setOrderForm] = useState({
     customerId: "", customerName: "", customerPhone: "", customerAddress: "",
@@ -1500,7 +1511,7 @@ export default function App() {
   // ── Order handlers ────────────────────────────────────────────
   const handleAddCustomer = async () => {
     if (!newCustomerForm.name.trim()) return;
-    const ref = await addDoc(collection(db, "customers"), { ...newCustomerForm, createdAt: serverTimestamp() });
+    const ref = await addDoc(collection(db, "customers"), { ...newCustomerForm, phoneKey: phoneKeyOf(newCustomerForm.phone), nameKey: nameKeyOf(newCustomerForm.name), createdAt: serverTimestamp() });
     logAudit(user, {
       action: AUDIT_ACTIONS.CREATE,
       collection: "customers",
@@ -1757,12 +1768,12 @@ export default function App() {
     const totalQty = orderForm.items.reduce((s,i)=>s+i.qty,0);
     if (isEditing) {
       // updateDoc — คงค่า orderNo/date/by/createdAt เดิม
-      await updateDoc(doc(db, "orders", editingOrderId), {
+      await updateDoc(doc(db, "orders", editingOrderId), withSearchKeys({
         ...orderForm,
         status: hasPendingMix ? "รอระบุ" : "สำเร็จ",
         hasPendingMix,
         editedBy: user.name, editedAt: now(),
-      });
+      }));
       logAudit(user, {
         action: AUDIT_ACTIONS.UPDATE,
         collection: "orders",
@@ -1772,12 +1783,12 @@ export default function App() {
       });
     } else {
       const orderNo = await reserveDocNo(db, "ORD", orders, "orderNo");
-      const ref = await addDoc(collection(db, "orders"), {
+      const ref = await addDoc(collection(db, "orders"), withSearchKeys({
         orderNo, ...orderForm,
         status: hasPendingMix ? "รอระบุ" : "สำเร็จ",
         hasPendingMix,
         by: user.name, date: now(), createdAt: serverTimestamp()
-      });
+      }));
       logAudit(user, {
         action: AUDIT_ACTIONS.CREATE,
         collection: "orders",
@@ -1830,6 +1841,8 @@ export default function App() {
         const cref = await addDoc(collection(db, "customers"), {
           name: co.customerName || "(ลูกค้าใหม่)",
           phone: co.phone || "",
+          phoneKey: phoneKeyOf(co.phone),
+          nameKey: nameKeyOf(co.customerName),
           address: co.address || "",
           taxId: "",
           note: "จาก Catalog",
@@ -1871,7 +1884,7 @@ export default function App() {
 
       // 3) สร้างใบสั่งของ (ยังไม่ตัดสต๊อก)
       const orderNo = await reserveDocNo(db, "ORD", orders, "orderNo");
-      const oref = await addDoc(collection(db, "orders"), {
+      const oref = await addDoc(collection(db, "orders"), withSearchKeys({
         orderNo, customerId,
         customerName: co.customerName || "",
         customerPhone: co.phone || "",
@@ -1883,7 +1896,7 @@ export default function App() {
         date: now(),
         createdAt: serverTimestamp(),
         fromCatalog: co.id,
-      });
+      }));
 
       // 4) ปิดใบใน Inbox + ปลดล็อก
       await updateDoc(doc(db, "catalogOrders", co.id), {
@@ -1955,7 +1968,8 @@ export default function App() {
     if (!o) return;
     // เช็คว่าออกบิลไปแล้วหรือยัง — ดูจากลิงก์จริงเท่านั้น
     // (เดิมเดาจากชื่อลูกค้า+วันที่ → ลูกค้าสั่งหลายใบต่อวันจะเตือนผิดทุกใบ)
-    const invoiced = invoices.some(inv => (inv.mergedFromOrderIds || []).includes(o.id));
+    // o.invoiceId = ปั๊มไว้ตอนออกบิล → เตือนได้ถูกแม้บิลใบนั้นอยู่นอกช่วงวันที่ที่โหลดมา
+    const invoiced = !!o.invoiceId || invoices.some(inv => (inv.mergedFromOrderIds || []).includes(o.id));
     if (invoiced) {
       if (!window.confirm(`⚠️ ใบสั่งของ ${o.orderNo} ถูกออกบิลไปแล้ว\nการแก้ไขจะไม่กระทบกับใบเสร็จเดิม\n\nยืนยันแก้ไข?`)) return;
     }
@@ -2290,7 +2304,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       };
       delete updated.depositAmount; delete updated.depositMethod; // ฟิลด์ชั่วคราวของฟอร์ม (แก้บิลจัดการชำระผ่านปุ่ม 💵)
       delete updated.docDate; // ฟิลด์ของฟอร์มเท่านั้น — ตัวจริงเก็บใน date
-      await updateDoc(doc(db,"invoices",editingInvoiceId), updated);
+      await updateDoc(doc(db,"invoices",editingInvoiceId), withSearchKeys(updated));
       logAudit(user, {
         action: AUDIT_ACTIONS.UPDATE,
         collection: "invoices",
@@ -2332,7 +2346,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       alert(`บันทึกไม่ได้ — บิลนี้ใหญ่เกินขีดจำกัด (${invKB} KB / สูงสุด ~1000 KB)\n\nมี ${data.items.length.toLocaleString("th-TH")} แถว — แบ่งออกเป็นหลายบิลก่อนครับ`);
       return;
     }
-    const ref = await addDoc(collection(db,"invoices"), data);
+    const ref = await addDoc(collection(db,"invoices"), withSearchKeys(data));
     // 🔗 ปั๊ม "ออกบิลแล้ว" ลงในใบสั่งของโดยตรง
     // ทำไม: บิลโหลดมาแค่ช่วงวันที่ (ไม่ใช่ทั้งหมด) — ถ้าอ่านสถานะจากบิลที่โหลดมาอย่างเดียว
     // ใบสั่งเก่าจะกลับไปขึ้น "ยังไม่ออกบิล" ทั้งที่ออกไปแล้ว → เสี่ยงออกบิลซ้ำ
@@ -2946,6 +2960,12 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
             <div style={{fontSize:10,color:T.muted}}>CPU ERP — ระบบบริหารคลังสินค้า</div>
           </div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            {/* 🔎 ค้นหาทั้งระบบ — เจอใบเก่าที่อยู่นอกช่วงวันที่ที่โหลดมา (Ctrl+K) */}
+            <button onClick={()=>setShowGlobalSearch(true)} title="ค้นหาทั้งระบบ (Ctrl+K)"
+              style={{display:"flex",alignItems:"center",gap:8,padding:"7px 14px",borderRadius:20,border:`1px solid ${T.border}`,background:T.input,color:T.sub,cursor:"pointer",fontSize:12.5,fontFamily:"'Sarabun',sans-serif"}}>
+              🔎 <span className="hide-xs">ค้นหาทั้งระบบ</span>
+              <span className="hide-xs" style={{fontSize:10,color:T.muted,border:`1px solid ${T.border}`,borderRadius:5,padding:"1px 5px"}}>Ctrl K</span>
+            </button>
             {activeTab==="materials"&&role.canManageCats&&<BtnGhost onClick={()=>setShowCatModal(true)}>📦 หมวดหมู่</BtnGhost>}
             {activeTab==="materials"&&role.canAdd&&<BtnPrimary onClick={()=>{setNewProduct(p=>({...p,category:"วัตถุดิบ"}));setShowAddModal(true);}}>️ เพิ่มวัตถุดิบ</BtnPrimary>}
             {activeTab==="inventory"&&(inventoryTab==="clothing"||inventoryTab==="sports")&&<BtnGhost onClick={()=>collapseAllClothing(true)} title="พับทุกรุ่น">▶ พับทั้งหมด</BtnGhost>}
@@ -4239,7 +4259,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   region: detectRegion(editingCustomer.address||""),
                   province: detectProvince(editingCustomer.address||"") || "",
                 };
-                await updateDoc(doc(db,"customers",editingCustomer.id), updated);
+                await updateDoc(doc(db,"customers",editingCustomer.id), { ...updated, phoneKey: phoneKeyOf(updated.phone), nameKey: nameKeyOf(updated.name) });
                 logAudit(user,{action:AUDIT_ACTIONS.UPDATE,collection:"customers",targetId:editingCustomer.id,targetLabel:updated.name,
                   before:{name:before.name,phone:before.phone,address:before.address},
                   after:{name:updated.name,phone:updated.phone,address:updated.address}});
@@ -4449,6 +4469,16 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           </div>
         </Modal>
       )}
+
+      {/* ── MODAL: ค้นหาทั้งระบบ (Ctrl+K) ── */}
+      {/* กดผลลัพธ์แล้วเปิดเอกสารนั้นได้เลย แม้จะอยู่นอกช่วงวันที่ที่หน้านั้นโหลดมา */}
+      <GlobalSearchModal
+        open={showGlobalSearch}
+        onClose={() => setShowGlobalSearch(false)}
+        onOpenOrder={(o) => setShowPrintOrder(o)}
+        onOpenInvoice={(inv) => setShowPrintInvoice(inv)}
+        onOpenCustomer={(c) => { setActiveTab("customers"); setCustomerSearch(c.name || ""); }}
+      />
 
       {/* ── MODAL: ปริ้นใบสั่งของ ── */}
       {showPrintOrder && (

@@ -264,11 +264,14 @@ export default function NewInvoiceModal({
               if (!o || !o.id || seen.has(o.id)) return false;
               seen.add(o.id); return true;
             });
-            // เช็คว่าใบสั่งไหนออกบิลไปแล้ว (ตรงกับ mergedFromOrderIds หรือ ลูกค้า+วันเดียวกัน)
-            const isInvoiced = (o) => invoices.some(inv =>
-              (inv.mergedFromOrderIds||[]).includes(o.id) ||
-              ((inv.customerName||"").trim()===(o.customerName||"").trim() && String(inv.date||"").slice(0,10)===String(o.date||"").slice(0,10))
-            );
+            // เช็คว่าใบสั่งไหนออกบิลไปแล้ว — ดูจากลิงก์จริงเท่านั้น
+            // ⚠️ เดิมเดาเพิ่มด้วย "ชื่อลูกค้า + วันเดียวกัน" → ลูกค้าคนเดียวสั่ง 5 ใบในวันเดียว
+            //    ออกบิลใบเดียว อีก 4 ใบก็ขึ้น "ออกบิลแล้ว" ทั้งที่ยังไม่ได้ออก
+            // ⚡ สร้าง Set ครั้งเดียว แทนการวนบิลทุกใบต่อใบสั่งทุกใบ
+            const invoicedSet = new Set();
+            invoices.forEach(inv => (inv.mergedFromOrderIds||[]).forEach(id => invoicedSet.add(id)));
+            // o.invoiceId = ปั๊มไว้ในใบสั่งตอนออกบิล → ถูกต้องแม้บิลใบนั้นอยู่นอกช่วงที่โหลดมา
+            const isInvoiced = (o) => !!o.invoiceId || invoicedSet.has(o.id);
             const tsOf = (o) => o.createdAt?.seconds || 0;
             const label = (o) => `${o.orderNo} · ${o.customerName} · ${o.date}`;
             const pending = allOrders.filter(o => !isInvoiced(o)).sort((a,b)=>tsOf(b)-tsOf(a));
