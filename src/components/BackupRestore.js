@@ -4,6 +4,7 @@ import { db } from "../firebase";
 import { collection, getDocs, writeBatch, doc, deleteDoc, setDoc } from "firebase/firestore";
 import { T } from "../theme";
 import { BtnPrimary, BtnDanger, BtnGhost } from "./ui";
+import { shouldRemindBackup, getLastBackupDate, BACKUP_TS_KEY } from "../utils/backupReminder";
 
 // ── Collections ที่ backup ──
 const COLLECTIONS = [
@@ -23,25 +24,12 @@ const fmtDate = (ts) => {
   const d = new Date(ts);
   return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 };
-const daysSince = (ts) => {
-  if (!ts) return Infinity;
-  return Math.floor((Date.now() - ts) / (24 * 60 * 60 * 1000));
-};
+const daysSince = (ts) => (ts ? Math.floor((Date.now() - ts) / 86400000) : Infinity);
 
-// ── เช็คตอน login: ถ้า backup เก่ากว่า 7 วัน → return true ──
-export const shouldRemindBackup = () => {
-  try {
-    const last = Number(localStorage.getItem("cpu_erp_last_backup")) || 0;
-    return daysSince(last) >= 7;
-  } catch { return false; }
-};
-
-export const getLastBackupDate = () => {
-  try {
-    const last = Number(localStorage.getItem("cpu_erp_last_backup")) || 0;
-    return last;
-  } catch { return 0; }
-};
+// 🔁 ย้ายไป utils/backupReminder.js แล้ว — หน้าแรกต้องเรียกตอน login
+//    ถ้ายังอยู่ไฟล์นี้ จะลาก xlsx (ใหญ่หลายร้อย KB) เข้าโค้ดก้อนหลักไปด้วย
+//    re-export ไว้เผื่อมีที่อื่น import จากไฟล์นี้อยู่
+export { shouldRemindBackup, getLastBackupDate };
 
 // ── Main Component ──
 export default function BackupRestore({ projectId, user, role }) {
@@ -97,7 +85,7 @@ export default function BackupRestore({ projectId, user, role }) {
       URL.revokeObjectURL(url);
 
       const ts = Date.now();
-      localStorage.setItem("cpu_erp_last_backup", String(ts));
+      localStorage.setItem(BACKUP_TS_KEY, String(ts));
       setLastBackup(ts);
 
       setResult({ type: "ok", msg: `✅ Backup JSON สำเร็จ ${totalDocs} records ใน ${COLLECTIONS.length} collections` });
@@ -175,7 +163,7 @@ export default function BackupRestore({ projectId, user, role }) {
       XLSX.writeFile(wb, `cpu-erp-backup-${projectId}-${nowStr()}.xlsx`);
 
       const ts = Date.now();
-      localStorage.setItem("cpu_erp_last_backup", String(ts));
+      localStorage.setItem(BACKUP_TS_KEY, String(ts));
       setLastBackup(ts);
 
       setResult({ type: "ok", msg: `✅ Backup Excel สำเร็จ ${totalDocs} records ใน ${COLLECTIONS.length} sheets` });

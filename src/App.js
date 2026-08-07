@@ -6,19 +6,8 @@ import { INIT_USERS, ROLES, INIT_CATS } from "./constants";
 import { BarcodeDisplay, Modal, MHead, Toast, Input, BtnPrimary, BtnSuccess, BtnDanger, BtnGhost, Badge, CardBox } from "./components/ui";
 import LoginPage, { CompanyEditor } from "./components/LoginPage";
 import { useFirestore } from "./hooks/useFirestore";
-import BarcodePrintModal from "./components/BarcodePrintModal";
-import ImportCustomersModal from "./components/ImportCustomersModal";
-import BackupRestore, { shouldRemindBackup, getLastBackupDate } from "./components/BackupRestore";
-import BarcodeScanner from "./components/BarcodeScanner";
 import InstallPWA from "./components/InstallPWA";
-import CustomerProfile from "./components/CustomerProfile";
-import PrintInvoiceModal from "./components/PrintInvoiceModal";
-import NewInvoiceModal from "./components/NewInvoiceModal";
-import NewOrderModal from "./components/NewOrderModal";
-import PrintOrderModal from "./components/PrintOrderModal";
-import GlobalSearchModal from "./components/GlobalSearchModal";
-import PaymentModal from "./components/PaymentModal";
-import DeleteClothingConfirm from "./components/DeleteClothingConfirm";
+import { shouldRemindBackup, getLastBackupDate } from "./utils/backupReminder";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
 import { PRINT_FONT_SCALE, INVOICE_FONT_SCALE, scaleFontInElement, printElementById, printInvoiceCopies, downloadInvoicePdf } from "./utils/print";
 import { PAYMENT_METHODS, docTypeLabel, docTypeLabelEn, itemLineTotal, calcInvoice, getPaidTotal, getRemaining, getPaidPct } from "./utils/invoice";
@@ -49,6 +38,23 @@ const CustomersTab = lazy(() => import("./tabs/CustomersTab"));
 const ProductionTab = lazy(() => import("./tabs/ProductionTab"));
 // 🎨 วงล้อสี — lazy load เฉพาะตอนเปิด modal เพิ่มสี
 const HexColorPicker = lazy(() => import("react-colorful").then(m => ({ default: m.HexColorPicker })));
+
+// 🚀 Modal ต่าง ๆ — โหลดตอนกดเปิดจริงเท่านั้น (ทุกตัวเรนเดอร์แบบมีเงื่อนไขอยู่แล้ว)
+// ทำไม: เดิม import ตรง ๆ ทั้งหมดจึงถูกมัดรวมอยู่ในโค้ดก้อนหลัก แท็บเล็ตต้องดาวน์โหลด
+//       + แปลงทุกครั้งที่เปิดแอป ทั้งที่บาง modal แทบไม่มีใครเปิด
+//       ตัวหนักสุดคือ BarcodeScanner (ลาก @zxing มาด้วย) กับ BackupRestore (ลาก xlsx)
+const BarcodeScanner = lazy(() => import("./components/BarcodeScanner"));
+const BackupRestore = lazy(() => import("./components/BackupRestore"));
+const NewInvoiceModal = lazy(() => import("./components/NewInvoiceModal"));
+const NewOrderModal = lazy(() => import("./components/NewOrderModal"));
+const PrintInvoiceModal = lazy(() => import("./components/PrintInvoiceModal"));
+const PrintOrderModal = lazy(() => import("./components/PrintOrderModal"));
+const BarcodePrintModal = lazy(() => import("./components/BarcodePrintModal"));
+const ImportCustomersModal = lazy(() => import("./components/ImportCustomersModal"));
+const CustomerProfile = lazy(() => import("./components/CustomerProfile"));
+const GlobalSearchModal = lazy(() => import("./components/GlobalSearchModal"));
+const PaymentModal = lazy(() => import("./components/PaymentModal"));
+const DeleteClothingConfirm = lazy(() => import("./components/DeleteClothingConfirm"));
 // 🧾 ค่าเริ่มต้นการแสดงข้อมูลบริษัทบนบิล — ใช้ทุกที่ที่รีเซ็ต/เปิดฟอร์มออกบิลใหม่
 // ตั้งให้ "ปลอดภัยไว้ก่อน" สำหรับลูกค้าที่ไม่รับ VAT — พนักงานกดเปิดเองเมื่อลูกค้าขอ
 // 📅 วันที่เอกสาร (ออก/แก้ย้อนหลังได้) — ระบบเก็บเป็น "DD/MM/YYYY HH:mm"
@@ -3722,6 +3728,10 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         </div>
       </div>
 
+      {/* 🚀 โซน modal ทั้งหมด — บางตัวโหลดแบบ lazy ตอนกดเปิดจริง
+          fallback={null} เพราะ modal ที่ยังไม่ถูกเปิดไม่ควรวาดอะไรเลย */}
+      <Suspense fallback={null}>
+
       {/* ── MODAL: เพิ่มสินค้า ── */}
       {showAddModal&&(
         <Modal onClose={()=>setShowAddModal(false)} w={640}>
@@ -4470,14 +4480,17 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
       {/* ── MODAL: ค้นหาทั้งระบบ (Ctrl+K) ── */}
       {/* กดผลลัพธ์แล้วเปิดเอกสารนั้นได้เลย แม้จะอยู่นอกช่วงวันที่ที่หน้านั้นโหลดมา */}
+      {/* ⚠️ ต้องเรนเดอร์แบบมีเงื่อนไข — ถ้าใส่ไว้ตลอด lazy จะโหลดทันทีตั้งแต่เปิดแอป */}
+      {showGlobalSearch && (
       <GlobalSearchModal
-        open={showGlobalSearch}
+        open
         customers={customers}
         onClose={() => setShowGlobalSearch(false)}
         onOpenOrder={(o) => setShowPrintOrder(o)}
         onOpenInvoice={(inv) => setShowPrintInvoice(inv)}
         onOpenCustomer={(c) => { setActiveTab("customers"); setCustomerSearch(c.name || ""); }}
       />
+      )}
 
       {/* ── MODAL: ปริ้นใบสั่งของ ── */}
       {showPrintOrder && (
@@ -5622,6 +5635,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         </Modal>
       )}
 
+      </Suspense>
     </div>
   );
 }

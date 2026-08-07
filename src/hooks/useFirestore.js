@@ -24,6 +24,9 @@ const LIMITS = {
   statements: 500,         // ใบแจ้งยอด
   payrollRuns: 200,        // รอบเงินเดือน
   pendingMixSales: 300,    // ขายคละที่รอระบุ
+  auditLogs: 500,          // ประวัติการใช้งาน
+  taxDocs: 1000,           // เอกสารภาษี (เดิมไม่มีเพดาน)
+  attendance: 8000,        // ลงเวลา ≈ 1 ปีที่พนักงาน 20 คน (เดิมไม่มีเพดาน)
 };
 
 // 📅 ช่วงเริ่มต้นของแต่ละคอลเลกชัน (วัน)
@@ -84,6 +87,20 @@ export function useFirestore(activeTab = "") {
     if (["production", "productionHistory", "employees"].includes(activeTab)) setProdLoaded(true);
   }, [activeTab]);
   const prodReady = deferReady && prodLoaded;
+
+  // 🚪 คอลเลกชันที่ใช้แค่ในแท็บของตัวเอง — เริ่มโหลดตอนเปิดแท็บนั้นครั้งแรก
+  //    แล้ว "ค้าง" ไว้ทั้ง session (กลับมาดูอีกไม่ต้องรอโหลดใหม่)
+  //
+  // ทำไม: เดิม subscribe ทุกอันตั้งแต่เปิดแอป ทั้งที่พนักงานส่วนใหญ่ไม่เคยเข้าแท็บพวกนี้เลย
+  //       แท็บเล็ตต้องดาวน์โหลด+ถือไว้ในหน่วยความจำฟรี ๆ → เปิดแอปครั้งแรกค้าง
+  //       ที่หนักสุดคือ attendance กับ taxDocs ซึ่ง "ไม่มีเพดานเลย" และโตขึ้นทุกวัน
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set());
+  useEffect(() => {
+    if (!activeTab) return;
+    setVisitedTabs(prev => (prev.has(activeTab) ? prev : new Set(prev).add(activeTab)));
+  }, [activeTab]);
+  // เคยเปิดแท็บใดแท็บหนึ่งในรายการนี้หรือยัง
+  const visited = (...tabs) => deferReady && tabs.some(t => visitedTabs.has(t));
 
   useEffect(() => {
     // 🛡️ ห้าม auto-overwrite ด้วย INIT_USERS!
@@ -191,12 +208,14 @@ export function useFirestore(activeTab = "") {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deferReady, invoicesRange.from?.getTime(), invoicesRange.to?.getTime()]);
 
+  // 🚪 ใบแจ้งยอด — ใช้เฉพาะแท็บ "วางบิลเก็บเงิน"
+  const stmtReady = visited("statements");
   useEffect(() => {
-    if (!deferReady) return;
+    if (!stmtReady) return;
     const q = query(collection(db, "statements"), orderBy("createdAt","desc"), limit(LIMITS.statements));
     const unsub = onSnapshot(q, snap => setStatements(snap.docs.map(d=>({...d.data(),id:d.id}))), ()=>{});
     return () => unsub();
-  }, [deferReady]);
+  }, [stmtReady]);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db,"settings","company"), snap => {
@@ -212,28 +231,32 @@ export function useFirestore(activeTab = "") {
     return () => unsub();
   }, []);
 
-  // Audit logs — เอามาแค่ 500 รายการล่าสุด (กัน load หนัก)
+  // 🚪 Audit logs — ใช้เฉพาะแท็บ "ประวัติการใช้งาน" (admin)
+  const auditReady = visited("auditlog");
   useEffect(() => {
-    if (!deferReady) return;
-    const q = query(collection(db, "auditLog"), orderBy("timestamp", "desc"), limit(500));
+    if (!auditReady) return;
+    const q = query(collection(db, "auditLog"), orderBy("timestamp", "desc"), limit(LIMITS.auditLogs));
     const unsub = onSnapshot(q, snap => setAuditLogs(snap.docs.map(d => ({ ...d.data(), id: d.id }))), ()=>{});
     return () => unsub();
-  }, [deferReady]);
+  }, [auditReady]);
 
-  // Employees (พนักงาน + work permit)
+  // 🚪 Employees (พนักงาน + work permit) — ใช้ในบัตรลูกจ้าง/เงินเดือน/โซนผลิต
+  const empReady = prodReady || visited("employees", "payroll");
   useEffect(() => {
-    if (!deferReady) return;
+    if (!empReady) return;
     const unsub = onSnapshot(collection(db, "employees"), snap => setEmployees(snap.docs.map(d => ({ ...d.data(), id: d.id }))), ()=>{});
     return () => unsub();
-  }, [deferReady]);
+  }, [empReady]);
 
-  // Tax Docs
+  // 🚪 Tax Docs — ใช้เฉพาะแท็บ "คลังเอกสารภาษี"
+  // ⚠️ เดิมไม่มีเพดานเลย + โหลดตั้งแต่เปิดแอป
+  const taxReady = visited("taxdocs");
   useEffect(() => {
-    if (!deferReady) return;
-    const q = query(collection(db, "taxDocs"), orderBy("date","desc"));
+    if (!taxReady) return;
+    const q = query(collection(db, "taxDocs"), orderBy("date","desc"), limit(LIMITS.taxDocs));
     const unsub = onSnapshot(q, snap => setTaxDocs(snap.docs.map(d => ({ ...d.data(), id: d.id }))), ()=>{});
     return () => unsub();
-  }, [deferReady]);
+  }, [taxReady]);
 
   // Production orders — โหลดเฉพาะตอนเข้าโซนผลิต
   useEffect(() => {
@@ -274,22 +297,24 @@ export function useFirestore(activeTab = "") {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deferReady, catalogRange.from?.getTime(), catalogRange.to?.getTime()]);
 
-  // 📅 Attendance — บันทึกเวลาเข้างานพนักงาน (per day)
+  // 🚪 Attendance / Payroll — ใช้เฉพาะแท็บ "เงินเดือน" (admin เท่านั้น)
+  // ⚠️ attendance เดิมไม่มีเพดานเลย + โหลดตั้งแต่เปิดแอป
+  //    เอกสาร = พนักงาน 1 คน × 1 วัน → พนักงาน 20 คน 1 ปี = 7,300 เอกสาร
+  //    แท็บเล็ตต้องดาวน์โหลดทุกครั้งที่เปิดแอป ทั้งที่พนักงานหน้าร้านไม่มีสิทธิ์เข้าด้วยซ้ำ
+  const payReady = visited("payroll");
   useEffect(() => {
-    if (!deferReady) return;
-    const unsub = onSnapshot(collection(db, "attendance"),
-      snap => setAttendance(snap.docs.map(d => ({...d.data(), id:d.id}))),
-      ()=>{});
+    if (!payReady) return;
+    const q = query(collection(db, "attendance"), orderBy("date","desc"), limit(LIMITS.attendance));
+    const unsub = onSnapshot(q, snap => setAttendance(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
     return () => unsub();
-  }, [deferReady]);
+  }, [payReady]);
 
-  // 💰 Payroll runs — รอบจ่ายเงินเดือน
   useEffect(() => {
-    if (!deferReady) return;
+    if (!payReady) return;
     const q = query(collection(db, "payrollRuns"), orderBy("createdAt","desc"), limit(LIMITS.payrollRuns));
     const unsub = onSnapshot(q, snap => setPayrollRuns(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
     return () => unsub();
-  }, [deferReady]);
+  }, [payReady]);
 
   // 🧺 ขายคละที่รอระบุสี/ไซส์
   useEffect(() => {
