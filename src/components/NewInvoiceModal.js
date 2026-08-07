@@ -1,5 +1,5 @@
 import React from "react";
-import { T, SIZE_GROUPS, PRESET_COLORS, splitSizesIntoRows, sizeRank } from "../theme";
+import { T, SIZE_GROUPS, PRESET_COLORS, splitSizesIntoRows, sizeRank, getPriceForSize } from "../theme";
 import { Modal, MHead, BtnPrimary, BtnGhost, BtnDanger } from "./ui";
 
 // ⚡ จัดไซส์เข้ากลุ่มราคา — ใช้กับ "ตั้งราคาทีเดียว"
@@ -18,7 +18,7 @@ const priceTierOf = (sz) => {
 };
 
 // 💰 แผงตั้งราคาทีเดียว — ใส่ราคาตามกลุ่มไซส์ (หรือแยกทีละไซส์) แล้วใช้กับทุกสี/ทุกรุ่นในบิล
-function BulkPricePanel({ items, setInvoiceForm }) {
+function BulkPricePanel({ items, setInvoiceForm, clothingItems = [] }) {
   const [open, setOpen] = React.useState(false); // พับไว้ก่อน — กดเปิดเมื่อจะตั้งราคา
   const [mode, setMode] = React.useState("group"); // "group" = ตามกลุ่ม | "each" = แยกทีละไซส์
 
@@ -60,6 +60,27 @@ function BulkPricePanel({ items, setInvoiceForm }) {
   };
   const applyAll = (v) => applyPrice(items.map((_, i) => i), v);
 
+  // 🔄 ดึงราคาล่าสุดจากคลัง — บิลเก็บราคา ณ ตอนออก ถ้าแก้ราคาในคลังทีหลังบิลไม่ตามให้
+  const pullPricesFromStock = () => {
+    const next = [];
+    let changed = 0, missing = 0;
+    items.forEach((it) => {
+      const ci = clothingItems.find(c => c.id === it.clothingId);
+      const col = ci?.colors?.[it.colorIdx];
+      if (!col) { next.push(it); missing++; return; }
+      const p = getPriceForSize(col, it.size);
+      if (!(p > 0)) { next.push(it); missing++; return; }
+      if (Number(it.unitPrice) !== p) changed++;
+      next.push({ ...it, unitPrice: p });
+    });
+    if (!changed) {
+      alert(missing ? `ราคาตรงกับคลังอยู่แล้ว (มี ${missing} รายการที่หาราคาในคลังไม่เจอ — ไม่แตะ)` : "ราคาตรงกับคลังอยู่แล้ว");
+      return;
+    }
+    if (!window.confirm(`ดึงราคาล่าสุดจากคลังมาทับ ${changed} รายการ?${missing ? `\n(อีก ${missing} รายการหาราคาในคลังไม่เจอ — จะไม่ถูกแตะ)` : ""}\n\nราคาที่พิมพ์เองไว้ในบิลนี้จะถูกเขียนทับ`)) return;
+    setInvoiceForm(f => ({ ...f, items: next }));
+  };
+
   if (buckets.length === 0) return null;
 
   return (
@@ -78,6 +99,10 @@ function BulkPricePanel({ items, setInvoiceForm }) {
                 {m.l}
               </button>
             ))}
+            <button onClick={pullPricesFromStock} title="อ่านราคาขายล่าสุดจากคลังมาใส่ทุกรายการในบิลนี้ (ใช้เมื่อแก้ราคาในคลังหลังออกบิลไปแล้ว)"
+              style={{ padding: "4px 10px", borderRadius: 7, cursor: "pointer", fontSize: 11, fontFamily: "inherit", fontWeight: 700, border: "1px solid rgba(59,91,139,0.35)", background: "rgba(59,91,139,0.08)", color: T.accent }}>
+              🔄 ดึงราคาจากคลัง
+            </button>
             <span style={{ marginLeft: 6, fontSize: 11, color: T.muted, fontWeight: 600 }}>ทุกรายการ:</span>
             <input type="number" min="0" step="0.01" placeholder="฿"
               onFocus={e => e.target.select()}
@@ -288,7 +313,7 @@ export default function NewInvoiceModal({
 
           {/* Items */}
           <div style={{fontSize:11,color:T.muted,marginBottom:8,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em"}}>รายการสินค้า / บริการ</div>
-          {invoiceForm.items.length>0&&<BulkPricePanel items={invoiceForm.items} setInvoiceForm={setInvoiceForm}/>}
+          {invoiceForm.items.length>0&&<BulkPricePanel items={invoiceForm.items} setInvoiceForm={setInvoiceForm} clothingItems={clothingItems}/>}
           {invoiceForm.items.length>0&&(()=>{
             const isPlus=(sz)=>/^[2-9]XL$/.test(sz);
             // index-aware items (เก็บ index เดิมไว้ใช้แก้/ลบ)
