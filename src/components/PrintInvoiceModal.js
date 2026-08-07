@@ -51,7 +51,6 @@ export default function PrintInvoiceModal({
                   </div>
                   {!hideCo&&companyInfo.address&&<div style={{fontSize:10,color:"#000",marginBottom:1,maxWidth:280,lineHeight:1.5}}>{companyInfo.address}</div>}
                   <div style={{display:"flex",flexWrap:"wrap",gap:12,marginTop:1}}>
-                    {companyInfo.phone&&<div style={{fontSize:10,color:"#000"}}>โทร: {companyInfo.phone}</div>}
                     {!hideCo&&companyInfo.email&&<div style={{fontSize:10,color:"#000"}}>{companyInfo.email}</div>}
                   </div>
                   {showCoTaxId&&<div style={{fontSize:10,color:"#000",marginTop:1}}>เลขผู้เสียภาษี: {companyInfo.taxId}</div>}
@@ -109,7 +108,6 @@ export default function PrintInvoiceModal({
                 <div style={{padding:"5px 12px",background:"#f8fafc"}}>
                   <div style={{fontSize:10,color:"#000",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4,paddingBottom:3,borderBottom:"1px solid #000"}}>ออกโดย (From)</div>
                   <div style={{fontSize:13,fontWeight:700,color:"#000",marginBottom:2}}>{companyInfo.name||"CPU"}</div>
-                  {companyInfo.phone&&<div style={{fontSize:11,color:"#000",marginBottom:1}}>โทร: {companyInfo.phone}</div>}
                   {companyInfo.email&&<div style={{fontSize:11,color:"#000",marginBottom:1}}>{companyInfo.email}</div>}
                   {companyInfo.address&&<div style={{fontSize:11,color:"#000",lineHeight:1.5,marginTop:2}}>{companyInfo.address}</div>}
                   {showCoTaxId&&<div style={{fontSize:11,color:"#000",marginTop:1}}>เลขผู้เสียภาษี: {companyInfo.taxId}</div>}

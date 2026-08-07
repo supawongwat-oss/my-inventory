@@ -404,11 +404,6 @@ export default function Catalog() {
                 💬 LINE {company.lineId || ""}
               </a>
             )}
-            {company.phone && (
-              <a href={`tel:${company.phone}`} style={{ background: T.blue, color: "white", padding: "10px 16px", borderRadius: 8, fontSize: 13, fontWeight: 700, textDecoration: "none" }}>
-                📞 {company.phone}
-              </a>
-            )}
           </div>
         </div>
       </div>
@@ -497,11 +492,6 @@ export default function Catalog() {
                   style={{ marginTop: 14, background: T.blue, color: "white", border: "none", padding: "10px 22px", borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
                   🔄 โหลดใหม่
                 </button>
-                {company.phone && (
-                  <div style={{ marginTop: 12, fontSize: 12 }}>
-                    หรือโทรสั่งได้ที่ <a href={`tel:${company.phone}`} style={{ color: T.blue, fontWeight: 700 }}>{company.phone}</a>
-                  </div>
-                )}
               </>
             )}
             {loadState === "ok" && (
@@ -599,8 +589,7 @@ export default function Catalog() {
                       </button>
                     ) : st !== "cancelled" && (
                       <div style={{ marginTop: 9, fontSize: 11, color: T.muted, textAlign: "center", lineHeight: 1.7 }}>
-                        ทีมงานเริ่มดำเนินการแล้ว — ต้องการแก้ไข/ยกเลิก กรุณาติดต่อร้าน
-                        {company.phone && <> <a href={`tel:${company.phone}`} style={{ color: T.blue, fontWeight: 700 }}>{company.phone}</a></>}
+                        ทีมงานเริ่มดำเนินการแล้ว — ต้องการแก้ไข/ยกเลิก กรุณาติดต่อร้านทาง LINE
                       </div>
                     )}
                   </div>
