@@ -5,10 +5,8 @@
 export const PRINT_FONT_SCALE = 1.3;
 // ใบบิล: A4 มีพื้นที่พอ → พิมพ์ที่ขนาดเกือบเต็ม (0.95) ให้ตารางอ่านง่าย
 export const INVOICE_FONT_SCALE = 1.0;
-// ใบบิล PDF: ใช้สเกลเดียวกับพิมพ์จาก PC
-// PDF ถูกวาดที่ความกว้าง 718px = 190mm (= พื้นที่พิมพ์ A4 ขอบ 10mm) ซึ่งเท่ากับตอนพิมพ์จาก PC พอดี
-// → ใช้สเกลเดียวกัน ตัวหนังสือจึงออกมาขนาดเท่ากันเป๊ะ
-export const INVOICE_PDF_FONT_SCALE = INVOICE_FONT_SCALE;
+// ใบบิล PDF: ย่อลงให้พอดีหน้า A4 มีขอบเหลือ (ฟอนต์ base ตารางใหญ่ → ต้องย่อกว่า print ปกติ)
+export const INVOICE_PDF_FONT_SCALE = 0.72;
 export const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
   // ต้อง attach root เข้า DOM ชั่วคราวเพื่ออ่าน computed style
   const holder = document.createElement("div");
@@ -36,57 +34,6 @@ export const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
     document.body.removeChild(holder);
   }
   return root;
-};
-
-const PAGE_MM = {
-  "A4 portrait":  [210, 297], "A4 landscape": [297, 210],
-  "A5 portrait":  [148, 210], "A5 landscape": [210, 148],
-};
-const mmToPx = (mm) => (mm * 96) / 25.4;
-
-// วัดความสูงจริงของเนื้อหาที่ความกว้างที่กำหนด (วัดนอกจอ ไม่กระพริบ)
-const measureHeightAt = (el, widthPx) => {
-  const holder = document.createElement("div");
-  holder.style.cssText = `position:fixed;left:-99999px;top:0;width:${widthPx}px;visibility:hidden;pointer-events:none;`;
-  holder.appendChild(el);
-  document.body.appendChild(holder);
-  const h = el.scrollHeight;
-  holder.remove();
-  return h;
-};
-
-// 📏 หา fontScale ที่ใหญ่ที่สุดซึ่งยังทำให้เนื้อหาพอดี 1 หน้า
-// ใช้ตอนรายการเยอะจนล้นหน้า — ย่อ "ตัวหนังสือ" ไม่ใช่ย่อทั้งหน้า ตารางจึงยังเต็มความกว้าง
-// ค้นแบบ binary search 5 รอบ (วัดจริงทุกรอบ) → ได้ขนาดใหญ่ที่สุดที่ยังพอดี ไม่ย่อเกินจำเป็น
-export const fitOnePageScale = (srcEl, { widthPx, availPx, baseScale, minScale = 0.55 }) => {
-  const heightAt = (scale) => {
-    const clone = srcEl.cloneNode(true);
-    clone.removeAttribute("id");
-    clone.style.width = widthPx + "px";
-    clone.style.maxWidth = widthPx + "px";
-    clone.style.boxSizing = "border-box";
-    scaleFontInElement(clone, scale);
-    return measureHeightAt(clone, widthPx);
-  };
-  try {
-    if (heightAt(baseScale) <= availPx) return baseScale; // ไม่ล้น → ใช้ขนาดปกติ
-    let lo = minScale, hi = baseScale, best = minScale;
-    for (let i = 0; i < 5; i++) {
-      const mid = (lo + hi) / 2;
-      if (heightAt(mid) <= availPx) { best = mid; lo = mid; } else { hi = mid; }
-    }
-    return best;
-  } catch (e) {
-    console.warn("[print] fit failed:", e);
-    return baseScale;
-  }
-};
-
-// คำนวณพื้นที่พิมพ์ 1 หน้า (px) จากขนาดกระดาษ + ขอบ — เผื่อ 2% กันคลาดเคลื่อนของไดรเวอร์
-const pageBoxPx = (pageSize, pageMargin) => {
-  const [pw, ph] = PAGE_MM[pageSize] || [210, 297];
-  const m = parseFloat(String(pageMargin).match(/^([\d.]+)/)?.[1] || "10");
-  return { widthPx: Math.round(mmToPx(pw - 2 * m)), availPx: Math.round(mmToPx(ph - 2 * m) * 0.98) };
 };
 
 // 🖨️ พิมพ์แบบ same-page isolation — ใช้ได้ทุกอุปกรณ์ (desktop + Samsung/iOS/Android)
@@ -187,12 +134,7 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
 
   const clone = el.cloneNode(true);
   clone.removeAttribute("id");
-  // 📏 รายการเยอะจนล้นหน้า → ย่อตัวหนังสือให้พอดี 1 หน้าอัตโนมัติ (สติกเกอร์ความร้อนไม่ต้อง)
-  const fitScale = isThermal ? fontScale : (() => {
-    const box = pageBoxPx(pageSize, pageMargin);
-    return fitOnePageScale(el, { widthPx: box.widthPx, availPx: box.availPx, baseScale: fontScale });
-  })();
-  const finalEl = isThermal ? clone : scaleFontInElement(clone, fitScale);
+  const finalEl = isThermal ? clone : scaleFontInElement(clone, fontScale);
 
   const root = document.createElement("div");
   root.id = "__print_root__";
@@ -381,15 +323,12 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
 
   const root = document.createElement("div");
   root.id = "__print_root__";
-  // 📏 บิลไม่ย่อตัวหนังสือแล้ว — รายการเยอะก็ให้ล้นไปหน้า 2 (หัวตารางพิมพ์ซ้ำทุกหน้า)
-  //    เพราะบิลคือเอกสารที่ลูกค้าต้องอ่าน ย่อแล้วอ่านไม่ออกเสียของ
-  const fitScaleC = fontScale;
   labels.forEach((label, i) => {
     const clone = el.cloneNode(true);
     clone.removeAttribute("id");
     const tag = clone.querySelector("[data-doc-label]");
     if (tag) tag.textContent = label;
-    scaleFontInElement(clone, fitScaleC);
+    scaleFontInElement(clone, fontScale);
     const wrap = document.createElement("div");
     if (i < labels.length - 1) wrap.style.pageBreakAfter = "always";
     wrap.appendChild(clone);
@@ -478,34 +417,12 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
   });
 };
 
-// 🖼️ แปลง <img> ทุกตัวเป็น data URL ก่อนสร้าง PDF
-// html2canvas วาดรูปข้ามโดเมน (โลโก้/รูปงานจาก Storage) ไม่ได้ → จะกลายเป็นกรอบรูปแตกใน PDF
-const inlineImagesIn = async (root) => {
-  await Promise.all(Array.from(root.querySelectorAll("img")).map(async (im) => {
-    const src = im.getAttribute("src") || "";
-    if (!src || src.startsWith("data:")) return;
-    try {
-      const blob = await (await fetch(src, { mode: "cors", cache: "force-cache" })).blob();
-      im.setAttribute("src", await new Promise((ok, bad) => {
-        const r = new FileReader();
-        r.onload = () => ok(r.result);
-        r.onerror = bad;
-        r.readAsDataURL(blob);
-      }));
-    } catch (e) {
-      im.style.visibility = "hidden"; // โหลดไม่ได้ → ซ่อน ดีกว่าโชว์กรอบแตกบนบิลที่ส่งลูกค้า
-    }
-  }));
-};
-
 // ดาวน์โหลดเอกสารเป็น PDF (ใช้ html2pdf.js — lazy load)
 export const downloadInvoicePdf = async (inv, copies = false) => {
   const el = document.getElementById("invoice-print-area");
   if (!el || !inv) return;
   const safeName = (inv.customerName || "ลูกค้า").replace(/[\\/:*?"<>|]/g, "_").slice(0, 30);
   const filename = `${inv.invoiceNo || "INV"}_${safeName}.pdf`;
-  // 📏 ไม่ย่อตัวหนังสือ — ให้เท่ากับพิมพ์จาก PC เสมอ รายการเยอะก็ขึ้นหน้าใหม่
-  const pdfScale = INVOICE_PDF_FONT_SCALE;
   let source;
   if (copies) {
     const labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"];
@@ -514,7 +431,7 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
       const clone = el.cloneNode(true);
       const tag = clone.querySelector("[data-doc-label]");
       if (tag) tag.textContent = label;
-      scaleFontInElement(clone, pdfScale);
+      scaleFontInElement(clone, INVOICE_PDF_FONT_SCALE);
       const pageWrap = document.createElement("div");
       if (i < labels.length - 1) pageWrap.style.pageBreakAfter = "always";
       pageWrap.appendChild(clone);
@@ -522,21 +439,18 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
     });
     source = wrap;
   } else {
-    source = scaleFontInElement(el.cloneNode(true), pdfScale);
+    source = scaleFontInElement(el.cloneNode(true), INVOICE_PDF_FONT_SCALE);
   }
   // 📐 บังคับความกว้าง = A4 content (~190mm ≈ 718px @96dpi) → html2canvas จับภาพเท่าหน้าจริง ไม่ล้นขอบ
   source.style.width = "718px";
-  source.style.maxWidth = "718px";
   source.style.boxSizing = "border-box";
-  await inlineImagesIn(source);
   // 🚀 lazy import — โหลด html2pdf.js เฉพาะตอนกดปุ่มนี้เท่านั้น (~400KB)
   const { default: html2pdf } = await import("html2pdf.js");
   html2pdf().set({
     margin: 10,
     filename,
     image: { type: "jpeg", quality: 0.98 },
-    // windowWidth 718 = จัดหน้าที่ความกว้าง A4 เสมอ ไม่ขึ้นกับจอของเครื่องที่กด (แท็บเล็ตจึงได้เท่า PC)
-    html2canvas: { scale: 2, useCORS: true, windowWidth: 718, backgroundColor: "#ffffff" },
+    html2canvas: { scale: 2, useCORS: true },
     jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
     pagebreak: { mode: ["css", "legacy"] }
   }).from(source).save();
