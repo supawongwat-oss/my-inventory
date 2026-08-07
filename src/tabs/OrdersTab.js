@@ -1,4 +1,8 @@
 import React, { useEffect } from "react";
+import LoadRangeBar from "../components/LoadRangeBar";
+
+// 📜 วาดทีละกี่ใบ — ที่ 200-400 ใบ/วัน การวาดทุกใบพร้อมกันทำให้หน้าค้าง
+const PAGE_SIZE = 60;
 
 const T = {
   card:"#ffffff", border:"#e3e8ef", text:"#1f2a44", sub:"#5b6b85", muted:"#8a9bb3",
@@ -50,7 +54,7 @@ export default function OrdersTab({
   openEditOrder,
 }) {
   const invoicedIds = React.useMemo(() => invoicedOrderIds(invoices), [invoices]);
-  const filteredOrders = orders.filter(o => {
+  const allFilteredOrders = orders.filter(o => {
     if (orderSearch) {
       const q = norm(orderSearch);
       const hit = norm(o.orderNo).includes(q)
@@ -68,8 +72,17 @@ export default function OrdersTab({
     return true;
   });
 
-  const totalQtyAll = filteredOrders.reduce((s, o) => s + (o.items || []).reduce((a, i) => a + i.qty, 0), 0);
-  const notInvoiced = filteredOrders.filter(o => !invoicedIds.has(o.id)).length;
+  // 📜 ยอดรวม/สถิติ นับจาก "ทุกใบที่ตรงเงื่อนไข" — ไม่ใช่แค่ที่วาดอยู่
+  const totalQtyAll = allFilteredOrders.reduce((s, o) => s + (o.items || []).reduce((a, i) => a + (Number(i.qty) || 0), 0), 0);
+  const isInvoiced = (o) => !!o.invoiceId || invoicedIds.has(o.id);
+  const notInvoiced = allFilteredOrders.filter(o => !isInvoiced(o)).length;
+
+  // 📜 วาดทีละหน้า — กดโหลดเพิ่มถ้าอยากเห็นมากกว่านี้
+  const [shown, setShown] = React.useState(PAGE_SIZE);
+  const filterKey = `${orderSearch}|${orderDateFrom}|${orderDateTo}|${orders.length}`;
+  useEffect(() => { setShown(PAGE_SIZE); }, [filterKey]);
+  const filteredOrders = allFilteredOrders.slice(0, shown);
+  const hasMore = allFilteredOrders.length > filteredOrders.length;
 
   const setPreset = (preset) => {
     const today = new Date(); const y = today.getFullYear(); const m = today.getMonth();
@@ -151,17 +164,8 @@ export default function OrdersTab({
       })()}
 
       {/* 📅 บอกให้ชัดว่ากำลังดูช่วงไหน — กันเข้าใจผิดว่า "ไม่มีข้อมูล" ทั้งที่แค่ไม่ได้โหลดมา */}
-      {ordersRange && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "8px 14px", marginBottom: 12, borderRadius: 9, fontSize: 11,
-          background: ordersCapped ? "rgba(217,119,6,0.08)" : "rgba(59,91,139,0.06)",
-          border: `1px solid ${ordersCapped ? "rgba(217,119,6,0.35)" : T.border}`,
-          color: ordersCapped ? "#b45309" : T.sub }}>
-          <span>📅 กำลังดูใบสั่งของช่วง <b>{fmtDMY(ordersRange.from)} – {ordersRange.to ? fmtDMY(ordersRange.to) : "วันนี้"}</b> ({orders.length.toLocaleString("th-TH")} ใบ)</span>
-          {ordersCapped
-            ? <b>⚠️ ช่วงนี้มีใบมากเกินกว่าจะโหลดหมด — แสดงเฉพาะที่ใหม่ที่สุด ให้เลือกช่วงแคบลง</b>
-            : <span style={{ color: T.muted }}>· ใบเก่ากว่านี้ยังอยู่ครบ — เลือกช่วงวันที่เพื่อดึงมาดู</span>}
-        </div>
-      )}
+      <LoadRangeBar label="กำลังดูใบสั่งของ" range={ordersRange} capped={ordersCapped} count={orders.length}
+        setRange={(r) => { setOrderDateFrom(""); setOrderDateTo(""); setOrdersRange(r); }} />
 
       {/* ── FILTER BAR ── (อยู่นอกเงื่อนไขเสมอ — ช่วงไหนไม่มีใบก็ยังเปลี่ยนวันที่ได้) */}
           <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: 14, marginBottom: 14 }}>
@@ -184,7 +188,8 @@ export default function OrdersTab({
               ))}
               <div style={{ flex: 1 }} />
               <div style={{ fontSize: 11, color: T.muted }}>
-                พบ <b style={{ color: T.accent }}>{filteredOrders.length}</b> / {orders.length} ใบ
+                พบ <b style={{ color: T.accent }}>{allFilteredOrders.length}</b> / {orders.length} ใบ
+                {hasMore && <span style={{ color: T.amber }}> (แสดง {filteredOrders.length})</span>}
                 {notInvoiced > 0 && <><span style={{ margin: "0 6px", color: T.border }}>·</span>⏳ ยังไม่ออกบิล <b style={{ color: "#dc2626" }}>{notInvoiced}</b> ใบ</>}
                 <span style={{ margin: "0 6px", color: T.border }}>·</span>
                 รวม <b style={{ color: "#16a34a" }}>{totalQtyAll.toLocaleString("th-TH")}</b> ชิ้น
@@ -246,7 +251,7 @@ export default function OrdersTab({
                                   <div>เลขที่</div><div>ลูกค้า</div><div>รายการ</div><div>โดย</div><div>สถานะ</div><div style={{ textAlign: "center" }}>จัดการ</div>
                                 </div>
                                 {list.map((o, i) => {
-                                  const invoiced = invoicedIds.has(o.id);
+                                  const invoiced = isInvoiced(o);
                                   return (
                                     <div key={o.id} onClick={() => setShowPrintOrder(o)} title="คลิกเพื่อดูใบสั่งของ"
                                       style={{ display: "grid", gridTemplateColumns: "88px 1fr 90px 52px 240px 190px", alignItems: "center", padding: "13px 20px", borderBottom: i < list.length - 1 ? `1px solid ${T.border}` : "none", cursor: "pointer", background: selectedOrders.has(o.id) ? "rgba(59,91,139,0.08)" : "transparent" }}
@@ -290,6 +295,13 @@ export default function OrdersTab({
                   </div>
                 );
               })}
+              {/* 📜 โหลดเพิ่ม — วาดทีละ 60 ใบ กันหน้าค้างตอนมีเป็นพันใบ */}
+              {hasMore && (
+                <button onClick={() => setShown(n => n + PAGE_SIZE * 3)}
+                  style={{ padding: "12px 20px", borderRadius: 12, border: `1px solid ${T.accent}`, background: "rgba(59,91,139,0.06)", color: T.accent, cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Sarabun',sans-serif" }}>
+                  ⬇️ โหลดเพิ่ม — เหลืออีก {(allFilteredOrders.length - filteredOrders.length).toLocaleString("th-TH")} ใบ
+                </button>
+              )}
             </div>
           )}
     </div>

@@ -90,7 +90,7 @@ export default function App() {
   }, []);
 
   const [activeTab, setActiveTab] = useState("dashboard");
-  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, ordersRange, setOrdersRange, ordersCapped, customers, invoices, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs, catalogOrders, attendance, payrollRuns, customSizes, pendingMixSales, usersLoaded } = useFirestore(activeTab);
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, ordersRange, setOrdersRange, ordersCapped, customers, invoices, invoicesRange, setInvoicesRange, invoicesCapped, catalogRange, setCatalogRange, catalogCapped, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs, catalogOrders, attendance, payrollRuns, customSizes, pendingMixSales, usersLoaded } = useFirestore(activeTab);
   // 📏 ไซส์ที่ใช้จริง = มาตรฐาน + ที่เพิ่มเอง
   const apparelSizes = useMemo(() => mergeSizes(SIZES, customSizes?.apparel), [customSizes]);
   const shoeSizes = useMemo(() => mergeSizes(SHOE_SIZES, customSizes?.shoe), [customSizes]);
@@ -2333,6 +2333,20 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       return;
     }
     const ref = await addDoc(collection(db,"invoices"), data);
+    // 🔗 ปั๊ม "ออกบิลแล้ว" ลงในใบสั่งของโดยตรง
+    // ทำไม: บิลโหลดมาแค่ช่วงวันที่ (ไม่ใช่ทั้งหมด) — ถ้าอ่านสถานะจากบิลที่โหลดมาอย่างเดียว
+    // ใบสั่งเก่าจะกลับไปขึ้น "ยังไม่ออกบิล" ทั้งที่ออกไปแล้ว → เสี่ยงออกบิลซ้ำ
+    const linkIds = [...new Set(invoiceForm.mergedFromOrderIds || [])];
+    if (linkIds.length) {
+      try {
+        for (let i = 0; i < linkIds.length; i += 400) {
+          const b = writeBatch(db);
+          linkIds.slice(i, i + 400).forEach(oid =>
+            b.update(doc(db, "orders", oid), { invoiceId: ref.id, invoiceNo: invNo, invoicedAt: serverTimestamp() }));
+          await b.commit();
+        }
+      } catch (e) { console.warn("[invoice] mark orders invoiced failed:", e); }
+    }
     logAudit(user, {
       action: AUDIT_ACTIONS.CREATE,
       collection: "invoices",
@@ -2527,6 +2541,17 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     if (!inv) return;
     if (!window.confirm(`ลบบิล ${inv.invoiceNo}? — การลบไม่สามารถกู้คืนได้ (ใช้ "แก้ไข" แทนถ้าแค่กรอกผิด)`)) return;
     await deleteDoc(doc(db, "invoices", inv.id));
+    // 🔗 คืนสถานะ "ยังไม่ออกบิล" ให้ใบสั่งของที่ผูกไว้ — ไม่งั้นออกบิลใหม่ไม่ได้เพราะขึ้นว่าออกแล้ว
+    const linkIds = [...new Set(inv.mergedFromOrderIds || [])];
+    if (linkIds.length) {
+      try {
+        for (let i = 0; i < linkIds.length; i += 400) {
+          const b = writeBatch(db);
+          linkIds.slice(i, i + 400).forEach(oid => b.update(doc(db, "orders", oid), { invoiceId: null, invoiceNo: null, invoicedAt: null }));
+          await b.commit();
+        }
+      } catch (e) { console.warn("[invoice] unmark orders failed:", e); }
+    }
     logAudit(user, { action: AUDIT_ACTIONS.DELETE, collection: "invoices", targetId: inv.id, targetLabel: `${inv.invoiceNo} · ${inv.customerName}`, before: { total: inv.total, status: inv.status, docType: inv.docType } });
   };
 
@@ -3208,6 +3233,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           {activeTab==="invoice"&&(
             <InvoiceTab
               invoices={invoices} role={role}
+              invoicesRange={invoicesRange} setInvoicesRange={setInvoicesRange} invoicesCapped={invoicesCapped}
               invoiceStatusFilter={invoiceStatusFilter} setInvoiceStatusFilter={setInvoiceStatusFilter}
               invoiceSearch={invoiceSearch} setInvoiceSearch={setInvoiceSearch}
               selectedInvoices={selectedInvoices} setSelectedInvoices={setSelectedInvoices} toggleInvoiceSelect={toggleInvoiceSelect}
@@ -3644,6 +3670,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
             </div>
             <CatalogInboxTab
               catalogOrders={catalogOrders}
+              catalogRange={catalogRange} setCatalogRange={setCatalogRange} catalogCapped={catalogCapped}
               clothingItems={clothingItems}
               customers={customers}
               companyInfo={companyInfo}

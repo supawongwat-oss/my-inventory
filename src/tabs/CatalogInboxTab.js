@@ -4,6 +4,7 @@ import { db } from "../firebase";
 import { doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { T } from "../theme";
 import { quoteCatalogOrder, unitPriceFor, buildQuoteMessage } from "../utils/catalogQuote";
+import LoadRangeBar from "../components/LoadRangeBar";
 
 const fmtB = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -19,7 +20,7 @@ const STATUS = {
   cancelled: { label: "ยกเลิก",      color: "#b94a48", bg: "#fee2e2" },
 };
 
-export default function CatalogInboxTab({ catalogOrders = [], onConvert, onBulkConvert, clothingItems = [], customers = [], companyInfo = {} }) {
+export default function CatalogInboxTab({ catalogOrders = [], onConvert, onBulkConvert, clothingItems = [], customers = [], companyInfo = {}, catalogRange, setCatalogRange, catalogCapped }) {
   // ☑️ เลือกหลายใบ — ที่ 200-300 ใบ/วัน กดทีละใบไม่ไหว
   const [selected, setSelected] = useState(new Set());
   const toggleSel = (id) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -97,6 +98,12 @@ export default function CatalogInboxTab({ catalogOrders = [], onConvert, onBulkC
           คำสั่งซื้อที่ลูกค้าส่งผ่านหน้า <code style={{ background: "#eef2f7", padding: "2px 6px", borderRadius: 4 }}>/catalog</code>
         </div>
       </div>
+
+      {/* 📅 ช่วงวันที่ที่โหลดมา — เดิมเป็นเพดาน 400 ใบ ซึ่งเต็มภายในวันเดียวและใบเก่าหายเงียบ */}
+      {setCatalogRange && (
+        <LoadRangeBar label="กำลังดูออเดอร์จาก catalog" range={catalogRange} setRange={setCatalogRange}
+          capped={catalogCapped} count={catalogOrders.length} unit="รายการ" />
+      )}
 
       {/* Filter chips */}
       <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>

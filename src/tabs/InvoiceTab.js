@@ -1,4 +1,8 @@
 import React from "react";
+import LoadRangeBar from "../components/LoadRangeBar";
+
+// 📜 วาดทีละกี่ใบ — กันหน้าค้างตอนมีบิลเป็นพันใบในช่วงที่เลือก
+const PAGE_SIZE = 60;
 
 const T = {
   card:"#ffffff", border:"#e3e8ef", text:"#1f2a44", sub:"#5b6b85", muted:"#8a9bb3",
@@ -30,6 +34,7 @@ const norm = (s) => String(s || "").normalize("NFC").toLowerCase().replace(/\s+/
 
 export default function InvoiceTab({
   invoices, role,
+  invoicesRange, setInvoicesRange, invoicesCapped,
   invoiceStatusFilter, setInvoiceStatusFilter,
   invoiceSearch, setInvoiceSearch,
   selectedInvoices, setSelectedInvoices, toggleInvoiceSelect,
@@ -45,6 +50,10 @@ export default function InvoiceTab({
   handleEditInvoice,
   handleDeleteInvoice,
 }) {
+  // 📜 วาดทีละหน้า — รีเซ็ตเมื่อเปลี่ยนคำค้น/สถานะ/ชุดข้อมูล
+  const [shown, setShown] = React.useState(PAGE_SIZE);
+  React.useEffect(() => { setShown(PAGE_SIZE); }, [invoiceSearch, invoiceStatusFilter, invoices.length]);
+
   return (
     <div style={{ animation: "fadeUp 0.4s ease" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
@@ -69,6 +78,12 @@ export default function InvoiceTab({
             style={{ padding: "8px 18px", borderRadius: 9, border: "none", cursor: "pointer", background: "linear-gradient(135deg,#3b5b8b,#3b5b8b)", color: "white", fontSize: 12, fontWeight: 600, fontFamily: "'Sarabun',sans-serif", boxShadow: "0 4px 14px rgba(59,91,139,0.3)" }}>＋ ออกบิลใหม่</button>
           : <span style={{ fontSize: 11, color: T.muted, padding: "6px 12px", background: "rgba(241,243,246,0.4)", border: `1px solid ${T.border}`, borderRadius: 8 }}>👁️ โหมดดูเท่านั้น</span>}
       </div>
+
+      {/* 📅 บอกให้ชัดว่ากำลังดูบิลช่วงไหน — บิลเก่ากว่านี้ยังอยู่ครบ แค่ยังไม่ได้โหลด */}
+      {setInvoicesRange && (
+        <LoadRangeBar label="กำลังดูบิล" range={invoicesRange} setRange={setInvoicesRange}
+          capped={invoicesCapped} count={invoices.length} />
+      )}
 
       {/* 🔍 ค้นหาบิล */}
       <div style={{ marginBottom: 12, position: "relative" }}>
@@ -114,7 +129,17 @@ export default function InvoiceTab({
           || norm(inv.customerAddress).includes(q)
           || norm(inv.note).includes(q)
         );
-        if (fInv.length === 0) return <div style={{ textAlign: "center", padding: 40, color: T.muted, fontSize: 13 }}>{q ? `ไม่พบบิลที่ตรงกับ "${invoiceSearch}"` : "ไม่พบบิลตามสถานะนี้"}</div>;
+        if (fInv.length === 0) return (
+          <div style={{ textAlign: "center", padding: 40, color: T.muted, fontSize: 13 }}>
+            {q ? `ไม่พบบิลที่ตรงกับ "${invoiceSearch}"` : "ไม่พบบิลตามสถานะนี้"}
+            {q && <div style={{ marginTop: 8, fontSize: 12, color: T.amber }}>ค้นเฉพาะบิลในช่วงที่โหลดมาเท่านั้น — ขยายช่วงวันที่ด้านบน หรือใช้ 🔎 ค้นหาทั้งระบบ</div>}
+          </div>
+        );
+
+        // 📜 วาดทีละหน้า — สถิติด้านบนยังนับจากทุกใบที่ตรงเงื่อนไข
+        const totalFound = fInv.length;
+        const hasMore = totalFound > shown;
+        fInv = fInv.slice(0, shown);
 
         const groups = fInv.reduce((acc, inv) => {
           const d = (inv.date || "").slice(0, 10) || "ไม่ระบุวันที่";
@@ -236,6 +261,13 @@ export default function InvoiceTab({
                 </div>
               );
             })}
+            {/* 📜 โหลดเพิ่ม — วาดทีละ 60 ใบ กันหน้าค้าง */}
+            {hasMore && (
+              <button onClick={() => setShown(n => n + PAGE_SIZE * 3)}
+                style={{ padding: "12px 20px", borderRadius: 12, border: `1px solid ${T.accent}`, background: "rgba(59,91,139,0.06)", color: T.accent, cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Sarabun',sans-serif" }}>
+                ⬇️ โหลดเพิ่ม — เหลืออีก {(totalFound - fInv.length).toLocaleString("th-TH")} ใบ
+              </button>
+            )}
           </div>
         );
       })()}

@@ -16,14 +16,23 @@ function daysAgo(n) {
 // ⚙️ ปรับตัวเลขตรงนี้ได้ทันที ถ้าอยากเห็นย้อนหลังมากขึ้น
 const LIMITS = {
   transactions: 500,       // รับ/จ่าย/ขาย — รายงาน/ขายวันนี้ query ตามวันเองแล้ว (live ใช้แค่ dashboard + tab ประวัติ)
-  invoices: 1000,          // บิล
   ordersCap: 4000,         // 🛡️ เพดานกันเผลอเลือกช่วงกว้างเกิน (ปกติโหลดตามช่วงวันที่)
+  invoicesCap: 3000,       // 🛡️ เพดานของบิล (ปกติโหลดตามช่วงวันที่)
+  catalogCap: 1500,        // 🛡️ เพดานของ catalog inbox (ปกติโหลดตามช่วงวันที่)
   productionOrders: 1000,  // ใบสั่งผลิต
   customOrders: 800,       // ใบสั่งผลิต custom
-  catalogOrders: 400,      // สั่งจากหน้า catalog
   statements: 500,         // ใบแจ้งยอด
   payrollRuns: 200,        // รอบเงินเดือน
   pendingMixSales: 300,    // ขายคละที่รอระบุ
+};
+
+// 📅 ช่วงเริ่มต้นของแต่ละคอลเลกชัน (วัน)
+// ⚠️ ที่ 200-400 ใบ/วัน "เพดานจำนวนใบ" ใช้ไม่ได้ — 1,000 ใบ = แค่ 3 วัน แล้วใบเก่าหายเงียบ ๆ
+//    เปลี่ยนเป็นโหลดตามช่วงวันที่ทั้งหมด + เตือนเมื่อชนเพดาน + ให้ผู้ใช้ขยายช่วงเองได้
+const DEFAULT_DAYS = {
+  orders: 2,      // ใบสั่งของ — งานประจำวันดูแค่วันนี้/เมื่อวาน (กดขยายได้)
+  invoices: 30,   // บิล — ต้องพอสำหรับรายงาน/ตามหนี้เดือนปัจจุบัน
+  catalog: 30,    // inbox จากหน้า catalog
 };
 
 export function useFirestore(activeTab = "") {
@@ -36,10 +45,13 @@ export function useFirestore(activeTab = "") {
   const [clothingItems, setClothingItems] = useState([]);
   const [orders, setOrders] = useState([]);
   // 📅 ช่วงวันที่ของใบสั่งของที่กำลังโหลด — เริ่มต้น 7 วันล่าสุด, เปลี่ยนได้จากหน้าใบสั่งของ
-  const [ordersRange, setOrdersRange] = useState(() => ({ from: daysAgo(7), to: null }));
+  const [ordersRange, setOrdersRange] = useState(() => ({ from: daysAgo(DEFAULT_DAYS.orders), to: null }));
   const [ordersCapped, setOrdersCapped] = useState(false);
   const [customers, setCustomers] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  // 📅 ช่วงวันที่ของบิลที่กำลังโหลด — เริ่มต้น 30 วัน, ขยายได้จากหน้าออกบิล/รายงาน
+  const [invoicesRange, setInvoicesRange] = useState(() => ({ from: daysAgo(DEFAULT_DAYS.invoices), to: null }));
+  const [invoicesCapped, setInvoicesCapped] = useState(false);
   const [statements, setStatements] = useState([]);
   const [companyInfo, setCompanyInfo] = useState({ name:"CPU", address:"", phone:"", email:"", taxId:"", logo:"⚙️" });
   const [roleLabels, setRoleLabels] = useState({}); // {admin:"...", manager:"...", staff:"..."}
@@ -50,6 +62,8 @@ export function useFirestore(activeTab = "") {
   const [boms, setBoms] = useState([]);
   const [customOrders, setCustomOrders] = useState([]);
   const [catalogOrders, setCatalogOrders] = useState([]);
+  const [catalogRange, setCatalogRange] = useState(() => ({ from: daysAgo(DEFAULT_DAYS.catalog), to: null }));
+  const [catalogCapped, setCatalogCapped] = useState(false);
   const [attendance, setAttendance] = useState([]);
   const [payrollRuns, setPayrollRuns] = useState([]);
   const [customSizes, setCustomSizes] = useState({ apparel: [], shoe: [] }); // 📏 ไซส์ที่ผู้ใช้เพิ่มเอง
@@ -162,12 +176,20 @@ export function useFirestore(activeTab = "") {
     return () => unsub();
   }, [deferReady]);
 
+  // 📅 บิล — โหลดตามช่วงวันที่ (เดิม limit 1000 ใบ = ที่ 200-400 ใบ/วัน เห็นย้อนหลังได้แค่ 3 วัน
+  //    แล้วบิลเก่าหายจากรายงาน/ตามหนี้โดยไม่มีอะไรเตือน)
   useEffect(() => {
     if (!deferReady) return;
-    const q = query(collection(db, "invoices"), orderBy("createdAt","desc"), limit(LIMITS.invoices));
-    const unsub = onSnapshot(q, snap => setInvoices(snap.docs.map(d=>({...d.data(),id:d.id}))), ()=>{});
+    const clauses = [where("createdAt", ">=", Timestamp.fromDate(invoicesRange.from))];
+    if (invoicesRange.to) clauses.push(where("createdAt", "<=", Timestamp.fromDate(invoicesRange.to)));
+    const q = query(collection(db, "invoices"), ...clauses, orderBy("createdAt","desc"), limit(LIMITS.invoicesCap));
+    const unsub = onSnapshot(q, snap => {
+      setInvoices(snap.docs.map(d=>({...d.data(),id:d.id})));
+      setInvoicesCapped(snap.size >= LIMITS.invoicesCap);
+    }, ()=>{});
     return () => unsub();
-  }, [deferReady]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deferReady, invoicesRange.from?.getTime(), invoicesRange.to?.getTime()]);
 
   useEffect(() => {
     if (!deferReady) return;
@@ -237,12 +259,20 @@ export function useFirestore(activeTab = "") {
   }, [prodReady]);
 
   // Catalog orders — สั่งจาก /catalog (public)
+  // 📅 โหลดตามช่วงวันที่ (เดิมเพดาน 400 ใบ — ที่ 200-400 ออเดอร์/วัน เต็มภายในวันเดียว
+  //    แล้วออเดอร์ที่ยังไม่รับหายจาก inbox เงียบ ๆ)
   useEffect(() => {
     if (!deferReady) return;
-    const q = query(collection(db, "catalogOrders"), orderBy("createdAt","desc"), limit(LIMITS.catalogOrders));
-    const unsub = onSnapshot(q, snap => setCatalogOrders(snap.docs.map(d => ({...d.data(), id:d.id}))), ()=>{});
+    const clauses = [where("createdAt", ">=", Timestamp.fromDate(catalogRange.from))];
+    if (catalogRange.to) clauses.push(where("createdAt", "<=", Timestamp.fromDate(catalogRange.to)));
+    const q = query(collection(db, "catalogOrders"), ...clauses, orderBy("createdAt","desc"), limit(LIMITS.catalogCap));
+    const unsub = onSnapshot(q, snap => {
+      setCatalogOrders(snap.docs.map(d => ({...d.data(), id:d.id})));
+      setCatalogCapped(snap.size >= LIMITS.catalogCap);
+    }, ()=>{});
     return () => unsub();
-  }, [deferReady]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deferReady, catalogRange.from?.getTime(), catalogRange.to?.getTime()]);
 
   // 📅 Attendance — บันทึกเวลาเข้างานพนักงาน (per day)
   useEffect(() => {
@@ -290,6 +320,7 @@ export function useFirestore(activeTab = "") {
     ordersRange, setOrdersRange, ordersCapped,
     customers,
     invoices,
+    invoicesRange, setInvoicesRange, invoicesCapped,
     statements,
     companyInfo, setCompanyInfo,
     roleLabels,
@@ -298,6 +329,7 @@ export function useFirestore(activeTab = "") {
     boms,
     customOrders,
     catalogOrders,
+    catalogRange, setCatalogRange, catalogCapped,
     attendance,
     payrollRuns,
     customSizes,
