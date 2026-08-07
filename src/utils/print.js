@@ -199,6 +199,10 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
     @page { size: ${cssPageSize}; margin: ${pageMargin}; }
     #__print_root__ table { border-collapse: collapse; width: 100%; ${tableLayout} }
     #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
+    /* 🩹 กันเนื้อหากว้างเกินหน้ากระดาษ — ชื่อรุ่น/สีตั้ง nowrap ไว้ ทำให้ตารางดันกว้างจน
+       Chrome ต้องตัดเป็นหน้าซ้าย-ขวาเพิ่ม (8 แผ่น) และคอลัมน์ขวาโดนตัด → บังคับให้ตัดคำได้ */
+    #__print_root__ td, #__print_root__ th { white-space: normal !important; overflow-wrap: anywhere; }
+    #__print_root__ { overflow: hidden; }
     #__print_root__ thead { display: table-header-group; }
     #__print_root__ tfoot { display: table-footer-group; }
     #__print_root__ img { max-width: 100%; height: auto; }
@@ -386,6 +390,10 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
     #__print_root__ > div { width: ${contentWidth2} !important; max-width: ${contentWidth2} !important; box-sizing: border-box; }
     #__print_root__ table { border-collapse: collapse; width: 100%; ${tableLayout2} }
     #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
+    /* 🩹 กันเนื้อหากว้างเกินหน้ากระดาษ — ชื่อรุ่น/สีตั้ง nowrap ไว้ ทำให้ตารางดันกว้างจน
+       Chrome ต้องตัดเป็นหน้าซ้าย-ขวาเพิ่ม (8 แผ่น) และคอลัมน์ขวาโดนตัด → บังคับให้ตัดคำได้ */
+    #__print_root__ td, #__print_root__ th { white-space: normal !important; overflow-wrap: anywhere; }
+    #__print_root__ { overflow: hidden; }
     #__print_root__ thead { display: table-header-group; }
     #__print_root__ img { max-width: 100%; height: auto; }
     /* บังคับพิมพ์สีพื้นหลัง — Galaxy Tab ไม่มีตัวเลือก Background graphics ให้ติ๊ก */
@@ -442,7 +450,11 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
     source = scaleFontInElement(el.cloneNode(true), INVOICE_PDF_FONT_SCALE);
   }
   // 📐 บังคับความกว้าง = A4 content (~190mm ≈ 718px @96dpi) → html2canvas จับภาพเท่าหน้าจริง ไม่ล้นขอบ
+  // 🩹 คลาย nowrap ของช่องรุ่น/สี — ไม่งั้นตารางดันกว้างเกิน 718px แล้วคอลัมน์ขวาโดนตัดใน PDF
+  source.querySelectorAll("td, th").forEach(n => { n.style.whiteSpace = "normal"; n.style.overflowWrap = "anywhere"; });
   source.style.width = "718px";
+  source.style.maxWidth = "718px";
+  source.style.overflow = "hidden";
   source.style.boxSizing = "border-box";
   // 🚀 lazy import — โหลด html2pdf.js เฉพาะตอนกดปุ่มนี้เท่านั้น (~400KB)
   const { default: html2pdf } = await import("html2pdf.js");
