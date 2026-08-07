@@ -14,9 +14,40 @@ export const phoneKeyOf = (raw) => {
 export const nameKeyOf = (raw) =>
   String(raw || "").normalize("NFC").toLowerCase().replace(/\s+/g, " ").trim();
 
-// ฝังคีย์ลงในเอกสาร (ใบสั่งของ / บิล / ใบสั่งผลิต custom)
+// รูปที่ใช้ทำ n-gram — ตัดช่องว่างทิ้งหมด เพราะคนพิมพ์เว้นวรรคไม่เหมือนกัน
+export const gramKeyOf = (raw) =>
+  String(raw || "").normalize("NFC").toLowerCase().replace(/\s+/g, "");
+
+export const GRAM_LEN = 3;
+const MAX_GRAMS = 80; // กันชื่อยาวผิดปกติทำให้เอกสารบวม
+
+// ✂️ ตัดชื่อเป็นชิ้นละ 3 ตัวอักษรทุกตำแหน่ง
+//    "ร้านสมชาย" → ร้า, ้าน, านส, นสม, สมช, มชา, ชาย
+//    เก็บเป็น array แล้วค้นด้วย array-contains → หาคำที่อยู่ "ตรงกลาง" ชื่อได้
+//    (ภาษาไทยไม่เว้นวรรคระหว่างคำ จึงตัดเป็นคำไม่ได้ ต้องตัดเป็นตัวอักษรแบบนี้)
+export const nameGramsOf = (raw) => {
+  const s = gramKeyOf(raw);
+  if (!s) return [];
+  if (s.length <= GRAM_LEN) return [s];
+  const out = new Set();
+  for (let i = 0; i + GRAM_LEN <= s.length && out.size < MAX_GRAMS; i++) {
+    out.add(s.slice(i, i + GRAM_LEN));
+  }
+  return [...out];
+};
+
+// ฝังคีย์ลงในเอกสาร (ใบสั่งของ / บิล)
 export const withSearchKeys = (data) => ({
   ...data,
   phoneKey: phoneKeyOf(data.customerPhone),
   nameKey: nameKeyOf(data.customerName),
+  nameGrams: nameGramsOf(data.customerName),
+});
+
+// ฝังคีย์ลงในทะเบียนลูกค้า (ใช้ field ชื่อ name/phone ไม่ใช่ customerName/customerPhone)
+export const withCustomerSearchKeys = (data) => ({
+  ...data,
+  phoneKey: phoneKeyOf(data.phone),
+  nameKey: nameKeyOf(data.name),
+  nameGrams: nameGramsOf(data.name),
 });

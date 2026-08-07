@@ -12,20 +12,23 @@ const T = {
 const KIND_HINT = {
   phone:  "🔢 กำลังหาจากเบอร์โทร (ต้องตรงทั้งเบอร์)",
   docNo:  "🧾 กำลังหาจากเลขที่เอกสาร (พิมพ์ขึ้นต้นได้ เช่น INV6908)",
-  name:   "👤 กำลังหาจากชื่อลูกค้า (ต้องพิมพ์ให้ตรงตั้งแต่ตัวแรก)",
+  name:   "👤 กำลังหาจากชื่อลูกค้า (พิมพ์คำที่อยู่ตรงไหนของชื่อก็ได้)",
   empty:  "",
 };
 
 const qtyOf = (o) => (o.items || []).reduce((s, i) => s + (Number(i.qty) || 0), 0);
 const baht = (n) => `฿${Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}`;
 
-export default function GlobalSearchModal({ open, onClose, onOpenOrder, onOpenInvoice, onOpenCustomer }) {
+export default function GlobalSearchModal({ open, onClose, onOpenOrder, onOpenInvoice, onOpenCustomer, customers = [] }) {
   const [term, setTerm] = useState("");
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState(null);
   const [err, setErr] = useState("");
   const inputRef = useRef(null);
   const reqId = useRef(0);
+  // เก็บใน ref — ทะเบียนลูกค้าเป็น array ใหม่ทุก snapshot ถ้าใส่ใน deps จะยิงค้นซ้ำโดยไม่จำเป็น
+  const custRef = useRef(customers);
+  custRef.current = customers;
 
   useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 50); }, [open]);
   useEffect(() => { if (!open) { setTerm(""); setRes(null); setErr(""); } }, [open]);
@@ -35,7 +38,7 @@ export default function GlobalSearchModal({ open, onClose, onOpenOrder, onOpenIn
     if (!q.trim()) { setRes(null); setBusy(false); return; }
     setBusy(true); setErr("");
     try {
-      const r = await globalSearch(db, q);
+      const r = await globalSearch(db, q, custRef.current);
       if (my === reqId.current) setRes(r);
     } catch (e) {
       if (my === reqId.current) setErr(e?.message || String(e));
@@ -80,14 +83,14 @@ export default function GlobalSearchModal({ open, onClose, onOpenOrder, onOpenIn
               <div style={{ fontWeight: 700, color: T.text, marginBottom: 6 }}>พิมพ์อะไรก็ได้ ระบบเดาให้เอง</div>
               <div>🧾 <b>INV6908-0003</b> หรือ <b>ORD6908</b> — เลขที่เอกสาร (พิมพ์ขึ้นต้นก็ได้)</div>
               <div>🔢 <b>0812345678</b> — เบอร์โทร (ใส่ขีดหรือไม่ใส่ก็ได้)</div>
-              <div>👤 <b>ร้านสมชาย</b> — ชื่อลูกค้า (ต้องตรงตั้งแต่ตัวแรก)</div>
+              <div>👤 <b>สมชาย</b> — ชื่อลูกค้า (พิมพ์แค่ท่อนกลางก็เจอ เช่น พิมพ์ "สมชาย" หา "ร้านสมชายสปอร์ต")</div>
             </div>
           )}
 
           {res && total === 0 && !busy && (
             <div style={{ padding: "26px 18px", textAlign: "center", fontSize: 13, color: T.muted }}>
               ไม่พบอะไรที่ตรงกับ "{term}"
-              {res.kind === "name" && <div style={{ marginTop: 8, fontSize: 12, color: T.amber }}>ชื่อลูกค้าต้องพิมพ์ตรงตั้งแต่ตัวแรก — ลองพิมพ์แค่คำแรก หรือค้นด้วยเบอร์โทรแทน</div>}
+              {res.kind === "name" && <div style={{ marginTop: 8, fontSize: 12, color: T.amber }}>ลองพิมพ์อย่างน้อย 3 ตัวอักษร หรือค้นด้วยเบอร์โทรแทน</div>}
             </div>
           )}
 

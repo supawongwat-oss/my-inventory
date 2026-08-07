@@ -205,7 +205,8 @@ export default function OrdersTab({
               {orderSearch && ordersRange && (
                 <div style={{ marginTop: 10, fontSize: 12, color: "#b45309", lineHeight: 1.7 }}>
                   ค้นเฉพาะช่วง <b>{fmtDMY(ordersRange.from)} – {ordersRange.to ? fmtDMY(ordersRange.to) : "วันนี้"}</b> เท่านั้น<br/>
-                  ถ้าใบที่หาเก่ากว่านี้ — กด <b>“30 วัน”</b> / <b>“เดือนที่แล้ว”</b> หรือเลือกช่วงวันที่เอง แล้วค้นใหม่
+                  ถ้าใบที่หาเก่ากว่านี้ — กด <b>🔎 ค้นหาทั้งระบบ</b> ด้านบน (หรือ <b>Ctrl+K</b>) จะค้นทุกใบไม่จำกัดวันที่<br/>
+                  หรือขยายช่วงวันที่แล้วค้นใหม่
                   <div style={{ marginTop: 8, display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
                     <button onClick={() => setPreset("30d")}
                       style={{ padding: "5px 14px", borderRadius: 8, border: `1px solid ${T.accent}`, background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit" }}>🔎 ค้นย้อนหลัง 30 วัน</button>

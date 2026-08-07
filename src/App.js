@@ -26,7 +26,7 @@ import { compressImage } from "./utils/imageCompress";
 import { uploadImage, deleteFile } from "./utils/upload";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiRegion";
 import { reserveDocNo } from "./utils/docNumber";
-import { withSearchKeys, phoneKeyOf, nameKeyOf } from "./utils/searchKeys";
+import { withSearchKeys, withCustomerSearchKeys } from "./utils/searchKeys";
 
 // 🚀 Code splitting — tabs โหลดเฉพาะตอนคลิกใช้งาน (ลด first-load bundle)
 const ReportsTab = lazy(() => import("./tabs/ReportsTab"));
@@ -1511,7 +1511,7 @@ export default function App() {
   // ── Order handlers ────────────────────────────────────────────
   const handleAddCustomer = async () => {
     if (!newCustomerForm.name.trim()) return;
-    const ref = await addDoc(collection(db, "customers"), { ...newCustomerForm, phoneKey: phoneKeyOf(newCustomerForm.phone), nameKey: nameKeyOf(newCustomerForm.name), createdAt: serverTimestamp() });
+    const ref = await addDoc(collection(db, "customers"), withCustomerSearchKeys({ ...newCustomerForm, createdAt: serverTimestamp() }));
     logAudit(user, {
       action: AUDIT_ACTIONS.CREATE,
       collection: "customers",
@@ -1838,16 +1838,14 @@ export default function App() {
       if (customerChoice?.mode === "existing") {
         customerId = customerChoice.existingId || "";
       } else if (customerChoice?.mode === "new") {
-        const cref = await addDoc(collection(db, "customers"), {
+        const cref = await addDoc(collection(db, "customers"), withCustomerSearchKeys({
           name: co.customerName || "(ลูกค้าใหม่)",
           phone: co.phone || "",
-          phoneKey: phoneKeyOf(co.phone),
-          nameKey: nameKeyOf(co.customerName),
           address: co.address || "",
           taxId: "",
           note: "จาก Catalog",
           createdAt: serverTimestamp(),
-        });
+        }));
         customerId = cref.id;
       }
       // mode === "none" → customerId = "" (ขายครั้งเดียว ไม่ผูกลูกค้า)
@@ -4259,7 +4257,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   region: detectRegion(editingCustomer.address||""),
                   province: detectProvince(editingCustomer.address||"") || "",
                 };
-                await updateDoc(doc(db,"customers",editingCustomer.id), { ...updated, phoneKey: phoneKeyOf(updated.phone), nameKey: nameKeyOf(updated.name) });
+                await updateDoc(doc(db,"customers",editingCustomer.id), withCustomerSearchKeys(updated));
                 logAudit(user,{action:AUDIT_ACTIONS.UPDATE,collection:"customers",targetId:editingCustomer.id,targetLabel:updated.name,
                   before:{name:before.name,phone:before.phone,address:before.address},
                   after:{name:updated.name,phone:updated.phone,address:updated.address}});
@@ -4474,6 +4472,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       {/* กดผลลัพธ์แล้วเปิดเอกสารนั้นได้เลย แม้จะอยู่นอกช่วงวันที่ที่หน้านั้นโหลดมา */}
       <GlobalSearchModal
         open={showGlobalSearch}
+        customers={customers}
         onClose={() => setShowGlobalSearch(false)}
         onOpenOrder={(o) => setShowPrintOrder(o)}
         onOpenInvoice={(inv) => setShowPrintInvoice(inv)}
