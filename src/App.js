@@ -2169,6 +2169,26 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       const miss = selectedOrders.size - sel.length;
       if (!window.confirm(`⚠️ ติ๊กไว้ ${selectedOrders.size} ใบ แต่ตอนนี้เห็นแค่ ${sel.length} ใบ (หายไป ${miss} ใบ เพราะไม่อยู่ในรายการที่แสดง)\n\nออกบิลรวมเฉพาะ ${sel.length} ใบที่เห็นต่อไหม?`)) return;
     }
+    // 🚫 กันออกบิลซ้ำจากใบสั่งเดิม — ต้นเหตุที่ทำให้มีบิลซ้ำหลายใบของยอดเดียวกัน
+    //    (ออกทีละใบไปแล้ว แล้วมาเลือกรวมอีกรอบ → ได้บิลซ้อน ยอดเบิ้ล)
+    const invoicedIds = new Set();
+    invoices.forEach(inv => {
+      if (inv.mergedInto || inv.convertedTo) return; // บิลที่ถูกยุบไปแล้ว ไม่นับ
+      (inv.mergedFromOrderIds || []).forEach(id => invoicedIds.add(id));
+    });
+    const dupOrders = sel.filter(o => invoicedIds.has(o.id));
+    if (dupOrders.length > 0) {
+      const lines = dupOrders.slice(0, 8).map(o => {
+        const inv = invoices.find(x => !x.mergedInto && !x.convertedTo && (x.mergedFromOrderIds || []).includes(o.id));
+        return `• ${o.orderNo || "(ไม่มีเลขที่)"} → ออกเป็นบิล ${inv?.invoiceNo || "?"} แล้ว`;
+      }).join("\n");
+      if (!window.confirm(
+        `⚠️ มี ${dupOrders.length} ใบสั่งที่ออกบิลไปแล้ว:\n\n${lines}${dupOrders.length > 8 ? `\n... และอีก ${dupOrders.length - 8} ใบ` : ""}\n\n`+
+        `ออกบิลอีกครั้ง = ได้บิลซ้ำ ยอดจะเบิ้ล และเก็บเงินเกิน\n\n`+
+        `ยืนยันออกบิลซ้ำจริง ๆ?`
+      )) return;
+    }
+
     // เตือนถ้าลูกค้าต่างกัน
     // ⚠️ ห้ามตั้งชื่อว่า customers — จะไปทับ state customers (ทะเบียนลูกค้า) ที่ใช้ .find() ด้านล่าง
     const custNames = new Set(sel.map(o => (o.customerName||"").trim()));
@@ -2233,6 +2253,15 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   };
 
   const handleImportFromOrder = (order) => {
+    // 🚫 กันออกบิลซ้ำ — ใบสั่งนี้เคยออกบิลไปแล้วหรือยัง (ไม่นับบิลที่ถูกยุบไปแล้ว)
+    const already = invoices.find(inv =>
+      !inv.mergedInto && !inv.convertedTo && (inv.mergedFromOrderIds || []).includes(order.id)
+    );
+    if (already && !window.confirm(
+      `⚠️ ใบสั่ง ${order.orderNo || ""} ออกเป็นบิล ${already.invoiceNo} ไปแล้ว\n\n`+
+      `ออกอีกครั้ง = ได้บิลซ้ำ ยอดจะเบิ้ล และเก็บเงินเกิน\n\nยืนยันออกซ้ำจริง ๆ?`
+    )) return;
+
     const items = (order.items||[]).map(i=>{
       // Try to get sale price from clothing item
       const clothingItem = clothingItems.find(c=>c.id===i.clothingId);
