@@ -201,7 +201,10 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
     #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
     /* 🩹 กันเนื้อหากว้างเกินหน้ากระดาษ — ชื่อรุ่น/สีตั้ง nowrap ไว้ ทำให้ตารางดันกว้างจน
        Chrome ต้องตัดเป็นหน้าซ้าย-ขวาเพิ่ม (8 แผ่น) และคอลัมน์ขวาโดนตัด → บังคับให้ตัดคำได้ */
-    #__print_root__ td, #__print_root__ th { white-space: normal !important; overflow-wrap: anywhere; }
+    #__print_root__ td, #__print_root__ th { white-space: normal !important; overflow-wrap: break-word; }
+    /* ตัวเลขเงิน (2 คอลัมน์ท้าย + แถวสรุปยอด) ห้ามตัดกลางตัวเลข — 133,405.00 ต้องอยู่บรรทัดเดียว */
+    #__print_root__ td:last-child, #__print_root__ td:nth-last-child(2),
+    #__print_root__ tfoot td, #__print_root__ tfoot th { white-space: nowrap !important; overflow-wrap: normal !important; }
     #__print_root__ { overflow: hidden; }
     #__print_root__ thead { display: table-header-group; }
     #__print_root__ tfoot { display: table-footer-group; }
@@ -392,7 +395,10 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
     #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
     /* 🩹 กันเนื้อหากว้างเกินหน้ากระดาษ — ชื่อรุ่น/สีตั้ง nowrap ไว้ ทำให้ตารางดันกว้างจน
        Chrome ต้องตัดเป็นหน้าซ้าย-ขวาเพิ่ม (8 แผ่น) และคอลัมน์ขวาโดนตัด → บังคับให้ตัดคำได้ */
-    #__print_root__ td, #__print_root__ th { white-space: normal !important; overflow-wrap: anywhere; }
+    #__print_root__ td, #__print_root__ th { white-space: normal !important; overflow-wrap: break-word; }
+    /* ตัวเลขเงิน (2 คอลัมน์ท้าย + แถวสรุปยอด) ห้ามตัดกลางตัวเลข — 133,405.00 ต้องอยู่บรรทัดเดียว */
+    #__print_root__ td:last-child, #__print_root__ td:nth-last-child(2),
+    #__print_root__ tfoot td, #__print_root__ tfoot th { white-space: nowrap !important; overflow-wrap: normal !important; }
     #__print_root__ { overflow: hidden; }
     #__print_root__ thead { display: table-header-group; }
     #__print_root__ img { max-width: 100%; height: auto; }
@@ -451,15 +457,18 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
   }
   // 📐 บังคับความกว้าง = A4 content (~190mm ≈ 718px @96dpi) → html2canvas จับภาพเท่าหน้าจริง ไม่ล้นขอบ
   // 🩹 คลาย nowrap ของช่องรุ่น/สี — ไม่งั้นตารางดันกว้างเกิน 718px แล้วคอลัมน์ขวาโดนตัดใน PDF
-  source.querySelectorAll("td, th").forEach(n => { n.style.whiteSpace = "normal"; n.style.overflowWrap = "anywhere"; });
-  source.style.width = "718px";
-  source.style.maxWidth = "718px";
+  source.querySelectorAll("td, th").forEach(n => { n.style.whiteSpace = "normal"; n.style.overflowWrap = "break-word"; });
+  // ตัวเลขเงินห้ามตัดกลาง
+  source.querySelectorAll("tr").forEach(tr => { const c = tr.children; [c[c.length-1], c[c.length-2]].forEach(td => { if (td) { td.style.whiteSpace = "nowrap"; td.style.overflowWrap = "normal"; } }); });
+  source.querySelectorAll("tfoot td, tfoot th").forEach(n => { n.style.whiteSpace = "nowrap"; n.style.overflowWrap = "normal"; });
+  source.style.width = "748px";
+  source.style.maxWidth = "748px";
   source.style.overflow = "hidden";
   source.style.boxSizing = "border-box";
   // 🚀 lazy import — โหลด html2pdf.js เฉพาะตอนกดปุ่มนี้เท่านั้น (~400KB)
   const { default: html2pdf } = await import("html2pdf.js");
   html2pdf().set({
-    margin: 10,
+    margin: 6,
     filename,
     image: { type: "jpeg", quality: 0.98 },
     html2canvas: { scale: 2, useCORS: true },
