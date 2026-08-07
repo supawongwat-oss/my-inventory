@@ -158,10 +158,6 @@ export default function NewInvoiceModal({
   apparelSizes = [],
   shoeSizes = [],
 }) {
-  // 🧊 ตรึงการจัดแถวไว้ระหว่างพิมพ์ราคา — ไม่งั้นแถวจะกระโดดไปกลุ่มราคาใหม่ทุกตัวอักษร
-  //    (ค่าที่แสดงยังอัปเดตสด ๆ อยู่ — ตรึงแค่ "ลำดับแถว")
-  const [priceEditing, setPriceEditing] = React.useState(false);
-  const layoutRef = React.useRef(null);
   return (
         <Modal onClose={()=>{onClose();}} w={1100}>
           <MHead title={editingInvoiceId?"✏️ แก้ไขบิล":"🧾 ออกบิลใหม่"} sub={editingInvoiceId?`${invoices.find(i=>i.id===editingInvoiceId)?.invoiceNo || ""} · เลขที่บิลคงเดิม`:""} onClose={()=>{onClose();}} color={editingInvoiceId?T.amber:T.accent}/>
@@ -317,11 +313,8 @@ export default function NewInvoiceModal({
           {invoiceForm.items.length>0&&(()=>{
             const isPlus=(sz)=>/^[2-9]XL$/.test(sz);
             // index-aware items (เก็บ index เดิมไว้ใช้แก้/ลบ)
-            const live=invoiceForm.items.map((it,idx)=>({...it,__i:idx}));
-            // ใช้ snapshot จัดลำดับแถวตอนกำลังพิมพ์ราคา — ค่าที่แสดงอ่านจาก live เสมอ
-            if(!priceEditing) layoutRef.current=live;
-            const indexed=(priceEditing&&layoutRef.current)?layoutRef.current:live;
-            const liveOf=(it)=>live[it.__i]||it;
+            const indexed=invoiceForm.items.map((it,idx)=>({...it,__i:idx}));
+            const liveOf=(it)=>indexed[it.__i]||it;
             // มีชื่อรุ่น = เข้าตาราง group | ไม่มี = แถวเดียว
             const structured=indexed.filter(i=>i.clothingId||i.clothingName);
             const generic=indexed.filter(i=>!(i.clothingId||i.clothingName));
@@ -364,22 +357,10 @@ export default function NewInvoiceModal({
                   </thead>
                   <tbody>
                     {groups.flatMap((group,gi)=>{
-                      // 💰 แยกแถวตามราคาต่อหน่วยก่อน แล้วค่อยจัดไซส์แถวละ 4
-                      //    → ช่องราคาของแต่ละแถวคุมเฉพาะไซส์ที่ราคาเท่ากันอยู่แล้ว
-                      //      พิมพ์ทับจึงไม่ทำให้ราคาที่ต่างกันหายไปทั้งแถวเหมือนเดิม
-                      //    (ไม่ยุบไซส์ที่ซ้ำ — ช่องจำนวนต้องผูกกับรายการจริงทีละบรรทัด)
+                      // ✨ ใช้ splitSizesIntoRows — sort + split อัตโนมัติ (แถวละ 4 ตามเดิม)
                       const withSize = group.items.filter(i => i.size);
                       const noSize = group.items.filter(i => !i.size);
-                      const byPrice = new Map();
-                      withSize.forEach(it => {
-                        const p = Number(liveOf(it).unitPrice) || 0;
-                        if (!byPrice.has(p)) byPrice.set(p, []);
-                        byPrice.get(p).push(it);
-                      });
-                      const rows = [];
-                      [...byPrice.entries()].sort((a,b)=>a[0]-b[0]).forEach(([,list])=>{
-                        rows.push(...splitSizesIntoRows(list, 4, { fillPlus: false }));
-                      });
+                      const rows = splitSizesIntoRows(withSize, 4, { fillPlus: false });
                       noSize.forEach(n => rows.push([n]));
                       if(rows.length===0) rows.push([]);
                       return rows.map((chunk,ci)=>{
@@ -413,9 +394,9 @@ export default function NewInvoiceModal({
                                 title={mixed
                                   ? `⚠️ ไซส์ในแถวนี้ราคาไม่เท่ากัน (${[...new Set(chunk.map(i=>Number(liveOf(i).unitPrice)||0))].join(" / ")}) — พิมพ์ทับจะเปลี่ยนทุกไซส์ในแถว`
                                   : `ใช้กับไซส์: ${chunk.map(c=>c.size).join(", ")}`}
-                                onFocus={e=>{setPriceEditing(true);e.target.select();}}
+                                onFocus={e=>e.target.select()}
                                 onChange={e=>{if(e.target.value==="")return;const v=Math.max(0,Number(e.target.value)||0);const ids=chunk.map(c=>c.__i);setInvoiceForm(f=>({...f,items:f.items.map((x,j)=>ids.includes(j)?{...x,unitPrice:v}:x)}));}}
-                                onBlur={e=>{setPriceEditing(false);if(e.target.value===""){e.target.value=rowUnit;return;}const v=Math.max(0,Number(e.target.value)||0);const ids=chunk.map(c=>c.__i);setInvoiceForm(f=>({...f,items:f.items.map((x,j)=>ids.includes(j)?{...x,unitPrice:v}:x)}));}}
+                                onBlur={e=>{if(e.target.value===""){e.target.value=rowUnit;return;}const v=Math.max(0,Number(e.target.value)||0);const ids=chunk.map(c=>c.__i);setInvoiceForm(f=>({...f,items:f.items.map((x,j)=>ids.includes(j)?{...x,unitPrice:v}:x)}));}}
                                 onKeyDown={e=>e.key==="Enter"&&e.target.blur()}
                                 style={{width:72,textAlign:"right",background:mixed?"rgba(245,158,11,0.12)":"rgba(52,211,153,0.08)",border:`1px solid ${mixed?"#f59e0b":"rgba(52,211,153,0.3)"}`,borderRadius:5,color:mixed?"#b45309":"#34d399",fontFamily:"monospace",fontSize:11,fontWeight:600,padding:"4px 6px",outline:"none"}}/>
                               {mixed&&<div style={{fontSize:9,color:"#b45309",fontWeight:700,marginTop:1}}>⚠️ ราคาผสม</div>}

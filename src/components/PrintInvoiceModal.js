@@ -188,24 +188,10 @@ export default function PrintInvoiceModal({
                     <tbody>
                       {groups.flatMap((group,gi)=>{
                         // ชนิดผ้า/แบบคอ ไม่ต้องซ้ำในตาราง — แสดงอยู่ในกล่อง "รายละเอียดงาน" ด้านบนแล้ว
-                        // 💰 แยกแถวตาม "ราคาต่อหน่วย" ก่อน แล้วรวมไซส์ที่ซ้ำกัน
-                        //    เดิมเอาทุกไซส์มาเรียงแถวละ 4 โดยไม่สนราคา → แถวที่ราคาไม่เท่ากัน
-                        //    จะโชว์ราคาเฉลี่ยพร้อม * (เช่น 39.58*) ซึ่งไม่ใช่ราคาจริงและอ่านแล้วงง
-                        //    และไซส์เดียวกันที่มาจากคนละใบสั่งก็แตกเป็นหลายช่อง (M 2, M 3, M 6)
+                        // ✨ sort + split อัตโนมัติ — เรียงไซส์แถวละ 4 ตามเดิม
                         const withSize = group.items.filter(i => i.size);
                         const noSize = group.items.filter(i => !i.size);
-                        const byPrice = new Map();
-                        withSize.forEach(it => {
-                          const p = Number(it.unitPrice) || 0;
-                          if (!byPrice.has(p)) byPrice.set(p, new Map());
-                          const bucket = byPrice.get(p);
-                          const prev = bucket.get(it.size);
-                          bucket.set(it.size, { ...it, qty: (prev?.qty || 0) + (Number(it.qty) || 0) });
-                        });
-                        const rows = [];
-                        [...byPrice.entries()].sort((a,b)=>a[0]-b[0]).forEach(([,bucket])=>{
-                          rows.push(...splitSizesIntoRows([...bucket.values()], 4, { fillPlus: false }));
-                        });
+                        const rows = splitSizesIntoRows(withSize, 4, { fillPlus: false });
                         noSize.forEach(n => rows.push([n]));
                         if(rows.length===0) rows.push([]);
                         return rows.map((chunk,ci)=>{
