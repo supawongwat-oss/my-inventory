@@ -461,14 +461,14 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
   // ตัวเลขเงินห้ามตัดกลาง
   source.querySelectorAll("tr").forEach(tr => { const c = tr.children; [c[c.length-1], c[c.length-2]].forEach(td => { if (td) { td.style.whiteSpace = "nowrap"; td.style.overflowWrap = "normal"; } }); });
   source.querySelectorAll("tfoot td, tfoot th").forEach(n => { n.style.whiteSpace = "nowrap"; n.style.overflowWrap = "normal"; });
-  source.style.width = "748px";
-  source.style.maxWidth = "748px";
+  source.style.width = "779px";
+  source.style.maxWidth = "779px";
   source.style.overflow = "hidden";
   source.style.boxSizing = "border-box";
   // 🚀 lazy import — โหลด html2pdf.js เฉพาะตอนกดปุ่มนี้เท่านั้น (~400KB)
   const { default: html2pdf } = await import("html2pdf.js");
   html2pdf().set({
-    margin: 6,
+    margin: 2,
     filename,
     image: { type: "jpeg", quality: 0.98 },
     html2canvas: { scale: 2, useCORS: true },
