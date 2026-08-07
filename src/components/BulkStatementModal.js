@@ -167,8 +167,9 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
         <input type="checkbox" checked={onlyCredit} onChange={e=>{setOnlyCredit(e.target.checked); setPicked(null);}} style={{ width: 16, height: 16, cursor: "pointer" }}/>
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, color: onlyCredit ? T.accent : T.text }}>📄 เฉพาะลูกค้าเครดิต (ไม่รวมลูกค้าเงินสด)</div>
-          <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>
-            ตั้งประเภทได้ที่หน้าลูกค้า → ✏️ แก้ไข · ลูกค้าที่ยังไม่ได้ตั้ง = นับเป็นเครดิต (จะได้ไม่ตกหล่น)
+          <div style={{ fontSize: 11, color: T.muted, marginTop: 2, lineHeight: 1.6 }}>
+            ตั้งประเภทได้ที่หน้าลูกค้า → ✏️ แก้ไข · ลูกค้าที่ยังไม่ได้ตั้ง = นับเป็นเครดิต (จะได้ไม่ตกหล่น)<br/>
+            🚫 บิลที่ถูกรวมเข้าบิลใหม่แล้ว ไม่ถูกนับซ้ำ
           </div>
         </div>
       </label>

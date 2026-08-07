@@ -35,6 +35,13 @@ export const filterInvoicesForStatement = (invoices, customerId, customerName, s
     : Infinity;
 
   return invoices.filter(inv => {
+    // 🚫 บิลที่ถูกรวมเข้าบิลใหม่แล้ว — ไม่นับ ไม่งั้นยอดซ้ำ 2 เท่า
+    //    (ตัวที่รวมแล้วมี mergedInto · ยอดจริงอยู่ในบิลใหม่ที่รวมมันไป)
+    if (inv.mergedInto) return false;
+    // 🚫 เอกสารที่แปลงเป็นเอกสารอื่นแล้ว (เช่น ใบเสนอราคา → ใบกำกับภาษี)
+    //    ต้นฉบับไม่ใช่ยอดที่ต้องเก็บเงิน
+    if (inv.convertedTo) return false;
+
     const sameCustomer = (inv.customerId && inv.customerId === customerId)
       || (!inv.customerId && inv.customerName === customerName);
     if (!sameCustomer) return false;

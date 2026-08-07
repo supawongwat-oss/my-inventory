@@ -18,8 +18,9 @@ function monthKey(d) {
 export default function CustomerProfile({ customer, invoices = [], orders = [], onClose, onNewInvoice }) {
   const c = customer || {};
 
+  // 🚫 ตัดบิลที่ถูกรวมเข้าบิลใหม่ / แปลงเป็นเอกสารอื่นแล้ว — ไม่งั้นยอดลูกค้าซ้ำ 2 เท่า
   const myInvoices = useMemo(
-    () => invoices.filter((i) => i.customerId === c.id || i.customerName === c.name),
+    () => invoices.filter((i) => !i.mergedInto && !i.convertedTo && (i.customerId === c.id || i.customerName === c.name)),
     [invoices, c.id, c.name]
   );
   const myOrders = useMemo(() => orders.filter((o) => o.customerId === c.id), [orders, c.id]);
