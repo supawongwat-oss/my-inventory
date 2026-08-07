@@ -3,10 +3,12 @@
 
 // scale fontSize ของทุก element ใน clone (ใช้ก่อนพิมพ์/PDF) — ค่าเริ่มต้น 1.3 = ใหญ่ขึ้น 30%
 export const PRINT_FONT_SCALE = 1.3;
-// ใบบิล: A4 มีพื้นที่พอ → พิมพ์ที่ขนาดเกือบเต็ม (0.95) ให้ตารางอ่านง่าย
-export const INVOICE_FONT_SCALE = 1.0;
-// ใบบิล PDF: ย่อลงให้พอดีหน้า A4 มีขอบเหลือ (ฟอนต์ base ตารางใหญ่ → ต้องย่อกว่า print ปกติ)
-export const INVOICE_PDF_FONT_SCALE = 0.72;
+// ใบบิล: ขอบกระดาษแคบ (4mm) เนื้อหากว้าง ~197mm → ขยายตัวหนังสือให้เต็มพื้นที่
+// ⚠️ ค่านี้เป็นตัวจริงตัวเดียว — PrintInvoiceModal import ไปใช้ ห้ามตั้งซ้ำที่อื่น
+export const INVOICE_FONT_SCALE = 1.12;
+// ใบบิล PDF: ใช้สเกลเดียวกับพิมพ์จาก PC — PDF วาดที่ความกว้างเท่าพื้นที่พิมพ์จริง
+// จึงได้ขนาดตัวหนังสือเท่ากันเป๊ะ
+export const INVOICE_PDF_FONT_SCALE = INVOICE_FONT_SCALE;
 export const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
   // ต้อง attach root เข้า DOM ชั่วคราวเพื่ออ่าน computed style
   const holder = document.createElement("div");

@@ -1,8 +1,6 @@
 import React from "react";
 import { splitSizesIntoRows } from "../theme";
-
-// ขอบกระดาษแคบลงแล้ว (เนื้อหากว้าง ~197mm) → ขยายตัวหนังสือให้เต็มพื้นที่ที่ได้มา
-const INVOICE_FONT_SCALE = 1.12;
+import { INVOICE_FONT_SCALE } from "../utils/print";
 
 // 🕶️ ชื่อบริษัทแบบย่อ — ตัดคำนำหน้า/ต่อท้ายทางกฎหมายออก
 // ใช้ตอนติ๊ก "ซ่อนข้อมูลบริษัท" (ลูกค้าที่ไม่ต้องการรับ VAT)
