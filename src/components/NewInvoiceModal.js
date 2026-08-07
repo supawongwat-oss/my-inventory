@@ -357,10 +357,13 @@ export default function NewInvoiceModal({
                   </thead>
                   <tbody>
                     {groups.flatMap((group,gi)=>{
-                      // ✨ ใช้ splitSizesIntoRows — sort + split อัตโนมัติ (แถวละ 4 ตามเดิม)
+                      // ✨ เสื้อผ้าแถวละ 4 · สินค้าที่ไม่ใช่เสื้อผ้า (สนับแข้ง/รองเท้า/อุปกรณ์กีฬา)
+                      //    ราคาต่างกันทุกไซส์ → แยกบรรทัดละไซส์ ช่องราคาจะได้ตรงกับไซส์นั้นจริง ๆ
+                      const ciRef = clothingItems.find(c => c.id === group.items[0]?.clothingId);
+                      const perSize = !!ciRef && (ciRef.sizeType === "shoe" || ciRef.priceBySize === true);
                       const withSize = group.items.filter(i => i.size);
                       const noSize = group.items.filter(i => !i.size);
-                      const rows = splitSizesIntoRows(withSize, 4, { fillPlus: false });
+                      const rows = splitSizesIntoRows(withSize, perSize ? 1 : 4, { fillPlus: false });
                       noSize.forEach(n => rows.push([n]));
                       if(rows.length===0) rows.push([]);
                       return rows.map((chunk,ci)=>{

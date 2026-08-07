@@ -4542,6 +4542,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       {showPrintInvoice && (
         <PrintInvoiceModal
           invoice={showPrintInvoice}
+          clothingItems={clothingItems}
           companyInfo={companyInfo}
           docTypeLabel={docTypeLabel}
           onClose={() => setShowPrintInvoice(null)}

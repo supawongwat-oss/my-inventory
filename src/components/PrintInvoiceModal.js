@@ -16,6 +16,7 @@ const shortCompanyName = (name) => {
 
 export default function PrintInvoiceModal({
   invoice,
+  clothingItems = [],
   companyInfo = {},
   docTypeLabel,
   onClose,
@@ -188,10 +189,14 @@ export default function PrintInvoiceModal({
                     <tbody>
                       {groups.flatMap((group,gi)=>{
                         // ชนิดผ้า/แบบคอ ไม่ต้องซ้ำในตาราง — แสดงอยู่ในกล่อง "รายละเอียดงาน" ด้านบนแล้ว
-                        // ✨ sort + split อัตโนมัติ — เรียงไซส์แถวละ 4 ตามเดิม
+                        // ✨ sort + split อัตโนมัติ — เสื้อผ้าแถวละ 4
+                        //    สินค้าที่ไม่ใช่เสื้อผ้า (สนับแข้ง/รองเท้า/อุปกรณ์กีฬา) ราคาต่างกันทุกไซส์
+                        //    → แยกบรรทัดละไซส์ ให้ช่องราคาตรงกับไซส์นั้นจริง ๆ
+                        const ciRef = clothingItems.find(c => c.id === group.items[0]?.clothingId);
+                        const perSize = !!ciRef && (ciRef.sizeType === "shoe" || ciRef.priceBySize === true);
                         const withSize = group.items.filter(i => i.size);
                         const noSize = group.items.filter(i => !i.size);
-                        const rows = splitSizesIntoRows(withSize, 4, { fillPlus: false });
+                        const rows = splitSizesIntoRows(withSize, perSize ? 1 : 4, { fillPlus: false });
                         noSize.forEach(n => rows.push([n]));
                         if(rows.length===0) rows.push([]);
                         return rows.map((chunk,ci)=>{
