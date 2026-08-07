@@ -204,6 +204,8 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
     /* 🩹 กันเนื้อหากว้างเกินหน้ากระดาษ — ชื่อรุ่น/สีตั้ง nowrap ไว้ ทำให้ตารางดันกว้างจน
        Chrome ต้องตัดเป็นหน้าซ้าย-ขวาเพิ่ม (8 แผ่น) และคอลัมน์ขวาโดนตัด → บังคับให้ตัดคำได้ */
     #__print_root__ td, #__print_root__ th { white-space: normal !important; overflow-wrap: break-word; }
+    /* หัวคอลัมน์ที่ห้ามตัดคำ (เช่น "จำนวน" ไม่ให้ "น" ตกบรรทัด) */
+    #__print_root__ [data-nowrap] { white-space: nowrap !important; overflow-wrap: normal !important; }
     /* ตัวเลขเงิน (2 คอลัมน์ท้าย + แถวสรุปยอด) ห้ามตัดกลางตัวเลข — 133,405.00 ต้องอยู่บรรทัดเดียว */
     #__print_root__ td:last-child, #__print_root__ td:nth-last-child(2),
     #__print_root__ tfoot td, #__print_root__ tfoot th { white-space: nowrap !important; overflow-wrap: normal !important; }
@@ -398,6 +400,8 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
     /* 🩹 กันเนื้อหากว้างเกินหน้ากระดาษ — ชื่อรุ่น/สีตั้ง nowrap ไว้ ทำให้ตารางดันกว้างจน
        Chrome ต้องตัดเป็นหน้าซ้าย-ขวาเพิ่ม (8 แผ่น) และคอลัมน์ขวาโดนตัด → บังคับให้ตัดคำได้ */
     #__print_root__ td, #__print_root__ th { white-space: normal !important; overflow-wrap: break-word; }
+    /* หัวคอลัมน์ที่ห้ามตัดคำ (เช่น "จำนวน" ไม่ให้ "น" ตกบรรทัด) */
+    #__print_root__ [data-nowrap] { white-space: nowrap !important; overflow-wrap: normal !important; }
     /* ตัวเลขเงิน (2 คอลัมน์ท้าย + แถวสรุปยอด) ห้ามตัดกลางตัวเลข — 133,405.00 ต้องอยู่บรรทัดเดียว */
     #__print_root__ td:last-child, #__print_root__ td:nth-last-child(2),
     #__print_root__ tfoot td, #__print_root__ tfoot th { white-space: nowrap !important; overflow-wrap: normal !important; }
@@ -462,7 +466,7 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
   source.querySelectorAll("td, th").forEach(n => { n.style.whiteSpace = "normal"; n.style.overflowWrap = "break-word"; });
   // ตัวเลขเงินห้ามตัดกลาง
   source.querySelectorAll("tr").forEach(tr => { const c = tr.children; [c[c.length-1], c[c.length-2]].forEach(td => { if (td) { td.style.whiteSpace = "nowrap"; td.style.overflowWrap = "normal"; } }); });
-  source.querySelectorAll("tfoot td, tfoot th").forEach(n => { n.style.whiteSpace = "nowrap"; n.style.overflowWrap = "normal"; });
+  source.querySelectorAll("tfoot td, tfoot th, [data-nowrap]").forEach(n => { n.style.whiteSpace = "nowrap"; n.style.overflowWrap = "normal"; });
   source.style.width = "764px";
   source.style.maxWidth = "764px";
   source.style.overflow = "hidden";

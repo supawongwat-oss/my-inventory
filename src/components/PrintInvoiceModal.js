@@ -178,7 +178,7 @@ export default function PrintInvoiceModal({
                           <th key={`sh${i}`} style={{padding:"9px 2px",textAlign:"center",fontWeight:700,border:"1px solid #000",background:"#f1f5f9",color:"#000",minWidth:36,fontSize:13}}>SIZE</th>,
                           <th key={`qh${i}`} style={{padding:"9px 2px",textAlign:"center",fontWeight:700,border:"1px solid #000",minWidth:26,fontSize:13,color:"#000"}}></th>
                         ])}
-                        <th style={{padding:"9px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",width:48,fontSize:14,color:"#000"}}>จำนวน</th>
+                        <th data-nowrap="true" style={{padding:"9px 4px",textAlign:"center",fontWeight:700,border:"1px solid #000",width:66,fontSize:14,color:"#000",whiteSpace:"nowrap"}}>จำนวน</th>
                         <th style={{padding:"9px 4px",textAlign:"right",fontWeight:700,border:"1px solid #000",width:66,fontSize:12,color:"#000"}}>ราคา/หน่วย</th>
                         <th style={{padding:"9px 6px",textAlign:"right",fontWeight:700,border:"1px solid #000",width:90,fontSize:13,color:"#000"}}>ราคารวม (฿)</th>
                       </tr>
