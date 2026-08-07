@@ -54,7 +54,22 @@ export default function OrdersTab({
   openEditOrder,
 }) {
   const invoicedIds = React.useMemo(() => invoicedOrderIds(invoices), [invoices]);
-  const allFilteredOrders = orders.filter(o => {
+
+  // ⌨️ ช่องค้นหาเก็บค่าไว้ในหน้านี้เอง แล้วค่อยส่งต่อหลังหยุดพิมพ์ 250ms
+  // ทำไม: เดิมค่าอยู่ที่ App — พิมพ์ 1 ตัวอักษร App วาดใหม่ทั้งหน้า (ไฟล์ 5,600 บรรทัด)
+  //       + กรองใบสั่งใหม่ทั้งหมดทุกครั้ง → ที่ 2,000 ใบ พิมพ์แล้วหน่วงชัดเจน
+  //       ตอนนี้กดคีย์แล้ววาดใหม่เฉพาะหน้านี้ ส่วนการกรองรอจนหยุดพิมพ์
+  const [typed, setTyped] = React.useState(orderSearch || "");
+  useEffect(() => { setTyped(orderSearch || ""); }, [orderSearch]);
+  useEffect(() => {
+    if (typed === (orderSearch || "")) return;
+    const t = setTimeout(() => setOrderSearch(typed), 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typed]);
+
+  // 🧮 กรอง/นับ ทำใหม่เฉพาะตอนข้อมูลหรือเงื่อนไขเปลี่ยนจริง (เดิมทำใหม่ทุกครั้งที่ re-render)
+  const allFilteredOrders = React.useMemo(() => orders.filter(o => {
     if (orderSearch) {
       const q = norm(orderSearch);
       const hit = norm(o.orderNo).includes(q)
@@ -70,18 +85,21 @@ export default function OrdersTab({
     if (orderDateFrom) { const f = new Date(orderDateFrom); if (!od || od < f) return false; }
     if (orderDateTo)   { const t = new Date(orderDateTo); t.setHours(23, 59, 59); if (!od || od > t) return false; }
     return true;
-  });
+  }), [orders, orderSearch, orderDateFrom, orderDateTo]);
+
+  const isInvoiced = React.useCallback((o) => !!o.invoiceId || invoicedIds.has(o.id), [invoicedIds]);
 
   // 📜 ยอดรวม/สถิติ นับจาก "ทุกใบที่ตรงเงื่อนไข" — ไม่ใช่แค่ที่วาดอยู่
-  const totalQtyAll = allFilteredOrders.reduce((s, o) => s + (o.items || []).reduce((a, i) => a + (Number(i.qty) || 0), 0), 0);
-  const isInvoiced = (o) => !!o.invoiceId || invoicedIds.has(o.id);
-  const notInvoiced = allFilteredOrders.filter(o => !isInvoiced(o)).length;
+  const { totalQtyAll, notInvoiced } = React.useMemo(() => ({
+    totalQtyAll: allFilteredOrders.reduce((s, o) => s + (o.items || []).reduce((a, i) => a + (Number(i.qty) || 0), 0), 0),
+    notInvoiced: allFilteredOrders.reduce((n, o) => n + (isInvoiced(o) ? 0 : 1), 0),
+  }), [allFilteredOrders, isInvoiced]);
 
   // 📜 วาดทีละหน้า — กดโหลดเพิ่มถ้าอยากเห็นมากกว่านี้
   const [shown, setShown] = React.useState(PAGE_SIZE);
   const filterKey = `${orderSearch}|${orderDateFrom}|${orderDateTo}|${orders.length}`;
   useEffect(() => { setShown(PAGE_SIZE); }, [filterKey]);
-  const filteredOrders = allFilteredOrders.slice(0, shown);
+  const filteredOrders = React.useMemo(() => allFilteredOrders.slice(0, shown), [allFilteredOrders, shown]);
   const hasMore = allFilteredOrders.length > filteredOrders.length;
 
   const setPreset = (preset) => {
@@ -111,29 +129,32 @@ export default function OrdersTab({
     setOrdersRange({ from: from || fallback, to });
   }, [orderDateFrom, orderDateTo, setOrdersRange]);
 
-  // group ตามวันที่
-  const groups = filteredOrders.reduce((acc, o) => {
-    const d = (o.date || "").slice(0, 10) || "ไม่ระบุวันที่";
-    if (!acc[d]) acc[d] = [];
-    acc[d].push(o);
-    return acc;
-  }, {});
-  const sortedDates = Object.keys(groups).sort((a, b) => {
-    const p = (s) => { const [d, m, y] = s.split("/"); return `${y}${m}${d}`; };
-    return p(b).localeCompare(p(a));
-  });
-  // group by month
-  const monthGroups = {};
-  sortedDates.forEach(d => {
-    const parts = d.split("/");
-    const mk = parts.length >= 3 ? `${parts[1]}/${parts[2]}` : d;
-    if (!monthGroups[mk]) monthGroups[mk] = [];
-    monthGroups[mk].push(d);
-  });
-  const sortedMonths = Object.keys(monthGroups).sort((a, b) => {
-    const p = (s) => { const [m, y] = s.split("/"); return `${y}${m}`; };
-    return p(b).localeCompare(p(a));
-  });
+  // 🧮 จัดกลุ่มตามวัน/เดือน — ทำใหม่เฉพาะตอนรายการที่จะวาดเปลี่ยนจริง
+  //    เดิมจัดกลุ่มใหม่ทุกครั้งที่ re-render (เช่น กดพับ/กางวันเดียว ก็จัดใหม่ทั้งชุด)
+  const { groups, monthGroups, sortedMonths } = React.useMemo(() => {
+    const g = filteredOrders.reduce((acc, o) => {
+      const d = (o.date || "").slice(0, 10) || "ไม่ระบุวันที่";
+      if (!acc[d]) acc[d] = [];
+      acc[d].push(o);
+      return acc;
+    }, {});
+    const dates = Object.keys(g).sort((a, b) => {
+      const p = (s) => { const [d, m, y] = s.split("/"); return `${y}${m}${d}`; };
+      return p(b).localeCompare(p(a));
+    });
+    const mg = {};
+    dates.forEach(d => {
+      const parts = d.split("/");
+      const mk = parts.length >= 3 ? `${parts[1]}/${parts[2]}` : d;
+      if (!mg[mk]) mg[mk] = [];
+      mg[mk].push(d);
+    });
+    const months = Object.keys(mg).sort((a, b) => {
+      const p = (s) => { const [m, y] = s.split("/"); return `${y}${m}`; };
+      return p(b).localeCompare(p(a));
+    });
+    return { groups: g, monthGroups: mg, sortedMonths: months };
+  }, [filteredOrders]);
 
   return (
     <div style={{ animation: "fadeUp 0.4s ease" }}>
@@ -171,9 +192,9 @@ export default function OrdersTab({
           <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: 14, marginBottom: 14 }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
               <div style={{ flex: "1 1 240px", position: "relative" }}>
-                <input value={orderSearch} onChange={e => setOrderSearch(e.target.value)} placeholder="🔍 ค้นหา — เลขที่ใบ / ชื่อลูกค้า / เบอร์ / ที่อยู่ / เลขภาษี / รายการสินค้า"
-                  style={{ width: "100%", boxSizing: "border-box", background: T.input, border: `1px solid ${orderSearch ? T.accent : T.inputBorder}`, color: T.text, borderRadius: 9, padding: "8px 36px 8px 12px", fontFamily: "'Sarabun',sans-serif", fontSize: 13, outline: "none" }} />
-                {orderSearch && <button onClick={() => setOrderSearch("")} title="ล้าง" style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", padding: "2px 8px", borderRadius: 6, border: "none", background: "rgba(59,91,139,0.1)", color: T.sub, cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>✕</button>}
+                <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="🔍 ค้นหา — เลขที่ใบ / ชื่อลูกค้า / เบอร์ / ที่อยู่ / เลขภาษี / รายการสินค้า"
+                  style={{ width: "100%", boxSizing: "border-box", background: T.input, border: `1px solid ${typed ? T.accent : T.inputBorder}`, color: T.text, borderRadius: 9, padding: "8px 36px 8px 12px", fontFamily: "'Sarabun',sans-serif", fontSize: 13, outline: "none" }} />
+                {typed && <button onClick={() => { setTyped(""); setOrderSearch(""); }} title="ล้าง" style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", padding: "2px 8px", borderRadius: 6, border: "none", background: "rgba(59,91,139,0.1)", color: T.sub, cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>✕</button>}
               </div>
               <input type="date" value={orderDateFrom} onChange={e => setOrderDateFrom(e.target.value)}
                 style={{ background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 9, padding: "8px 10px", fontSize: 12, fontFamily: "'Sarabun',sans-serif" }} />

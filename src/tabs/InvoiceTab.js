@@ -54,6 +54,25 @@ export default function InvoiceTab({
   const [shown, setShown] = React.useState(PAGE_SIZE);
   React.useEffect(() => { setShown(PAGE_SIZE); }, [invoiceSearch, invoiceStatusFilter, invoices.length]);
 
+  // ⌨️ ช่องค้นหาเก็บค่าไว้ในหน้านี้เอง แล้วค่อยส่งต่อหลังหยุดพิมพ์ 250ms
+  // เดิมค่าอยู่ที่ App — พิมพ์ 1 ตัวอักษร App วาดใหม่ทั้งหน้า + กรองบิลใหม่ทั้งหมด
+  const [typed, setTyped] = React.useState(invoiceSearch || "");
+  React.useEffect(() => { setTyped(invoiceSearch || ""); }, [invoiceSearch]);
+  React.useEffect(() => {
+    if (typed === (invoiceSearch || "")) return;
+    const t = setTimeout(() => setInvoiceSearch(typed), 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typed]);
+
+  // 🧮 นับจำนวนตามสถานะ — ทำครั้งเดียวต่อชุดข้อมูล
+  // เดิมวนทั้งกองบิล 4 รอบ (ปุ่มละรอบ) ทุกครั้งที่ re-render
+  const statusCounts = React.useMemo(() => {
+    const m = {};
+    invoices.forEach(x => { const s = x.status || "ออกแล้ว"; m[s] = (m[s] || 0) + 1; });
+    return m;
+  }, [invoices]);
+
   return (
     <div style={{ animation: "fadeUp 0.4s ease" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
@@ -68,7 +87,7 @@ export default function InvoiceTab({
                   background: invoiceStatusFilter === s ? (isAll ? "rgba(59,91,139,0.15)" : st.bg) : "transparent",
                   color: invoiceStatusFilter === s ? (isAll ? T.accent : st.color) : T.muted
                 }}>
-                {s}{!isAll && <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.7 }}>({invoices.filter(x => (x.status || "ออกแล้ว") === s).length})</span>}
+                {s}{!isAll && <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.7 }}>({statusCounts[s] || 0})</span>}
               </button>
             );
           })}
@@ -87,10 +106,10 @@ export default function InvoiceTab({
 
       {/* 🔍 ค้นหาบิล */}
       <div style={{ marginBottom: 12, position: "relative" }}>
-        <input value={invoiceSearch} onChange={e => setInvoiceSearch(e.target.value)}
+        <input value={typed} onChange={e => setTyped(e.target.value)}
           placeholder="🔍 ค้นหาบิล — ชื่อลูกค้า / เบอร์โทร / เลขที่บิล / เลขผู้เสียภาษี / ที่อยู่ / โน้ต"
-          style={{ width: "100%", boxSizing: "border-box", background: T.input, border: `1px solid ${invoiceSearch ? T.accent : T.inputBorder}`, color: T.text, borderRadius: 10, padding: "10px 40px 10px 14px", fontFamily: "'Sarabun',sans-serif", fontSize: 13, outline: "none" }} />
-        {invoiceSearch && <button onClick={() => setInvoiceSearch("")} title="ล้าง" style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", padding: "3px 9px", borderRadius: 6, border: "none", background: "rgba(59,91,139,0.1)", color: T.sub, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>✕</button>}
+          style={{ width: "100%", boxSizing: "border-box", background: T.input, border: `1px solid ${typed ? T.accent : T.inputBorder}`, color: T.text, borderRadius: 10, padding: "10px 40px 10px 14px", fontFamily: "'Sarabun',sans-serif", fontSize: 13, outline: "none" }} />
+        {typed && <button onClick={() => { setTyped(""); setInvoiceSearch(""); }} title="ล้าง" style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", padding: "3px 9px", borderRadius: 6, border: "none", background: "rgba(59,91,139,0.1)", color: T.sub, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>✕</button>}
       </div>
 
       {/* 🔗 แถบรวมบิล (ลอย) */}
