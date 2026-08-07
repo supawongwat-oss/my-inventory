@@ -1,7 +1,8 @@
 import React from "react";
 import { splitSizesIntoRows } from "../theme";
 
-const INVOICE_FONT_SCALE = 1.0;
+// ขอบกระดาษแคบลงแล้ว (เนื้อหากว้าง ~197mm) → ขยายตัวหนังสือให้เต็มพื้นที่ที่ได้มา
+const INVOICE_FONT_SCALE = 1.12;
 
 // 🕶️ ชื่อบริษัทแบบย่อ — ตัดคำนำหน้า/ต่อท้ายทางกฎหมายออก
 // ใช้ตอนติ๊ก "ซ่อนข้อมูลบริษัท" (ลูกค้าที่ไม่ต้องการรับ VAT)
@@ -35,7 +36,7 @@ export default function PrintInvoiceModal({
           <div className="print-modal-card" onMouseDown={e=>e.stopPropagation()} style={{background:"white",borderRadius:16,width:"min(96vw, 794px)",maxHeight:"94vh",overflow:"auto",boxShadow:"0 24px 60px rgba(0,0,0,0.7)"}}>
 
             {/* ── เนื้อหาบิล (พิมพ์ได้) — กว้างเท่า A4 portrait (794px @96dpi) ── */}
-            <div id="invoice-print-area" style={{padding:"2.5mm 2.5mm 3mm",fontFamily:"'Sarabun',sans-serif",color:"#000",boxSizing:"border-box"}}>
+            <div id="invoice-print-area" style={{padding:"4mm 2.5mm 3mm",fontFamily:"'Sarabun',sans-serif",color:"#000",boxSizing:"border-box"}}>
 
               {/* ── HEADER ── */}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:7,paddingBottom:6,borderBottom:"2px solid #000"}}>
