@@ -9,6 +9,11 @@ export const INVOICE_FONT_SCALE = 1.12;
 // ใบบิล PDF: ใช้สเกลเดียวกับพิมพ์จาก PC — PDF วาดที่ความกว้างเท่าพื้นที่พิมพ์จริง
 // จึงได้ขนาดตัวหนังสือเท่ากันเป๊ะ
 export const INVOICE_PDF_FONT_SCALE = INVOICE_FONT_SCALE;
+// 📏 ระยะว่างด้านบนของใบบิล — ใช้ค่าเดียวกันทั้งพิมพ์ตรงและ PDF
+// เดิมหน้าแรกได้ 8mm (ขอบกระดาษ 4mm + padding ในบิล 4mm) แต่หน้า 2 ได้แค่ 4mm
+// ตอนนี้ย้ายมาไว้ที่ขอบกระดาษทั้งหมด → ทุกหน้าเว้นบนเท่ากัน
+export const INVOICE_MARGIN_TOP = "8mm";
+const PDF_MARGIN_TOP_MM = 8;
 export const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
   // ต้อง attach root เข้า DOM ชั่วคราวเพื่ออ่าน computed style
   const holder = document.createElement("div");
@@ -41,7 +46,12 @@ export const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
 // 🖨️ พิมพ์แบบ same-page isolation — ใช้ได้ทุกอุปกรณ์ (desktop + Samsung/iOS/Android)
 // วิธีนี้ clone เนื้อหาที่จะพิมพ์ไปไว้ที่ body ระดับบนสุด แล้วใช้ @media print ซ่อนทุกอย่างที่เหลือ
 // → ไม่มี sidebar/โลโก้แอป หลุดเข้ามา (เดิม iframe.print() บน Samsung พิมพ์ทั้งหน้าหลัก = โลโก้ซ้ำ)
-export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10mm", fontScale = PRINT_FONT_SCALE) => {
+// 📏 pageMarginTop = ระยะว่างด้านบนของ "ทุกหน้า"
+//    ทำไมต้องแยกออกมา: เดิมระยะบนของหน้าแรกมาจาก 2 ที่รวมกัน คือขอบกระดาษ (@page margin)
+//    บวก padding ในตัวเอกสารเอง — แต่ padding มีผลแค่จุดที่เนื้อหาเริ่ม (หน้าแรก) เท่านั้น
+//    หน้า 2 เป็นต้นไปจึงได้แค่ขอบกระดาษ ทำให้ชิดบนกว่าหน้าแรก
+//    แก้โดยย้ายระยะบนทั้งหมดไปไว้ที่ @page margin-top → ทุกหน้าเว้นเท่ากัน
+export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10mm", fontScale = PRINT_FONT_SCALE, pageMarginTop = null) => {
   const el = document.getElementById(id);
   if (!el) return;
   const thermalMatch = /^(\d+(?:\.\d+)?)mm\s+(\d+(?:\.\d+)?)mm$/i.exec(String(pageSize).trim());
@@ -69,7 +79,8 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
     const mobileFontScale = Math.min(fontScale, 1.0);
     const finalElM = isThermal ? cloneM : scaleFontInElement(cloneM, mobileFontScale);
     // 🩹 ลด padding รอบ ๆ print-area — เดิม 32px 40px กว้างเกินไป
-    finalElM.style.padding = "6mm 8mm";
+    // ถ้ากำหนดระยะบนไว้ที่ @page แล้ว ต้องไม่ใส่ padding บนซ้ำ ไม่งั้นหน้าแรกจะเว้นมากกว่าหน้าอื่น
+    finalElM.style.padding = pageMarginTop ? "0 8mm 6mm" : "6mm 8mm";
     finalElM.style.boxSizing = "border-box";
     finalElM.style.width = "100%";
     finalElM.style.maxWidth = "100%";
@@ -78,7 +89,7 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
       <title>พิมพ์เอกสาร</title>
       <link rel="icon" href="data:,">
       <style>
-        @page { size: ${cssPageSizeM}; margin: 6mm; }
+        @page { size: ${cssPageSizeM}; margin: 6mm;${pageMarginTop ? ` margin-top: ${pageMarginTop};` : ""} }
         html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun','Sukhumvit Set','Noto Sans Thai',sans-serif; width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden; }
         * { box-sizing: border-box; }
         body > * { max-width: 100% !important; }
@@ -198,7 +209,7 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
   const style = document.createElement("style");
   style.id = "__print_style__";
   style.textContent = `
-    @page { size: ${cssPageSize}; margin: ${pageMargin}; }
+    @page { size: ${cssPageSize}; margin: ${pageMargin};${pageMarginTop ? ` margin-top: ${pageMarginTop};` : ""} }
     #__print_root__ table { border-collapse: collapse; width: 100%; ${tableLayout} }
     #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
     /* 🩹 กันเนื้อหากว้างเกินหน้ากระดาษ — ชื่อรุ่น/สีตั้ง nowrap ไว้ ทำให้ตารางดันกว้างจน
@@ -255,7 +266,7 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
 };
 
 // พิมพ์เอกสารหลายชุด (ต้นฉบับ + สำเนา) บน A4 — ขึ้นหน้าใหม่ทุกชุด
-export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"], fontScale = INVOICE_FONT_SCALE, pageSize = "A4 portrait", pageMargin = "10mm") => {
+export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"], fontScale = INVOICE_FONT_SCALE, pageSize = "A4 portrait", pageMargin = "10mm", pageMarginTop = null) => {
   const el = document.getElementById(id);
   if (!el) return;
 
@@ -286,7 +297,7 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
       <title>พิมพ์เอกสาร × ${labels.length}</title>
       <link rel="icon" href="data:,">
       <style>
-        @page { size: ${cssPageSizeM}; margin: ${pageMargin}; }
+        @page { size: ${cssPageSizeM}; margin: ${pageMargin};${pageMarginTop ? ` margin-top: ${pageMarginTop};` : ""} }
         html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun','Sukhumvit Set','Noto Sans Thai',sans-serif; }
         table { border-collapse: collapse; width: 100%; }
         tr, td, th { page-break-inside: avoid; }
@@ -393,7 +404,7 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
   const style = document.createElement("style");
   style.id = "__print_style__";
   style.textContent = `
-    @page { size: ${cssPageSize2}; margin: ${pageMargin}; }
+    @page { size: ${cssPageSize2}; margin: ${pageMargin};${pageMarginTop ? ` margin-top: ${pageMarginTop};` : ""} }
     #__print_root__ > div { width: ${contentWidth2} !important; max-width: ${contentWidth2} !important; box-sizing: border-box; }
     #__print_root__ table { border-collapse: collapse; width: 100%; ${tableLayout2} }
     #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
@@ -473,12 +484,29 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
   source.style.boxSizing = "border-box";
   // 🚀 lazy import — โหลด html2pdf.js เฉพาะตอนกดปุ่มนี้เท่านั้น (~400KB)
   const { default: html2pdf } = await import("html2pdf.js");
-  html2pdf().set({
-    margin: 4,
+  const worker = html2pdf().set({
+    // [บน, ซ้าย, ล่าง, ขวา] — บน 8mm เท่ากันทุกหน้า (ตัวบิลไม่มี padding บนแล้ว)
+    margin: [PDF_MARGIN_TOP_MM, 4, 4, 4],
     filename,
     image: { type: "jpeg", quality: 0.98 },
     html2canvas: { scale: 2, useCORS: true },
     jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
     pagebreak: { mode: ["css", "legacy"] }
-  }).from(source).save();
+  }).from(source);
+
+  // 🔢 เลขหน้า — เขียนลงทุกหน้าหลังจัดหน้าเสร็จแล้ว (ตอนนี้ถึงจะรู้ว่ามีกี่หน้า)
+  // ⚠️ ใช้ตัวเลข/ขีดเท่านั้น ไม่ใส่คำว่า "หน้า" — ฟอนต์มาตรฐานของ jsPDF ไม่มีตัวอักษรไทย
+  //    ถ้าใส่ภาษาไทยจะออกมาเป็นตัวขยะ (ต้องฝังฟอนต์ไทยเพิ่ม ~300KB ซึ่งไม่คุ้ม)
+  await worker.toPdf().get("pdf").then((pdf) => {
+    const total = pdf.internal.getNumberOfPages();
+    if (total < 2) return; // หน้าเดียวไม่ต้องใส่เลข
+    const w = pdf.internal.pageSize.getWidth();
+    const h = pdf.internal.pageSize.getHeight();
+    for (let i = 1; i <= total; i++) {
+      pdf.setPage(i);
+      pdf.setFontSize(8);
+      pdf.setTextColor(90);
+      pdf.text(`${i} / ${total}`, w - 6, h - 3, { align: "right" });
+    }
+  }).save();
 };

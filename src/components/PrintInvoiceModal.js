@@ -1,6 +1,6 @@
 import React from "react";
 import { splitSizesIntoRows } from "../theme";
-import { INVOICE_FONT_SCALE } from "../utils/print";
+import { INVOICE_FONT_SCALE, INVOICE_MARGIN_TOP } from "../utils/print";
 
 // 🕶️ ชื่อบริษัทแบบย่อ — ตัดคำนำหน้า/ต่อท้ายทางกฎหมายออก
 // ใช้ตอนติ๊ก "ซ่อนข้อมูลบริษัท" (ลูกค้าที่ไม่ต้องการรับ VAT)
@@ -34,7 +34,9 @@ export default function PrintInvoiceModal({
           <div className="print-modal-card" onMouseDown={e=>e.stopPropagation()} style={{background:"white",borderRadius:16,width:"min(96vw, 794px)",maxHeight:"94vh",overflow:"auto",boxShadow:"0 24px 60px rgba(0,0,0,0.7)"}}>
 
             {/* ── เนื้อหาบิล (พิมพ์ได้) — กว้างเท่า A4 portrait (794px @96dpi) ── */}
-            <div id="invoice-print-area" style={{padding:"4mm 2.5mm 3mm",fontFamily:"'Sarabun',sans-serif",color:"#000",boxSizing:"border-box"}}>
+            {/* ⚠️ ไม่มี padding บนแล้ว — ระยะว่างด้านบนย้ายไปอยู่ที่ขอบกระดาษ (INVOICE_MARGIN_TOP)
+                เพื่อให้หน้า 2 เป็นต้นไปเว้นบนเท่าหน้าแรก (padding มีผลแค่จุดที่เนื้อหาเริ่ม) */}
+            <div id="invoice-print-area" style={{padding:"0 2.5mm 3mm",fontFamily:"'Sarabun',sans-serif",color:"#000",boxSizing:"border-box"}}>
 
               {/* ── HEADER ── */}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:7,paddingBottom:6,borderBottom:"2px solid #000"}}>
@@ -206,6 +208,17 @@ export default function PrintInvoiceModal({
                   <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:10}}>
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:15,minWidth:560}}>
                     <thead>
+                      {/* 🏷️ แถบระบุตัวบิล — อยู่ใน <thead> จึงถูกพิมพ์ซ้ำทุกหน้าอัตโนมัติ
+                          บิลเป็นเอกสารการเงิน ถ้ากระดาษหลุดจากกัน หน้า 2 ที่ไม่มีเลขบิล/ชื่อลูกค้า
+                          จะไล่ไม่ได้ว่าเป็นของใคร — ที่วันละ 200-400 ออเดอร์ โอกาสเกิดสูง
+                          ทำเป็นบรรทัดเดียวตัวเล็ก เพื่อไม่ให้กินพื้นที่หน้าแรก */}
+                      <tr>
+                        <td colSpan={TOTAL_COLS} style={{padding:"3px 6px",border:"1px solid #000",borderBottom:"none",background:"#fff",fontSize:9,color:"#000",whiteSpace:"nowrap",overflow:"hidden"}}>
+                          เลขที่ <b style={{fontFamily:"monospace"}}>{invoice.invoiceNo}</b>
+                          {invoice.customerName?<> · {invoice.customerName}</>:null}
+                          {invoice.date?<> · {invoice.date}</>:null}
+                        </td>
+                      </tr>
                       <tr style={{background:"#f1f5f9",color:"#000"}}>
                         <th style={{padding:"9px 4px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,color:"#000",width:72}}>รุ่น</th>
                         <th style={{padding:"9px 5px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:9,color:"#000",width:92}}>สี</th>
@@ -395,11 +408,12 @@ export default function PrintInvoiceModal({
                 <span style={{fontSize:12,color:"#64748b",fontWeight:500}}>ขนาดกระดาษ:</span>
                 <div style={{display:"flex",gap:6}}>
                   {[
-                    {id:"A4",label:"A4",size:"A4 portrait",margin:"10mm"},
-                    {id:"A5",label:"A5",size:"A5 portrait",margin:"8mm"},
+                    // marginTop = ขอบข้าง + 4mm (เท่าระยะบนเดิมที่เคยมาจาก padding ในบิล)
+                    {id:"A4",label:"A4",size:"A4 portrait",margin:"10mm",marginTop:"14mm"},
+                    {id:"A5",label:"A5",size:"A5 portrait",margin:"8mm",marginTop:"12mm"},
                   ].map(p=>(
                     <button key={p.id}
-                      onClick={()=>printElementById("invoice-print-area",p.size,p.margin,INVOICE_FONT_SCALE)}
+                      onClick={()=>printElementById("invoice-print-area",p.size,p.margin,INVOICE_FONT_SCALE,p.marginTop)}
                       style={{padding:"6px 12px",borderRadius:7,border:"1px solid #e2e8f0",background:"white",color:"#475569",fontSize:11,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:500}}>
                       {p.label}
                     </button>
@@ -410,8 +424,8 @@ export default function PrintInvoiceModal({
                 <button onClick={()=>onClose()} style={{padding:"9px 16px",borderRadius:9,border:"1px solid #e2e8f0",background:"white",color:"#64748b",fontSize:13,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>ปิด</button>
                 <button onClick={()=>downloadInvoicePdf(invoice,false)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(220,38,38,0.35)",background:"white",color:"#dc2626",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>📄 PDF</button>
                 <button onClick={()=>downloadInvoicePdf(invoice,true)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(220,38,38,0.35)",background:"white",color:"#dc2626",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>📄 PDF × 3 ชุด</button>
-                <button onClick={()=>printElementById("invoice-print-area","A4 portrait","4mm",INVOICE_FONT_SCALE)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(59,91,139,0.35)",background:"white",color:"#3b5b8b",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>🖨️ พิมพ์ (A4)</button>
-                <button onClick={()=>printInvoiceCopies("invoice-print-area",undefined,INVOICE_FONT_SCALE,"A4 portrait","4mm")} style={{padding:"9px 16px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>🖨️ พิมพ์ × 3 ชุด (A4)</button>
+                <button onClick={()=>printElementById("invoice-print-area","A4 portrait","4mm",INVOICE_FONT_SCALE,INVOICE_MARGIN_TOP)} style={{padding:"9px 16px",borderRadius:9,border:"1px solid rgba(59,91,139,0.35)",background:"white",color:"#3b5b8b",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>🖨️ พิมพ์ (A4)</button>
+                <button onClick={()=>printInvoiceCopies("invoice-print-area",undefined,INVOICE_FONT_SCALE,"A4 portrait","4mm",INVOICE_MARGIN_TOP)} style={{padding:"9px 16px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>🖨️ พิมพ์ × 3 ชุด (A4)</button>
               </div>
             </div>
           </div>
