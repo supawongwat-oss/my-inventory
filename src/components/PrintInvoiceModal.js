@@ -167,6 +167,41 @@ export default function PrintInvoiceModal({
                   acc[k].items.push(it);
                   return acc;
                 },{}));
+
+                // 🧮 คำนวณแถวของทุกกลุ่มก่อน เพื่อรู้ว่า "บิลใบนี้ต้องใช้ช่อง SIZE กี่ชุด"
+                //
+                // เดิมวาดช่อง SIZE ไว้ 4 ชุดตายตัวเสมอ → บิลที่ทุกแถวใช้แค่ 1-2 ไซส์
+                // (เช่น มีรองเท้า/สนับแข้ง ซึ่งแยกไซส์ละแถว) จะเหลือช่องว่างโผล่เป็น
+                // "เส้นกั้นเกิน" บนกระดาษ ส่วนบิลที่มีแถวใช้ครบ 4 ไซส์กลับดูปกติ
+                // → นี่คือเหตุผลที่ "บางใบมี บางใบไม่มี"
+                const groupRows = groups.map(group => {
+                  // ✨ sort + split อัตโนมัติ — เสื้อผ้าแถวละ 4
+                  //    สินค้าที่ไม่ใช่เสื้อผ้า (สนับแข้ง/รองเท้า/อุปกรณ์กีฬา) ราคาต่างกันทุกไซส์
+                  //    → แยกบรรทัดละไซส์ ให้ช่องราคาตรงกับไซส์นั้นจริง ๆ
+                  const ciRef = clothingItems.find(c => c.id === group.items[0]?.clothingId);
+                  const perSize = !!ciRef && (ciRef.sizeType === "shoe" || ciRef.priceBySize === true);
+                  // 🔗 สี+ไซส์+ราคาเดียวกัน ที่มาจากคนละใบสั่ง → รวมเป็นช่องเดียว
+                  //    (เช่น S 13 · S 14 · S 16 → S 43) ยอดเงินเท่าเดิมทุกบาท
+                  //    ราคาต่างกันไม่รวม — ไม่งั้นราคาต่อหน่วยจะกลายเป็นค่าเฉลี่ย
+                  const sizeMap = new Map();
+                  group.items.filter(i => i.size).forEach(it => {
+                    const k = `${it.size}|${Number(it.unitPrice) || 0}`;
+                    const prev = sizeMap.get(k);
+                    sizeMap.set(k, prev
+                      ? { ...prev, qty: (Number(prev.qty) || 0) + (Number(it.qty) || 0) }
+                      : { ...it, qty: Number(it.qty) || 0 });
+                  });
+                  const withSize = [...sizeMap.values()];
+                  const noSize = group.items.filter(i => !i.size);
+                  const rows = splitSizesIntoRows(withSize, perSize ? 1 : 4, { fillPlus: false });
+                  noSize.forEach(n => rows.push([n]));
+                  if (rows.length === 0) rows.push([]);
+                  return { group, rows };
+                });
+                // ใช้เท่าที่แถวยาวสุดต้องการจริง (อย่างน้อย 1 ชุด กันตารางเพี้ยนตอนไม่มีไซส์เลย)
+                const sizeCols = Math.max(1, ...groupRows.flatMap(g => g.rows.map(r => r.length)));
+                const TOTAL_COLS = 2 + sizeCols * 2 + 3; // รุ่น + สี + (SIZE+จำนวน)×n + จำนวน + ราคา/หน่วย + ราคารวม
+
                 return (
                   <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:10}}>
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:15,minWidth:560}}>
@@ -174,7 +209,7 @@ export default function PrintInvoiceModal({
                       <tr style={{background:"#f1f5f9",color:"#000"}}>
                         <th style={{padding:"9px 4px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,color:"#000",width:72}}>รุ่น</th>
                         <th style={{padding:"9px 5px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:9,color:"#000",width:92}}>สี</th>
-                        {[1,2,3,4].flatMap(i=>[
+                        {Array.from({length:sizeCols}).flatMap((_,i)=>[
                           <th key={`sh${i}`} style={{padding:"9px 2px",textAlign:"center",fontWeight:700,border:"1px solid #000",background:"#f1f5f9",color:"#000",minWidth:36,fontSize:13}}>SIZE</th>,
                           <th key={`qh${i}`} style={{padding:"9px 2px",textAlign:"center",fontWeight:700,border:"1px solid #000",minWidth:26,fontSize:13,color:"#000"}}></th>
                         ])}
@@ -184,29 +219,8 @@ export default function PrintInvoiceModal({
                       </tr>
                     </thead>
                     <tbody>
-                      {groups.flatMap((group,gi)=>{
-                        // ชนิดผ้า/แบบคอ ไม่ต้องซ้ำในตาราง — แสดงอยู่ในกล่อง "รายละเอียดงาน" ด้านบนแล้ว
-                        // ✨ sort + split อัตโนมัติ — เสื้อผ้าแถวละ 4
-                        //    สินค้าที่ไม่ใช่เสื้อผ้า (สนับแข้ง/รองเท้า/อุปกรณ์กีฬา) ราคาต่างกันทุกไซส์
-                        //    → แยกบรรทัดละไซส์ ให้ช่องราคาตรงกับไซส์นั้นจริง ๆ
-                        const ciRef = clothingItems.find(c => c.id === group.items[0]?.clothingId);
-                        const perSize = !!ciRef && (ciRef.sizeType === "shoe" || ciRef.priceBySize === true);
-                        // 🔗 สี+ไซส์+ราคาเดียวกัน ที่มาจากคนละใบสั่ง → รวมเป็นช่องเดียว
-                        //    (เช่น S 13 · S 14 · S 16 → S 43) ยอดเงินเท่าเดิมทุกบาท
-                        //    ราคาต่างกันไม่รวม — ไม่งั้นราคาต่อหน่วยจะกลายเป็นค่าเฉลี่ย
-                        const sizeMap = new Map();
-                        group.items.filter(i => i.size).forEach(it => {
-                          const k = `${it.size}|${Number(it.unitPrice) || 0}`;
-                          const prev = sizeMap.get(k);
-                          sizeMap.set(k, prev
-                            ? { ...prev, qty: (Number(prev.qty) || 0) + (Number(it.qty) || 0) }
-                            : { ...it, qty: Number(it.qty) || 0 });
-                        });
-                        const withSize = [...sizeMap.values()];
-                        const noSize = group.items.filter(i => !i.size);
-                        const rows = splitSizesIntoRows(withSize, perSize ? 1 : 4, { fillPlus: false });
-                        noSize.forEach(n => rows.push([n]));
-                        if(rows.length===0) rows.push([]);
+                      {/* ชนิดผ้า/แบบคอ ไม่ต้องซ้ำในตาราง — แสดงอยู่ในกล่อง "รายละเอียดงาน" ด้านบนแล้ว */}
+                      {groupRows.flatMap(({group,rows},gi)=>{
                         return rows.map((chunk,ci)=>{
                           const rowQty=chunk.reduce((s,i)=>s+(Number(i.qty)||0),0);
                           const rowSub=chunk.reduce((s,i)=>s+(Number(i.unitPrice)||0)*(Number(i.qty)||0),0);
@@ -223,11 +237,12 @@ export default function PrintInvoiceModal({
                                   </div>
                                 ) : " "}
                               </td>
-                              {chunk.map(it=>[
-                                <td key={`s-${it.size}`} style={{padding:"9px 5px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#000",border:"1px solid #000",background:"#f1f5f9",fontSize:15}}>{it.size}</td>,
-                                <td key={`q-${it.size}`} style={{padding:"9px 5px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:15}}>{it.qty}</td>
+                              {/* key ใช้ลำดับช่อง ไม่ใช่ชื่อไซส์ — ไซส์เดียวกันคนละราคาอยู่แถวเดียวกันได้ (key จะซ้ำ) */}
+                              {chunk.flatMap((it,si)=>[
+                                <td key={`s-${si}`} style={{padding:"9px 5px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#000",border:"1px solid #000",background:"#f1f5f9",fontSize:15}}>{it.size}</td>,
+                                <td key={`q-${si}`} style={{padding:"9px 5px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#000",border:"1px solid #000",fontSize:15}}>{it.qty}</td>
                               ])}
-                              {Array(4-chunk.length).fill(null).flatMap((_,i)=>[
+                              {Array.from({length:Math.max(0,sizeCols-chunk.length)}).flatMap((_,i)=>[
                                 <td key={`e1-${ci}-${i}`} style={{border:"1px solid #000",background:"#f8fafc"}}/>,
                                 <td key={`e2-${ci}-${i}`} style={{border:"1px solid #000",background:"#f8fafc"}}/>
                               ])}
@@ -248,7 +263,7 @@ export default function PrintInvoiceModal({
                       {/* รายการกรอกเอง (ไม่มี clothing) — span คอลัมน์รุ่น+สี+ไซส์ */}
                       {generic.map((it,i)=>(
                         <tr key={`g${i}`} style={{background:(groups.length+i)%2===0?"white":"#f8fafc"}}>
-                          <td colSpan={10} style={{padding:"6px 8px",fontWeight:500,color:"#000",border:"1px solid #000",fontSize:12}}>
+                          <td colSpan={TOTAL_COLS-3} style={{padding:"6px 8px",fontWeight:500,color:"#000",border:"1px solid #000",fontSize:12}}>
                             <div style={{display:"flex",alignItems:"center",gap:6}}>
                               {it.colorHex&&<div style={{width:11,height:11,borderRadius:2,background:it.colorHex,border:"1px solid #000",flexShrink:0}}/>}
                               <span>{it.description}</span>
@@ -264,48 +279,48 @@ export default function PrintInvoiceModal({
                       {/* padding rows */}
                       {(invoice.items||[]).length<4&&Array.from({length:Math.max(0,4-(invoice.items||[]).length)}).map((_,i)=>(
                         <tr key={`pad-${i}`}>
-                          <td colSpan={13} style={{padding:"7px 10px",border:"1px solid #cbd5e1"}}>&nbsp;</td>
+                          <td colSpan={TOTAL_COLS} style={{padding:"7px 10px",border:"1px solid #cbd5e1"}}>&nbsp;</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       {(invoice.itemDiscountTotal>0||invoice.billDiscount>0)&&(
                         <tr style={{background:"#fffbeb"}}>
-                          <td colSpan={12} style={{padding:"6px 10px",textAlign:"right",fontSize:12,color:"#000",border:"1px solid #000"}}>ราคารวมก่อนส่วนลด</td>
+                          <td colSpan={TOTAL_COLS-1} style={{padding:"6px 10px",textAlign:"right",fontSize:12,color:"#000",border:"1px solid #000"}}>ราคารวมก่อนส่วนลด</td>
                           <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",color:"#000",border:"1px solid #000",fontSize:12}}>{(invoice.grossSubtotal||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                         </tr>
                       )}
                       {invoice.itemDiscountTotal>0&&(
                         <tr style={{background:"#fffbeb"}}>
-                          <td colSpan={12} style={{padding:"6px 10px",textAlign:"right",fontSize:12,color:"#000",border:"1px solid #000"}}>ส่วนลดรายการ</td>
+                          <td colSpan={TOTAL_COLS-1} style={{padding:"6px 10px",textAlign:"right",fontSize:12,color:"#000",border:"1px solid #000"}}>ส่วนลดรายการ</td>
                           <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#000",border:"1px solid #000",fontSize:12}}>-{(invoice.itemDiscountTotal||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                         </tr>
                       )}
                       {invoice.billDiscount>0&&(
                         <tr style={{background:"#fffbeb"}}>
-                          <td colSpan={12} style={{padding:"6px 10px",textAlign:"right",fontSize:12,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>ส่วนลดท้ายบิล{invoice.discountType==="percent"?` (${invoice.discount}%)`:""}</td>
+                          <td colSpan={TOTAL_COLS-1} style={{padding:"6px 10px",textAlign:"right",fontSize:12,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>ส่วนลดท้ายบิล{invoice.discountType==="percent"?` (${invoice.discount}%)`:""}</td>
                           <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#000",border:"1px solid #000",fontSize:12,whiteSpace:"nowrap"}}>-{(invoice.billDiscount||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                         </tr>
                       )}
                       <tr style={{background:"#f1f5f9"}}>
-                        <td colSpan={12} style={{padding:"7px 10px",textAlign:"right",fontWeight:600,fontSize:12,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>ยอดรวมก่อนภาษี</td>
+                        <td colSpan={TOTAL_COLS-1} style={{padding:"7px 10px",textAlign:"right",fontWeight:600,fontSize:12,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>ยอดรวมก่อนภาษี</td>
                         <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#000",fontSize:13,border:"1px solid #000",whiteSpace:"nowrap"}}>{(invoice.subtotal||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                       </tr>
                       {invoice.useVat&&(
                         <tr style={{background:"#f1f5f9"}}>
-                          <td colSpan={12} style={{padding:"6px 10px",textAlign:"right",fontSize:12,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>ภาษีมูลค่าเพิ่ม (VAT {invoice.vatRate}%)</td>
+                          <td colSpan={TOTAL_COLS-1} style={{padding:"6px 10px",textAlign:"right",fontSize:12,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>ภาษีมูลค่าเพิ่ม (VAT {invoice.vatRate}%)</td>
                           <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#000",border:"1px solid #000",fontSize:12,whiteSpace:"nowrap"}}>{(invoice.vat||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                         </tr>
                       )}
                       {(invoice.shipping>0||invoice.useShipping)&&(
                         <tr style={{background:"#f1f5f9"}}>
-                          <td colSpan={12} style={{padding:"6px 10px",textAlign:"right",fontSize:12,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>ค่าจัดส่ง</td>
+                          <td colSpan={TOTAL_COLS-1} style={{padding:"6px 10px",textAlign:"right",fontSize:12,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>ค่าจัดส่ง</td>
                           <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#000",border:"1px solid #000",fontSize:12,whiteSpace:"nowrap"}}>{(invoice.shipping||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                         </tr>
                       )}
                       {/* ── ยอดรวมทั้งสิ้น (สีดำ + กรอบหนา) ── */}
                       <tr style={{background:"#fff"}}>
-                        <td colSpan={12} style={{padding:"9px 12px",textAlign:"right",fontWeight:800,fontSize:15,color:"#000",border:"2px solid #000",whiteSpace:"nowrap"}}>ยอดรวมทั้งสิ้น</td>
+                        <td colSpan={TOTAL_COLS-1} style={{padding:"9px 12px",textAlign:"right",fontWeight:800,fontSize:15,color:"#000",border:"2px solid #000",whiteSpace:"nowrap"}}>ยอดรวมทั้งสิ้น</td>
                         <td style={{padding:"9px 12px",textAlign:"right",fontFamily:"monospace",fontWeight:800,fontSize:17,color:"#000",border:"2px solid #000",whiteSpace:"nowrap"}}>{(invoice.total||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                       </tr>
                       {/* ── มัดจำ/ชำระแล้ว + คงเหลือ (เฉพาะเมื่อมีการชำระ) ── */}
@@ -317,11 +332,11 @@ export default function PrintInvoiceModal({
                         return (
                           <>
                             <tr style={{background:"#fff"}}>
-                              <td colSpan={12} style={{padding:"6px 12px",textAlign:"right",fontWeight:700,fontSize:12,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>{isDeposit?"หัก มัดจำ/ชำระแล้ว":"ชำระแล้ว"}</td>
+                              <td colSpan={TOTAL_COLS-1} style={{padding:"6px 12px",textAlign:"right",fontWeight:700,fontSize:12,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>{isDeposit?"หัก มัดจำ/ชำระแล้ว":"ชำระแล้ว"}</td>
                               <td style={{padding:"6px 12px",textAlign:"right",fontFamily:"monospace",fontWeight:700,fontSize:13,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>-{paidTotal.toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                             </tr>
                             <tr style={{background:"#fff"}}>
-                              <td colSpan={12} style={{padding:"8px 12px",textAlign:"right",fontWeight:800,fontSize:14,color:"#000",border:"2px solid #000",whiteSpace:"nowrap"}}>คงเหลือต้องชำระ</td>
+                              <td colSpan={TOTAL_COLS-1} style={{padding:"8px 12px",textAlign:"right",fontWeight:800,fontSize:14,color:"#000",border:"2px solid #000",whiteSpace:"nowrap"}}>คงเหลือต้องชำระ</td>
                               <td style={{padding:"8px 12px",textAlign:"right",fontFamily:"monospace",fontWeight:800,fontSize:16,color:"#000",border:"2px solid #000",whiteSpace:"nowrap"}}>{remain.toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                             </tr>
                           </>
