@@ -10,6 +10,7 @@
     "@zxing/browser": "^0.2.0",
     "@zxing/library": "^0.22.0",
     "firebase": "^12.13.0",
+    "html2canvas": "^1.4.1",
     "html2pdf.js": "^0.14.0",
     "jsbarcode": "^3.12.3",
     "qrcode": "^1.5.4",

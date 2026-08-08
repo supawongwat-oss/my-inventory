@@ -12,8 +12,12 @@ export const INVOICE_PDF_FONT_SCALE = INVOICE_FONT_SCALE;
 // 📏 ระยะว่างด้านบนของใบบิล — ใช้ค่าเดียวกันทั้งพิมพ์ตรงและ PDF
 // เดิมหน้าแรกได้ 8mm (ขอบกระดาษ 4mm + padding ในบิล 4mm) แต่หน้า 2 ได้แค่ 4mm
 // ตอนนี้ย้ายมาไว้ที่ขอบกระดาษทั้งหมด → ทุกหน้าเว้นบนเท่ากัน
+// ขอบกระดาษ 4mm + ขอบในตัวบิลอีก 4mm = 8mm · ยกไปไว้ที่ @page ทั้งก้อน
+// เพื่อให้หน้า 2 เป็นต้นไปเว้นเท่าหน้าแรก (padding ในเอกสารมีผลแค่หน้าแรก)
 export const INVOICE_MARGIN_TOP = "8mm";
+export const INVOICE_MARGIN_BOTTOM = "8mm";
 const PDF_MARGIN_TOP_MM = 8;
+const PDF_MARGIN_BOTTOM_MM = 8;
 export const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
   // ต้อง attach root เข้า DOM ชั่วคราวเพื่ออ่าน computed style
   const holder = document.createElement("div");
@@ -51,7 +55,7 @@ export const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
 //    บวก padding ในตัวเอกสารเอง — แต่ padding มีผลแค่จุดที่เนื้อหาเริ่ม (หน้าแรก) เท่านั้น
 //    หน้า 2 เป็นต้นไปจึงได้แค่ขอบกระดาษ ทำให้ชิดบนกว่าหน้าแรก
 //    แก้โดยย้ายระยะบนทั้งหมดไปไว้ที่ @page margin-top → ทุกหน้าเว้นเท่ากัน
-export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10mm", fontScale = PRINT_FONT_SCALE, pageMarginTop = null) => {
+export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10mm", fontScale = PRINT_FONT_SCALE, pageMarginTop = null, pageMarginBottom = null) => {
   const el = document.getElementById(id);
   if (!el) return;
   const thermalMatch = /^(\d+(?:\.\d+)?)mm\s+(\d+(?:\.\d+)?)mm$/i.exec(String(pageSize).trim());
@@ -80,7 +84,7 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
     const finalElM = isThermal ? cloneM : scaleFontInElement(cloneM, mobileFontScale);
     // 🩹 ลด padding รอบ ๆ print-area — เดิม 32px 40px กว้างเกินไป
     // ถ้ากำหนดระยะบนไว้ที่ @page แล้ว ต้องไม่ใส่ padding บนซ้ำ ไม่งั้นหน้าแรกจะเว้นมากกว่าหน้าอื่น
-    finalElM.style.padding = pageMarginTop ? "0 8mm 6mm" : "6mm 8mm";
+    finalElM.style.padding = pageMarginTop ? `0 8mm ${pageMarginBottom ? "0" : "6mm"}` : "6mm 8mm";
     finalElM.style.boxSizing = "border-box";
     finalElM.style.width = "100%";
     finalElM.style.maxWidth = "100%";
@@ -89,7 +93,7 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
       <title>พิมพ์เอกสาร</title>
       <link rel="icon" href="data:,">
       <style>
-        @page { size: ${cssPageSizeM}; margin: 6mm;${pageMarginTop ? ` margin-top: ${pageMarginTop};` : ""} }
+        @page { size: ${cssPageSizeM}; margin: 6mm;${pageMarginTop ? ` margin-top: ${pageMarginTop};` : ""}${pageMarginBottom ? ` margin-bottom: ${pageMarginBottom};` : ""} }
         html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun','Sukhumvit Set','Noto Sans Thai',sans-serif; width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden; }
         * { box-sizing: border-box; }
         body > * { max-width: 100% !important; }
@@ -209,7 +213,7 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
   const style = document.createElement("style");
   style.id = "__print_style__";
   style.textContent = `
-    @page { size: ${cssPageSize}; margin: ${pageMargin};${pageMarginTop ? ` margin-top: ${pageMarginTop};` : ""} }
+    @page { size: ${cssPageSize}; margin: ${pageMargin};${pageMarginTop ? ` margin-top: ${pageMarginTop};` : ""}${pageMarginBottom ? ` margin-bottom: ${pageMarginBottom};` : ""} }
     #__print_root__ table { border-collapse: collapse; width: 100%; ${tableLayout} }
     #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
     /* 🩹 กันเนื้อหากว้างเกินหน้ากระดาษ — ชื่อรุ่น/สีตั้ง nowrap ไว้ ทำให้ตารางดันกว้างจน
@@ -266,7 +270,7 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
 };
 
 // พิมพ์เอกสารหลายชุด (ต้นฉบับ + สำเนา) บน A4 — ขึ้นหน้าใหม่ทุกชุด
-export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"], fontScale = INVOICE_FONT_SCALE, pageSize = "A4 portrait", pageMargin = "10mm", pageMarginTop = null) => {
+export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"], fontScale = INVOICE_FONT_SCALE, pageSize = "A4 portrait", pageMargin = "10mm", pageMarginTop = null, pageMarginBottom = null) => {
   const el = document.getElementById(id);
   if (!el) return;
 
@@ -297,7 +301,7 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
       <title>พิมพ์เอกสาร × ${labels.length}</title>
       <link rel="icon" href="data:,">
       <style>
-        @page { size: ${cssPageSizeM}; margin: ${pageMargin};${pageMarginTop ? ` margin-top: ${pageMarginTop};` : ""} }
+        @page { size: ${cssPageSizeM}; margin: ${pageMargin};${pageMarginTop ? ` margin-top: ${pageMarginTop};` : ""}${pageMarginBottom ? ` margin-bottom: ${pageMarginBottom};` : ""} }
         html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun','Sukhumvit Set','Noto Sans Thai',sans-serif; }
         table { border-collapse: collapse; width: 100%; }
         tr, td, th { page-break-inside: avoid; }
@@ -404,7 +408,7 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
   const style = document.createElement("style");
   style.id = "__print_style__";
   style.textContent = `
-    @page { size: ${cssPageSize2}; margin: ${pageMargin};${pageMarginTop ? ` margin-top: ${pageMarginTop};` : ""} }
+    @page { size: ${cssPageSize2}; margin: ${pageMargin};${pageMarginTop ? ` margin-top: ${pageMarginTop};` : ""}${pageMarginBottom ? ` margin-bottom: ${pageMarginBottom};` : ""} }
     #__print_root__ > div { width: ${contentWidth2} !important; max-width: ${contentWidth2} !important; box-sizing: border-box; }
     #__print_root__ table { border-collapse: collapse; width: 100%; ${tableLayout2} }
     #__print_root__ tr, #__print_root__ td, #__print_root__ th { page-break-inside: avoid; min-width: 0 !important; word-break: break-word; }
@@ -483,10 +487,37 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
   source.style.overflow = "hidden";
   source.style.boxSizing = "border-box";
   // 🚀 lazy import — โหลด html2pdf.js เฉพาะตอนกดปุ่มนี้เท่านั้น (~400KB)
+  // 🏷️ แถบระบุตัวบิลสำหรับ PDF — ต้องทำเป็น "รูปภาพ" แล้วแปะทีละหน้า
+  //
+  // ทำไมใช้วิธีนี้: PDF สร้างโดยวาดบิลเป็นภาพยาวรูปเดียวแล้วหั่นเป็นหน้า ไม่ได้แบ่งหน้าแบบ HTML
+  // กลไก <thead> ที่ทำให้หัวตารางซ้ำทุกหน้าตอนพิมพ์ตรง จึงไม่มีผลใน PDF เลย
+  // และจะเขียนเป็นข้อความด้วย jsPDF ตรง ๆ ก็ไม่ได้ เพราะฟอนต์มาตรฐานไม่มีตัวอักษรไทย
+  // → วาดเป็นภาพด้วย html2canvas ภาษาไทยจึงขึ้นครบโดยไม่ต้องฝังฟอนต์เพิ่ม ~300KB
+  const headerText = [
+    inv.invoiceNo ? `เลขที่ ${inv.invoiceNo}` : "",
+    inv.customerName || "",
+    inv.date || "",
+  ].filter(Boolean).join("  ·  ");
+  let headerImg = null;
+  try {
+    const { default: html2canvas } = await import("html2canvas");
+    const strip = document.createElement("div");
+    strip.style.cssText = "position:fixed;left:-99999px;top:0;width:1400px;background:#fff;color:#000;"
+      + "font-family:'Sarabun','Sukhumvit Set','Noto Sans Thai',sans-serif;font-size:26px;line-height:1.3;white-space:nowrap;overflow:hidden;padding:4px 0;";
+    strip.textContent = headerText;
+    document.body.appendChild(strip);
+    const canvas = await html2canvas(strip, { backgroundColor: "#ffffff", scale: 1, logging: false });
+    document.body.removeChild(strip);
+    headerImg = { data: canvas.toDataURL("image/png"), ratio: canvas.height / canvas.width };
+  } catch (e) {
+    // วาดแถบไม่สำเร็จ → ปล่อยผ่าน ยังได้ PDF ปกติ (แค่ไม่มีแถบบนหน้า 2)
+    console.warn("[pdf] สร้างแถบหัวบิลไม่สำเร็จ:", e?.message || e);
+  }
+
   const { default: html2pdf } = await import("html2pdf.js");
   const worker = html2pdf().set({
-    // [บน, ซ้าย, ล่าง, ขวา] — บน 8mm เท่ากันทุกหน้า (ตัวบิลไม่มี padding บนแล้ว)
-    margin: [PDF_MARGIN_TOP_MM, 4, 4, 4],
+    // [บน, ซ้าย, ล่าง, ขวา] — บน/ล่าง 8mm เท่ากันทุกหน้า (ตัวบิลไม่มี padding บน-ล่างแล้ว)
+    margin: [PDF_MARGIN_TOP_MM, 4, PDF_MARGIN_BOTTOM_MM, 4],
     filename,
     image: { type: "jpeg", quality: 0.98 },
     html2canvas: { scale: 2, useCORS: true },
@@ -494,16 +525,24 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
     pagebreak: { mode: ["css", "legacy"] }
   }).from(source);
 
-  // 🔢 เลขหน้า — เขียนลงทุกหน้าหลังจัดหน้าเสร็จแล้ว (ตอนนี้ถึงจะรู้ว่ามีกี่หน้า)
-  // ⚠️ ใช้ตัวเลข/ขีดเท่านั้น ไม่ใส่คำว่า "หน้า" — ฟอนต์มาตรฐานของ jsPDF ไม่มีตัวอักษรไทย
-  //    ถ้าใส่ภาษาไทยจะออกมาเป็นตัวขยะ (ต้องฝังฟอนต์ไทยเพิ่ม ~300KB ซึ่งไม่คุ้ม)
   await worker.toPdf().get("pdf").then((pdf) => {
     const total = pdf.internal.getNumberOfPages();
-    if (total < 2) return; // หน้าเดียวไม่ต้องใส่เลข
+    if (total < 2) return; // หน้าเดียว: มีหัวบิลเต็มอยู่แล้ว ไม่ต้องมีแถบ/เลขหน้า
     const w = pdf.internal.pageSize.getWidth();
     const h = pdf.internal.pageSize.getHeight();
+    // 📐 บีบให้สูงไม่เกินแถบขอบบนที่เว้นไว้ — การันตีว่าไม่มีทางทับเนื้อหาบิล
+    const maxStripH = PDF_MARGIN_TOP_MM - 2.5;
+    let stripW = w - 8;                                      // เว้นขอบซ้าย-ขวาข้างละ 4mm
+    let stripH = headerImg ? stripW * headerImg.ratio : 0;
+    if (stripH > maxStripH) { stripW = maxStripH / headerImg.ratio; stripH = maxStripH; }
     for (let i = 1; i <= total; i++) {
       pdf.setPage(i);
+      // 🏷️ แถบระบุตัวบิล — วางในแถบขอบบนที่เว้นไว้ จึงไม่ทับเนื้อหา
+      //    หน้าแรกไม่ต้องใส่ เพราะมีหัวบิลเต็มอยู่ใต้ลงไปแล้ว
+      if (headerImg && i > 1 && stripH > 0) {
+        pdf.addImage(headerImg.data, "PNG", 4, 1.2, stripW, stripH);
+      }
+      // 🔢 เลขหน้า — ตัวเลข/ขีดเท่านั้น (ฟอนต์มาตรฐานไม่มีตัวอักษรไทย)
       pdf.setFontSize(8);
       pdf.setTextColor(90);
       pdf.text(`${i} / ${total}`, w - 6, h - 3, { align: "right" });
