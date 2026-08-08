@@ -12,10 +12,20 @@ export const INVOICE_PDF_FONT_SCALE = INVOICE_FONT_SCALE;
 // 📏 ระยะว่างด้านบนของใบบิล — ใช้ค่าเดียวกันทั้งพิมพ์ตรงและ PDF
 // เดิมหน้าแรกได้ 8mm (ขอบกระดาษ 4mm + padding ในบิล 4mm) แต่หน้า 2 ได้แค่ 4mm
 // ตอนนี้ย้ายมาไว้ที่ขอบกระดาษทั้งหมด → ทุกหน้าเว้นบนเท่ากัน
-// ขอบกระดาษ 4mm + ขอบในตัวบิลอีก 4mm = 8mm · ยกไปไว้ที่ @page ทั้งก้อน
-// เพื่อให้หน้า 2 เป็นต้นไปเว้นเท่าหน้าแรก (padding ในเอกสารมีผลแค่หน้าแรก)
+// ระยะบน-ล่างของใบบิล แบ่งเป็น 2 ชั้น เพราะแต่ละชั้นมีจุดอ่อนคนละแบบ:
+//
+//   ชั้นที่ 1 — ขอบกระดาษ (@page margin) = 8mm
+//     ⚠️ Chrome "ปิดได้" ถ้าผู้ใช้ตั้งช่อง Margins ในหน้าต่างปริ้นเป็น "ไม่มี (None)"
+//        → ระยะจะหายเกลี้ยง ควบคุมจากโค้ดไม่ได้
+//   ชั้นที่ 2 — ระยะในตัวเอกสาร (INVOICE_PAD) = 4mm
+//     ✅ Chrome ปิดไม่ได้ เป็นเนื้อหาจริง
+//     ⚠️ แต่ padding มีผลแค่จุดที่เนื้อหาเริ่ม (หน้าแรก) → หน้า 2 ต้องพึ่งแถบหัวบิล
+//        ที่อยู่ใน <thead> ซึ่งถูกพิมพ์ซ้ำทุกหน้า (ใส่ padding เท่ากันไว้ที่นั่น)
+//
+// รวมแล้ว: ตั้งขอบปกติได้ 12mm ทุกหน้า · ต่อให้ผู้ใช้ปิดขอบกระดาษก็ยังเหลือ 4mm ทุกหน้า
 export const INVOICE_MARGIN_TOP = "8mm";
 export const INVOICE_MARGIN_BOTTOM = "8mm";
+export const INVOICE_PAD = "4mm";
 const PDF_MARGIN_TOP_MM = 8;
 const PDF_MARGIN_BOTTOM_MM = 8;
 export const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
@@ -84,7 +94,8 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
     const finalElM = isThermal ? cloneM : scaleFontInElement(cloneM, mobileFontScale);
     // 🩹 ลด padding รอบ ๆ print-area — เดิม 32px 40px กว้างเกินไป
     // ถ้ากำหนดระยะบนไว้ที่ @page แล้ว ต้องไม่ใส่ padding บนซ้ำ ไม่งั้นหน้าแรกจะเว้นมากกว่าหน้าอื่น
-    finalElM.style.padding = pageMarginTop ? `0 8mm ${pageMarginBottom ? "0" : "6mm"}` : "6mm 8mm";
+    // ระยะบน-ล่างคงไว้ที่ INVOICE_PAD เสมอ — เป็นชั้นที่ Chrome ปิดไม่ได้
+    finalElM.style.padding = pageMarginTop ? `${INVOICE_PAD} 8mm` : "6mm 8mm";
     finalElM.style.boxSizing = "border-box";
     finalElM.style.width = "100%";
     finalElM.style.maxWidth = "100%";
@@ -522,7 +533,13 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
     image: { type: "jpeg", quality: 0.98 },
     html2canvas: { scale: 2, useCORS: true },
     jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-    pagebreak: { mode: ["css", "legacy"] }
+    // 📄 วัดตำแหน่งของทุกแถวก่อนแบ่งหน้า — แถวไหนเหลือที่ไม่พอ ให้ยกไปทั้งแถวที่หน้าถัดไป
+    //
+    // ทำไมต้องใส่ avoid: เดิม PDF หั่นภาพตามความสูงคงที่ ไม่สนว่าตรงนั้นเป็นกลางแถวหรือไม่
+    // → บรรทัดขาดครึ่ง ตัวหนังสือโดนตัดคาบเกี่ยว 2 หน้า
+    // ส่วนกฎ page-break-inside: avoid ที่มีอยู่ ใช้เฉพาะตอนพิมพ์ตรงจากเบราว์เซอร์
+    // ไม่ได้ติดไปกับ PDF จึงต้องบอกตรงนี้อีกที
+    pagebreak: { mode: ["css", "legacy"], avoid: ["tr"] }
   }).from(source);
 
   await worker.toPdf().get("pdf").then((pdf) => {
