@@ -28,6 +28,15 @@ export const INVOICE_MARGIN_BOTTOM = "8mm";
 export const INVOICE_PAD = "4mm";
 const PDF_MARGIN_TOP_MM = 8;
 const PDF_MARGIN_BOTTOM_MM = 8;
+// 📐 ความกว้างที่ใช้วาด PDF (px) — ต้องตรึงไว้ ห้ามปล่อยให้ไปวัดจากเครื่อง
+//
+// html2pdf กำหนดความกว้างกรอบที่ใช้วาดแบบนี้:
+//   ถ้ามี opt.width และ opt.windowWidth เป็นตัวเลขทั้งคู่ → ใช้ opt.windowWidth
+//   ถ้าไม่มี → ใช้ max(src.clientWidth, src.scrollWidth, src.offsetWidth)
+// ทางหลังขึ้นกับความกว้างหน้าจอ/การจัดบรรทัดของเครื่องนั้น ๆ
+// เครื่องที่วัดได้กว้างกว่า 764 จะได้กรอบกว้างกว่า แต่ตัวบิลยังกว้าง 764 เท่าเดิม
+// → พอย่อทั้งกรอบให้พอดีหน้ากระดาษ บิลเลยเหลือแค่ครึ่งหน้า (คนละเครื่องได้ผลไม่เหมือนกัน)
+const PDF_WIDTH_PX = 764;
 export const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
   // ต้อง attach root เข้า DOM ชั่วคราวเพื่ออ่าน computed style
   const holder = document.createElement("div");
@@ -35,6 +44,11 @@ export const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
   holder.style.left = "-99999px";
   holder.style.top = "0";
   holder.style.visibility = "hidden";
+  // 🩹 กัน Chrome ขยายตัวอักษรอัตโนมัติ (Android "ขนาดข้อความ" / จอที่ตั้งสเกลใหญ่)
+  //    ถ้าไม่กัน ค่า computed fontSize ที่อ่านได้จะใหญ่กว่าความจริง แล้วถูกฝังลง clone
+  //    → เอกสารกว้างเกินจริง คนละเครื่องได้ขนาดไม่เท่ากัน
+  holder.style.webkitTextSizeAdjust = "100%";
+  holder.style.textSizeAdjust = "100%";
   holder.appendChild(root);
   document.body.appendChild(holder);
   try {
@@ -493,8 +507,11 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
   // ตัวเลขเงินห้ามตัดกลาง
   source.querySelectorAll("tr").forEach(tr => { const c = tr.children; [c[c.length-1], c[c.length-2]].forEach(td => { if (td) { td.style.whiteSpace = "nowrap"; td.style.overflowWrap = "normal"; } }); });
   source.querySelectorAll("tfoot td, tfoot th, [data-nowrap]").forEach(n => { n.style.whiteSpace = "nowrap"; n.style.overflowWrap = "normal"; });
-  source.style.width = "764px";
-  source.style.maxWidth = "764px";
+  source.style.width = PDF_WIDTH_PX + "px";
+  source.style.maxWidth = PDF_WIDTH_PX + "px";
+  // 🩹 กันตัวอักษรถูกขยายอัตโนมัติตอน html2canvas วาด (สืบทอดลงลูกทุกตัว)
+  source.style.webkitTextSizeAdjust = "100%";
+  source.style.textSizeAdjust = "100%";
   source.style.overflow = "hidden";
   source.style.boxSizing = "border-box";
   // 🚀 lazy import — โหลด html2pdf.js เฉพาะตอนกดปุ่มนี้เท่านั้น (~400KB)
@@ -531,7 +548,14 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
     margin: [PDF_MARGIN_TOP_MM, 4, PDF_MARGIN_BOTTOM_MM, 4],
     filename,
     image: { type: "jpeg", quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true },
+    // 📐 ตรึงความกว้าง — ต้องส่งทั้ง width และ windowWidth ถึงจะมีผล (ดู PDF_WIDTH_PX)
+    //    ไม่งั้น html2pdf ไปวัดขนาดจากเครื่อง → คนละเครื่องได้บิลคนละขนาด
+    width: PDF_WIDTH_PX,
+    windowWidth: PDF_WIDTH_PX,
+    backgroundColor: "#ffffff",
+    // windowWidth ในนี้บังคับให้ html2canvas จัดหน้าเสมือนจอกว้าง 764px
+    // → media query / ความกว้างแบบ % คิดเหมือนกันทุกเครื่อง
+    html2canvas: { scale: 2, useCORS: true, windowWidth: PDF_WIDTH_PX, width: PDF_WIDTH_PX, backgroundColor: "#ffffff" },
     jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
     // 📄 วัดตำแหน่งของทุกแถวก่อนแบ่งหน้า — แถวไหนเหลือที่ไม่พอ ให้ยกไปทั้งแถวที่หน้าถัดไป
     //
