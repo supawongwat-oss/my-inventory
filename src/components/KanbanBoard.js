@@ -532,6 +532,8 @@ function KanbanCard({ lot, onClick, onDragStart, onDragEnd, isDragging, canDrag 
         )}
         <span style={{fontFamily:"monospace",fontSize:10,color:accentColor,fontWeight:700}}>{lot.prodNo}</span>
         <span style={{fontSize:10,color:T.muted}}>· {lot.lotId}</span>
+        {/* 🧾 ออกบิลแล้ว — เห็นได้จากบอร์ด จะได้ไม่เปิดใบใหม่ซ้ำเพื่อออกบิล */}
+        {ord.invoiceNo && <span title={`ออกบิลแล้ว: ${ord.invoiceNo}`} style={{padding:"1px 7px",fontSize:9,background:"rgba(8,145,178,0.12)",color:"#0891b2",borderRadius:6,border:"1px solid rgba(8,145,178,0.3)",fontWeight:800}}>🧾 {ord.invoiceNo}</span>}
         {lot.setNo && <span title="ชุดที่" style={{padding:"1px 7px",fontSize:10,background:"rgba(124,58,237,0.12)",color:"#7c3aed",borderRadius:6,border:"1px solid rgba(124,58,237,0.3)",fontWeight:700}}>🎽 {lot.setNo}</span>}
         <span style={{marginLeft:"auto",fontFamily:"monospace",fontWeight:700,color:T.text,fontSize:13}}>{fmtInt(total)}</span>
       </div>

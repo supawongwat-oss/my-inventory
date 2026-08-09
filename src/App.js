@@ -2394,6 +2394,20 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         }
       } catch (e) { console.warn("[invoice] mark orders invoiced failed:", e); }
     }
+    // 🎨 ปั๊ม "ออกบิลแล้ว" ลงใบสั่งผลิต custom ที่บิลนี้มาจาก
+    // ทำไม: ก่อนหน้านี้ใบ custom ไม่มีสถานะนี้ ออกบิลไปแล้วใบยังค้างในช่อง "กำลังผลิต"
+    // พนักงานจึงเปิดใบใหม่ซ้ำเวลาจะออกบิล → งาน+รูปกองสะสม
+    const customIds = [...new Set((invoiceForm.customDetails?.orderIds) || [])];
+    if (customIds.length) {
+      try {
+        for (let i = 0; i < customIds.length; i += 400) {
+          const b = writeBatch(db);
+          customIds.slice(i, i + 400).forEach(cid =>
+            b.update(doc(db, "customOrders", cid), { invoiceId: ref.id, invoiceNo: invNo, invoicedAt: serverTimestamp() }));
+          await b.commit();
+        }
+      } catch (e) { console.warn("[invoice] mark customOrders invoiced failed:", e); }
+    }
     logAudit(user, {
       action: AUDIT_ACTIONS.CREATE,
       collection: "invoices",
@@ -3348,6 +3362,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                 // รวบรวม customDetails จากทุก custom order ที่เลือก
                 const customDetails = {
                   prodNos: orders.map(o=>o.prodNo).filter(Boolean),
+                  // 🔗 id ของใบ custom — ใช้ปั๊ม "ออกบิลแล้ว" กลับไปที่ใบตอนบันทึกบิล
+                  orderIds: orders.map(o=>o.id).filter(Boolean),
                   jobs: orders.map(o => ({
                     prodNo: o.prodNo || "",
                     clothingName: o.clothingName || "",

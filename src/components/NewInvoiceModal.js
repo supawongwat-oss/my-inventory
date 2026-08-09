@@ -1,6 +1,135 @@
 import React from "react";
 import { T, SIZE_GROUPS, PRESET_COLORS, splitSizesIntoRows, sizeRank, getPriceForSize } from "../theme";
 import { Modal, MHead, BtnPrimary, BtnGhost, BtnDanger } from "./ui";
+import { compressImage } from "../utils/imageCompress";
+import { uploadImage, deleteFile } from "../utils/upload";
+
+const MAX_JOB_IMAGES = 8;
+
+// 🖼️ แนบรูปงาน + รายละเอียด ลงบิลได้ตรงนี้ — ไม่ต้องย้อนไปเปิดใบสั่งผลิต custom ใหม่
+//    เขียนลง customDetails.jobs ชุดเดียวกับที่มาจากใบ custom → PrintInvoiceModal พิมพ์ออกเหมือนกัน
+function JobImagesPanel({ invoiceForm, setInvoiceForm }) {
+  const [open, setOpen] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const fileRef = React.useRef(null);
+
+  const jobs = (invoiceForm.customDetails || {}).jobs || [];
+  const manual = jobs.find(j => j.__manual) || null;
+  const fromCustom = jobs.filter(j => !j.__manual);
+  const imgCount = jobs.reduce((s, j) => s + ((j.images || []).length), 0);
+
+  const setJobs = (fn) => setInvoiceForm(f => {
+    const cd = f.customDetails || {};
+    const next = fn(cd.jobs || []);
+    return { ...f, customDetails: { ...cd, jobs: next } };
+  });
+
+  const patchManual = (patch) => setJobs(list => {
+    const i = list.findIndex(j => j.__manual);
+    if (i < 0) return [...list, { __manual: true, prodNo: "", clothingName: "", fabricType: "", collarType: "", jobDescription: "", note: "", images: [], ...patch }];
+    const next = [...list];
+    next[i] = { ...next[i], ...patch };
+    return next;
+  });
+
+  const addFiles = async (e) => {
+    const files = [...(e.target.files || [])];
+    if (files.length === 0) return;
+    const room = MAX_JOB_IMAGES - (manual?.images || []).length;
+    if (room <= 0) { alert(`แนบได้สูงสุด ${MAX_JOB_IMAGES} รูป`); return; }
+    setBusy(true);
+    try {
+      const added = [];
+      for (const f of files.slice(0, room)) {
+        const dataUrl = await compressImage(f, { maxDim: 1200, quality: 0.75 });
+        try {
+          const { url, path } = await uploadImage(dataUrl, "invoiceJobs");
+          added.push({ dataUrl: url, path, label: "" });
+        } catch (err) {
+          // ⚠️ Storage ใช้ไม่ได้ → เก็บ base64 ในบิลแทน (หนักกว่าแต่รูปไม่หาย)
+          console.warn("[invoice] อัปโหลดรูปงานไม่สำเร็จ เก็บ base64 แทน:", err?.message || err);
+          added.push({ dataUrl, path: "", label: "" });
+        }
+      }
+      patchManual({});                                   // สร้าง job ว่างถ้ายังไม่มี
+      setJobs(list => list.map(j => j.__manual ? { ...j, images: [...(j.images || []), ...added] } : j));
+    } catch (err) {
+      alert("แนบรูปไม่สำเร็จ: " + (err?.message || err));
+    } finally {
+      setBusy(false);
+      if (e.target) e.target.value = "";
+    }
+  };
+
+  const removeImage = (idx) => {
+    const img = (manual?.images || [])[idx];
+    if (img?.path) deleteFile(img.path).catch(() => {});
+    setJobs(list => list
+      .map(j => j.__manual ? { ...j, images: (j.images || []).filter((_, i) => i !== idx) } : j)
+      // job ที่ว่างเปล่าแล้ว → ตัดทิ้ง ไม่ให้กล่อง "รายละเอียดงาน" โผล่บนบิลเปล่า ๆ
+      .filter(j => !j.__manual || (j.images || []).length > 0 || j.clothingName || j.jobDescription || j.note));
+  };
+
+  const setLabel = (idx, v) => setJobs(list => list.map(j => j.__manual
+    ? { ...j, images: (j.images || []).map((im, i) => i === idx ? { ...im, label: v } : im) } : j));
+
+  const inputStyle = { width: "100%", boxSizing: "border-box", background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 8, padding: "8px 11px", fontFamily: "'Sarabun',sans-serif", fontSize: 13, outline: "none" };
+
+  return (
+    <div style={{ marginBottom: 14, padding: "10px 14px", background: T.card, border: `1px solid ${T.border}`, borderRadius: 10 }}>
+      <div onClick={() => setOpen(o => !o)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", userSelect: "none" }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>
+          🖼️ รูปงาน / รายละเอียดงาน บนบิล
+          {imgCount > 0 && <span style={{ marginLeft: 8, padding: "1px 8px", background: "rgba(5,150,105,0.12)", color: "#059669", borderRadius: 10, fontSize: 10, fontWeight: 800 }}>{imgCount} รูป</span>}
+        </span>
+        <span style={{ fontSize: 10, color: T.muted }}>{open ? "คลิกเพื่อพับ" : "คลิกเพื่อขยาย"}</span>
+      </div>
+
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          {fromCustom.length > 0 && (
+            <div style={{ fontSize: 11, color: T.muted, marginBottom: 10 }}>
+              🎨 มาจากใบ Custom {fromCustom.map(j => j.prodNo).filter(Boolean).join(", ") || "—"} · {fromCustom.reduce((s, j) => s + ((j.images || []).length), 0)} รูป
+            </div>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+            <input value={manual?.clothingName || ""} onChange={e => patchManual({ clothingName: e.target.value })}
+              placeholder="ชื่องาน (เช่น เสื้อโปโลโรงเรียน ก.)" style={inputStyle}/>
+            <input value={manual?.jobDescription || ""} onChange={e => patchManual({ jobDescription: e.target.value })}
+              placeholder="ลักษณะงาน (เช่น สกรีนอก + ปักหลัง)" style={inputStyle}/>
+          </div>
+
+          <input ref={fileRef} type="file" accept="image/*" multiple onChange={addFiles} style={{ display: "none" }}/>
+          <button onClick={() => fileRef.current?.click()} disabled={busy}
+            style={{ padding: "8px 14px", borderRadius: 8, border: `1px dashed ${T.accent}`, background: "rgba(59,91,139,0.06)", color: T.accent, cursor: busy ? "wait" : "pointer", fontSize: 12, fontWeight: 600, fontFamily: "'Sarabun',sans-serif" }}>
+            {busy ? "⏳ กำลังแนบ..." : `➕ แนบรูปงาน (${(manual?.images || []).length}/${MAX_JOB_IMAGES})`}
+          </button>
+
+          {(manual?.images || []).length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(110px,1fr))", gap: 8, marginTop: 10 }}>
+              {(manual.images || []).map((im, i) => (
+                <div key={i} style={{ border: `1px solid ${T.border}`, borderRadius: 8, padding: 6, background: "white" }}>
+                  <div style={{ position: "relative", height: 78, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: "#f8fafc", borderRadius: 6 }}>
+                    <img src={im.dataUrl} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}/>
+                    <button onClick={() => removeImage(i)} title="ลบรูปนี้"
+                      style={{ position: "absolute", top: 2, right: 2, width: 20, height: 20, borderRadius: 10, border: "none", background: "rgba(239,68,68,0.9)", color: "white", cursor: "pointer", fontSize: 11, lineHeight: "20px", padding: 0 }}>✕</button>
+                  </div>
+                  <input value={im.label || ""} onChange={e => setLabel(i, e.target.value)} placeholder="คำอธิบาย"
+                    style={{ ...inputStyle, marginTop: 5, padding: "4px 7px", fontSize: 11 }}/>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ fontSize: 10, color: T.muted, marginTop: 8, lineHeight: 1.6 }}>
+            💡 รูปจะขึ้นในกล่อง "รายละเอียดงาน" บนบิลที่พิมพ์ — ปิดได้ที่สวิตช์ 🖼️ ด้านบน
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ⚡ จัดไซส์เข้ากลุ่มราคา — ใช้กับ "ตั้งราคาทีเดียว"
 // เด็ก 6-12 = กลุ่มเดียว, S-XL = กลุ่มเดียว, 2XL/3XL/4XL... = แยกกลุ่มละไซส์ (ไล่ขึ้นไปไม่จำกัด)
@@ -230,6 +359,9 @@ export default function NewInvoiceModal({
               })()}
             </div>
           </div>
+
+          {/* 🖼️ แนบรูปงานเองได้ — ไม่ต้องเปิดใบสั่งผลิต custom ใหม่เพื่อให้รูปติดบิล */}
+          <JobImagesPanel invoiceForm={invoiceForm} setInvoiceForm={setInvoiceForm}/>
 
           {/* แจ้งเตือนเมื่อเป็นใบกำกับภาษี — ต้องมี taxId */}
           {invoiceDocType==="tax"&&(

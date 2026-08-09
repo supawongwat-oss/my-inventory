@@ -4,6 +4,15 @@ import { db } from "../firebase";
 import { doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { T } from "../theme";
 import { getLots } from "../utils/productionLots";
+import { deleteFile } from "../utils/upload";
+
+// 🖼️ path ของรูปทุกใบใน order — ใช้ตอนลบถาวร ไม่ให้ไฟล์ค้างกินพื้นที่ Storage
+function imagePathsOf(order) {
+  const out = [];
+  (order?.clothingImages || []).forEach(im => { if (im?.path) out.push(im.path); });
+  if (order?.clothingImagePath) out.push(order.clothingImagePath);
+  return [...new Set(out)];
+}
 
 const fmtInt = (n) => Number(n || 0).toLocaleString("th-TH");
 const THAI_MONTHS = ["","ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
@@ -80,9 +89,15 @@ export default function ProductionHistoryTab({ productionOrders = [], customOrde
 
   const permanentDelete = async (order) => {
     if (user?.role !== "admin") { alert("ลบถาวรได้เฉพาะ admin"); return; }
-    if (!window.confirm(`⚠️ ลบ "${order.prodNo}" ถาวร?\n\nย้อนกลับไม่ได้ — แนะนำ Backup ก่อน`)) return;
+    const paths = imagePathsOf(order);
+    const imgLine = paths.length ? `\n🖼️ จะลบรูปใน Storage ${paths.length} รูปด้วย` : "";
+    if (!window.confirm(`⚠️ ลบ "${order.prodNo}" ถาวร?${imgLine}\n\nย้อนกลับไม่ได้ — แนะนำ Backup ก่อน`)) return;
     if (!window.confirm(`ยืนยันอีกครั้ง — ลบ "${order.prodNo}" จาก ${order.__collection}?`)) return;
-    try { await deleteDoc(doc(db, order.__collection, order.id)); }
+    try {
+      await deleteDoc(doc(db, order.__collection, order.id));
+      // ลบเอกสารสำเร็จแล้วค่อยลบรูป — ถ้าลบรูปพลาด ไม่ให้กระทบผลลัพธ์หลัก
+      await Promise.all(paths.map(p => deleteFile(p)));
+    }
     catch (e) { alert("ลบไม่สำเร็จ: " + e.message); }
   };
 

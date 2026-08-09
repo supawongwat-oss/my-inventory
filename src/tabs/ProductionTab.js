@@ -286,13 +286,17 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
           return lots.every(l => l.status === "เข้าคลัง");
         };
         // 🏭 ใบที่จ้างที่อื่นผลิต แยกออกจาก "กำลังผลิต" (ไม่ได้อยู่ในสายงานเรา)
-        const outsourcedOrders = customOrders.filter(o => o.outsourced);
-        const inHouse = customOrders.filter(o => !o.outsourced);
+        // 🧾 ออกบิลแล้ว = จบงานฝั่งเอกสาร → ยกออกจาก "กำลังผลิต"/"เสร็จแล้ว" ไม่ให้กอง
+        const isBilled = (o) => !!o.invoiceNo;
+        const billedOrders = customOrders.filter(isBilled);
+        const outsourcedOrders = customOrders.filter(o => o.outsourced && !isBilled(o));
+        const inHouse = customOrders.filter(o => !o.outsourced && !isBilled(o));
         const activeOrders = inHouse.filter(o => !isOrderDone(o));
         const doneOrders = inHouse.filter(o => isOrderDone(o));
         const filteredCustom = customSubTab==="active" ? activeOrders
           : customSubTab==="done" ? doneOrders
           : customSubTab==="outsourced" ? outsourcedOrders
+          : customSubTab==="billed" ? billedOrders
           : customOrders;
         return (
         <>
@@ -302,6 +306,7 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
               {k:"active",l:"🎨 กำลังผลิต",c:"#d97706",n:activeOrders.length},
               {k:"done",l:"✅ เสร็จแล้ว",c:"#16a34a",n:doneOrders.length},
               ...(outsourcedOrders.length ? [{k:"outsourced",l:"🏭 จ้างข้างนอก",c:"#8b5cf6",n:outsourcedOrders.length}] : []),
+              ...(billedOrders.length ? [{k:"billed",l:"🧾 ออกบิลแล้ว",c:"#0891b2",n:billedOrders.length}] : []),
               {k:"all",l:"📋 ทั้งหมด",c:T.accent,n:customOrders.length},
             ].map(t => {
               const sel = customSubTab === t.k;
@@ -383,6 +388,7 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
                       <div style={{fontWeight:600,color:T.text,fontSize:13,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                         {o.clothingName}
                         {o.outsourced && <span style={{background:"rgba(139,92,246,0.12)",color:"#7c3aed",border:"1px solid #c4b5fd",padding:"1px 7px",borderRadius:10,fontSize:9,fontWeight:800}}>🏭 จ้างข้างนอก</span>}
+                        {o.invoiceNo && <span title={`ออกบิลแล้ว: ${o.invoiceNo}`} style={{background:"rgba(8,145,178,0.12)",color:"#0891b2",border:"1px solid #a5f3fc",padding:"1px 7px",borderRadius:10,fontSize:9,fontWeight:800}}>🧾 {o.invoiceNo}</span>}
                       </div>
                       <div style={{fontSize:11,color:T.muted,marginTop:2}}>{o.customerName ? `👤 ${o.customerName}` : ""} {o.customerPhone ? `· ${o.customerPhone}` : ""}</div>
                     </div>
