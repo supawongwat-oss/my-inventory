@@ -415,9 +415,10 @@ export default function PrintInvoiceModal({
                 <span style={{fontSize:12,color:"#64748b",fontWeight:500}}>ขนาดกระดาษ:</span>
                 <div style={{display:"flex",gap:6}}>
                   {[
-                    // marginTop = ขอบข้าง + 4mm (เท่าระยะบนเดิมที่เคยมาจาก padding ในบิล)
-                    {id:"A4",label:"A4",size:"A4 portrait",margin:"10mm",marginTop:"14mm",marginBottom:"14mm"},
-                    {id:"A5",label:"A5",size:"A5 portrait",margin:"8mm",marginTop:"12mm",marginBottom:"12mm"},
+                    // ขอบบน-ล่าง = 0 เสมอ — ระยะมาจาก padding ในตัวบิล (INVOICE_PAD)
+                    // เพื่อไม่ให้ขึ้นกับช่อง Margins ในหน้าต่างปริ้นของ Chrome
+                    {id:"A4",label:"A4",size:"A4 portrait",margin:"10mm",marginTop:"0mm",marginBottom:"0mm"},
+                    {id:"A5",label:"A5",size:"A5 portrait",margin:"8mm",marginTop:"0mm",marginBottom:"0mm"},
                   ].map(p=>(
                     <button key={p.id}
                       onClick={()=>printElementById("invoice-print-area",p.size,p.margin,INVOICE_FONT_SCALE,p.marginTop,p.marginBottom)}

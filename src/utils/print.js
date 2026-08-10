@@ -12,20 +12,23 @@ export const INVOICE_PDF_FONT_SCALE = INVOICE_FONT_SCALE;
 // 📏 ระยะว่างด้านบนของใบบิล — ใช้ค่าเดียวกันทั้งพิมพ์ตรงและ PDF
 // เดิมหน้าแรกได้ 8mm (ขอบกระดาษ 4mm + padding ในบิล 4mm) แต่หน้า 2 ได้แค่ 4mm
 // ตอนนี้ย้ายมาไว้ที่ขอบกระดาษทั้งหมด → ทุกหน้าเว้นบนเท่ากัน
-// ระยะบน-ล่างของใบบิล แบ่งเป็น 2 ชั้น เพราะแต่ละชั้นมีจุดอ่อนคนละแบบ:
+// 📏 ระยะบน-ล่างของใบบิล — เก็บไว้ "ในตัวเอกสาร" ทั้งหมด ไม่พึ่งขอบกระดาษเลย
 //
-//   ชั้นที่ 1 — ขอบกระดาษ (@page margin) = 8mm
-//     ⚠️ Chrome "ปิดได้" ถ้าผู้ใช้ตั้งช่อง Margins ในหน้าต่างปริ้นเป็น "ไม่มี (None)"
-//        → ระยะจะหายเกลี้ยง ควบคุมจากโค้ดไม่ได้
-//   ชั้นที่ 2 — ระยะในตัวเอกสาร (INVOICE_PAD) = 4mm
-//     ✅ Chrome ปิดไม่ได้ เป็นเนื้อหาจริง
-//     ⚠️ แต่ padding มีผลแค่จุดที่เนื้อหาเริ่ม (หน้าแรก) → หน้า 2 ต้องพึ่งแถบหัวบิล
-//        ที่อยู่ใน <thead> ซึ่งถูกพิมพ์ซ้ำทุกหน้า (ใส่ padding เท่ากันไว้ที่นั่น)
+// ทำไม: ช่อง Margins ในหน้าต่างปริ้นของ Chrome เป็นค่ากลางค่าเดียว ใช้กับทุกงานพิมพ์
+//   · ป้ายม้วน/สติกเกอร์ ต้องตั้ง "ไม่มี (None)" ถึงจะพิมพ์เต็มแผ่น
+//   · แต่ None ทำให้ @page margin ถูกข้ามทั้งหมด → บิลไม่เหลือขอบ
+// ถ้าให้บิลพึ่ง @page ผู้ใช้จะต้องสลับค่านี้ไปมาทุกครั้งที่เปลี่ยนงานพิมพ์
 //
-// รวมแล้ว: ตั้งขอบปกติได้ 12mm ทุกหน้า · ต่อให้ผู้ใช้ปิดขอบกระดาษก็ยังเหลือ 4mm ทุกหน้า
-export const INVOICE_MARGIN_TOP = "8mm";
-export const INVOICE_MARGIN_BOTTOM = "8mm";
-export const INVOICE_PAD = "4mm";
+// แก้: ตั้ง @page margin บน-ล่าง = 0 แล้วให้ระยะมาจาก padding ในเอกสารแทน
+//   ✅ Chrome ปิดไม่ได้ → ตั้ง None ค้างไว้ได้เลย ทั้งป้ายม้วนและบิลถูกต้องพร้อมกัน
+//   ✅ ได้ระยะเท่ากันไม่ว่าผู้ใช้จะตั้ง Margins เป็นอะไร
+//   ⚠️ padding มีผลแค่จุดที่เนื้อหาเริ่ม (หน้าแรก) → หน้า 2 พึ่งแถบหัวบิลใน <thead>
+//      ซึ่งถูกพิมพ์ซ้ำทุกหน้า (ใส่ padding เท่ากันไว้ที่นั่น)
+// หมายเหตุ: ขอบ "ซ้าย-ขวา" ไม่ต้องห่วง — ถูกบังคับด้วยความกว้างของ root อยู่แล้ว
+//   (root.style.width = หน้ากระดาษ - 2×ขอบ) จึงไม่ขึ้นกับค่า Margins
+export const INVOICE_MARGIN_TOP = "0mm";
+export const INVOICE_MARGIN_BOTTOM = "0mm";
+export const INVOICE_PAD = "8mm";
 const PDF_MARGIN_TOP_MM = 8;
 const PDF_MARGIN_BOTTOM_MM = 8;
 // 📐 ความกว้างที่ใช้วาด PDF (px) — ต้องตรึงไว้ ห้ามปล่อยให้ไปวัดจากเครื่อง
@@ -507,6 +510,11 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
   // ตัวเลขเงินห้ามตัดกลาง
   source.querySelectorAll("tr").forEach(tr => { const c = tr.children; [c[c.length-1], c[c.length-2]].forEach(td => { if (td) { td.style.whiteSpace = "nowrap"; td.style.overflowWrap = "normal"; } }); });
   source.querySelectorAll("tfoot td, tfoot th, [data-nowrap]").forEach(n => { n.style.whiteSpace = "nowrap"; n.style.overflowWrap = "normal"; });
+  // 📏 PDF มีขอบบน-ล่างของตัวเองอยู่แล้ว (PDF_MARGIN_*) ซึ่งเป็นแถบที่ใช้วางแถบหัวบิล
+  //    กับเลขหน้าด้วย → ต้องเอา padding บน-ล่างของเอกสารออก ไม่งั้นจะเว้นซ้ำเป็น 2 เท่า
+  //    (ตอนพิมพ์ตรง กลับกัน: @page = 0 แล้วใช้ padding แทน)
+  source.style.paddingTop = "0";
+  source.style.paddingBottom = "0";
   source.style.width = PDF_WIDTH_PX + "px";
   source.style.maxWidth = PDF_WIDTH_PX + "px";
   // 🩹 กันตัวอักษรถูกขยายอัตโนมัติตอน html2canvas วาด (สืบทอดลงลูกทุกตัว)
