@@ -1,3 +1,20 @@
+/* 📱 กัน "รูดลงแล้ว refresh เอง" (pull-to-refresh) บน iPad / Galaxy Tab
+   อาการ: รูดลงตอนอยู่บนสุด → เบราว์เซอร์โหลดหน้าใหม่ → ข้อมูลที่กรอกค้างอยู่หายหมด
+   overscroll-behavior-y: none = ห้ามหน้าเว็บสั่ง refresh/rubber-band แต่ scroll ปกติยังทำได้
+   (iOS ต้อง Safari 16+ · Android Chrome รองรับหมด) */
+html, body {
+  overscroll-behavior-y: none;
+}
+
+/* กล่องที่ scroll ข้างในเอง — ห้าม "ส่งต่อ" การรูดไปให้หน้าหลักตอนสุดขอบ
+   ไม่งั้นรูดในตารางจนสุดแล้วหน้าหลักจะเด้ง/refresh ต่อ */
+.scroll-col,
+.pad-main,
+.modal-card,
+.table-scroll {
+  overscroll-behavior: contain;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',

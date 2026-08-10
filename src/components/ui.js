@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import JsBarcode from "jsbarcode";
 import { T } from "../theme";
 
@@ -40,11 +40,34 @@ export function BarcodeDisplay({ value, format = "CODE128", width = 2.2, height 
 }
 
 export function Modal({ onClose, children, w = 460 }) {
+  const cardRef = useRef(null);
+  // 🛟 กันข้อมูลหาย — พอมีการพิมพ์/เลือกอะไรในกล่องนี้แล้ว ถ้าหน้าจะ reload/ปิด ให้เตือนก่อน
+  //    (ด่านสองต่อจาก overscroll-behavior ใน index.css เผื่อ refresh มาจากทางอื่น
+  //     เช่น ปัดปิดแท็บ, กดปุ่ม reload, หรือแท็บเล็ตรุ่นเก่าที่ยังไม่รองรับ overscroll-behavior)
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const mark = () => setDirty(true);
+    el.addEventListener("input", mark);
+    el.addEventListener("change", mark);
+    return () => { el.removeEventListener("input", mark); el.removeEventListener("change", mark); };
+  }, []);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
   return (
     <div
       style={{position:"fixed",inset:0,background:T.overlay,display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,backdropFilter:"blur(4px)",padding:8}}
     >
       <div
+        ref={cardRef}
         className="modal-card"
         style={{background:"#ffffff",border:`1px solid ${T.border}`,borderRadius:16,padding:28,width:w,maxWidth:"96vw",boxShadow:"0 20px 60px rgba(0,0,0,0.15)",maxHeight:"92vh",overflowY:"auto"}}
       >
