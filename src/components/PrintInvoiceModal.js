@@ -63,7 +63,11 @@ export default function PrintInvoiceModal({
 
                 {/* ประเภทเอกสาร + เลขที่ */}
                 <div style={{textAlign:"right",minWidth:200}}>
-                  <div data-doc-label style={{display:"inline-block",background:"#fff",color:"#000",padding:"4px 16px",borderRadius:4,fontSize:15,fontWeight:800,marginBottom:6,letterSpacing:1,border:"2px solid #000"}}>
+                  {/* ⚠️ nowrap สำคัญกับ PDF 3 ชุด — ข้อความป้ายแต่ละชุดยาวไม่เท่ากัน
+                      ("(ต้นฉบับ)" ยาวกว่า "(สำเนา)") ถ้าปล่อยให้ตัดบรรทัดได้
+                      ชุดที่ป้ายตกบรรทัดจะมีหัวบิลสูงกว่า แล้วทุกอย่างข้างล่างเลื่อนตาม
+                      → ตัดหน้าคนละแถวกับชุดอื่น */}
+                  <div data-doc-label style={{display:"inline-block",background:"#fff",color:"#000",padding:"4px 16px",borderRadius:4,fontSize:15,fontWeight:800,marginBottom:6,letterSpacing:1,border:"2px solid #000",whiteSpace:"nowrap"}}>
                     {docTypeLabel(invoice.docType)}
                   </div>
                   {invoice.revisions>0 && (
