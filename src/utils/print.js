@@ -499,30 +499,46 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
   //    และเพราะวาดทีละชุด 3 รอบ ถ้าไม่แคชไว้จะโหลดรูปซ้ำ 3 เท่า
   const IMG_TIMEOUT_MS = 8000;
   const imgCache = new Map();
-  const remoteSrcs = [...new Set(
-    Array.from(el.querySelectorAll("img"))
-      .map(i => i.getAttribute("src"))
-      .filter(u => u && !u.startsWith("data:"))
+  // ✅ เช็คว่า "เปิดเป็นรูปได้จริง" ไม่ใช่แค่โหลดผ่าน
+  //    เคยเจอกรณีโหลดสำเร็จแต่ได้ไฟล์ที่ไม่ใช่รูป → กรอบขึ้นแต่ข้างในว่าง
+  const decodable = (src) => new Promise(done => {
+    const probe = new Image();
+    const finish = (v) => { probe.onload = probe.onerror = null; done(v); };
+    probe.onload = () => finish(probe.naturalWidth > 0 && probe.naturalHeight > 0);
+    probe.onerror = () => finish(false);
+    setTimeout(() => finish(false), IMG_TIMEOUT_MS);
+    probe.src = src;
+  });
+
+  // ตรวจ "ทุกรูป" รวมถึงรูปที่ฝังมาในตัวอยู่แล้ว (data:) เพราะรูปเก่าบางใบก็เสีย
+  const allSrcs = [...new Set(
+    Array.from(el.querySelectorAll("img")).map(i => i.getAttribute("src")).filter(Boolean)
   )];
   let imgFailed = 0;
-  await Promise.all(remoteSrcs.map(async (url) => {
+  await Promise.all(allSrcs.map(async (src) => {
     try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), IMG_TIMEOUT_MS);
-      const res = await fetch(url, { signal: ctrl.signal, mode: "cors", credentials: "omit" });
-      clearTimeout(timer);
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const blob = await res.blob();
-      imgCache.set(url, await new Promise((ok, bad) => {
-        const fr = new FileReader();
-        fr.onload = () => ok(fr.result);
-        fr.onerror = bad;
-        fr.readAsDataURL(blob);
-      }));
+      let data = src;
+      if (!src.startsWith("data:")) {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), IMG_TIMEOUT_MS);
+        const res = await fetch(src, { signal: ctrl.signal, mode: "cors", credentials: "omit" });
+        clearTimeout(timer);
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const blob = await res.blob();
+        if (!/^image\//.test(blob.type)) throw new Error("ไม่ใช่ไฟล์รูป (" + (blob.type || "ไม่ทราบชนิด") + ")");
+        data = await new Promise((ok, bad) => {
+          const fr = new FileReader();
+          fr.onload = () => ok(fr.result);
+          fr.onerror = bad;
+          fr.readAsDataURL(blob);
+        });
+      }
+      if (!await decodable(data)) throw new Error("เปิดเป็นรูปไม่ได้");
+      imgCache.set(src, data);
     } catch (e) {
-      imgCache.set(url, null);   // null = โหลดไม่ได้ → ซ่อนกรอบรูป ไม่ปล่อยให้ค้าง
+      imgCache.set(src, null);   // null = ใช้ไม่ได้ → ซ่อนกรอบรูป ไม่เหลือกล่องว่าง
       imgFailed++;
-      console.warn("[pdf] โหลดรูปไม่สำเร็จ:", url, e?.message || e);
+      console.warn("[pdf] รูปใช้ไม่ได้:", src.slice(0, 120), "·", e?.message || e);
     }
   }));
 
@@ -531,13 +547,18 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
     const c = scaleFontInElement(el.cloneNode(true), INVOICE_PDF_FONT_SCALE);
     c.removeAttribute("id");
     if (label) { const t = c.querySelector("[data-doc-label]"); if (t) t.textContent = label; }
-    // 🖼️ ใส่รูปที่โหลดไว้แล้ว · รูปที่โหลดไม่ได้ให้ซ่อนทั้งกรอบ (ไม่เหลือช่องว่างเปล่า)
+    // 🖼️ ใส่รูปที่ตรวจแล้วว่าเปิดได้ · รูปที่ใช้ไม่ได้ให้ซ่อนทั้งช่อง
+    //    ต้องซ่อนถึงชั้น "ช่องในตาราง" ไม่ใช่แค่ตัว <img> ไม่งั้นจะเหลือกรอบว่าง ๆ ค้างในบิล
     c.querySelectorAll("img").forEach(im => {
       const s = im.getAttribute("src");
-      if (!s || s.startsWith("data:")) return;
+      if (!s) return;
       const data = imgCache.get(s);
-      if (data) im.setAttribute("src", data);
-      else (im.closest("div") || im).style.display = "none";
+      if (data) { im.setAttribute("src", data); return; }
+      // ⚠️ ซ่อนเฉพาะ "ช่องรูปงาน" ที่ทำเครื่องหมายไว้ — โลโก้บริษัทก็เป็น <img> เหมือนกัน
+      //    ถ้าไล่ซ่อนขึ้นไปตามโครงสร้างเฉย ๆ จะพลอยซ่อนชื่อบริษัทไปด้วย
+      const cell = im.closest("[data-img-cell]");
+      if (cell) cell.style.display = "none";
+      else im.style.display = "none";                 // เช่น โลโก้ — ซ่อนแค่ตัวรูป
     });
     // 🩹 คลาย nowrap ของช่องรุ่น/สี — ไม่งั้นตารางดันกว้างเกินแล้วคอลัมน์ขวาโดนตัด
     c.querySelectorAll("td, th").forEach(n => { n.style.whiteSpace = "normal"; n.style.overflowWrap = "break-word"; });

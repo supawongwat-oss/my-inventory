@@ -150,7 +150,9 @@ export default function PrintInvoiceModal({
                         {imgs.length>0&&(
                           <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap:5}}>
                             {imgs.map((im,i)=>(
-                              <div key={i} style={{textAlign:"center"}}>
+                              // data-img-cell = ช่องรูปงาน · ตอนทำ PDF ถ้ารูปเปิดไม่ได้จะซ่อนทั้งช่องนี้
+                              // (ระบุให้ชัดเพื่อไม่ให้ไปซ่อนโลโก้บริษัทซึ่งเป็น <img> เหมือนกัน)
+                              <div key={i} data-img-cell="true" style={{textAlign:"center"}}>
                                 <div style={{width:"100%",height:imgs.length===1?92:76,background:"#fff",border:"1px solid #e2e8f0",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
                                   <img src={im.dataUrl} alt="" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/>
                                 </div>
