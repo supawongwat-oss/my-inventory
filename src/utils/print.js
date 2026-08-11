@@ -494,6 +494,8 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
     const wrap = document.createElement("div");
     labels.forEach((label, i) => {
       const clone = el.cloneNode(true);
+      clone.removeAttribute("id");        // กัน id ซ้ำกัน 3 ตัวในเอกสารเดียว
+      clone.setAttribute("data-bill", ""); // ใช้เลือกตัวบิลจริงทีหลัง (ตัว wrap ไม่ใช่บิล)
       const tag = clone.querySelector("[data-doc-label]");
       if (tag) tag.textContent = label;
       scaleFontInElement(clone, INVOICE_PDF_FONT_SCALE);
@@ -505,6 +507,7 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
     source = wrap;
   } else {
     source = scaleFontInElement(el.cloneNode(true), INVOICE_PDF_FONT_SCALE);
+    source.setAttribute("data-bill", "");
   }
   // 📐 บังคับความกว้าง = A4 content (~190mm ≈ 718px @96dpi) → html2canvas จับภาพเท่าหน้าจริง ไม่ล้นขอบ
   // 🩹 คลาย nowrap ของช่องรุ่น/สี — ไม่งั้นตารางดันกว้างเกิน 718px แล้วคอลัมน์ขวาโดนตัดใน PDF
@@ -512,11 +515,16 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
   // ตัวเลขเงินห้ามตัดกลาง
   source.querySelectorAll("tr").forEach(tr => { const c = tr.children; [c[c.length-1], c[c.length-2]].forEach(td => { if (td) { td.style.whiteSpace = "nowrap"; td.style.overflowWrap = "normal"; } }); });
   source.querySelectorAll("tfoot td, tfoot th, [data-nowrap]").forEach(n => { n.style.whiteSpace = "nowrap"; n.style.overflowWrap = "normal"; });
-  // 📏 PDF มีขอบบน-ล่างของตัวเองอยู่แล้ว (PDF_MARGIN_*) ซึ่งเป็นแถบที่ใช้วางแถบหัวบิล
+  // 📏 PDF มีขอบบน-ล่างของตัวเองอยู่แล้ว (PDF_MARGIN_*) ซึ่งเป็นแถบที่ใช้วางเลขที่บิล
   //    กับเลขหน้าด้วย → ต้องเอา padding บน-ล่างของเอกสารออก ไม่งั้นจะเว้นซ้ำเป็น 2 เท่า
   //    (ตอนพิมพ์ตรง กลับกัน: @page = 0 แล้วใช้ padding แทน)
-  source.style.paddingTop = "0";
-  source.style.paddingBottom = "0";
+  // ⚠️ ต้องใส่ที่ "ตัวบิล" ไม่ใช่ที่ source — โหมด 3 ชุด source เป็นแค่กล่องครอบ
+  //    (เดิมใส่ที่ source ทำให้โหมด 3 ชุดมีขอบไม่เท่าโหมดชุดเดียว)
+  source.querySelectorAll("[data-bill]").forEach(b => {
+    b.style.paddingTop = "0";
+    b.style.paddingBottom = "0";
+  });
+  if (source.hasAttribute("data-bill")) { source.style.paddingTop = "0"; source.style.paddingBottom = "0"; }
   source.style.width = PDF_WIDTH_PX + "px";
   source.style.maxWidth = PDF_WIDTH_PX + "px";
   // 🩹 กันตัวอักษรถูกขยายอัตโนมัติตอน html2canvas วาด (สืบทอดลงลูกทุกตัว)
@@ -524,6 +532,44 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
   source.style.textSizeAdjust = "100%";
   source.style.overflow = "hidden";
   source.style.boxSizing = "border-box";
+
+  // 📏 วัดความสูงจริงก่อน แล้วเลือกความละเอียดให้ภาพไม่เกินเพดานของเบราว์เซอร์
+  //
+  // ⚠️ ต้นเหตุของอาการ "พิมพ์ 3 ชุด บางชุดครบ บางชุดขาด บางแถวหาย":
+  //    PDF วาดทั้งเอกสารเป็นภาพเดียว ยิ่ง 3 ชุดยิ่งสูงมาก
+  //    แต่ canvas ของเบราว์เซอร์มีเพดานความสูงราว 16,384px
+  //    เกินเมื่อไหร่ ส่วนที่เกินจะกลายเป็นว่างเปล่า "เงียบ ๆ" ไม่มี error
+  //    ที่ scale 2 บิล 3 หน้า × 3 ชุด ≈ 19,000px → ทะลุเพดาน จึงหายเป็นบางส่วน
+  //    ยิ่งบิลยาวยิ่งหายมาก จึงดูเหมือนสุ่ม
+  //    แท็บเล็ตมีเพดานต่ำกว่าเครื่อง PC มาก (PC ทดสอบได้ ~40,000px · มือถือ/แท็บเล็ตราว 16,384px)
+  //    และหน่วยความจำจำกัดกว่า จึงพังบนแท็บเล็ตแต่ PC ปกติ
+  const MAX_CANVAS_PX = 15000;   // เผื่อจากเพดาน 16,384 ของแท็บเล็ต
+  const MIN_SCALE = 0.8;         // ต่ำกว่านี้ตัวหนังสือเริ่มอ่านยาก
+  let renderScale = 2;
+  let tooTall = false;
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:fixed;left:-99999px;top:0;visibility:hidden;";
+  probe.appendChild(source);
+  document.body.appendChild(probe);
+  try {
+    const h = Math.max(source.scrollHeight, source.offsetHeight, 1);
+    // ยอมลดความละเอียดลง — ชัดน้อยลงนิดหน่อย แต่ "ครบ" สำคัญกว่า
+    renderScale = Math.min(2, Math.max(MIN_SCALE, MAX_CANVAS_PX / h));
+    tooTall = h * renderScale > MAX_CANVAS_PX;
+    if (tooTall) console.warn(`[pdf] เอกสารสูง ${h}px · แม้ลดความละเอียดเหลือ ${renderScale} ก็ยังเกินเพดานภาพ`);
+  } catch (e) {
+    console.warn("[pdf] วัดความสูงไม่สำเร็จ ใช้ค่าเริ่มต้น:", e?.message || e);
+  } finally {
+    probe.removeChild(source);
+    document.body.removeChild(probe);
+  }
+  // ⚠️ เตือนก่อน "ดีกว่าได้ไฟล์ที่ขาดหายโดยไม่รู้ตัว" — ซึ่งอันตรายกับเอกสารส่งลูกค้า
+  if (tooTall && !window.confirm(
+    "บิลนี้ยาวเกินกว่าจะทำ PDF พร้อมกัน 3 ชุดได้ครบ\n\n" +
+    "ถ้าทำต่อ บางชุดอาจมีรายการขาดหาย\n" +
+    "แนะนำให้กด \"📄 PDF\" (ชุดเดียว) แล้วสั่งพิมพ์ 3 ชุดที่เครื่องพิมพ์แทน\n\n" +
+    "ยืนยันทำต่อไหม?"
+  )) return;
   // 🚀 lazy import — โหลด html2pdf.js เฉพาะตอนกดปุ่มนี้เท่านั้น (~400KB)
   // 🏷️ แถบระบุตัวบิลสำหรับ PDF — ต้องทำเป็น "รูปภาพ" แล้วแปะทีละหน้า
   //
@@ -566,7 +612,7 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
     backgroundColor: "#ffffff",
     // windowWidth ในนี้บังคับให้ html2canvas จัดหน้าเสมือนจอกว้าง 764px
     // → media query / ความกว้างแบบ % คิดเหมือนกันทุกเครื่อง
-    html2canvas: { scale: 2, useCORS: true, windowWidth: PDF_WIDTH_PX, width: PDF_WIDTH_PX, backgroundColor: "#ffffff" },
+    html2canvas: { scale: renderScale, useCORS: true, windowWidth: PDF_WIDTH_PX, width: PDF_WIDTH_PX, backgroundColor: "#ffffff" },
     jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
     // 📄 วัดตำแหน่งของทุกแถวก่อนแบ่งหน้า — แถวไหนเหลือที่ไม่พอ ให้ยกไปทั้งแถวที่หน้าถัดไป
     //
