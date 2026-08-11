@@ -499,10 +499,20 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
       const tag = clone.querySelector("[data-doc-label]");
       if (tag) tag.textContent = label;
       scaleFontInElement(clone, INVOICE_PDF_FONT_SCALE);
-      const pageWrap = document.createElement("div");
-      if (i < labels.length - 1) pageWrap.style.pageBreakAfter = "always";
-      pageWrap.appendChild(clone);
-      wrap.appendChild(pageWrap);
+      // 📄 สั่งขึ้นหน้าใหม่ "ก่อนชุดนี้" — ไม่ใช่ "หลังชุดก่อนหน้า"
+      //
+      // ⚠️ ทำไมต้องเป็นแบบนี้: ไลบรารีวน element ตามลำดับในเอกสาร พ่อมาก่อนลูก
+      //    ถ้าสั่งขึ้นหน้าใหม่ที่กล่องครอบ (ซึ่งเป็นพ่อของทั้งชุด) ตัวคั่นจะถูกคำนวณ
+      //    จากความสูง "ก่อน" ที่แถวข้างในจะถูกดันหนีขอบหน้า พอแถวถูกดันจริง
+      //    ชุดถัดไปก็เริ่มไม่ตรงหัวกระดาษ แล้วคลาดสะสมไปทีละชุด
+      //    → ชุด 2 กับ 3 ตัดหน้าคนละแถวกับชุด 1 ทั้งที่เนื้อหาเหมือนกันเป๊ะ
+      //    ย้ายมาไว้ที่ตัวบิลของชุดถัดไป ตำแหน่งจะถูกคำนวณหลังชุดก่อนหน้าเสร็จแล้ว
+      if (i > 0) {
+        clone.setAttribute("data-copy-break", "");
+        clone.style.pageBreakBefore = "always";
+        clone.style.breakBefore = "page";
+      }
+      wrap.appendChild(clone);
     });
     source = wrap;
   } else {
@@ -624,8 +634,10 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
     //   tr           = แถวในตาราง
     //   [data-keep]  = ก้อนที่ทำเครื่องหมายไว้ในบิล เช่น ช่องเซ็นรับของ / กล่องหมายเหตุ
     //                  (เดิมกันแค่ tr ช่องเซ็นจึงขาดครึ่งคาบเกี่ยว 2 หน้า)
-    //   thead/tfoot  = หัวตารางกับแถวสรุปยอด
-    pagebreak: { mode: ["css", "legacy"], avoid: ["tr", "[data-keep]", "thead", "tfoot"] }
+    // ⚠️ ไม่ใส่ thead/tfoot — เป็น "พ่อ" ของ tr ซึ่งถูกกันอยู่แล้ว
+    //    ใส่ไปจะถูกดันซ้อนกันสองชั้น ทำให้ตำแหน่งคลาดและเกิดที่ว่างเกินจำเป็น
+    // before = จุดที่บังคับขึ้นหน้าใหม่ (ตัวบิลของชุดที่ 2 และ 3)
+    pagebreak: { mode: ["css", "legacy"], avoid: ["tr", "[data-keep]"], before: ["[data-copy-break]"] }
   }).from(source);
 
   await worker.toPdf().get("pdf").then((pdf) => {
