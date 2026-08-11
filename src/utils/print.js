@@ -28,8 +28,10 @@ export const INVOICE_PDF_FONT_SCALE = INVOICE_FONT_SCALE;
 //   (root.style.width = หน้ากระดาษ - 2×ขอบ) จึงไม่ขึ้นกับค่า Margins
 export const INVOICE_MARGIN_TOP = "0mm";
 export const INVOICE_MARGIN_BOTTOM = "0mm";
-export const INVOICE_PAD = "8mm";
-const PDF_MARGIN_TOP_MM = 8;
+// ขอบบน 4mm · ขอบล่าง 8mm (ล่างต้องกว้างกว่า เพราะเป็นที่วางเลขที่บิล+เลขหน้าใน PDF)
+export const INVOICE_PAD_TOP = "4mm";
+export const INVOICE_PAD_BOTTOM = "8mm";
+const PDF_MARGIN_TOP_MM = 4;
 const PDF_MARGIN_BOTTOM_MM = 8;
 // 📐 ความกว้างที่ใช้วาด PDF (px) — ต้องตรึงไว้ ห้ามปล่อยให้ไปวัดจากเครื่อง
 //
@@ -111,8 +113,8 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
     const finalElM = isThermal ? cloneM : scaleFontInElement(cloneM, mobileFontScale);
     // 🩹 ลด padding รอบ ๆ print-area — เดิม 32px 40px กว้างเกินไป
     // ถ้ากำหนดระยะบนไว้ที่ @page แล้ว ต้องไม่ใส่ padding บนซ้ำ ไม่งั้นหน้าแรกจะเว้นมากกว่าหน้าอื่น
-    // ระยะบน-ล่างคงไว้ที่ INVOICE_PAD เสมอ — เป็นชั้นที่ Chrome ปิดไม่ได้
-    finalElM.style.padding = pageMarginTop ? `${INVOICE_PAD} 8mm` : "6mm 8mm";
+    // ระยะบน-ล่างคงไว้เสมอ — เป็นชั้นที่ Chrome ปิดไม่ได้
+    finalElM.style.padding = pageMarginTop ? `${INVOICE_PAD_TOP} 8mm ${INVOICE_PAD_BOTTOM}` : "6mm 8mm";
     finalElM.style.boxSizing = "border-box";
     finalElM.style.width = "100%";
     finalElM.style.maxWidth = "100%";
@@ -572,7 +574,12 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
     // → บรรทัดขาดครึ่ง ตัวหนังสือโดนตัดคาบเกี่ยว 2 หน้า
     // ส่วนกฎ page-break-inside: avoid ที่มีอยู่ ใช้เฉพาะตอนพิมพ์ตรงจากเบราว์เซอร์
     // ไม่ได้ติดไปกับ PDF จึงต้องบอกตรงนี้อีกที
-    pagebreak: { mode: ["css", "legacy"], avoid: ["tr"] }
+    // avoid = ก้อนที่ห้ามตัดกลาง — html2pdf จะวัดตำแหน่งแล้วยกไปทั้งก้อนถ้าเหลือที่ไม่พอ
+    //   tr           = แถวในตาราง
+    //   [data-keep]  = ก้อนที่ทำเครื่องหมายไว้ในบิล เช่น ช่องเซ็นรับของ / กล่องหมายเหตุ
+    //                  (เดิมกันแค่ tr ช่องเซ็นจึงขาดครึ่งคาบเกี่ยว 2 หน้า)
+    //   thead/tfoot  = หัวตารางกับแถวสรุปยอด
+    pagebreak: { mode: ["css", "legacy"], avoid: ["tr", "[data-keep]", "thead", "tfoot"] }
   }).from(source);
 
   await worker.toPdf().get("pdf").then((pdf) => {

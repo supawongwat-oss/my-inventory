@@ -1,6 +1,6 @@
 import React from "react";
 import { splitSizesIntoRows } from "../theme";
-import { INVOICE_FONT_SCALE, INVOICE_MARGIN_TOP, INVOICE_MARGIN_BOTTOM, INVOICE_PAD } from "../utils/print";
+import { INVOICE_FONT_SCALE, INVOICE_MARGIN_TOP, INVOICE_MARGIN_BOTTOM, INVOICE_PAD_TOP, INVOICE_PAD_BOTTOM } from "../utils/print";
 
 // 🕶️ ชื่อบริษัทแบบย่อ — ตัดคำนำหน้า/ต่อท้ายทางกฎหมายออก
 // ใช้ตอนติ๊ก "ซ่อนข้อมูลบริษัท" (ลูกค้าที่ไม่ต้องการรับ VAT)
@@ -39,7 +39,7 @@ export default function PrintInvoiceModal({
                    หน้า 2 เป็นต้นไปจะไม่ได้ ทำให้ชิดขอบกว่าหน้าแรก
                 กล่องครอบด้านนอกใส่ระยะให้เฉพาะตอนดูบนจอ (ไม่ถูกพิมพ์ เพราะพิมพ์เฉพาะ #invoice-print-area) */}
             <div style={{padding:INVOICE_MARGIN_TOP+" 0"}}>
-            <div id="invoice-print-area" style={{padding:`${INVOICE_PAD} 2.5mm`,fontFamily:"'Sarabun',sans-serif",color:"#000",boxSizing:"border-box"}}>
+            <div id="invoice-print-area" style={{padding:`${INVOICE_PAD_TOP} 2.5mm ${INVOICE_PAD_BOTTOM}`,fontFamily:"'Sarabun',sans-serif",color:"#000",boxSizing:"border-box"}}>
 
               {/* ── HEADER ── */}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:7,paddingBottom:6,borderBottom:"2px solid #000"}}>
@@ -216,10 +216,10 @@ export default function PrintInvoiceModal({
                           จะไล่ไม่ได้ว่าเป็นของใคร — ที่วันละ 200-400 ออเดอร์ โอกาสเกิดสูง
                           ทำเป็นบรรทัดเดียวตัวเล็ก เพื่อไม่ให้กินพื้นที่หน้าแรก */}
                       <tr>
-                        {/* paddingTop = INVOICE_PAD → หน้า 2 เป็นต้นไปได้ระยะบนเท่าหน้าแรก
+                        {/* paddingTop = INVOICE_PAD_TOP → หน้า 2 เป็นต้นไปได้ระยะบนเท่าหน้าแรก
                             (หน้าแรกได้จาก padding ของ #invoice-print-area · หน้าถัดไปได้จากแถบนี้
                              เพราะแถบอยู่ใน <thead> จึงถูกพิมพ์ซ้ำทุกหน้า) */}
-                        <td colSpan={TOTAL_COLS} style={{padding:`${INVOICE_PAD} 6px 3px`,border:"1px solid #000",borderBottom:"none",background:"#fff",fontSize:9,color:"#000",whiteSpace:"nowrap",overflow:"hidden"}}>
+                        <td colSpan={TOTAL_COLS} style={{padding:`${INVOICE_PAD_TOP} 6px 3px`,border:"1px solid #000",borderBottom:"none",background:"#fff",fontSize:9,color:"#000",whiteSpace:"nowrap",overflow:"hidden"}}>
                           เลขที่ <b style={{fontFamily:"monospace"}}>{invoice.invoiceNo}</b>
                           {invoice.customerName?<> · {invoice.customerName}</>:null}
                           {invoice.date?<> · {invoice.date}</>:null}
@@ -384,13 +384,15 @@ export default function PrintInvoiceModal({
 
               {/* ── หมายเหตุ ── */}
               {invoice.note&&(
-                <div style={{padding:"10px 14px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,fontSize:11,color:"#78350f",marginBottom:16}}>
+                <div data-keep="true" style={{padding:"10px 14px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,fontSize:11,color:"#78350f",marginBottom:16,breakInside:"avoid",pageBreakInside:"avoid"}}>
                   <span style={{fontWeight:700}}>หมายเหตุ:</span> {invoice.note}
                 </div>
               )}
 
               {/* ── เส้นแบ่ง + ช่องลายเซ็น — สีดำ ── */}
-              <div style={{marginTop:22,paddingTop:10,borderTop:"1px solid #000"}}>
+              {/* data-keep = ห้ามตัดกลางก้อนนี้ตอนแบ่งหน้า (ทั้งพิมพ์ตรงและ PDF)
+                  ไม่งั้นช่องเซ็นรับของอาจขาดครึ่ง คาบเกี่ยว 2 หน้า */}
+              <div data-keep="true" style={{marginTop:22,paddingTop:10,borderTop:"1px solid #000",breakInside:"avoid",pageBreakInside:"avoid"}}>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16}}>
                   {[
                     {label:"ผู้รับเงิน / ผู้ออกเอกสาร"},
