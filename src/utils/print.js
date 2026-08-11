@@ -42,6 +42,8 @@ const PDF_MARGIN_BOTTOM_MM = 8;
 // เครื่องที่วัดได้กว้างกว่า 764 จะได้กรอบกว้างกว่า แต่ตัวบิลยังกว้าง 764 เท่าเดิม
 // → พอย่อทั้งกรอบให้พอดีหน้ากระดาษ บิลเลยเหลือแค่ครึ่งหน้า (คนละเครื่องได้ผลไม่เหมือนกัน)
 const PDF_WIDTH_PX = 764;
+// เตือนเรื่องรูปใส่ไม่ได้แค่ครั้งเดียวต่อการเปิดแอป — ไม่งั้นเด้งทุกครั้งที่กด PDF
+let warnedImgCors = false;
 export const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
   // ต้อง attach root เข้า DOM ชั่วคราวเพื่ออ่าน computed style
   const holder = document.createElement("div");
@@ -488,11 +490,55 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
   if (!el || !inv) return;
   const safeName = (inv.customerName || "ลูกค้า").replace(/[\\/:*?"<>|]/g, "_").slice(0, 30);
   const filename = `${inv.invoiceNo || "INV"}_${safeName}.pdf`;
+  // 🖼️ โหลดรูปในบิลมาฝังเป็นข้อมูลในตัวก่อนวาด — ทำครั้งเดียว ใช้ร่วมกันทุกชุด
+  //
+  // ⚠️ ทำไมต้องทำ: รูปงาน custom เก็บอยู่บน Firebase Storage เป็นลิงก์ (คนละโดเมนกับแอป)
+  //    ตัววาดภาพดึงรูปข้ามโดเมนมาใส่ผืนผ้าใบไม่ได้ ถ้าฝั่ง Storage ไม่อนุญาต (CORS)
+  //    ผลคือ 1) รอจนหมดเวลา 15 วินาทีต่อรูป → ช้ามาก  2) รูปไม่ขึ้นในไฟล์
+  //    ดึงมาแปลงเป็นข้อมูลในตัวก่อน จะไม่มีปัญหาข้ามโดเมนตอนวาด
+  //    และเพราะวาดทีละชุด 3 รอบ ถ้าไม่แคชไว้จะโหลดรูปซ้ำ 3 เท่า
+  const IMG_TIMEOUT_MS = 8000;
+  const imgCache = new Map();
+  const remoteSrcs = [...new Set(
+    Array.from(el.querySelectorAll("img"))
+      .map(i => i.getAttribute("src"))
+      .filter(u => u && !u.startsWith("data:"))
+  )];
+  let imgFailed = 0;
+  await Promise.all(remoteSrcs.map(async (url) => {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), IMG_TIMEOUT_MS);
+      const res = await fetch(url, { signal: ctrl.signal, mode: "cors", credentials: "omit" });
+      clearTimeout(timer);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const blob = await res.blob();
+      imgCache.set(url, await new Promise((ok, bad) => {
+        const fr = new FileReader();
+        fr.onload = () => ok(fr.result);
+        fr.onerror = bad;
+        fr.readAsDataURL(blob);
+      }));
+    } catch (e) {
+      imgCache.set(url, null);   // null = โหลดไม่ได้ → ซ่อนกรอบรูป ไม่ปล่อยให้ค้าง
+      imgFailed++;
+      console.warn("[pdf] โหลดรูปไม่สำเร็จ:", url, e?.message || e);
+    }
+  }));
+
   // 🧾 เตรียม "บิล 1 ชุด" ให้พร้อมวาด (ทุกชุดผ่านขั้นตอนเดียวกันเป๊ะ)
   const prepareBill = (label) => {
     const c = scaleFontInElement(el.cloneNode(true), INVOICE_PDF_FONT_SCALE);
     c.removeAttribute("id");
     if (label) { const t = c.querySelector("[data-doc-label]"); if (t) t.textContent = label; }
+    // 🖼️ ใส่รูปที่โหลดไว้แล้ว · รูปที่โหลดไม่ได้ให้ซ่อนทั้งกรอบ (ไม่เหลือช่องว่างเปล่า)
+    c.querySelectorAll("img").forEach(im => {
+      const s = im.getAttribute("src");
+      if (!s || s.startsWith("data:")) return;
+      const data = imgCache.get(s);
+      if (data) im.setAttribute("src", data);
+      else (im.closest("div") || im).style.display = "none";
+    });
     // 🩹 คลาย nowrap ของช่องรุ่น/สี — ไม่งั้นตารางดันกว้างเกินแล้วคอลัมน์ขวาโดนตัด
     c.querySelectorAll("td, th").forEach(n => { n.style.whiteSpace = "normal"; n.style.overflowWrap = "break-word"; });
     // ตัวเลขเงินห้ามตัดกลาง
@@ -595,7 +641,9 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
       width: PDF_WIDTH_PX,
       windowWidth: PDF_WIDTH_PX,
       backgroundColor: "#ffffff",
-      html2canvas: { scale, useCORS: true, windowWidth: PDF_WIDTH_PX, width: PDF_WIDTH_PX, backgroundColor: "#ffffff" },
+      // imageTimeout สั้น — รูปถูกฝังเป็นข้อมูลในตัวแล้ว ไม่ต้องรอโหลดจากเน็ตอีก
+      // (ค่าเดิม 15 วินาทีต่อรูป คือเหตุผลที่บิลมีรูปแล้วสร้าง PDF ช้ามาก)
+      html2canvas: { scale, useCORS: true, imageTimeout: 3000, windowWidth: PDF_WIDTH_PX, width: PDF_WIDTH_PX, backgroundColor: "#ffffff" },
       jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
       // ก้อนที่ห้ามตัดกลาง: แถวในตาราง + ช่องเซ็นรับของ/กล่องหมายเหตุ
       pagebreak: { mode: ["css", "legacy"], avoid: ["tr", "[data-keep]"] },
@@ -640,4 +688,14 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
     }
   }
   pdf.save(filename);
+
+  // ⚠️ รูปหายไปจากเอกสารที่ส่งลูกค้า ต้องบอก ไม่ปล่อยเงียบ — เตือนครั้งเดียวต่อการเปิดแอป
+  if (imgFailed > 0 && !warnedImgCors) {
+    warnedImgCors = true;
+    alert(
+      `⚠️ PDF นี้มีรูปงาน ${imgFailed} รูปที่โหลดมาใส่ไฟล์ไม่ได้ — ไฟล์ที่ได้จะไม่มีรูปนั้น\n\n` +
+      `ถ้าจำเป็นต้องมีรูป ให้สั่งพิมพ์ตรงจากเบราว์เซอร์แทน\n\n` +
+      `(ดูรายละเอียดสาเหตุได้ในหน้าต่าง Console — ถ้าเจอบ่อย แจ้งผู้ดูแลระบบ)`
+    );
+  }
 };
