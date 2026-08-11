@@ -488,99 +488,52 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
   if (!el || !inv) return;
   const safeName = (inv.customerName || "ลูกค้า").replace(/[\\/:*?"<>|]/g, "_").slice(0, 30);
   const filename = `${inv.invoiceNo || "INV"}_${safeName}.pdf`;
-  let source;
-  if (copies) {
-    const labels = ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"];
-    const wrap = document.createElement("div");
-    labels.forEach((label, i) => {
-      const clone = el.cloneNode(true);
-      clone.removeAttribute("id");        // กัน id ซ้ำกัน 3 ตัวในเอกสารเดียว
-      clone.setAttribute("data-bill", ""); // ใช้เลือกตัวบิลจริงทีหลัง (ตัว wrap ไม่ใช่บิล)
-      const tag = clone.querySelector("[data-doc-label]");
-      if (tag) tag.textContent = label;
-      scaleFontInElement(clone, INVOICE_PDF_FONT_SCALE);
-      // 📄 สั่งขึ้นหน้าใหม่ "ก่อนชุดนี้" — ไม่ใช่ "หลังชุดก่อนหน้า"
-      //
-      // ⚠️ ทำไมต้องเป็นแบบนี้: ไลบรารีวน element ตามลำดับในเอกสาร พ่อมาก่อนลูก
-      //    ถ้าสั่งขึ้นหน้าใหม่ที่กล่องครอบ (ซึ่งเป็นพ่อของทั้งชุด) ตัวคั่นจะถูกคำนวณ
-      //    จากความสูง "ก่อน" ที่แถวข้างในจะถูกดันหนีขอบหน้า พอแถวถูกดันจริง
-      //    ชุดถัดไปก็เริ่มไม่ตรงหัวกระดาษ แล้วคลาดสะสมไปทีละชุด
-      //    → ชุด 2 กับ 3 ตัดหน้าคนละแถวกับชุด 1 ทั้งที่เนื้อหาเหมือนกันเป๊ะ
-      //    ย้ายมาไว้ที่ตัวบิลของชุดถัดไป ตำแหน่งจะถูกคำนวณหลังชุดก่อนหน้าเสร็จแล้ว
-      if (i > 0) {
-        clone.setAttribute("data-copy-break", "");
-        clone.style.pageBreakBefore = "always";
-        clone.style.breakBefore = "page";
-      }
-      wrap.appendChild(clone);
-    });
-    source = wrap;
-  } else {
-    source = scaleFontInElement(el.cloneNode(true), INVOICE_PDF_FONT_SCALE);
-    source.setAttribute("data-bill", "");
-  }
-  // 📐 บังคับความกว้าง = A4 content (~190mm ≈ 718px @96dpi) → html2canvas จับภาพเท่าหน้าจริง ไม่ล้นขอบ
-  // 🩹 คลาย nowrap ของช่องรุ่น/สี — ไม่งั้นตารางดันกว้างเกิน 718px แล้วคอลัมน์ขวาโดนตัดใน PDF
-  source.querySelectorAll("td, th").forEach(n => { n.style.whiteSpace = "normal"; n.style.overflowWrap = "break-word"; });
-  // ตัวเลขเงินห้ามตัดกลาง
-  source.querySelectorAll("tr").forEach(tr => { const c = tr.children; [c[c.length-1], c[c.length-2]].forEach(td => { if (td) { td.style.whiteSpace = "nowrap"; td.style.overflowWrap = "normal"; } }); });
-  source.querySelectorAll("tfoot td, tfoot th, [data-nowrap]").forEach(n => { n.style.whiteSpace = "nowrap"; n.style.overflowWrap = "normal"; });
-  // 📏 PDF มีขอบบน-ล่างของตัวเองอยู่แล้ว (PDF_MARGIN_*) ซึ่งเป็นแถบที่ใช้วางเลขที่บิล
-  //    กับเลขหน้าด้วย → ต้องเอา padding บน-ล่างของเอกสารออก ไม่งั้นจะเว้นซ้ำเป็น 2 เท่า
-  //    (ตอนพิมพ์ตรง กลับกัน: @page = 0 แล้วใช้ padding แทน)
-  // ⚠️ ต้องใส่ที่ "ตัวบิล" ไม่ใช่ที่ source — โหมด 3 ชุด source เป็นแค่กล่องครอบ
-  //    (เดิมใส่ที่ source ทำให้โหมด 3 ชุดมีขอบไม่เท่าโหมดชุดเดียว)
-  source.querySelectorAll("[data-bill]").forEach(b => {
-    b.style.paddingTop = "0";
-    b.style.paddingBottom = "0";
-  });
-  if (source.hasAttribute("data-bill")) { source.style.paddingTop = "0"; source.style.paddingBottom = "0"; }
-  source.style.width = PDF_WIDTH_PX + "px";
-  source.style.maxWidth = PDF_WIDTH_PX + "px";
-  // 🩹 กันตัวอักษรถูกขยายอัตโนมัติตอน html2canvas วาด (สืบทอดลงลูกทุกตัว)
-  source.style.webkitTextSizeAdjust = "100%";
-  source.style.textSizeAdjust = "100%";
-  source.style.overflow = "hidden";
-  source.style.boxSizing = "border-box";
+  // 🧾 เตรียม "บิล 1 ชุด" ให้พร้อมวาด (ทุกชุดผ่านขั้นตอนเดียวกันเป๊ะ)
+  const prepareBill = (label) => {
+    const c = scaleFontInElement(el.cloneNode(true), INVOICE_PDF_FONT_SCALE);
+    c.removeAttribute("id");
+    if (label) { const t = c.querySelector("[data-doc-label]"); if (t) t.textContent = label; }
+    // 🩹 คลาย nowrap ของช่องรุ่น/สี — ไม่งั้นตารางดันกว้างเกินแล้วคอลัมน์ขวาโดนตัด
+    c.querySelectorAll("td, th").forEach(n => { n.style.whiteSpace = "normal"; n.style.overflowWrap = "break-word"; });
+    // ตัวเลขเงินห้ามตัดกลาง
+    c.querySelectorAll("tr").forEach(tr => { const ch = tr.children; [ch[ch.length-1], ch[ch.length-2]].forEach(td => { if (td) { td.style.whiteSpace = "nowrap"; td.style.overflowWrap = "normal"; } }); });
+    c.querySelectorAll("tfoot td, tfoot th, [data-nowrap]").forEach(n => { n.style.whiteSpace = "nowrap"; n.style.overflowWrap = "normal"; });
+    // PDF มีขอบบน-ล่างของตัวเองแล้ว (เป็นแถบวางเลขที่บิล+เลขหน้า) → เอา padding ในเอกสารออก
+    c.style.paddingTop = "0";
+    c.style.paddingBottom = "0";
+    // 📐 ตรึงความกว้าง ไม่ให้ไปอิงขนาดหน้าจอของเครื่อง
+    c.style.width = PDF_WIDTH_PX + "px";
+    c.style.maxWidth = PDF_WIDTH_PX + "px";
+    // 🩹 กันตัวอักษรถูกขยายอัตโนมัติ (จอที่ตั้งสเกลใหญ่)
+    c.style.webkitTextSizeAdjust = "100%";
+    c.style.textSizeAdjust = "100%";
+    c.style.overflow = "hidden";
+    c.style.boxSizing = "border-box";
+    return c;
+  };
 
-  // 📏 วัดความสูงจริงก่อน แล้วเลือกความละเอียดให้ภาพไม่เกินเพดานของเบราว์เซอร์
-  //
-  // ⚠️ ต้นเหตุของอาการ "พิมพ์ 3 ชุด บางชุดครบ บางชุดขาด บางแถวหาย":
-  //    PDF วาดทั้งเอกสารเป็นภาพเดียว ยิ่ง 3 ชุดยิ่งสูงมาก
-  //    แต่ canvas ของเบราว์เซอร์มีเพดานความสูงราว 16,384px
-  //    เกินเมื่อไหร่ ส่วนที่เกินจะกลายเป็นว่างเปล่า "เงียบ ๆ" ไม่มี error
-  //    ที่ scale 2 บิล 3 หน้า × 3 ชุด ≈ 19,000px → ทะลุเพดาน จึงหายเป็นบางส่วน
-  //    ยิ่งบิลยาวยิ่งหายมาก จึงดูเหมือนสุ่ม
-  //    แท็บเล็ตมีเพดานต่ำกว่าเครื่อง PC มาก (PC ทดสอบได้ ~40,000px · มือถือ/แท็บเล็ตราว 16,384px)
-  //    และหน่วยความจำจำกัดกว่า จึงพังบนแท็บเล็ตแต่ PC ปกติ
-  const MAX_CANVAS_PX = 15000;   // เผื่อจากเพดาน 16,384 ของแท็บเล็ต
-  const MIN_SCALE = 0.8;         // ต่ำกว่านี้ตัวหนังสือเริ่มอ่านยาก
-  let renderScale = 2;
-  let tooTall = false;
-  const probe = document.createElement("div");
-  probe.style.cssText = "position:fixed;left:-99999px;top:0;visibility:hidden;";
-  probe.appendChild(source);
-  document.body.appendChild(probe);
-  try {
-    const h = Math.max(source.scrollHeight, source.offsetHeight, 1);
-    // ยอมลดความละเอียดลง — ชัดน้อยลงนิดหน่อย แต่ "ครบ" สำคัญกว่า
-    renderScale = Math.min(2, Math.max(MIN_SCALE, MAX_CANVAS_PX / h));
-    tooTall = h * renderScale > MAX_CANVAS_PX;
-    if (tooTall) console.warn(`[pdf] เอกสารสูง ${h}px · แม้ลดความละเอียดเหลือ ${renderScale} ก็ยังเกินเพดานภาพ`);
-  } catch (e) {
-    console.warn("[pdf] วัดความสูงไม่สำเร็จ ใช้ค่าเริ่มต้น:", e?.message || e);
-  } finally {
-    probe.removeChild(source);
-    document.body.removeChild(probe);
-  }
-  // ⚠️ เตือนก่อน "ดีกว่าได้ไฟล์ที่ขาดหายโดยไม่รู้ตัว" — ซึ่งอันตรายกับเอกสารส่งลูกค้า
-  if (tooTall && !window.confirm(
-    "บิลนี้ยาวเกินกว่าจะทำ PDF พร้อมกัน 3 ชุดได้ครบ\n\n" +
-    "ถ้าทำต่อ บางชุดอาจมีรายการขาดหาย\n" +
-    "แนะนำให้กด \"📄 PDF\" (ชุดเดียว) แล้วสั่งพิมพ์ 3 ชุดที่เครื่องพิมพ์แทน\n\n" +
-    "ยืนยันทำต่อไหม?"
-  )) return;
-  // 🚀 lazy import — โหลด html2pdf.js เฉพาะตอนกดปุ่มนี้เท่านั้น (~400KB)
+  // 📏 เลือกความละเอียดให้ภาพไม่ทะลุเพดาน canvas ของเบราว์เซอร์
+  //    (PC ~40,000px · แท็บเล็ตราว 16,384px — เกินแล้วส่วนที่เกินกลายเป็นว่างเปล่าเงียบ ๆ)
+  const MAX_CANVAS_PX = 15000;
+  const MIN_SCALE = 0.8;
+  const pickScale = (node) => {
+    const probe = document.createElement("div");
+    probe.style.cssText = "position:fixed;left:-99999px;top:0;visibility:hidden;";
+    probe.appendChild(node);
+    document.body.appendChild(probe);
+    let s = 2;
+    try {
+      const h = Math.max(node.scrollHeight, node.offsetHeight, 1);
+      s = Math.min(2, Math.max(MIN_SCALE, MAX_CANVAS_PX / h));
+    } catch (e) {
+      console.warn("[pdf] วัดความสูงไม่สำเร็จ:", e?.message || e);
+    } finally {
+      probe.removeChild(node);
+      document.body.removeChild(probe);
+    }
+    return s;
+  };
+
   // 🏷️ แถบระบุตัวบิลสำหรับ PDF — ต้องทำเป็น "รูปภาพ" แล้วแปะทีละหน้า
   //
   // ทำไมใช้วิธีนี้: PDF สร้างโดยวาดบิลเป็นภาพยาวรูปเดียวแล้วหั่นเป็นหน้า ไม่ได้แบ่งหน้าแบบ HTML
@@ -609,59 +562,82 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
     console.warn("[pdf] สร้างข้อมูลท้ายหน้าไม่สำเร็จ:", e?.message || e);
   }
 
-  const { default: html2pdf } = await import("html2pdf.js");
-  const worker = html2pdf().set({
-    // [บน, ซ้าย, ล่าง, ขวา] — บน/ล่าง 8mm เท่ากันทุกหน้า (ตัวบิลไม่มี padding บน-ล่างแล้ว)
-    margin: [PDF_MARGIN_TOP_MM, 4, PDF_MARGIN_BOTTOM_MM, 4],
-    filename,
-    image: { type: "jpeg", quality: 0.98 },
-    // 📐 ตรึงความกว้าง — ต้องส่งทั้ง width และ windowWidth ถึงจะมีผล (ดู PDF_WIDTH_PX)
-    //    ไม่งั้น html2pdf ไปวัดขนาดจากเครื่อง → คนละเครื่องได้บิลคนละขนาด
-    width: PDF_WIDTH_PX,
-    windowWidth: PDF_WIDTH_PX,
-    backgroundColor: "#ffffff",
-    // windowWidth ในนี้บังคับให้ html2canvas จัดหน้าเสมือนจอกว้าง 764px
-    // → media query / ความกว้างแบบ % คิดเหมือนกันทุกเครื่อง
-    html2canvas: { scale: renderScale, useCORS: true, windowWidth: PDF_WIDTH_PX, width: PDF_WIDTH_PX, backgroundColor: "#ffffff" },
-    jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-    // 📄 วัดตำแหน่งของทุกแถวก่อนแบ่งหน้า — แถวไหนเหลือที่ไม่พอ ให้ยกไปทั้งแถวที่หน้าถัดไป
-    //
-    // ทำไมต้องใส่ avoid: เดิม PDF หั่นภาพตามความสูงคงที่ ไม่สนว่าตรงนั้นเป็นกลางแถวหรือไม่
-    // → บรรทัดขาดครึ่ง ตัวหนังสือโดนตัดคาบเกี่ยว 2 หน้า
-    // ส่วนกฎ page-break-inside: avoid ที่มีอยู่ ใช้เฉพาะตอนพิมพ์ตรงจากเบราว์เซอร์
-    // ไม่ได้ติดไปกับ PDF จึงต้องบอกตรงนี้อีกที
-    // avoid = ก้อนที่ห้ามตัดกลาง — html2pdf จะวัดตำแหน่งแล้วยกไปทั้งก้อนถ้าเหลือที่ไม่พอ
-    //   tr           = แถวในตาราง
-    //   [data-keep]  = ก้อนที่ทำเครื่องหมายไว้ในบิล เช่น ช่องเซ็นรับของ / กล่องหมายเหตุ
-    //                  (เดิมกันแค่ tr ช่องเซ็นจึงขาดครึ่งคาบเกี่ยว 2 หน้า)
-    // ⚠️ ไม่ใส่ thead/tfoot — เป็น "พ่อ" ของ tr ซึ่งถูกกันอยู่แล้ว
-    //    ใส่ไปจะถูกดันซ้อนกันสองชั้น ทำให้ตำแหน่งคลาดและเกิดที่ว่างเกินจำเป็น
-    // before = จุดที่บังคับขึ้นหน้าใหม่ (ตัวบิลของชุดที่ 2 และ 3)
-    pagebreak: { mode: ["css", "legacy"], avoid: ["tr", "[data-keep]"], before: ["[data-copy-break]"] }
-  }).from(source);
+  // 📄 วาด "ทีละชุด" แล้วค่อยรวมเป็นไฟล์เดียว
+  //
+  // ⚠️ ทำไมไม่ต่อ 3 ชุดเป็นเอกสารเดียวแล้ววาดรวดเดียว (แบบเดิม):
+  //    ตัวคั่นหน้าที่ไลบรารีคำนวณ อ้างตำแหน่งจากขอบจอ แต่หน้ากระดาษถูกหั่นจากขอบกล่องวาด
+  //    สองอย่างนี้ไม่ใช่จุดเดียวกัน (ในซอร์สของไลบรารีมี TODO ค้างไว้ตรงนี้)
+  //    ชุดถัดไปจึงเริ่มก่อนถึงหัวกระดาษ แล้วหัวบิลของมันไปโผล่ท้ายหน้าของชุดก่อน
+  //    และยิ่งต่อกันยาว ภาพยิ่งสูงจนเสี่ยงทะลุเพดาน canvas ของแท็บเล็ต
+  //
+  //    วาดแยกทีละชุดแล้วรวมทีหลัง → แต่ละชุดไม่รู้จักกัน จึงเหมือนกันเป๊ะโดยอัตโนมัติ
+  //    และภาพแต่ละก้อนเตี้ยลง 3 เท่า ไม่ชนเพดานด้วย
+  const labels = copies
+    ? ["ใบส่งของ/ใบแจ้งหนี้ (ต้นฉบับ)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)", "ใบส่งของ/ใบแจ้งหนี้ (สำเนา)"]
+    : [null];
 
-  await worker.toPdf().get("pdf").then((pdf) => {
-    const total = pdf.internal.getNumberOfPages();
-    if (total < 2) return; // หน้าเดียว: มีหัวบิลเต็มอยู่แล้ว ไม่ต้องมีแถบ/เลขหน้า
+  const CONTENT_W_MM = 210 - 4 - 4;                                    // 202mm
+  const CONTENT_H_MM = 297 - PDF_MARGIN_TOP_MM - PDF_MARGIN_BOTTOM_MM; // 285mm
+  // ความสูง 1 หน้าเป็น CSS px — คำนวณสูตรเดียวกับไลบรารี จะได้หั่นตรงรอยเดียวกัน
+  const PAGE_H_CSS = Math.floor(CONTENT_H_MM * 96 / 25.4);             // 1077
+
+  const { default: html2pdf } = await import("html2pdf.js");
+  const { jsPDF } = await import("jspdf");
+  const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+  let firstPage = true;
+
+  for (const label of labels) {
+    const bill = prepareBill(label);
+    const scale = pickScale(bill);
+    // ให้ไลบรารีจัดตำแหน่ง "ห้ามตัดกลางแถว/ช่องเซ็น" แล้ววาดเป็นภาพให้ (ยังไม่ทำ PDF)
+    const canvas = await html2pdf().set({
+      margin: [PDF_MARGIN_TOP_MM, 4, PDF_MARGIN_BOTTOM_MM, 4],
+      width: PDF_WIDTH_PX,
+      windowWidth: PDF_WIDTH_PX,
+      backgroundColor: "#ffffff",
+      html2canvas: { scale, useCORS: true, windowWidth: PDF_WIDTH_PX, width: PDF_WIDTH_PX, backgroundColor: "#ffffff" },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      // ก้อนที่ห้ามตัดกลาง: แถวในตาราง + ช่องเซ็นรับของ/กล่องหมายเหตุ
+      pagebreak: { mode: ["css", "legacy"], avoid: ["tr", "[data-keep]"] },
+    }).from(bill).toCanvas().get("canvas");
+
+    // ✂️ หั่นภาพเป็นหน้า ๆ เอง — ทุกชุดใช้สูตรเดียวกัน จึงได้รอยตัดตรงกันเสมอ
+    const sliceH = Math.round(PAGE_H_CSS * scale);
+    const mmPerPx = CONTENT_W_MM / canvas.width;
+    for (let y = 0; y < canvas.height; y += sliceH) {
+      const h = Math.min(sliceH, canvas.height - y);
+      const part = document.createElement("canvas");
+      part.width = canvas.width;
+      part.height = h;
+      const ctx = part.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, part.width, part.height);
+      ctx.drawImage(canvas, 0, -y);
+      if (!firstPage) pdf.addPage();
+      firstPage = false;
+      pdf.addImage(part.toDataURL("image/jpeg", 0.98), "JPEG", 4, PDF_MARGIN_TOP_MM, CONTENT_W_MM, h * mmPerPx);
+    }
+  }
+
+  // 🏷️ ข้อมูลระบุตัวบิล + เลขหน้า วางท้ายหน้าในแถบขอบล่างที่เว้นไว้
+  const total = pdf.internal.getNumberOfPages();
+  if (total > 1) {
     const w = pdf.internal.pageSize.getWidth();
     const h = pdf.internal.pageSize.getHeight();
-    // 🏷️ ข้อมูลระบุตัวบิล วางไว้ท้ายหน้าข้าง ๆ เลขหน้า (ตัวเล็ก)
-    //    อยู่ในแถบขอบล่างที่เว้นไว้ จึงไม่ทับเนื้อหาบิล
-    const footY = h - 2.6;                 // เส้นฐานเดียวกับเลขหน้า
-    const maxInfoH = 4;                    // สูงสุด 4mm — ตัวเล็กพอ ๆ กับเลขหน้า
-    const maxInfoW = w - 4 - 22;           // เว้นที่ทางขวาให้เลขหน้า
+    const footY = h - 2.6;
+    const maxInfoH = 4;              // ตัวเล็กพอ ๆ กับเลขหน้า
+    const maxInfoW = w - 4 - 22;     // เว้นที่ทางขวาให้เลขหน้า
     let infoW = maxInfoW;
     let infoH = headerImg ? infoW * headerImg.ratio : 0;
     if (headerImg && infoH > maxInfoH) { infoH = maxInfoH; infoW = infoH / headerImg.ratio; }
     for (let i = 1; i <= total; i++) {
       pdf.setPage(i);
-      if (headerImg && infoH > 0) {
-        pdf.addImage(headerImg.data, "PNG", 4, footY - infoH + 0.9, infoW, infoH);
-      }
+      if (headerImg && infoH > 0) pdf.addImage(headerImg.data, "PNG", 4, footY - infoH + 0.9, infoW, infoH);
       // 🔢 เลขหน้า — ตัวเลข/ขีดเท่านั้น (ฟอนต์มาตรฐานไม่มีตัวอักษรไทย)
       pdf.setFontSize(8);
       pdf.setTextColor(90);
       pdf.text(`${i} / ${total}`, w - 4, footY, { align: "right" });
     }
-  }).save();
+  }
+  pdf.save(filename);
 };
