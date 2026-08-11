@@ -538,16 +538,17 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
   try {
     const { default: html2canvas } = await import("html2canvas");
     const strip = document.createElement("div");
-    strip.style.cssText = "position:fixed;left:-99999px;top:0;width:1400px;background:#fff;color:#000;"
-      + "font-family:'Sarabun','Sukhumvit Set','Noto Sans Thai',sans-serif;font-size:26px;line-height:1.3;white-space:nowrap;overflow:hidden;padding:4px 0;";
+    // สีเทาให้เข้ากับเลขหน้าที่อยู่ข้าง ๆ (เป็นข้อมูลท้ายหน้า ไม่ใช่เนื้อหาบิล)
+    strip.style.cssText = "position:fixed;left:-99999px;top:0;width:1400px;background:#fff;color:#5a5a5a;"
+      + "font-family:'Sarabun','Sukhumvit Set','Noto Sans Thai',sans-serif;font-size:26px;line-height:1.3;white-space:nowrap;overflow:hidden;padding:2px 0;";
     strip.textContent = headerText;
     document.body.appendChild(strip);
     const canvas = await html2canvas(strip, { backgroundColor: "#ffffff", scale: 1, logging: false });
     document.body.removeChild(strip);
     headerImg = { data: canvas.toDataURL("image/png"), ratio: canvas.height / canvas.width };
   } catch (e) {
-    // วาดแถบไม่สำเร็จ → ปล่อยผ่าน ยังได้ PDF ปกติ (แค่ไม่มีแถบบนหน้า 2)
-    console.warn("[pdf] สร้างแถบหัวบิลไม่สำเร็จ:", e?.message || e);
+    // วาดไม่สำเร็จ → ปล่อยผ่าน ยังได้ PDF ปกติ (แค่ท้ายหน้าเหลือเลขหน้าอย่างเดียว)
+    console.warn("[pdf] สร้างข้อมูลท้ายหน้าไม่สำเร็จ:", e?.message || e);
   }
 
   const { default: html2pdf } = await import("html2pdf.js");
@@ -579,22 +580,23 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
     if (total < 2) return; // หน้าเดียว: มีหัวบิลเต็มอยู่แล้ว ไม่ต้องมีแถบ/เลขหน้า
     const w = pdf.internal.pageSize.getWidth();
     const h = pdf.internal.pageSize.getHeight();
-    // 📐 บีบให้สูงไม่เกินแถบขอบบนที่เว้นไว้ — การันตีว่าไม่มีทางทับเนื้อหาบิล
-    const maxStripH = PDF_MARGIN_TOP_MM - 2.5;
-    let stripW = w - 8;                                      // เว้นขอบซ้าย-ขวาข้างละ 4mm
-    let stripH = headerImg ? stripW * headerImg.ratio : 0;
-    if (stripH > maxStripH) { stripW = maxStripH / headerImg.ratio; stripH = maxStripH; }
+    // 🏷️ ข้อมูลระบุตัวบิล วางไว้ท้ายหน้าข้าง ๆ เลขหน้า (ตัวเล็ก)
+    //    อยู่ในแถบขอบล่างที่เว้นไว้ จึงไม่ทับเนื้อหาบิล
+    const footY = h - 2.6;                 // เส้นฐานเดียวกับเลขหน้า
+    const maxInfoH = 4;                    // สูงสุด 4mm — ตัวเล็กพอ ๆ กับเลขหน้า
+    const maxInfoW = w - 4 - 22;           // เว้นที่ทางขวาให้เลขหน้า
+    let infoW = maxInfoW;
+    let infoH = headerImg ? infoW * headerImg.ratio : 0;
+    if (headerImg && infoH > maxInfoH) { infoH = maxInfoH; infoW = infoH / headerImg.ratio; }
     for (let i = 1; i <= total; i++) {
       pdf.setPage(i);
-      // 🏷️ แถบระบุตัวบิล — วางในแถบขอบบนที่เว้นไว้ จึงไม่ทับเนื้อหา
-      //    หน้าแรกไม่ต้องใส่ เพราะมีหัวบิลเต็มอยู่ใต้ลงไปแล้ว
-      if (headerImg && i > 1 && stripH > 0) {
-        pdf.addImage(headerImg.data, "PNG", 4, 1.2, stripW, stripH);
+      if (headerImg && infoH > 0) {
+        pdf.addImage(headerImg.data, "PNG", 4, footY - infoH + 0.9, infoW, infoH);
       }
       // 🔢 เลขหน้า — ตัวเลข/ขีดเท่านั้น (ฟอนต์มาตรฐานไม่มีตัวอักษรไทย)
       pdf.setFontSize(8);
       pdf.setTextColor(90);
-      pdf.text(`${i} / ${total}`, w - 6, h - 3, { align: "right" });
+      pdf.text(`${i} / ${total}`, w - 4, footY, { align: "right" });
     }
   }).save();
 };
