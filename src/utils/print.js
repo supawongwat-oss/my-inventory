@@ -137,6 +137,8 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
            table-row-group = ต่อท้ายแถวสินค้าตามปกติ → ตกอยู่หน้าสุดท้ายหน้าเดียว
            (หัวคอลัมน์ยังซ้ำทุกหน้าเหมือนเดิม — อันนั้นมีประโยชน์) */
         tfoot { display: table-row-group; break-inside: avoid; page-break-inside: avoid; }
+        /* 🏷️ ยกเว้น: แถบระบุตัวบิล ต้องซ้ำท้ายทุกหน้า (กระดาษหลุดจากกันแล้วยังไล่ได้) */
+        tfoot.bill-id-footer { display: table-footer-group; }
         img { max-width: 100%; height: auto; }
         /* บังคับพิมพ์สีพื้นหลัง — Galaxy Tab ไม่มีตัวเลือก Background graphics ให้ติ๊ก */
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -264,6 +266,8 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
     #__print_root__ thead { display: table-header-group; }
     /* 💰 ยอดรวม = แถวปกติต่อท้ายสินค้า → พิมพ์ครั้งเดียวที่หน้าสุดท้าย (ไม่ซ้ำทุกหน้า) */
     #__print_root__ tfoot { display: table-row-group; break-inside: avoid; page-break-inside: avoid; }
+    /* 🏷️ ยกเว้น: แถบระบุตัวบิล ต้องซ้ำท้ายทุกหน้า (กระดาษหลุดจากกันแล้วยังไล่ได้) */
+    #__print_root__ tfoot.bill-id-footer { display: table-footer-group; }
     #__print_root__ img { max-width: 100%; height: auto; }
     /* บังคับพิมพ์สีพื้นหลัง — Galaxy Tab ไม่มีตัวเลือก Background graphics ให้ติ๊ก */
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -348,6 +352,8 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
            table-row-group = ต่อท้ายแถวสินค้าตามปกติ → ตกอยู่หน้าสุดท้ายหน้าเดียว
            (หัวคอลัมน์ยังซ้ำทุกหน้าเหมือนเดิม — อันนั้นมีประโยชน์) */
         tfoot { display: table-row-group; break-inside: avoid; page-break-inside: avoid; }
+        /* 🏷️ ยกเว้น: แถบระบุตัวบิล ต้องซ้ำท้ายทุกหน้า (กระดาษหลุดจากกันแล้วยังไล่ได้) */
+        tfoot.bill-id-footer { display: table-footer-group; }
         img { max-width: 100%; height: auto; }
         /* บังคับพิมพ์สีพื้นหลัง — Galaxy Tab ไม่มีตัวเลือก Background graphics ให้ติ๊ก */
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -465,6 +471,8 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
     #__print_root__ thead { display: table-header-group; }
     /* 💰 ยอดรวม = แถวปกติต่อท้ายสินค้า → พิมพ์ครั้งเดียวที่หน้าสุดท้าย (ไม่ซ้ำทุกหน้า) */
     #__print_root__ tfoot { display: table-row-group; break-inside: avoid; page-break-inside: avoid; }
+    /* 🏷️ ยกเว้น: แถบระบุตัวบิล ต้องซ้ำท้ายทุกหน้า (กระดาษหลุดจากกันแล้วยังไล่ได้) */
+    #__print_root__ tfoot.bill-id-footer { display: table-footer-group; }
     #__print_root__ img { max-width: 100%; height: auto; }
     /* บังคับพิมพ์สีพื้นหลัง — Galaxy Tab ไม่มีตัวเลือก Background graphics ให้ติ๊ก */
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }

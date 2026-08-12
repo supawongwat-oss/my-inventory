@@ -217,19 +217,13 @@ export default function PrintInvoiceModal({
                   <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:10}}>
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:15,minWidth:560}}>
                     <thead>
-                      {/* 🏷️ แถบระบุตัวบิล — อยู่ใน <thead> จึงถูกพิมพ์ซ้ำทุกหน้าอัตโนมัติ
-                          บิลเป็นเอกสารการเงิน ถ้ากระดาษหลุดจากกัน หน้า 2 ที่ไม่มีเลขบิล/ชื่อลูกค้า
-                          จะไล่ไม่ได้ว่าเป็นของใคร — ที่วันละ 200-400 ออเดอร์ โอกาสเกิดสูง
-                          ทำเป็นบรรทัดเดียวตัวเล็ก เพื่อไม่ให้กินพื้นที่หน้าแรก */}
+                      {/* 📏 แถวเว้นระยะบน — ไม่มีข้อความ ไม่มีเส้น
+                          หน้าแรกได้ระยะบนจาก padding ของ #invoice-print-area
+                          หน้า 2 เป็นต้นไปไม่มี padding นั้น จึงต้องพึ่งแถวนี้ซึ่งอยู่ใน <thead>
+                          (thead ถูกพิมพ์ซ้ำทุกหน้า) — ถ้าเอาออก หน้า 2 จะชิดขอบกระดาษ
+                          ส่วนแถบระบุตัวบิลย้ายไปอยู่ท้ายหน้าแล้ว ดู <tfoot className="bill-id-footer"> */}
                       <tr>
-                        {/* paddingTop = INVOICE_PAD_TOP → หน้า 2 เป็นต้นไปได้ระยะบนเท่าหน้าแรก
-                            (หน้าแรกได้จาก padding ของ #invoice-print-area · หน้าถัดไปได้จากแถบนี้
-                             เพราะแถบอยู่ใน <thead> จึงถูกพิมพ์ซ้ำทุกหน้า) */}
-                        <td colSpan={TOTAL_COLS} style={{padding:`${INVOICE_PAD_TOP} 6px 3px`,border:"1px solid #000",borderBottom:"none",background:"#fff",fontSize:9,color:"#000",whiteSpace:"nowrap",overflow:"hidden"}}>
-                          เลขที่ <b style={{fontFamily:"monospace"}}>{invoice.invoiceNo}</b>
-                          {invoice.customerName?<> · {invoice.customerName}</>:null}
-                          {invoice.date?<> · {invoice.date}</>:null}
-                        </td>
+                        <td colSpan={TOTAL_COLS} style={{padding:`${INVOICE_PAD_TOP} 0 0`,border:"none",background:"#fff",fontSize:1,lineHeight:0}}>&nbsp;</td>
                       </tr>
                       <tr style={{background:"#f1f5f9",color:"#000"}}>
                         <th style={{padding:"9px 4px",textAlign:"left",fontWeight:700,border:"1px solid #000",fontSize:11,color:"#000",width:72}}>รุ่น</th>
@@ -307,8 +301,8 @@ export default function PrintInvoiceModal({
                           <td colSpan={TOTAL_COLS} style={{padding:"7px 10px",border:"1px solid #cbd5e1"}}>&nbsp;</td>
                         </tr>
                       ))}
-                    </tbody>
-                    <tfoot>
+                      {/* ── สรุปยอด — อยู่ใน <tbody> เพื่อให้ไหลต่อจากรายการ แล้วไปจบที่หน้าสุดท้ายหน้าเดียว
+                             (ถ้าอยู่ใน <tfoot> เบราว์เซอร์จะพิมพ์ซ้ำท้ายทุกหน้า) ── */}
                       {(invoice.itemDiscountTotal>0||invoice.billDiscount>0)&&(
                         <tr style={{background:"#fffbeb"}}>
                           <td colSpan={TOTAL_COLS-1} style={{padding:"6px 10px",textAlign:"right",fontSize:12,color:"#000",border:"1px solid #000"}}>ราคารวมก่อนส่วนลด</td>
@@ -367,6 +361,20 @@ export default function PrintInvoiceModal({
                           </>
                         );
                       })()}
+                    </tbody>
+                    {/* 🏷️ แถบระบุตัวบิล — พิมพ์ซ้ำ "ท้ายทุกหน้า" อัตโนมัติ (tfoot = table-footer-group)
+                        บิลเป็นเอกสารการเงิน ถ้ากระดาษหลุดจากกัน หน้า 2 ที่ไม่มีเลขบิล/ชื่อลูกค้า
+                        จะไล่ไม่ได้ว่าเป็นของใคร — ที่วันละ 200-400 ออเดอร์ โอกาสเกิดสูง
+                        เดิมอยู่หัวหน้า ย้ายลงท้ายหน้าเพื่อไม่ให้แย่งพื้นที่หัวบิลจริง
+                        className นี้ override กฎรวมใน print.js ที่ตั้ง tfoot เป็นแถวธรรมดา */}
+                    <tfoot className="bill-id-footer">
+                      <tr>
+                        <td colSpan={TOTAL_COLS} style={{padding:"3px 6px 0",border:"none",background:"#fff",fontSize:9,color:"#000",whiteSpace:"nowrap",overflow:"hidden",textAlign:"right"}}>
+                          เลขที่ <b style={{fontFamily:"monospace"}}>{invoice.invoiceNo}</b>
+                          {invoice.customerName?<> · {invoice.customerName}</>:null}
+                          {invoice.date?<> · {invoice.date}</>:null}
+                        </td>
+                      </tr>
                     </tfoot>
                   </table>
                   </div>
