@@ -132,7 +132,11 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
         table { border-collapse: collapse; width: 100% !important; max-width: 100% !important; }
         tr, td, th { page-break-inside: avoid; word-break: break-word; }
         thead { display: table-header-group; }
-        tfoot { display: table-footer-group; }
+        /* 💰 ยอดรวมพิมพ์ครั้งเดียวที่หน้าสุดท้าย
+           table-footer-group (ค่าเริ่มต้นของ tfoot) = ซ้ำท้ายทุกหน้า → บิลหลายหน้าจะเห็นยอดรวมทุกแผ่น
+           table-row-group = ต่อท้ายแถวสินค้าตามปกติ → ตกอยู่หน้าสุดท้ายหน้าเดียว
+           (หัวคอลัมน์ยังซ้ำทุกหน้าเหมือนเดิม — อันนั้นมีประโยชน์) */
+        tfoot { display: table-row-group; break-inside: avoid; page-break-inside: avoid; }
         img { max-width: 100%; height: auto; }
         /* บังคับพิมพ์สีพื้นหลัง — Galaxy Tab ไม่มีตัวเลือก Background graphics ให้ติ๊ก */
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -258,7 +262,8 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
     #__print_root__ tfoot td, #__print_root__ tfoot th { white-space: nowrap !important; overflow-wrap: normal !important; }
     #__print_root__ { overflow: hidden; }
     #__print_root__ thead { display: table-header-group; }
-    #__print_root__ tfoot { display: table-footer-group; }
+    /* 💰 ยอดรวม = แถวปกติต่อท้ายสินค้า → พิมพ์ครั้งเดียวที่หน้าสุดท้าย (ไม่ซ้ำทุกหน้า) */
+    #__print_root__ tfoot { display: table-row-group; break-inside: avoid; page-break-inside: avoid; }
     #__print_root__ img { max-width: 100%; height: auto; }
     /* บังคับพิมพ์สีพื้นหลัง — Galaxy Tab ไม่มีตัวเลือก Background graphics ให้ติ๊ก */
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -338,7 +343,11 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
         table { border-collapse: collapse; width: 100%; }
         tr, td, th { page-break-inside: avoid; }
         thead { display: table-header-group; }
-        tfoot { display: table-footer-group; }
+        /* 💰 ยอดรวมพิมพ์ครั้งเดียวที่หน้าสุดท้าย
+           table-footer-group (ค่าเริ่มต้นของ tfoot) = ซ้ำท้ายทุกหน้า → บิลหลายหน้าจะเห็นยอดรวมทุกแผ่น
+           table-row-group = ต่อท้ายแถวสินค้าตามปกติ → ตกอยู่หน้าสุดท้ายหน้าเดียว
+           (หัวคอลัมน์ยังซ้ำทุกหน้าเหมือนเดิม — อันนั้นมีประโยชน์) */
+        tfoot { display: table-row-group; break-inside: avoid; page-break-inside: avoid; }
         img { max-width: 100%; height: auto; }
         /* บังคับพิมพ์สีพื้นหลัง — Galaxy Tab ไม่มีตัวเลือก Background graphics ให้ติ๊ก */
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -454,6 +463,8 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
     #__print_root__ tfoot td, #__print_root__ tfoot th { white-space: nowrap !important; overflow-wrap: normal !important; }
     #__print_root__ { overflow: hidden; }
     #__print_root__ thead { display: table-header-group; }
+    /* 💰 ยอดรวม = แถวปกติต่อท้ายสินค้า → พิมพ์ครั้งเดียวที่หน้าสุดท้าย (ไม่ซ้ำทุกหน้า) */
+    #__print_root__ tfoot { display: table-row-group; break-inside: avoid; page-break-inside: avoid; }
     #__print_root__ img { max-width: 100%; height: auto; }
     /* บังคับพิมพ์สีพื้นหลัง — Galaxy Tab ไม่มีตัวเลือก Background graphics ให้ติ๊ก */
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
