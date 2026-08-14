@@ -8,22 +8,28 @@
       "type": "image/x-icon"
     },
     {
-      "src": "cpu-logo.png",
+      "src": "icon-192.png",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any"
     },
     {
-      "src": "cpu-logo.png",
+      "src": "icon-512.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
     }
   ],
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
   "theme_color": "#3b5b8b",
-  "background_color": "#f4f5f7",
+  "background_color": "#ffffff",
   "description": "ระบบบริหารคลังสินค้าสำหรับธุรกิจ"
 }
