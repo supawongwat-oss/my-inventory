@@ -444,6 +444,7 @@ export default function NewInvoiceModal({
 
           {/* Items */}
           <div style={{fontSize:11,color:T.muted,marginBottom:8,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em"}}>รายการสินค้า / บริการ</div>
+          {invoiceForm.items.length>0&&<div style={{fontSize:10,color:T.muted,marginBottom:8}}>💡 ลบไซส์: กด ✕ ตัวเล็กข้างไซส์ · หรือพิมพ์ <b>0</b> ในช่องจำนวนแล้วคลิกออก · ปุ่ม ✕ ท้ายแถวลบทั้งรุ่น+สี</div>}
           {invoiceForm.items.length>0&&<BulkPricePanel items={invoiceForm.items} setInvoiceForm={setInvoiceForm} clothingItems={clothingItems}/>}
           {invoiceForm.items.length>0&&(()=>{
             const isPlus=(sz)=>/^[2-9]XL$/.test(sz);
@@ -472,6 +473,30 @@ export default function NewInvoiceModal({
               onKeyDown:e=>e.key==="Enter"&&e.target.blur(),
             });
             const removeItem=(i)=>setInvoiceForm(f=>({...f,items:f.items.filter((_,j)=>j!==i)}));
+            // 🔑 กุญแจระบุตัวรายการ (ไม่ผูกกับลำดับในอาร์เรย์)
+            //   ช่องจำนวนเป็น input แบบ uncontrolled (ใช้ defaultValue) React จะอ่านค่าตอน mount ครั้งเดียว
+            //   ถ้า key ผูกกับลำดับ พอลบไซส์กลางทิ้ง ลำดับจะเลื่อน → ไซส์ถัดไปได้ key เดิม
+            //   React เลยใช้ช่องเดิมซ้ำโดยไม่อัปเดตตัวเลข = ช่องโชว์จำนวนของไซส์ที่ถูกลบไปแล้ว
+            //   ⚠️ ไซส์ซ้ำในกลุ่มเดียวกันเกิดขึ้นได้ (เพิ่มรายการเดิมซ้ำ / รวมหลายใบสั่ง)
+            //   จึงต่อท้ายด้วยลำดับที่พบ กัน key ชนกัน และยังคงถูกต้องเมื่อลบตัวใดตัวหนึ่งทิ้ง
+            const itemKey=(()=>{
+              const seen={}, map={};
+              indexed.forEach(it=>{
+                const b=`${it.clothingId||it.clothingName||"g"}|${it.colorIdx??""}|${it.colorName||""}|${it.variant||""}|${it.size||""}`;
+                seen[b]=(seen[b]||0)+1;
+                map[it.__i]=`${b}#${seen[b]}`;
+              });
+              return (it)=>map[it.__i];
+            })();
+            // ⌨️ ช่องจำนวน — พิมพ์ 0 หรือลบตัวเลขทิ้งแล้วคลิกออก = ตัดไซส์นั้นออกจากบิล
+            //   ตัดตอนคลิกออกจากช่องเท่านั้น ไม่ตัดระหว่างพิมพ์
+            //   ไม่งั้นพอลบตัวเลขเพื่อจะพิมพ์ใหม่ แถวจะหายไปกลางคัน
+            const qtyInput=(idx)=>({
+              onFocus:e=>e.target.select(),
+              onChange:e=>{ const v=e.target.value; if(v!==""&&Number(v)>0) updateQty(idx,v); },
+              onBlur:e=>{ const v=e.target.value; if(v===""||Number(v)===0) removeItem(idx); else updateQty(idx,v); },
+              onKeyDown:e=>e.key==="Enter"&&e.target.blur(),
+            });
             const removeGroup=(items)=>setInvoiceForm(f=>({...f,items:f.items.filter((_,j)=>!items.find(it=>it.__i===j))}));
             return (
               <div style={{background:"rgba(241,243,246,0.5)",borderRadius:10,border:`1px solid ${T.border}`,marginBottom:12,overflow:"auto"}}>
@@ -516,9 +541,15 @@ export default function NewInvoiceModal({
                               </div>}
                             </td>
                             {chunk.map(it=>[
-                              <td key={`s-${it.__i}`} style={{padding:"5px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:T.accent,border:`1px solid ${T.border}`,background:"rgba(59,91,139,0.06)"}}>{it.size}</td>,
-                              <td key={`q-${it.__i}`} style={{padding:"4px 4px",textAlign:"center",border:`1px solid ${T.border}`}}>
-                                <input type="number" defaultValue={liveOf(it).qty} min="1" {...liveInput(it.__i,liveOf(it).qty,updateQty)}
+                              <td key={`s-${itemKey(it)}`} style={{padding:"5px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:T.accent,border:`1px solid ${T.border}`,background:"rgba(59,91,139,0.06)"}}>
+                                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
+                                  <span>{it.size}</span>
+                                  <button onClick={()=>removeItem(it.__i)} title={`ลบไซส์ ${it.size} ออกจากบิล`}
+                                    style={{background:"none",border:"none",color:"#f87171",cursor:"pointer",fontSize:9,lineHeight:1,padding:0,opacity:0.7}}>✕</button>
+                                </div>
+                              </td>,
+                              <td key={`q-${itemKey(it)}`} style={{padding:"4px 4px",textAlign:"center",border:`1px solid ${T.border}`}}>
+                                <input type="number" defaultValue={liveOf(it).qty} min="0" {...qtyInput(it.__i)}
                                   style={{width:42,textAlign:"center",background:"rgba(59,91,139,0.08)",border:`1px solid ${T.border}`,borderRadius:5,color:T.text,fontFamily:"monospace",fontSize:11,padding:"3px 2px",outline:"none"}}/>
                               </td>
                             ])}
@@ -593,7 +624,7 @@ export default function NewInvoiceModal({
                           </div>
                         </td>
                         <td style={{padding:"4px 8px",textAlign:"center",border:`1px solid ${T.border}`}}>
-                          <input type="number" defaultValue={it.qty} min="1" {...liveInput(it.__i,it.qty,updateQty)}
+                          <input type="number" defaultValue={it.qty} min="0" {...qtyInput(it.__i)}
                             style={{width:48,textAlign:"center",background:"rgba(59,91,139,0.08)",border:`1px solid ${T.border}`,borderRadius:5,color:T.text,fontFamily:"monospace",fontSize:11,padding:"4px",outline:"none"}}/>
                         </td>
                         <td style={{padding:"4px 8px",textAlign:"right",border:`1px solid ${T.border}`}}>
