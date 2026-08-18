@@ -180,30 +180,29 @@ function LiveNumInput({ value, onApply, ...rest }) {
   );
 }
 
-// 👕 ลักษณะเสื้อของรายการหนึ่ง — ใช้แยกช่องราคา เพราะแขนยาว/แขนสั้นราคาไม่เท่ากัน
-//
-// ที่นี่ต้องเดาจากชื่อรุ่นด้วย ไม่ใช่อ่านจากช่อง variant อย่างเดียว:
-// ช่อง variant มีค่าเฉพาะงาน custom ที่พนักงานกรอกเอง ส่วนเสื้อในคลังใส่ไว้ในชื่อรุ่นเลย
-// ("K-12 แขนยาว") บิลที่มาจากคลังจึงมี variant ว่างทุกแถว → เดิมมองเป็นแบบเดียวกันหมด
-// แล้วยุบแขนยาว/แขนสั้นเข้าช่องราคาเดียวกัน
-const SLEEVE_WORDS = ["แขนกุด", "แขนยาว", "แขนสั้น"];
-const variantOf = (it) => {
-  const v = String(it.variant || "").trim();
-  if (v) return v;
-  const name = String(it.clothingName || "");
-  return SLEEVE_WORDS.find(w => name.includes(w)) || "";
-};
-
 // 💰 แผงตั้งราคาทีเดียว — ใส่ราคาตามกลุ่มไซส์ (หรือแยกทีละไซส์) แล้วใช้กับทุกสี/ทุกรุ่นในบิล
 function BulkPricePanel({ items, setInvoiceForm, clothingItems = [] }) {
   const [open, setOpen] = React.useState(false); // พับไว้ก่อน — กดเปิดเมื่อจะตั้งราคา
   const [mode, setMode] = React.useState("group"); // "group" = ตามกลุ่ม | "each" = แยกทีละไซส์
 
-  // 👕 แขนสั้น/แขนยาว ราคาไม่เท่ากัน → ถ้าบิลมีมากกว่า 1 แบบ ต้องแยกช่องราคาให้
-  const variants = React.useMemo(
-    () => [...new Set(items.map(variantOf))],
-    [items]
+  // 🏷️ แยกช่องราคาตาม "หมวดย่อย" ของรุ่น (ตั้งที่ 🛍️ หน้าร้าน → 🏷️ หมวดหมู่ ในหน้าคลัง)
+  //
+  // ทำไมต้องแยก: แขนยาว/แขนสั้น (หรือคนละหมวด) ราคาไม่เท่ากัน ถ้ายุบเข้าช่องเดียว
+  // พิมพ์ราคาทีเดียวจะไปทับของอีกแบบหมด
+  //
+  // ทำไมใช้หมวดย่อย: ระบบไม่มีช่อง "ชนิดแขน" แยกต่างหาก และเดาจากชื่อรุ่นก็ไม่แน่นอน
+  // หมวดย่อยเป็นช่องที่ตั้งเองได้อยู่แล้ว → จัดกลุ่มไว้ยังไง ราคาก็แยกตามนั้นเป๊ะ
+  // งาน custom ไม่มีรุ่นในคลัง → ใช้ช่อง variant ที่พนักงานกรอกไว้แทน
+  const catById = React.useMemo(() => {
+    const m = new Map();
+    clothingItems.forEach(c => m.set(c.id, String(c.category || "").trim()));
+    return m;
+  }, [clothingItems]);
+  const groupOf = React.useCallback(
+    (it) => catById.get(it.clothingId) || String(it.variant || "").trim(),
+    [catById]
   );
+  const variants = React.useMemo(() => [...new Set(items.map(groupOf))], [items, groupOf]);
   const splitVariant = variants.length > 1;
 
   const buckets = React.useMemo(() => {
@@ -216,9 +215,9 @@ function BulkPricePanel({ items, setInvoiceForm, clothingItems = [] }) {
             const s = String(it.size || "").trim().toUpperCase();
             return s ? { key: s, label: `ไซส์ ${s}`, rank: sizeRank(s) } : { key: "__nosize", label: "ไม่ระบุไซส์", rank: 999 };
           })();
-      const v = variantOf(it);
+      const v = groupOf(it);
       const key = splitVariant ? `${v}|${t.key}` : t.key;
-      const label = splitVariant ? `${v || "ไม่ระบุแบบ"} · ${t.label}` : t.label;
+      const label = splitVariant ? `${v || "ไม่ระบุหมวด"} · ${t.label}` : t.label;
       // เรียงตามแบบเสื้อก่อน แล้วค่อยตามไซส์ — ราคาของแต่ละแบบจะอยู่ติดกัน
       const rank = splitVariant ? (vRank.get(v) ?? 99) * 1000 + t.rank : t.rank;
       if (!map.has(key)) map.set(key, { key, label, rank, idxs: [], qty: 0, prices: new Set() });
@@ -228,7 +227,7 @@ function BulkPricePanel({ items, setInvoiceForm, clothingItems = [] }) {
       b.prices.add(Number(it.unitPrice) || 0);
     });
     return [...map.values()].sort((a, b) => a.rank - b.rank);
-  }, [items, mode, splitVariant, variants]);
+  }, [items, mode, splitVariant, variants, groupOf]);
 
   const applyPrice = (idxs, v) => {
     const price = Math.max(0, Number(v) || 0);
@@ -264,7 +263,7 @@ function BulkPricePanel({ items, setInvoiceForm, clothingItems = [] }) {
     <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, marginBottom: 10, background: "rgba(52,211,153,0.05)", overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", flexWrap: "wrap", cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
         <span style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>⚡ ตั้งราคาทีเดียว (ใช้กับทุกสี/ทุกรุ่น)</span>
-        <span style={{ fontSize: 10, color: T.muted }}>{buckets.length} กลุ่ม{splitVariant ? " · แยกแขนสั้น/แขนยาวให้แล้ว" : "ไซส์"}</span>
+        <span style={{ fontSize: 10, color: T.muted }}>{buckets.length} กลุ่ม{splitVariant ? " · แยกตามหมวดย่อยให้แล้ว" : "ไซส์"}</span>
         <span style={{ marginLeft: "auto", fontSize: 11, color: T.muted }}>{open ? "▲" : "▼"}</span>
       </div>
       {open && (
