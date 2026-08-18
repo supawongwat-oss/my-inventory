@@ -62,6 +62,41 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
   const [showNewCustom, setShowNewCustom] = useState(false);
   const [selectedCustom, setSelectedCustom] = useState(new Set()); // ids ของ custom orders ที่เลือกเพื่อออกบิลรวม
   const [customSubTab, setCustomSubTab] = useState("active"); // active | done | all
+  // 📦 เก็บใบ custom ที่เลือกเข้าประวัติทีเดียว
+  //    ใบเก่าที่ออกบิลไปก่อนระบบปั๊มป้าย "ออกบิลแล้ว" จะไม่หลุดจากช่องเอง ต้องเก็บมือรอบเดียว
+  //    (ใบใหม่ตั้งแต่นี้ไป พอบันทึกบิลจะย้ายไปแท็บ "ออกบิลแล้ว" ให้อัตโนมัติ)
+  const [archiving, setArchiving] = useState(false);
+  const archiveSelectedCustom = async (list) => {
+    if (archiving || list.length === 0) return;
+    const qty = list.reduce((s, o) => s + (Number(o.totalQty) || 0), 0);
+    if (!window.confirm(
+      `📦 เก็บ ${list.length} ใบเข้าประวัติการผลิต?
+รวม ${fmtInt(qty)} ตัว
+
+` +
+      `💡 ไม่ได้ลบ — ดูได้ที่ tab "📜 ประวัติการผลิต" และกดคืนกลับได้ตลอด`
+    )) return;
+    setArchiving(true);
+    try {
+      const stamp = { archived: true, archivedAt: new Date().toISOString(), archivedBy: user?.name || "", archivedFromStep: "รายการ Custom" };
+      for (let i = 0; i < list.length; i += 400) {
+        const b = writeBatch(db);
+        list.slice(i, i + 400).forEach(o => b.update(doc(db, "customOrders", o.id), stamp));
+        await b.commit();
+      }
+      logAudit(user, {
+        action: AUDIT_ACTIONS.UPDATE, collection: "customOrders", targetId: "",
+        targetLabel: `${list.length} ใบ`,
+        note: `เก็บเข้าประวัติ ${list.length} ใบ · ${fmtInt(qty)} ตัว`,
+      });
+      setSelectedCustom(new Set());
+      alert(`✅ เก็บเรียบร้อย ${list.length} ใบ — ดูได้ที่ tab "📜 ประวัติการผลิต"`);
+    } catch (e) {
+      alert("เก็บไม่สำเร็จ: " + (e?.message || e));
+    } finally {
+      setArchiving(false);
+    }
+  };
   const [statusOrder, setStatusOrder] = useState(null);
   const [statusCustom, setStatusCustom] = useState(null);
   const [printOrder, setPrintOrder] = useState(null);
@@ -324,6 +359,12 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
               {customSubTab==="active" ? "กำลังผลิต" : customSubTab==="done" ? "งานที่เสร็จแล้ว" : "Custom Order ทั้งหมด"} <b style={{color:T.accent}}>{filteredCustom.length} ใบ</b>
               <span style={{marginLeft:8,padding:"2px 10px",background:"rgba(217,119,6,0.12)",color:"#d97706",borderRadius:10,fontSize:11,fontWeight:700}}>รวม {fmtInt(filteredCustom.reduce((s,o)=>s+(Number(o.totalQty)||0),0))} ตัว</span>
               {selectedCustom.size > 0 && <span style={{marginLeft:8,padding:"2px 8px",background:"rgba(22,163,74,0.12)",color:"#16a34a",borderRadius:10,fontSize:11,fontWeight:600}}>เลือก {selectedCustom.size} ใบ</span>}
+              {filteredCustom.length > 0 && (
+                <button onClick={() => setSelectedCustom(prev => prev.size === filteredCustom.length ? new Set() : new Set(filteredCustom.map(o => o.id)))}
+                  style={{marginLeft:8,padding:"2px 10px",borderRadius:8,border:`1px solid ${T.border}`,background:"white",color:T.accent,cursor:"pointer",fontSize:11,fontFamily:"inherit",fontWeight:600}}>
+                  {selectedCustom.size === filteredCustom.length ? "ล้างที่เลือก" : `เลือกทั้งหมด (${filteredCustom.length})`}
+                </button>
+              )}
             </div>
             <div style={{display:"flex",gap:8}}>
               {selectedCustom.size > 0 && role?.canIssueInvoice && (
@@ -338,6 +379,13 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
                   onCreateInvoiceFromCustom?.(selected);
                   setSelectedCustom(new Set());
                 }} style={{padding:"8px 14px",borderRadius:9,border:"none",cursor:"pointer",background:"#16a34a",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(22,163,74,0.3)"}}>🧾 ออกบิลรวม ({selectedCustom.size})</button>
+              )}
+              {selectedCustom.size > 0 && (user?.role === "admin" || user?.role === "manager") && (
+                <button onClick={() => archiveSelectedCustom(customOrders.filter(o => selectedCustom.has(o.id)))} disabled={archiving}
+                  title="ย้ายใบที่เลือกไปเก็บที่ tab ประวัติการผลิต — คืนกลับได้ตลอด"
+                  style={{padding:"8px 14px",borderRadius:9,border:`1px solid ${T.border}`,cursor:archiving?"wait":"pointer",background:"rgba(59,91,139,0.08)",color:T.accent,fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>
+                  {archiving ? "⏳ กำลังเก็บ..." : `📦 เก็บเข้าประวัติ (${selectedCustom.size})`}
+                </button>
               )}
               {selectedCustom.size > 0 && (
                 <button onClick={() => setSelectedCustom(new Set())} style={{padding:"8px 12px",borderRadius:9,border:`1px solid ${T.border}`,background:"white",color:T.sub,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>✕ ล้าง</button>

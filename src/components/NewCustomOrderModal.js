@@ -1,4 +1,5 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useMemo } from "react";
+import { useFormDraft, timeAgoTH } from "../hooks/useFormDraft";
 import { Modal, MHead, Input, BtnPrimary, BtnGhost, Toast } from "./ui";
 import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
@@ -93,6 +94,44 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const [outsourced, setOutsourced] = useState(!!editOrder?.outsourced); // 🏭 จ้างที่อื่นผลิต — ไม่เข้าสายงานผลิต
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // 💾 ร่างอัตโนมัติ — สลับไป LINE แล้วแท็บถูกล้าง กลับมายังกู้ที่กรอกค้างได้
+  //    ไม่เก็บรูป: รูปยังเป็น base64 จนกว่าจะกดบันทึก ใส่ลงเครื่องจะเต็มทันที
+  //    โหมดแก้ไขไม่เก็บ — ของจริงอยู่ในระบบแล้ว ไม่ควรมีร่างมาทับ
+  const draftValue = useMemo(() => ({
+    customerId, customerName, customerPhone, customerSearch,
+    jobName, fabricType, collarType, jobDescription, shrinkOffset,
+    items, inputMode, gridSizes, gridColors,
+    costPerPiece, laborCostPerPiece, note, color,
+    depositAmount, depositMethod, outsourced,
+  }), [customerId, customerName, customerPhone, customerSearch, jobName, fabricType,
+      collarType, jobDescription, shrinkOffset, items, inputMode, gridSizes, gridColors,
+      costPerPiece, laborCostPerPiece, note, color, depositAmount, depositMethod, outsourced]);
+  const gridHasQty = gridColors.some(c => Object.values(c.qty || {}).some(v => Number(v) > 0));
+  const { saved: draft, clear: clearDraft } = useFormDraft("customOrder", draftValue, {
+    active: !isEdit,
+    empty: !(jobName.trim() || customerName.trim() || gridHasQty || items.some(r => Number(r.qty) > 0)),
+  });
+  const [draftDismissed, setDraftDismissed] = useState(false);
+  const resumeDraft = () => {
+    const d = draft?.value;
+    if (!d) return;
+    setCustomerId(d.customerId || ""); setCustomerName(d.customerName || "");
+    setCustomerPhone(d.customerPhone || ""); setCustomerSearch(d.customerSearch || "");
+    setJobName(d.jobName || ""); setFabricType(d.fabricType || "");
+    setCollarType(d.collarType || ""); setJobDescription(d.jobDescription || "");
+    setShrinkOffset(Number(d.shrinkOffset) || 0);
+    if (Array.isArray(d.items)) setItems(d.items);
+    setInputMode(d.inputMode || "grid");
+    if (Array.isArray(d.gridSizes)) setGridSizes(d.gridSizes);
+    if (Array.isArray(d.gridColors)) setGridColors(d.gridColors);
+    setCostPerPiece(d.costPerPiece || ""); setLaborCostPerPiece(d.laborCostPerPiece || "");
+    setNote(d.note || ""); setColor(d.color || "");
+    setDepositAmount(d.depositAmount || ""); setDepositMethod(d.depositMethod || "โอน");
+    setOutsourced(!!d.outsourced);
+    setDraftDismissed(true);
+  };
+  // ปิดหน้าต่างเอง = ตั้งใจเลิก → ทิ้งร่าง (การโหลดหน้าใหม่ไม่ผ่านทางนี้ ร่างจึงรอด)
+  const closeAndDrop = () => { clearDraft(); onClose && onClose(); };
   const fileRef = useRef(null);
 
   const addRow = () => setItems(prev => {
@@ -320,6 +359,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
     });
     if (storageFailed) alert("⚠️ บันทึกใบสั่งผลิตแล้ว แต่รูปบางรูปอัปขึ้นคลังไม่สำเร็จ (เก็บไว้ในเอกสารชั่วคราว)\nตรวจว่า Firebase Storage เปิดใช้งานแล้วหรือยัง");
     setSaved(true);
+    clearDraft(); // บันทึกลงระบบแล้ว ไม่ต้องเก็บร่างไว้อีก
     setTimeout(() => { setSaved(false); setSaving(false); onCreated && onCreated({ ...data, id: ref.id }); onClose && onClose(); }, 700);
     } catch (err) {
       console.error("[customOrder] save failed:", err);
@@ -332,8 +372,22 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   };
 
   return (
-    <Modal onClose={onClose} w={820}>
-      <MHead title={isEdit ? `✏️ แก้ไข Custom · ${editOrder.prodNo}` : "🎨 สร้างใบสั่งผลิต Custom (เฉพาะแบบ)"} sub="ใส่รูป + พิมพ์รุ่น/สี/ไซส์เอง — ไม่ตัดสต็อก" onClose={onClose}/>
+    <Modal onClose={closeAndDrop} w={820}>
+      <MHead title={isEdit ? `✏️ แก้ไข Custom · ${editOrder.prodNo}` : "🎨 สร้างใบสั่งผลิต Custom (เฉพาะแบบ)"} sub="ใส่รูป + พิมพ์รุ่น/สี/ไซส์เอง — ไม่ตัดสต็อก" onClose={closeAndDrop}/>
+      {/* 💾 พบร่างที่กรอกค้างไว้ — โผล่เฉพาะตอนสร้างใหม่ ไม่ใช่โหมดแก้ไข */}
+      {!isEdit && draft && !draftDismissed && (
+        <div style={{marginBottom:14,padding:"10px 14px",background:"rgba(5,150,105,0.08)",border:"1px solid rgba(5,150,105,0.35)",borderRadius:10,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <span style={{fontSize:18}}>💾</span>
+          <div style={{flex:1,minWidth:180}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#047857"}}>มีใบที่กรอกค้างไว้</div>
+            <div style={{fontSize:10,color:T.sub,marginTop:2}}>
+              {draft.value?.jobName || draft.value?.customerName || "(ยังไม่ใส่ชื่องาน)"} · {timeAgoTH(draft.savedAt)} · รูปต้องแนบใหม่
+            </div>
+          </div>
+          <button onClick={resumeDraft} style={{padding:"6px 14px",borderRadius:8,border:"none",cursor:"pointer",background:"#059669",color:"white",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>↩️ ใช้ต่อ</button>
+          <button onClick={() => { clearDraft(); setDraftDismissed(true); }} style={{padding:"6px 10px",borderRadius:8,border:`1px solid ${T.border}`,cursor:"pointer",background:"white",color:T.sub,fontSize:11,fontFamily:"inherit"}}>ทิ้ง</button>
+        </div>
+      )}
       {saved && <Toast msg={isEdit ? "บันทึกการแก้ไขสำเร็จ" : "สร้างใบสั่งผลิต custom สำเร็จ"}/>}
       {isEdit && <div style={{marginBottom:12,padding:"8px 12px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,fontSize:11,color:"#1e40af",lineHeight:1.5}}>ℹ️ แก้ไขได้เพราะใบนี้ยังไม่เริ่มผลิต — เมื่อบันทึก ระบบจะอัปเดตรายการบนบอร์ด Kanban ให้อัตโนมัติ</div>}
 
@@ -736,7 +790,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
       )}
 
       <div style={{display:"flex",gap:10}}>
-        <BtnGhost onClick={onClose} style={{flex:1}}>ยกเลิก</BtnGhost>
+        <BtnGhost onClick={closeAndDrop} style={{flex:1}}>ยกเลิก</BtnGhost>
         <BtnPrimary onClick={isEdit ? handleUpdate : handleSubmit} disabled={!canSubmit || saving} style={{flex:1}}>{saving ? "⏳ กำลังอัปรูป/บันทึก..." : isEdit ? "💾 บันทึกการแก้ไข" : "🎨 ยืนยันสั่งผลิต Custom"}</BtnPrimary>
       </div>
     </Modal>
