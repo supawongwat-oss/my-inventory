@@ -108,6 +108,8 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
       "A5 landscape": "210mm 148mm",
     };
     const cssPageSizeM = sizeMapM[pageSize] || pageSize;
+    const ownPad = el.getAttribute("data-print-pad");
+    const pageMarginM = ownPad ? pageMargin : "6mm";
     const cloneM = el.cloneNode(true);
     cloneM.removeAttribute("id");
     // 🩹 Samsung/mobile: ลด fontScale ลง (default 1.3 มักทำให้ตกขอบ)
@@ -116,7 +118,10 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
     // 🩹 ลด padding รอบ ๆ print-area — เดิม 32px 40px กว้างเกินไป
     // ถ้ากำหนดระยะบนไว้ที่ @page แล้ว ต้องไม่ใส่ padding บนซ้ำ ไม่งั้นหน้าแรกจะเว้นมากกว่าหน้าอื่น
     // ระยะบน-ล่างคงไว้เสมอ — เป็นชั้นที่ Chrome ปิดไม่ได้
-    finalElM.style.padding = pageMarginTop ? `${INVOICE_PAD_TOP} 8mm ${INVOICE_PAD_BOTTOM}` : "6mm 8mm";
+    // 📏 ยกเว้นเอกสารที่ประกาศ data-print-pad ไว้เอง = จงใจคุมขอบเองทุกด้าน
+    //    ให้เชื่อค่านั้น และใช้ pageMargin ที่ส่งมาแทนค่ากลาง 6mm ด้วย
+    //    (ไม่งั้นขอบซ้าย-ขวาบนแท็บเล็ตจะกว้างกว่าที่ตั้งไว้เสมอ)
+    finalElM.style.padding = ownPad || (pageMarginTop ? `${INVOICE_PAD_TOP} 8mm ${INVOICE_PAD_BOTTOM}` : "6mm 8mm");
     finalElM.style.boxSizing = "border-box";
     finalElM.style.width = "100%";
     finalElM.style.maxWidth = "100%";
@@ -125,7 +130,7 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
       <title>พิมพ์เอกสาร</title>
       <link rel="icon" href="data:,">
       <style>
-        @page { size: ${cssPageSizeM}; margin: 6mm;${pageMarginTop ? ` margin-top: ${pageMarginTop};` : ""}${pageMarginBottom ? ` margin-bottom: ${pageMarginBottom};` : ""} }
+        @page { size: ${cssPageSizeM}; margin: ${pageMarginM};${pageMarginTop ? ` margin-top: ${pageMarginTop};` : ""}${pageMarginBottom ? ` margin-bottom: ${pageMarginBottom};` : ""} }
         html, body { margin: 0; padding: 0; background: white; color: #1e293b; font-family: 'Sarabun','Sukhumvit Set','Noto Sans Thai',sans-serif; width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden; }
         * { box-sizing: border-box; }
         body > * { max-width: 100% !important; }

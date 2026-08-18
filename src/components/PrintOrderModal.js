@@ -1,5 +1,16 @@
 import React from "react";
 import { splitSizesIntoRows, getPriceForSize } from "../theme";
+import { PRINT_FONT_SCALE } from "../utils/print";
+
+// 📏 ขอบใบสั่งของ — เก็บไว้ "ในตัวเอกสาร" ทั้งหมด ไม่พึ่งขอบกระดาษ (@page) เลย
+//   เหตุผลเดียวกับใบบิล: ช่อง Margins ของ Chrome ตั้งเป็น "ไม่มี (None)" ค้างไว้
+//   เพื่อให้ป้ายม้วนพิมพ์เต็มแผ่น → @page margin บน-ล่างถูกข้ามทิ้ง
+//   ถ้าฝากระยะบนไว้ที่ @page ใบสั่งของจะไม่เหลือขอบบนเลย
+//   ส่วนซ้าย-ขวาไม่ต้องห่วง มาจากความกว้างของกรอบ (210 - 2×4 = 202mm) จัดกึ่งกลาง
+const PAGE_MARGIN = "4mm";      // ซ้าย-ขวา
+const PAD_TOP = "4mm";
+const PAD_BOTTOM = "8mm";
+const PRINT_PAD = `${PAD_TOP} 0mm ${PAD_BOTTOM}`;
 
 export default function PrintOrderModal({
   order,
@@ -12,8 +23,11 @@ export default function PrintOrderModal({
         <div className="print-modal-overlay" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}}
           onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
           <div className="print-modal-card" onMouseDown={e=>e.stopPropagation()} style={{background:"white",borderRadius:16,padding:0,width:680,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 24px 60px rgba(0,0,0,0.6)"}}>
-            {/* Print content */}
-            <div id="print-area" style={{padding:"32px 40px",fontFamily:"'Sarabun',sans-serif",color:"#1e293b"}}>
+            {/* Print content
+                กล่องครอบด้านนอกใส่ระยะให้เฉพาะตอนดูบนจอ — ไม่ถูกพิมพ์ เพราะพิมพ์เฉพาะ #print-area
+                data-print-pad = บอก printElementById ว่าเอกสารนี้คุมขอบเอง ห้ามทับด้วยค่ากลาง */}
+            <div style={{padding:"18px 36px 2px"}}>
+            <div id="print-area" data-print-pad={PRINT_PAD} style={{padding:PRINT_PAD,boxSizing:"border-box",fontFamily:"'Sarabun',sans-serif",color:"#1e293b"}}>
               {/* Header */}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,paddingBottom:8,borderBottom:"2px solid #3b5b8b"}}>
                 <div>
@@ -110,11 +124,12 @@ export default function PrintOrderModal({
                 <div>สถานะ: {order.status}</div>
               </div>
             </div>
+            </div>
 
             {/* Print buttons */}
             <div className="print-hide" style={{padding:"16px 24px",borderTop:"1px solid #e2e8f0",display:"flex",gap:10,justifyContent:"flex-end",background:"#f8fafc",borderRadius:"0 0 16px 16px"}}>
               <button onClick={()=>onClose()} style={{padding:"9px 20px",borderRadius:9,border:"1px solid #e2e8f0",background:"white",color:"#64748b",fontSize:13,cursor:"pointer",fontFamily:"'Sarabun',sans-serif"}}>ปิด</button>
-              <button onClick={()=>printElementById("print-area")} style={{padding:"9px 20px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>🖨️ สั่งปริ้น</button>
+              <button onClick={()=>printElementById("print-area","A4 portrait",PAGE_MARGIN,PRINT_FONT_SCALE,"0mm","0mm")} style={{padding:"9px 20px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#3b5b8b,#3b5b8b)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(59,91,139,0.3)"}}>🖨️ สั่งปริ้น</button>
             </div>
           </div>
         </div>
