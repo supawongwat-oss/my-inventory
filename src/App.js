@@ -6,6 +6,7 @@ import { INIT_USERS, ROLES, INIT_CATS } from "./constants";
 import { BarcodeDisplay, Modal, MHead, Toast, Input, BtnPrimary, BtnSuccess, BtnDanger, BtnGhost, Badge, CardBox } from "./components/ui";
 import LoginPage, { CompanyEditor } from "./components/LoginPage";
 import { useFirestore } from "./hooks/useFirestore";
+import { useFormDraft, timeAgoTH } from "./hooks/useFormDraft";
 import InstallPWA from "./components/InstallPWA";
 import { shouldRemindBackup, getLastBackupDate } from "./utils/backupReminder";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
@@ -438,6 +439,44 @@ export default function App() {
   const [invoiceItemForm, setInvoiceItemForm] = useState({ description:"", qty:"", unitPrice:"", unit:"ชิ้น" });
   const [addItemCollapsed, setAddItemCollapsed] = useState(true); // พับฟอร์มเพิ่มรายการไว้ก่อน — ช่องหนา กินที่
   const [txType, setTxType] = useState("รับ");
+  // 💾 ร่างอัตโนมัติของ "ใบสั่งของ" และ "บิล"
+  //    สลับไป LINE แล้วเบราว์เซอร์ล้างแท็บทิ้ง → กลับมาแล้วยังกู้ของที่กรอกค้างได้
+  //    (ปิดหน้าต่างเอง/บันทึกสำเร็จ = ทิ้งร่าง — ดู clearOrderDraft / clearInvoiceDraft)
+  const orderDraftValue = useMemo(
+    () => ({ form: orderForm, editingOrderId }),
+    [orderForm, editingOrderId]
+  );
+  const { saved: orderDraft, clear: clearOrderDraft } = useFormDraft("order", orderDraftValue, {
+    active: showNewOrder,
+    empty: !(orderForm.customerName || (orderForm.items || []).length > 0),
+  });
+  const invoiceDraftValue = useMemo(
+    () => ({ form: invoiceForm, editingInvoiceId, docType: invoiceDocType, vat: invoiceVat }),
+    [invoiceForm, editingInvoiceId, invoiceDocType, invoiceVat]
+  );
+  const { saved: invoiceDraft, clear: clearInvoiceDraft } = useFormDraft("invoice", invoiceDraftValue, {
+    active: showNewInvoice,
+    empty: !(invoiceForm.customerName || (invoiceForm.items || []).length > 0),
+  });
+
+  // กู้ร่างกลับเข้าฟอร์ม แล้วเปิดหน้าต่างให้ทำต่อจากจุดเดิม
+  const resumeOrderDraft = () => {
+    const d = orderDraft?.value;
+    if (!d?.form) return;
+    setOrderForm(d.form);
+    setEditingOrderId(d.editingOrderId || null);
+    setShowNewOrder(true);
+  };
+  const resumeInvoiceDraft = () => {
+    const d = invoiceDraft?.value;
+    if (!d?.form) return;
+    setInvoiceForm(d.form);
+    setEditingInvoiceId(d.editingInvoiceId || null);
+    setInvoiceDocType(d.docType || "receipt");
+    setInvoiceVat(!!d.vat);
+    setShowNewInvoice(true);
+  };
+
 
   // forms
   const [newProduct, setNewProduct] = useState({ code:"",name:"",category:"",qty:"",unit:"",minQty:"",location:"",barcode:"",image:"",costPrice:"",salePrice:"" });
@@ -1806,6 +1845,8 @@ export default function App() {
     setOrderForm({ customerId:"", customerName:"", customerPhone:"", customerAddress:"", shipping:"", note:"", items:[], deferStockCut:false });
     setEditingOrderId(null);
     setShowNewOrder(false);
+    // 💾 บันทึกลงระบบแล้ว → ไม่ต้องเก็บร่างไว้อีก
+    clearOrderDraft();
   };
 
   // ✏️ เปิดหน้าแก้ไขใบสั่งของ — โหลดข้อมูลลง orderForm แล้วเปิด modal เดียวกับตอนสร้าง
@@ -2349,6 +2390,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       });
       setShowPrintInvoice({...updated, id:editingInvoiceId});
       setShowNewInvoice(false);
+      // 💾 บันทึกลงระบบแล้ว → ไม่ต้องเก็บร่างไว้อีก
+      clearInvoiceDraft();
       setEditingInvoiceId(null);
       setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0,...invoiceDefaults()});
       return;
@@ -2417,6 +2460,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     });
     setShowPrintInvoice({...data, id:ref.id});
     setShowNewInvoice(false);
+    // 💾 บันทึกลงระบบแล้ว → ไม่ต้องเก็บร่างไว้อีก
+    clearInvoiceDraft();
     setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0,...invoiceDefaults()});
     // 🧭 เด้งไปหน้า "ออกบิล" ให้เห็นบิลใหม่ในรายการทันที (โดยเฉพาะตอนออกบิลรวมจากหน้าใบสั่งของ)
     setActiveTab("invoice");
@@ -3033,6 +3078,34 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         </div>
 
         <div className="pad-main" style={{padding:24,flex:1}}>
+
+          {/* === 💾 ร่างที่กรอกค้างไว้ — โผล่เมื่อแอปถูกโหลดใหม่ระหว่างกรอก (สลับไป LINE ฯลฯ) === */}
+          {[
+            orderDraft && !showNewOrder && { d: orderDraft, label: "ใบสั่งของ", resume: resumeOrderDraft, drop: clearOrderDraft },
+            invoiceDraft && !showNewInvoice && { d: invoiceDraft, label: "บิล", resume: resumeInvoiceDraft, drop: clearInvoiceDraft },
+          ].filter(Boolean).map(({ d, label, resume, drop }) => {
+            const f = d.value?.form || {};
+            const n = (f.items || []).length;
+            return (
+              <div key={label} style={{marginBottom:12,padding:"11px 15px",background:"rgba(5,150,105,0.08)",border:"1px solid rgba(5,150,105,0.35)",borderRadius:10,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                <div style={{fontSize:20}}>💾</div>
+                <div style={{flex:1,minWidth:200}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"#047857"}}>มี{label}ที่กรอกค้างไว้</div>
+                  <div style={{fontSize:11,color:T.sub,marginTop:2}}>
+                    {f.customerName || "(ยังไม่ใส่ชื่อลูกค้า)"} · {n} รายการ · {timeAgoTH(d.savedAt)}
+                  </div>
+                </div>
+                <button onClick={resume}
+                  style={{padding:"7px 16px",borderRadius:8,border:"none",cursor:"pointer",background:"#059669",color:"white",fontSize:12,fontWeight:700,fontFamily:"'Sarabun',sans-serif"}}>
+                  ↩️ ทำต่อ
+                </button>
+                <button onClick={() => { if (window.confirm(`ทิ้ง${label}ที่กรอกค้างไว้? กู้กลับไม่ได้`)) drop(); }}
+                  style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${T.border}`,cursor:"pointer",background:"white",color:T.sub,fontSize:12,fontFamily:"'Sarabun',sans-serif"}}>
+                  ทิ้ง
+                </button>
+              </div>
+            );
+          })}
 
           {/* === Backup Reminder Banner === */}
           {backupReminder && (
@@ -4458,7 +4531,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       {/* ── MODAL: สร้างใบสั่งของ ── */}
       {showNewOrder && (
         <NewOrderModal
-          onClose={() => { setShowNewOrder(false); setEditingOrderId(null); }}
+          onClose={() => { setShowNewOrder(false); setEditingOrderId(null); clearOrderDraft(); }}
           editingOrderId={editingOrderId}
           orderForm={orderForm}
           setOrderForm={setOrderForm}
@@ -4571,7 +4644,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       {/* ── MODAL: ออกบิลใหม่ ── */}
       {showNewInvoice && (
         <NewInvoiceModal
-          onClose={() => { setShowNewInvoice(false); setEditingInvoiceId(null); }}
+          onClose={() => { setShowNewInvoice(false); setEditingInvoiceId(null); clearInvoiceDraft(); }}
           editingInvoiceId={editingInvoiceId}
           invoices={invoices}
           invoiceDocType={invoiceDocType}
