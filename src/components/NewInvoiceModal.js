@@ -146,6 +146,40 @@ const priceTierOf = (sz) => {
   return { key: s, label: `ไซส์ ${s}`, rank: sizeRank(s) };
 };
 
+// 🔢 ช่องตัวเลขในตารางรายการ — uncontrolled (พิมพ์ลื่น ทศนิยมไม่โดนตัด)
+//    แต่ "ซิงก์กลับ" เมื่อค่าถูกแก้จากที่อื่น เช่น ⚡ ตั้งราคาทีเดียว / 🔄 ดึงราคาจากคลัง
+//
+//    ทำไมต้องมีตัวนี้: เดิมใช้ <input defaultValue={...}/> เฉย ๆ ซึ่ง React อ่านแค่ตอน mount
+//    พอแผงตั้งราคาทีเดียวแก้ state ช่อง "ราคา/หน่วย" ยังโชว์ 0 อยู่ (ทั้งที่ยอดรวมถูกแล้ว)
+//    ต้องปิดบิลแล้วเปิดใหม่ถึงจะเห็น — ดูเหมือนราคาไม่เข้า
+//
+//    จะแก้ด้วยการทำเป็น controlled input ไม่ได้ เพราะพิมพ์ "0." แล้วจะโดน Number() ปัดจุดทิ้ง
+//    จึงใช้วิธีเขียนค่าลง DOM ตรง ๆ เฉพาะตอนที่ผู้ใช้ "ไม่ได้โฟกัสอยู่ในช่องนั้น"
+function LiveNumInput({ value, onApply, ...rest }) {
+  const ref = React.useRef(null);
+  const editing = React.useRef(false);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el || editing.current) return;
+    if (el.value !== String(value)) el.value = value;
+  }, [value]);
+  return (
+    <input
+      ref={ref}
+      type="number"
+      defaultValue={value}
+      onFocus={e => { editing.current = true; e.target.select(); }}
+      onChange={e => { if (e.target.value !== "") onApply(e.target.value); }}
+      onBlur={e => {
+        editing.current = false;
+        if (e.target.value === "") e.target.value = value; else onApply(e.target.value);
+      }}
+      onKeyDown={e => e.key === "Enter" && e.target.blur()}
+      {...rest}
+    />
+  );
+}
+
 // 💰 แผงตั้งราคาทีเดียว — ใส่ราคาตามกลุ่มไซส์ (หรือแยกทีละไซส์) แล้วใช้กับทุกสี/ทุกรุ่นในบิล
 function BulkPricePanel({ items, setInvoiceForm, clothingItems = [] }) {
   const [open, setOpen] = React.useState(false); // พับไว้ก่อน — กดเปิดเมื่อจะตั้งราคา
@@ -463,15 +497,6 @@ export default function NewInvoiceModal({
             },{}));
             const updateQty=(i,v)=>setInvoiceForm(f=>({...f,items:f.items.map((x,j)=>j===i?{...x,qty:Math.max(1,Number(v)||1)}:x)}));
             const updatePrice=(i,v)=>setInvoiceForm(f=>({...f,items:f.items.map((x,j)=>j===i?{...x,unitPrice:Math.max(0,Number(v)||0)}:x)}));
-            // ⌨️ อัปเดตทันทีที่พิมพ์ — เดิมอัปเดตตอนคลิกออกจากช่องเท่านั้น
-            //    ถ้าแก้จำนวนแล้วกดปุ่มอื่นทันที (โดยเฉพาะบนแท็บเล็ต) ค่าใหม่จะไม่ถูกบันทึก
-            //    ตัวเลขในช่องโชว์ค่าที่พิมพ์ แต่ยอดรวมยังคูณด้วยจำนวนเก่า → ราคาผิด
-            const liveInput=(idx,cur,apply)=>({
-              onFocus:e=>e.target.select(),
-              onChange:e=>{ if(e.target.value!=="") apply(idx,e.target.value); },
-              onBlur:e=>{ if(e.target.value==="") e.target.value=cur; else apply(idx,e.target.value); },
-              onKeyDown:e=>e.key==="Enter"&&e.target.blur(),
-            });
             const removeItem=(i)=>setInvoiceForm(f=>({...f,items:f.items.filter((_,j)=>j!==i)}));
             // 🔑 กุญแจระบุตัวรายการ (ไม่ผูกกับลำดับในอาร์เรย์)
             //   ช่องจำนวนเป็น input แบบ uncontrolled (ใช้ defaultValue) React จะอ่านค่าตอน mount ครั้งเดียว
@@ -559,14 +584,11 @@ export default function NewInvoiceModal({
                             ])}
                             <td style={{padding:"6px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:T.accent,verticalAlign:"middle",border:`1px solid ${T.border}`}}>{rowQty}</td>
                             <td style={{padding:"4px 8px",textAlign:"right",verticalAlign:"middle",border:`1px solid ${T.border}`}}>
-                              <input type="number" key={`u-${chunk.map(c=>c.__i).join("_")}`} defaultValue={rowUnit} min="0" step="0.01"
+                              <LiveNumInput key={`u-${chunk.map(c=>c.__i).join("_")}`} value={rowUnit} min="0" step="0.01"
+                                onApply={v=>{const q=Math.max(0,Number(v)||0);const ids=chunk.map(c=>c.__i);setInvoiceForm(f=>({...f,items:f.items.map((x,j)=>ids.includes(j)?{...x,unitPrice:q}:x)}));}}
                                 title={mixed
                                   ? `⚠️ ไซส์ในแถวนี้ราคาไม่เท่ากัน (${[...new Set(chunk.map(i=>Number(liveOf(i).unitPrice)||0))].join(" / ")}) — พิมพ์ทับจะเปลี่ยนทุกไซส์ในแถว`
                                   : `ใช้กับไซส์: ${chunk.map(c=>c.size).join(", ")}`}
-                                onFocus={e=>e.target.select()}
-                                onChange={e=>{if(e.target.value==="")return;const v=Math.max(0,Number(e.target.value)||0);const ids=chunk.map(c=>c.__i);setInvoiceForm(f=>({...f,items:f.items.map((x,j)=>ids.includes(j)?{...x,unitPrice:v}:x)}));}}
-                                onBlur={e=>{if(e.target.value===""){e.target.value=rowUnit;return;}const v=Math.max(0,Number(e.target.value)||0);const ids=chunk.map(c=>c.__i);setInvoiceForm(f=>({...f,items:f.items.map((x,j)=>ids.includes(j)?{...x,unitPrice:v}:x)}));}}
-                                onKeyDown={e=>e.key==="Enter"&&e.target.blur()}
                                 style={{width:72,textAlign:"right",background:mixed?"rgba(245,158,11,0.12)":"rgba(52,211,153,0.08)",border:`1px solid ${mixed?"#f59e0b":"rgba(52,211,153,0.3)"}`,borderRadius:5,color:mixed?"#b45309":"#34d399",fontFamily:"monospace",fontSize:11,fontWeight:600,padding:"4px 6px",outline:"none"}}/>
                               {mixed&&<div style={{fontSize:9,color:"#b45309",fontWeight:700,marginTop:1}}>⚠️ ราคาผสม</div>}
                             </td>
@@ -628,7 +650,7 @@ export default function NewInvoiceModal({
                             style={{width:48,textAlign:"center",background:"rgba(59,91,139,0.08)",border:`1px solid ${T.border}`,borderRadius:5,color:T.text,fontFamily:"monospace",fontSize:11,padding:"4px",outline:"none"}}/>
                         </td>
                         <td style={{padding:"4px 8px",textAlign:"right",border:`1px solid ${T.border}`}}>
-                          <input type="number" defaultValue={it.unitPrice} min="0" step="0.01" {...liveInput(it.__i,it.unitPrice,updatePrice)}
+                          <LiveNumInput value={it.unitPrice} onApply={v=>updatePrice(it.__i,v)} min="0" step="0.01"
                             style={{width:72,textAlign:"right",background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.3)",borderRadius:5,color:"#34d399",fontFamily:"monospace",fontSize:11,fontWeight:600,padding:"4px 6px",outline:"none"}}/>
                         </td>
                         <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#34d399",border:`1px solid ${T.border}`}}>฿{(it.qty*it.unitPrice).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
