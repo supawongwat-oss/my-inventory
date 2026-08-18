@@ -180,6 +180,20 @@ function LiveNumInput({ value, onApply, ...rest }) {
   );
 }
 
+// 👕 ลักษณะเสื้อของรายการหนึ่ง — ใช้แยกช่องราคา เพราะแขนยาว/แขนสั้นราคาไม่เท่ากัน
+//
+// ที่นี่ต้องเดาจากชื่อรุ่นด้วย ไม่ใช่อ่านจากช่อง variant อย่างเดียว:
+// ช่อง variant มีค่าเฉพาะงาน custom ที่พนักงานกรอกเอง ส่วนเสื้อในคลังใส่ไว้ในชื่อรุ่นเลย
+// ("K-12 แขนยาว") บิลที่มาจากคลังจึงมี variant ว่างทุกแถว → เดิมมองเป็นแบบเดียวกันหมด
+// แล้วยุบแขนยาว/แขนสั้นเข้าช่องราคาเดียวกัน
+const SLEEVE_WORDS = ["แขนกุด", "แขนยาว", "แขนสั้น"];
+const variantOf = (it) => {
+  const v = String(it.variant || "").trim();
+  if (v) return v;
+  const name = String(it.clothingName || "");
+  return SLEEVE_WORDS.find(w => name.includes(w)) || "";
+};
+
 // 💰 แผงตั้งราคาทีเดียว — ใส่ราคาตามกลุ่มไซส์ (หรือแยกทีละไซส์) แล้วใช้กับทุกสี/ทุกรุ่นในบิล
 function BulkPricePanel({ items, setInvoiceForm, clothingItems = [] }) {
   const [open, setOpen] = React.useState(false); // พับไว้ก่อน — กดเปิดเมื่อจะตั้งราคา
@@ -187,7 +201,7 @@ function BulkPricePanel({ items, setInvoiceForm, clothingItems = [] }) {
 
   // 👕 แขนสั้น/แขนยาว ราคาไม่เท่ากัน → ถ้าบิลมีมากกว่า 1 แบบ ต้องแยกช่องราคาให้
   const variants = React.useMemo(
-    () => [...new Set(items.map(i => (i.variant || "").trim()))],
+    () => [...new Set(items.map(variantOf))],
     [items]
   );
   const splitVariant = variants.length > 1;
@@ -202,7 +216,7 @@ function BulkPricePanel({ items, setInvoiceForm, clothingItems = [] }) {
             const s = String(it.size || "").trim().toUpperCase();
             return s ? { key: s, label: `ไซส์ ${s}`, rank: sizeRank(s) } : { key: "__nosize", label: "ไม่ระบุไซส์", rank: 999 };
           })();
-      const v = (it.variant || "").trim();
+      const v = variantOf(it);
       const key = splitVariant ? `${v}|${t.key}` : t.key;
       const label = splitVariant ? `${v || "ไม่ระบุแบบ"} · ${t.label}` : t.label;
       // เรียงตามแบบเสื้อก่อน แล้วค่อยตามไซส์ — ราคาของแต่ละแบบจะอยู่ติดกัน
