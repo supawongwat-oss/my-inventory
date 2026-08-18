@@ -16,6 +16,12 @@ const PAD_TOP = "4mm";
 const PAD_BOTTOM = "8mm";
 const PRINT_PAD = `${PAD_TOP} 0mm ${PAD_BOTTOM}`;
 
+// 📐 ความกว้างคอลัมน์ "รุ่น" — เดิม 38px ทำให้ชื่อรุ่นหักบรรทัด ("K-12 แขนยาว" แตก 3 บรรทัด)
+//   เพราะตอนพิมพ์ตัวหนังสือถูกขยาย 1.3 เท่า แต่ความกว้างคอลัมน์ไม่ถูกขยายตาม
+//   และ CSS ตอนพิมพ์บังคับ white-space: normal ทับ nowrap ที่ตั้งไว้ (กันตารางล้นหน้า)
+//   ตอนนี้ขอบกระดาษเหลือ 0 แล้ว มีที่ว่างเหลือเฟือ (คอลัมน์ตายตัวรวม ~502px จากหน้ากว้าง ~794px)
+const COL_MODEL_W = 110;
+
 export default function PrintOrderModal({
   order,
   clothingItems = [],
@@ -64,7 +70,7 @@ export default function PrintOrderModal({
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:640}}>
                 <thead>
                   <tr style={{background:"#3b5b8b",color:"white"}}>
-                    <th style={{padding:"5px 4px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:8,width:38,minWidth:38,whiteSpace:"nowrap"}}>รุ่น</th>
+                    <th style={{padding:"5px 4px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:8,width:COL_MODEL_W,minWidth:COL_MODEL_W,whiteSpace:"nowrap"}}>รุ่น</th>
                     <th style={{padding:"5px 4px",textAlign:"left",fontWeight:700,border:"1px solid #0284c7",fontSize:8,width:56,minWidth:56,whiteSpace:"nowrap"}}>สี</th>
                     {[1,2,3,4].flatMap(i=>[
                       <th key={`sh${i}`} style={{padding:"6px 4px",textAlign:"center",fontWeight:700,border:"1px solid #0284c7",background:"#166534",color:"#bbf7d0",width:44,minWidth:44,fontSize:11,whiteSpace:"nowrap"}}>SIZE</th>,
@@ -92,7 +98,7 @@ export default function PrintOrderModal({
                     const lastIdx=rows.length-1;
                     return rows.map((chunk,ci)=>(
                       <tr key={`${gi}-${ci}`} style={{borderBottom:"1px solid #e2e8f0",background:gi%2===0?"white":"#f8fafc"}}>
-                        <td style={{padding:"5px 4px",fontWeight:600,color:"#1e293b",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:8,width:38,whiteSpace:"nowrap"}}>{ci===0&&<div><div>{group.clothingName}</div>{(group.fabricType||group.collarType||group.jobDescription)&&<div style={{fontSize:7,color:"#64748b",fontWeight:400,marginTop:2,display:"flex",flexWrap:"wrap",gap:2}}>{group.fabricType&&<span>🧵 {group.fabricType}</span>}{group.collarType&&<span>· 👔 {group.collarType}</span>}{group.jobDescription&&<span>· {group.jobDescription}</span>}</div>}</div>}</td>
+                        <td style={{padding:"5px 4px",fontWeight:600,color:"#1e293b",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:8,width:COL_MODEL_W,minWidth:COL_MODEL_W,whiteSpace:"nowrap"}}>{ci===0&&<div><div>{group.clothingName}</div>{(group.fabricType||group.collarType||group.jobDescription)&&<div style={{fontSize:7,color:"#64748b",fontWeight:400,marginTop:2,display:"flex",flexWrap:"wrap",gap:2}}>{group.fabricType&&<span>🧵 {group.fabricType}</span>}{group.collarType&&<span>· 👔 {group.collarType}</span>}{group.jobDescription&&<span>· {group.jobDescription}</span>}</div>}</div>}</td>
                         <td style={{padding:"5px 4px",verticalAlign:"middle",border:"1px solid #e2e8f0",fontSize:8,width:56,whiteSpace:"nowrap"}}>
                           {ci===0&&<div style={{display:"flex",alignItems:"center",gap:3}}>
                             <div style={{width:6,height:6,borderRadius:2,background:group.colorHex,border:"1px solid rgba(0,0,0,0.15)",flexShrink:0}}/>
