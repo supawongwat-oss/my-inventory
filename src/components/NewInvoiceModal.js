@@ -70,6 +70,17 @@ function JobImagesPanel({ invoiceForm, setInvoiceForm }) {
       .filter(j => !j.__manual || (j.images || []).length > 0 || j.clothingName || j.jobDescription || j.note));
   };
 
+  // 🎨 รูปที่มาจากใบสั่ง custom — เอาออกจาก "บิลใบนี้" เท่านั้น ไม่แตะไฟล์ใน Storage
+  //   เป็นไฟล์เดียวกับที่ใบ custom ยังใช้อยู่ ถ้าลบไฟล์ทิ้ง ใบ custom จะรูปหายตาม
+  //   ถ้าต้องการคืนพื้นที่จริง ให้ไปใช้ 🧹 ล้างพื้นที่ ในหน้าตั้งค่า
+  //   (jIdx = ตำแหน่งใน jobs ชุดเต็ม ไม่ใช่ใน fromCustom)
+  const detachCustomImage = (jIdx, imgIdx) => setJobs(list => list
+    .map((j, ji) => (ji === jIdx && !j.__manual)
+      ? { ...j, images: (j.images || []).filter((_, i) => i !== imgIdx) }
+      : j)
+    // job ที่ไม่เหลืออะไรแล้ว → ตัดทิ้ง ไม่ให้กล่อง "รายละเอียดงาน" โผล่บนบิลเปล่า ๆ
+    .filter(j => j.__manual || (j.images || []).length > 0 || j.clothingName || j.jobDescription || j.note));
+
   const setLabel = (idx, v) => setJobs(list => list.map(j => j.__manual
     ? { ...j, images: (j.images || []).map((im, i) => i === idx ? { ...im, label: v } : im) } : j));
 
@@ -88,8 +99,24 @@ function JobImagesPanel({ invoiceForm, setInvoiceForm }) {
       {open && (
         <div style={{ marginTop: 12 }}>
           {fromCustom.length > 0 && (
-            <div style={{ fontSize: 11, color: T.muted, marginBottom: 10 }}>
-              🎨 มาจากใบ Custom {fromCustom.map(j => j.prodNo).filter(Boolean).join(", ") || "—"} · {fromCustom.reduce((s, j) => s + ((j.images || []).length), 0)} รูป
+            <div style={{ marginBottom: 12, padding: "8px 10px", background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 8 }}>
+              <div style={{ fontSize: 11, color: T.muted, marginBottom: 6 }}>
+                🎨 มาจากใบ Custom {fromCustom.map(j => j.prodNo).filter(Boolean).join(", ") || "—"} · {fromCustom.reduce((s, j) => s + ((j.images || []).length), 0)} รูป
+              </div>
+              {jobs.map((j, ji) => (j.__manual || (j.images || []).length === 0) ? null : (
+                <div key={ji} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(92px,1fr))", gap: 6, marginBottom: 6 }}>
+                  {(j.images || []).map((im, i) => (
+                    <div key={i} style={{ position: "relative", height: 66, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: "white", border: `1px solid ${T.border}`, borderRadius: 6 }}>
+                      <img src={im.dataUrl || im.url} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}/>
+                      <button onClick={() => detachCustomImage(ji, i)} title="เอารูปนี้ออกจากบิลใบนี้ (ไฟล์ยังอยู่ ใบ custom ยังใช้ได้)"
+                        style={{ position: "absolute", top: 2, right: 2, width: 18, height: 18, borderRadius: 9, border: "none", background: "rgba(239,68,68,0.9)", color: "white", cursor: "pointer", fontSize: 10, lineHeight: "18px", padding: 0 }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              ))}
+              <div style={{ fontSize: 10, color: "#92400e", lineHeight: 1.6 }}>
+                ✕ = เอาออกจากบิลใบนี้เท่านั้น · ไฟล์ยังอยู่เพราะใบ custom ใช้ไฟล์เดียวกัน — ถ้าจะคืนพื้นที่จริงใช้ ⚙️ ตั้งค่า → 🧹 ล้างพื้นที่
+              </div>
             </div>
           )}
 

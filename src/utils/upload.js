@@ -1,6 +1,6 @@
 // 📤 Storage Upload helper — Firebase Storage
 import { storage } from "../firebase";
-import { ref, uploadBytes, getDownloadURL, deleteObject, listAll } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL, deleteObject, listAll, getMetadata } from "firebase/storage";
 
 /**
  * Upload file ไปยัง Firebase Storage
@@ -55,6 +55,51 @@ export async function listFiles(folder) {
     return { path: itemRef.fullPath, name: itemRef.name, url };
   }));
   return items;
+}
+
+/**
+ * ลบไฟล์แบบ "รายงานผลจริง" — ต่างจาก deleteFile ตรงที่ไม่กลืน error
+ * ใช้กับเครื่องมือล้างพื้นที่ ที่ต้องนับว่าลบสำเร็จกี่ไฟล์จริง ๆ
+ * ไฟล์ที่ไม่มีอยู่แล้วนับเป็นสำเร็จ — ปลายทางคือ "ไม่มีไฟล์นี้" ซึ่งได้ตามนั้นแล้ว
+ */
+export async function deleteFileStrict(path) {
+  if (!path) return;
+  try {
+    await deleteObject(ref(storage, path));
+  } catch (e) {
+    if (e?.code === "storage/object-not-found") return;
+    throw e;
+  }
+}
+
+/**
+ * ไล่ไฟล์ทั้งหมดใต้ folder (ลงลึกทุกชั้น) พร้อมขนาดและวันที่สร้าง
+ * ใช้กับเครื่องมือล้างพื้นที่ — listAll คืนแค่ชั้นเดียว ต้องเดินเองลงไปทีละ prefix
+ * @param {string} folder - "" = ทั้ง bucket
+ * @param {(n:number)=>void} [onProgress] - รายงานจำนวนไฟล์ที่อ่านแล้ว
+ * @returns {Promise<Array<{path,size,created}>>}
+ */
+export async function listAllFiles(folder = "", onProgress) {
+  const out = [];
+  const walk = async (dirRef) => {
+    let res;
+    // listAll คืนทีละหน้าเองอยู่แล้ว แต่ถ้า folder ไม่มีอยู่จริงจะโยน error
+    try { res = await listAll(dirRef); } catch (e) { return; }
+    // อ่าน metadata ทีละชุด — ยิงพร้อมกันทั้งหมดจะโดน throttle
+    for (let i = 0; i < res.items.length; i += 20) {
+      const batch = res.items.slice(i, i + 20);
+      const metas = await Promise.all(batch.map(it => getMetadata(it).catch(() => null)));
+      batch.forEach((it, k) => out.push({
+        path: it.fullPath,
+        size: Number(metas[k] && metas[k].size) || 0,
+        created: (metas[k] && metas[k].timeCreated) || "",
+      }));
+      if (onProgress) onProgress(out.length);
+    }
+    for (const pre of res.prefixes) await walk(pre);
+  };
+  await walk(ref(storage, folder));
+  return out;
 }
 
 // แปลง dataUrl (base64) → Blob เพื่ออัปโหลด

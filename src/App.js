@@ -11,7 +11,7 @@ import InstallPWA from "./components/InstallPWA";
 import { shouldRemindBackup, getLastBackupDate } from "./utils/backupReminder";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
 import { PRINT_FONT_SCALE, INVOICE_FONT_SCALE, scaleFontInElement, printElementById, printInvoiceCopies, downloadInvoicePdf } from "./utils/print";
-import { PAYMENT_METHODS, docTypeLabel, docTypeLabelEn, itemLineTotal, calcInvoice, getPaidTotal, getRemaining, getPaidPct } from "./utils/invoice";
+import { PAYMENT_METHODS, docTypeLabel, docTypeLabelEn, itemLineTotal, calcInvoice, getPaidTotal, getRemaining, getPaidPct, ownedImagePathsOf } from "./utils/invoice";
 import { compressImage } from "./utils/imageCompress";
 import { uploadImage, deleteFile } from "./utils/upload";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiRegion";
@@ -46,6 +46,8 @@ const HexColorPicker = lazy(() => import("react-colorful").then(m => ({ default:
 //       ตัวหนักสุดคือ BarcodeScanner (ลาก @zxing มาด้วย) กับ BackupRestore (ลาก xlsx)
 const BarcodeScanner = lazy(() => import("./components/BarcodeScanner"));
 const BackupRestore = lazy(() => import("./components/BackupRestore"));
+// 🧹 ล้างพื้นที่ Storage — ใช้นาน ๆ ครั้ง โหลดเฉพาะตอนเปิดแท็บ
+const StorageCleanup = lazy(() => import("./components/StorageCleanup"));
 const NewInvoiceModal = lazy(() => import("./components/NewInvoiceModal"));
 const NewOrderModal = lazy(() => import("./components/NewOrderModal"));
 const PrintInvoiceModal = lazy(() => import("./components/PrintInvoiceModal"));
@@ -2549,6 +2551,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       for (const src of mergedInv.mergedFrom) {
         await updateDoc(doc(db, "invoices", src.id), { mergedInto: null });
       }
+      // 🖼️ ไม่ลบรูปตรงนี้ — บิลรวมถือ path ชุดเดียวกับบิลเดิมที่กำลังจะกลับมาแสดง
       await deleteDoc(doc(db, "invoices", mergedInv.id));
       logAudit(user, { action: AUDIT_ACTIONS.DELETE, collection: "invoices", targetId: mergedInv.id, targetLabel: `${mergedInv.invoiceNo} (ยกเลิกรวมบิล)`, note: `คืน ${mergedInv.mergedFrom.map(s => s.invoiceNo).join(", ")}` });
     } catch (e) { alert("ยกเลิกไม่สำเร็จ: " + (e.message || e)); }
@@ -2645,8 +2648,20 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
   const handleDeleteInvoice = async (inv) => {
     if (!inv) return;
-    if (!window.confirm(`ลบบิล ${inv.invoiceNo}? — การลบไม่สามารถกู้คืนได้ (ใช้ "แก้ไข" แทนถ้าแค่กรอกผิด)`)) return;
+    // 🖼️ รูปที่บิลใบนี้เป็นเจ้าของ — ลบเอกสารอย่างเดียวจะเหลือไฟล์กำพร้าค้างใน Storage ตลอดไป
+    //    (รูปที่มาจากใบ custom ไม่ถูกนับ — เป็นไฟล์เดียวกับที่ใบ custom ยังใช้อยู่)
+    const ownedImgs = ownedImagePathsOf(inv);
+    const imgLine = ownedImgs.length ? `
+🖼️ รูปที่แนบไว้ในบิล ${ownedImgs.length} รูปจะถูกลบด้วย` : "";
+    if (!window.confirm(`ลบบิล ${inv.invoiceNo}?${imgLine}
+
+การลบไม่สามารถกู้คืนได้ (ใช้ "แก้ไข" แทนถ้าแค่กรอกผิด)`)) return;
     await deleteDoc(doc(db, "invoices", inv.id));
+    // ลบเอกสารสำเร็จก่อนค่อยลบรูป — ถ้าลบรูปพลาด ไม่ให้กระทบผลลัพธ์หลัก
+    if (ownedImgs.length) {
+      try { await Promise.all(ownedImgs.map(p => deleteFile(p))); }
+      catch (e) { console.warn("[invoice] ลบรูปใน Storage ไม่สำเร็จ:", e); }
+    }
     // 🔗 คืนสถานะ "ยังไม่ออกบิล" ให้ใบสั่งของที่ผูกไว้ — ไม่งั้นออกบิลใหม่ไม่ได้เพราะขึ้นว่าออกแล้ว
     const linkIds = [...new Set(inv.mergedFromOrderIds || [])];
     if (linkIds.length) {
@@ -4436,7 +4451,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           <MHead title="⚙️ ตั้งค่าระบบ" onClose={()=>setShowSettings(false)}/>
           {/* Settings tabs */}
           <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:`1px solid ${T.border}`,paddingBottom:12}}>
-            {[{id:"profile",label:"👤 โปรไฟล์"},...(user.role==="admin"?[{id:"system",label:"🏢 ระบบ 🔒"},{id:"backup",label:"💾 Backup"}]:[]),{id:"install",label:"📱 ติดตั้งแอป"},{id:"about",label:"ℹ️ เกี่ยวกับ"}].map(t=>(
+            {[{id:"profile",label:"👤 โปรไฟล์"},...(user.role==="admin"?[{id:"system",label:"🏢 ระบบ 🔒"},{id:"backup",label:"💾 Backup"},{id:"storage",label:"🧹 ล้างพื้นที่"}]:[]),{id:"install",label:"📱 ติดตั้งแอป"},{id:"about",label:"ℹ️ เกี่ยวกับ"}].map(t=>(
               <button key={t.id} onClick={()=>{ if(t.id==="system" && user.role==="admin" && Date.now()>=pwSessionExp){ requireAuth(()=>setSettingsTab("system"),"ใส่รหัสแอดมินเพื่อเข้า “ตั้งค่าระบบ”"); } else setSettingsTab(t.id); }} style={{padding:"7px 16px",borderRadius:8,border:settingsTab===t.id?`1px solid ${T.navActiveBorder}`:`1px solid transparent`,background:settingsTab===t.id?"rgba(59,91,139,0.15)":"transparent",color:settingsTab===t.id?"#3b5b8b":T.sub,cursor:"pointer",fontSize:13,fontFamily:"'Sarabun',sans-serif",fontWeight:settingsTab===t.id?600:400}}>{t.label}</button>
             ))}
           </div>
@@ -4506,6 +4521,10 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               user={user}
               role={role}
             />
+          )}
+
+          {settingsTab==="storage"&&user.role==="admin"&&(
+            <StorageCleanup user={user}/>
           )}
 
           {settingsTab==="install"&&(

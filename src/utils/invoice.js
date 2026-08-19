@@ -42,6 +42,24 @@ export const calcInvoice = (items, vatRate, useVat, discount = 0, discountType =
   return { grossSubtotal, itemDiscountTotal, itemsAfterDiscount, billDiscount, subtotal, vat, shipping, total: subtotal + vat + shipping };
 };
 
+// 🖼️ path ของรูปที่ "บิลใบนี้เป็นเจ้าของ" — ใช้ตอนลบบิล ไม่ให้ไฟล์ค้างกินพื้นที่ Storage
+//
+// ⚠️ นับเฉพาะรูปที่แนบเข้าบิลเอง (job ที่มี __manual) และอยู่ในโฟลเดอร์ invoiceJobs/ เท่านั้น
+//   รูปที่ติดมาจากใบสั่ง custom เป็น "ไฟล์เดียวกัน" กับที่ใบ custom ใช้อยู่ ไม่ใช่สำเนา
+//   ถ้าลบตามไปด้วย ใบ custom ที่ยังใช้งานอยู่จะรูปหาย
+//   เงื่อนไข 2 ชั้น (__manual + prefix) ตั้งใจให้ซ้ำซ้อน กันข้อมูลเก่าที่ธงไม่ครบ
+export const ownedImagePathsOf = (inv) => {
+  const out = [];
+  ((inv && inv.customDetails && inv.customDetails.jobs) || []).forEach(j => {
+    if (!j || !j.__manual) return;
+    (j.images || []).forEach(im => {
+      const p = im && im.path;
+      if (p && String(p).startsWith("invoiceJobs/")) out.push(p);
+    });
+  });
+  return [...new Set(out)];
+};
+
 // ── Payment helpers ─────────────────────────────────────────────
 export const getPaidTotal = (inv) => (inv?.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
 export const getRemaining = (inv) => Math.max(0, (Number(inv?.total) || 0) - getPaidTotal(inv));
