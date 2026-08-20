@@ -4,6 +4,9 @@ import { T } from "../theme";
 import { CardBox } from "../components/ui";
 import { matchTokens } from "../utils/search";
 import { monthlyStats } from "../utils/orderStats";
+import { db } from "../firebase";
+import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { AGING_DOC, DEFAULT_BANDS, DAYS_PER_MONTH, normalizeBands, bandFrom, bandLabel, bandSubLabel, bandIndexFor, tint } from "../utils/aging";
 
 // ────────── helpers ──────────
 const fmtBaht = (n) => `฿${Number(n||0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}`;
@@ -210,6 +213,23 @@ function AgingTab({ invoices }) {
   const [customerFilter, setCustomerFilter] = useState("ทั้งหมด"); // เก็บเป็น normalized key
   const [customerSearch, setCustomerSearch] = useState("");
 
+  // ⏰ ช่วงอายุหนี้ตั้งเองได้ — เก็บที่ settings/aging ให้ทุกคนเห็นเกณฑ์เดียวกัน
+  const [bands, setBands] = useState(DEFAULT_BANDS);
+  const [editBands, setEditBands] = useState(null); // ไม่ null = กำลังแก้อยู่
+  useEffect(() => {
+    const un = onSnapshot(doc(db, "settings", AGING_DOC),
+      snap => setBands(normalizeBands(snap.exists() ? snap.data().bands : null)),
+      () => setBands(DEFAULT_BANDS));   // อ่านไม่ได้ → ใช้ค่าเริ่มต้น ดีกว่าหน้าเปล่า
+    return un;
+  }, []);
+  const saveBands = async () => {
+    const next = normalizeBands(editBands);
+    try {
+      await setDoc(doc(db, "settings", AGING_DOC), { bands: next }, { merge: true });
+      setEditBands(null);
+    } catch (e) { alert("บันทึกไม่สำเร็จ: " + (e?.message || e)); }
+  };
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -252,25 +272,23 @@ function AgingTab({ invoices }) {
     return opt || null;
   }, [customerFilter, customerOptions]);
 
-  // แบ่งกลุ่มตาม days outstanding
+  // แบ่งกลุ่มตามช่วงที่ตั้งไว้ (กี่ช่วงก็ได้)
   const buckets = useMemo(() => {
-    const groups = {
-      "0-30":  { label: "0-30 วัน",   items: [], total: 0, color: T.green,  bg: "rgba(58,122,82,0.08)" },
-      "31-60": { label: "31-60 วัน",  items: [], total: 0, color: T.amber,  bg: "rgba(184,134,0,0.08)" },
-      "61-90": { label: "61-90 วัน",  items: [], total: 0, color: "#d97706", bg: "rgba(217,119,6,0.08)" },
-      "90+":   { label: "90+ วัน",    items: [], total: 0, color: T.red,    bg: "rgba(185,74,72,0.08)" },
-    };
+    const groups = bands.map((b, i) => ({
+      key: b.id, label: bandLabel(bands, i), sub: bandSubLabel(bands, i),
+      color: b.color, bg: tint(b.color), items: [], total: 0,
+    }));
     unpaid.forEach(inv => {
       const d = parseDate(inv.date);
       if (!d) return;
       const days = Math.floor((today - d) / (1000*60*60*24));
-      const key = days <= 30 ? "0-30" : days <= 60 ? "31-60" : days <= 90 ? "61-90" : "90+";
-      groups[key].items.push({ ...inv, days });
-      groups[key].total += Number(inv.total) || 0;
+      const g = groups[bandIndexFor(days, bands)];
+      g.items.push({ ...inv, days });
+      g.total += Number(inv.total) || 0;
     });
-    Object.values(groups).forEach(g => g.items.sort((a,b) => b.days - a.days));
+    groups.forEach(g => g.items.sort((a,b) => b.days - a.days));
     return groups;
-  }, [unpaid, today]);
+  }, [unpaid, today, bands]);
 
   // รวมตามลูกค้า — รวมชื่อซ้ำเป็นแถวเดียว
   const byCustomer = useMemo(() => {
@@ -281,22 +299,20 @@ function AgingTab({ invoices }) {
       const days = Math.floor((today - d) / (1000*60*60*24));
       const rawName = inv.customerName || "—";
       const key = normalizeName(rawName);
-      if (!m.has(key)) m.set(key, { key, name: rawName, phone: inv.customerPhone, count: 0, total: 0, oldest: 0, b030: 0, b3160: 0, b6190: 0, b90: 0, variants: new Set([rawName]) });
+      if (!m.has(key)) m.set(key, { key, name: rawName, phone: inv.customerPhone, count: 0, total: 0, oldest: 0, byBand: bands.map(() => 0), variants: new Set([rawName]) });
       const c = m.get(key);
       c.variants.add(rawName);
       if (!c.phone && inv.customerPhone) c.phone = inv.customerPhone; // เติมเบอร์ถ้ายังว่าง
       c.count++;
       c.total += Number(inv.total) || 0;
       c.oldest = Math.max(c.oldest, days);
-      if (days <= 30) c.b030 += Number(inv.total) || 0;
-      else if (days <= 60) c.b3160 += Number(inv.total) || 0;
-      else if (days <= 90) c.b6190 += Number(inv.total) || 0;
-      else c.b90 += Number(inv.total) || 0;
+      c.byBand[bandIndexFor(days, bands)] += Number(inv.total) || 0;
     });
     return Array.from(m.values()).sort((a,b) => b.total - a.total);
-  }, [unpaid, today]);
+  }, [unpaid, today, bands]);
 
-  const grandTotal = Object.values(buckets).reduce((s,b) => s + b.total, 0);
+  const grandTotal = buckets.reduce((s,b) => s + b.total, 0);
+  const worst = buckets[buckets.length - 1] || { items: [], label: "", color: T.red, bg: "rgba(185,74,72,0.08)" };
 
   const exportAging = () => {
     exportCSV(`aging-${new Date().toISOString().slice(0,10)}.csv`, byCustomer.map(c => ({
@@ -304,10 +320,7 @@ function AgingTab({ invoices }) {
       "เบอร์": c.phone || "",
       "จำนวนบิล": c.count,
       "ยอดรวม (฿)": c.total.toFixed(2),
-      "0-30 วัน": c.b030.toFixed(2),
-      "31-60 วัน": c.b3160.toFixed(2),
-      "61-90 วัน": c.b6190.toFixed(2),
-      "90+ วัน": c.b90.toFixed(2),
+      ...Object.fromEntries(bands.map((b, i) => [bandLabel(bands, i), (c.byBand[i] || 0).toFixed(2)])),
       "ค้างนานสุด (วัน)": c.oldest,
     })));
   };
@@ -358,13 +371,78 @@ function AgingTab({ invoices }) {
         </div>
       </div>
 
+      {/* ⚙️ ตั้งค่าช่วงค้าง — เกณฑ์เครดิตแต่ละร้านไม่เท่ากัน ต้องแก้เองได้ */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+        <button onClick={() => setEditBands(editBands ? null : bands.map(b => ({ ...b })))}
+          style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: editBands ? "rgba(59,91,139,0.1)" : "transparent", color: editBands ? T.accent : T.sub, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif", fontWeight: 600 }}>
+          ⚙️ ตั้งช่วงค้าง / สี
+        </button>
+      </div>
+
+      {editBands && (
+        <div style={{ marginBottom: 16, padding: 14, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 4 }}>⏰ ช่วงอายุหนี้</div>
+          <div style={{ fontSize: 11, color: T.muted, marginBottom: 12, lineHeight: 1.6 }}>
+            ใส่ว่าช่วงนี้ค้างได้ถึงกี่วัน (หรือกดสลับเป็นเดือน) แล้วเลือกสี · ช่วงสุดท้ายคือ “ขึ้นไป” ลบไม่ได้
+          </div>
+          {editBands.map((b, i) => {
+            const from = bandFrom(editBands, i);
+            const isLast = b.upToDays == null;
+            return (
+              <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", flexWrap: "wrap" }}>
+                <input type="color" value={b.color}
+                  onChange={e => setEditBands(list => list.map((x, j) => j === i ? { ...x, color: e.target.value } : x))}
+                  style={{ width: 34, height: 28, padding: 0, border: `1px solid ${T.border}`, borderRadius: 6, cursor: "pointer", background: "none" }}/>
+                <span style={{ fontSize: 12, color: T.sub, minWidth: 74 }}>ค้าง {from} วัน</span>
+                <span style={{ fontSize: 12, color: T.muted }}>ถึง</span>
+                {isLast ? (
+                  <span style={{ fontSize: 12, fontWeight: 700, color: b.color }}>ขึ้นไป (ค้างนานสุด)</span>
+                ) : (
+                  <>
+                    <input type="number" min="1" value={b.upToDays}
+                      onChange={e => setEditBands(list => list.map((x, j) => j === i ? { ...x, upToDays: Number(e.target.value) } : x))}
+                      style={{ width: 76, textAlign: "right", background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 7, padding: "5px 8px", fontFamily: "monospace", fontSize: 12, outline: "none" }}/>
+                    <span style={{ fontSize: 12, color: T.sub }}>วัน</span>
+                    <span style={{ fontSize: 11, color: T.muted }}>({Math.round((b.upToDays / DAYS_PER_MONTH) * 10) / 10} เดือน)</span>
+                    {/* กดตั้งเป็นเดือนกลม ๆ ได้เลย — ร้านคิดเป็นเดือน ไม่ใช่วัน */}
+                    {[1, 2, 3, 6].map(mo => (
+                      <button key={mo} onClick={() => setEditBands(list => list.map((x, j) => j === i ? { ...x, upToDays: mo * DAYS_PER_MONTH } : x))}
+                        style={{ padding: "2px 8px", borderRadius: 6, border: `1px solid ${T.border}`, background: b.upToDays === mo * DAYS_PER_MONTH ? "rgba(59,91,139,0.12)" : "transparent", color: b.upToDays === mo * DAYS_PER_MONTH ? T.accent : T.muted, cursor: "pointer", fontSize: 10, fontFamily: "inherit" }}>
+                        {mo} ด.
+                      </button>
+                    ))}
+                    <button onClick={() => setEditBands(list => list.filter((_, j) => j !== i))} title="ลบช่วงนี้"
+                      style={{ marginLeft: "auto", padding: "3px 9px", borderRadius: 6, border: "1px solid rgba(185,74,72,0.3)", background: "rgba(185,74,72,0.06)", color: T.red, cursor: "pointer", fontSize: 11 }}>✕</button>
+                  </>
+                )}
+              </div>
+            );
+          })}
+          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            <button onClick={() => setEditBands(list => {
+              const finite = list.filter(x => x.upToDays != null);
+              const last = (finite[finite.length - 1]?.upToDays || 0) + 30;
+              return [...finite, { id: `b${Date.now()}`, upToDays: last, color: "#7c3aed" }, ...list.filter(x => x.upToDays == null)];
+            })}
+              style={{ padding: "6px 14px", borderRadius: 8, border: `1px dashed ${T.accent}`, background: "transparent", color: T.accent, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif", fontWeight: 600 }}>+ เพิ่มช่วง</button>
+            <button onClick={() => setEditBands(DEFAULT_BANDS.map(b => ({ ...b })))}
+              style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.sub, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>คืนค่าเริ่มต้น</button>
+            <button onClick={() => setEditBands(null)}
+              style={{ marginLeft: "auto", padding: "6px 14px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.sub, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>ยกเลิก</button>
+            <button onClick={saveBands}
+              style={{ padding: "6px 18px", borderRadius: 8, border: "none", background: T.accent, color: "white", cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif", fontWeight: 700 }}>💾 บันทึก</button>
+          </div>
+        </div>
+      )}
+
       {/* Bucket cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 18 }}>
-        {Object.entries(buckets).map(([k, b]) => {
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(buckets.length, 4)},1fr)`, gap: 12, marginBottom: 18 }}>
+        {buckets.map((b) => {
           const pct = grandTotal > 0 ? (b.total / grandTotal) * 100 : 0;
           return (
-            <div key={k} style={{ padding: 16, background: b.bg, border: `1px solid ${b.color}30`, borderRadius: 12 }}>
-              <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>{b.label}</div>
+            <div key={b.key} style={{ padding: 16, background: b.bg, border: `1px solid ${b.color}30`, borderRadius: 12 }}>
+              <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, letterSpacing: "0.05em", marginBottom: 2 }}>{b.label}</div>
+              <div style={{ fontSize: 9, color: T.muted, marginBottom: 6 }}>{b.sub}</div>
               <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "monospace", color: b.color }}>{fmtBaht(b.total)}</div>
               <div style={{ fontSize: 11, color: T.sub, marginTop: 4 }}>{b.items.length} ใบ · {pct.toFixed(1)}%</div>
             </div>
@@ -377,14 +455,16 @@ function AgingTab({ invoices }) {
           {/* ลูกค้าที่ค้างชำระ */}
           <CardBox style={{ padding: 0, overflow: "hidden", marginBottom: 16 }}>
             <div style={{ padding: "10px 16px", background: "rgba(241,243,246,0.6)", borderBottom: `1px solid ${T.border}`, fontSize: 12, fontWeight: 700, color: T.text }}>👥 สรุปตามลูกค้า ({byCustomer.length} ราย) <span style={{ fontSize: 10, color: T.muted, fontWeight: 400, marginLeft: 6 }}>คลิกชื่อเพื่อดูรายละเอียด</span></div>
-            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 60px 100px 100px 100px 100px 100px 90px", padding: "8px 16px", background: "#f8f9fb", fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: `1px solid ${T.border}` }}>
-              <div>ลูกค้า</div><div style={{textAlign:"right"}}>ใบ</div><div style={{textAlign:"right"}}>0-30</div><div style={{textAlign:"right"}}>31-60</div><div style={{textAlign:"right"}}>61-90</div><div style={{textAlign:"right"}}>90+</div><div style={{textAlign:"right"}}>รวม</div><div style={{textAlign:"center"}}>ค้างนานสุด</div>
+            <div style={{ display: "grid", gridTemplateColumns: `1.5fr 60px ${bands.map(() => "100px").join(" ")} 100px 90px`, padding: "8px 16px", background: "#f8f9fb", fontSize: 10, color: T.muted, fontWeight: 700, letterSpacing: "0.05em", borderBottom: `1px solid ${T.border}` }}>
+              <div>ลูกค้า</div><div style={{textAlign:"right"}}>ใบ</div>
+              {bands.map((b, i) => <div key={b.id} style={{ textAlign: "right", color: b.color }}>{bandLabel(bands, i).replace(" วัน", "")}</div>)}
+              <div style={{textAlign:"right"}}>รวม</div><div style={{textAlign:"center"}}>ค้างนานสุด</div>
             </div>
             {byCustomer.length === 0 ? (
               <div style={{ padding: 30, textAlign: "center", color: T.muted, fontSize: 13 }}>ไม่มีบิลค้างชำระ 🎉</div>
             ) : byCustomer.slice(0, 30).map((c, i) => (
               <div key={i} onClick={() => setCustomerFilter(c.key)}
-                style={{ display: "grid", gridTemplateColumns: "1.5fr 60px 100px 100px 100px 100px 100px 90px", alignItems: "center", padding: "9px 16px", borderBottom: i < byCustomer.length-1 ? `1px solid ${T.border}` : "none", fontSize: 12, cursor: "pointer", transition: "background 0.15s" }}
+                style={{ display: "grid", gridTemplateColumns: `1.5fr 60px ${bands.map(() => "100px").join(" ")} 100px 90px`, alignItems: "center", padding: "9px 16px", borderBottom: i < byCustomer.length-1 ? `1px solid ${T.border}` : "none", fontSize: 12, cursor: "pointer", transition: "background 0.15s" }}
                 onMouseEnter={e => e.currentTarget.style.background = "rgba(59,91,139,0.06)"}
                 onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                 <div>
@@ -392,28 +472,29 @@ function AgingTab({ invoices }) {
                   {c.phone && <div style={{ fontSize: 10, color: T.muted }}>{c.phone}</div>}
                 </div>
                 <div style={{ textAlign: "right", fontFamily: "monospace", color: T.accent, fontWeight: 600 }}>{c.count}</div>
-                <div style={{ textAlign: "right", fontFamily: "monospace", color: c.b030>0?T.green:T.muted }}>{c.b030>0?fmtBaht(c.b030):"—"}</div>
-                <div style={{ textAlign: "right", fontFamily: "monospace", color: c.b3160>0?T.amber:T.muted }}>{c.b3160>0?fmtBaht(c.b3160):"—"}</div>
-                <div style={{ textAlign: "right", fontFamily: "monospace", color: c.b6190>0?"#d97706":T.muted }}>{c.b6190>0?fmtBaht(c.b6190):"—"}</div>
-                <div style={{ textAlign: "right", fontFamily: "monospace", color: c.b90>0?T.red:T.muted, fontWeight: c.b90>0?700:400 }}>{c.b90>0?fmtBaht(c.b90):"—"}</div>
+                {bands.map((b, bi) => {
+                  const v = c.byBand[bi] || 0;
+                  const last = bi === bands.length - 1;
+                  return <div key={b.id} style={{ textAlign: "right", fontFamily: "monospace", color: v > 0 ? b.color : T.muted, fontWeight: v > 0 && last ? 700 : 400 }}>{v > 0 ? fmtBaht(v) : "—"}</div>;
+                })}
                 <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.text }}>{fmtBaht(c.total)}</div>
-                <div style={{ textAlign: "center", fontSize: 11, fontFamily: "monospace", color: c.oldest>90?T.red:c.oldest>60?"#d97706":c.oldest>30?T.amber:T.green, fontWeight: 600 }}>{c.oldest} วัน</div>
+                <div style={{ textAlign: "center", fontSize: 11, fontFamily: "monospace", color: bands[bandIndexFor(c.oldest, bands)].color, fontWeight: 600 }}>{c.oldest} วัน</div>
               </div>
             ))}
             {byCustomer.length > 30 && <div style={{ padding: 12, textAlign: "center", color: T.muted, fontSize: 11 }}>แสดง 30/{byCustomer.length} — ดูเต็มได้จาก CSV export</div>}
           </CardBox>
 
-          {/* รายละเอียดบิล 90+ วัน */}
-          {buckets["90+"].items.length > 0 && (
-            <CardBox style={{ padding: 0, overflow: "hidden", borderColor: T.red }}>
-              <div style={{ padding: "10px 16px", background: "rgba(185,74,72,0.08)", borderBottom: `1px solid ${T.border}`, fontSize: 12, fontWeight: 700, color: T.red }}>🚨 บิลค้างเกิน 90 วัน ({buckets["90+"].items.length} ใบ)</div>
-              {buckets["90+"].items.slice(0, 15).map((inv, i) => (
-                <div key={i} style={{ display: "grid", gridTemplateColumns: "110px 1fr 100px 120px 80px", alignItems: "center", padding: "9px 16px", borderBottom: i < buckets["90+"].items.length-1 ? `1px solid ${T.border}` : "none", fontSize: 12 }}>
+          {/* รายละเอียดบิลในช่วงที่ค้างนานที่สุด — ช่วงสุดท้ายที่ตั้งไว้ */}
+          {worst.items.length > 0 && (
+            <CardBox style={{ padding: 0, overflow: "hidden", borderColor: worst.color }}>
+              <div style={{ padding: "10px 16px", background: worst.bg, borderBottom: `1px solid ${T.border}`, fontSize: 12, fontWeight: 700, color: worst.color }}>🚨 บิลค้าง {worst.label} ({worst.items.length} ใบ)</div>
+              {worst.items.slice(0, 15).map((inv, i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "110px 1fr 100px 120px 80px", alignItems: "center", padding: "9px 16px", borderBottom: i < worst.items.length-1 ? `1px solid ${T.border}` : "none", fontSize: 12 }}>
                   <div style={{ fontFamily: "monospace", color: T.accent, fontWeight: 700 }}>{inv.invoiceNo}</div>
                   <div>{inv.customerName}</div>
                   <div style={{ color: T.sub, fontSize: 11 }}>{(inv.date||"").split(" ")[0]}</div>
-                  <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.red }}>{fmtBaht(inv.total)}</div>
-                  <div style={{ textAlign: "right", fontFamily: "monospace", color: T.red, fontWeight: 700 }}>{inv.days} วัน</div>
+                  <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: worst.color }}>{fmtBaht(inv.total)}</div>
+                  <div style={{ textAlign: "right", fontFamily: "monospace", color: worst.color, fontWeight: 700 }}>{inv.days} วัน</div>
                 </div>
               ))}
             </CardBox>
@@ -438,8 +519,9 @@ function AgingTab({ invoices }) {
           {customerInvoices.length === 0 ? (
             <div style={{ padding: 30, textAlign: "center", color: T.muted, fontSize: 13 }}>ลูกค้านี้ไม่มีบิลค้างชำระ 🎉</div>
           ) : customerInvoices.map((inv, i) => {
-            const bucket = inv.days <= 30 ? "0-30" : inv.days <= 60 ? "31-60" : inv.days <= 90 ? "61-90" : "90+";
-            const bucketColor = inv.days <= 30 ? T.green : inv.days <= 60 ? T.amber : inv.days <= 90 ? "#d97706" : T.red;
+            const bi = bandIndexFor(inv.days, bands);
+            const bucket = bandLabel(bands, bi).replace(" วัน", "");
+            const bucketColor = bands[bi].color;
             return (
               <div key={i} style={{ display: "grid", gridTemplateColumns: "120px 100px 1fr 100px 130px 100px", alignItems: "center", padding: "10px 16px", borderBottom: i < customerInvoices.length-1 ? `1px solid ${T.border}` : "none", fontSize: 12 }}>
                 <div style={{ fontFamily: "monospace", color: T.accent, fontWeight: 700 }}>{inv.invoiceNo}</div>
