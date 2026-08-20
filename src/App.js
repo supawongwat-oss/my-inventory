@@ -8,6 +8,7 @@ import LoginPage, { CompanyEditor } from "./components/LoginPage";
 import { useFirestore } from "./hooks/useFirestore";
 import { useFormDraft, timeAgoTH } from "./hooks/useFormDraft";
 import { qcStatusOf, isCashRefund } from "./utils/returns";
+import { findDuplicateInvoices } from "./utils/dupInvoice";
 import InstallPWA from "./components/InstallPWA";
 import { shouldRemindBackup, getLastBackupDate } from "./utils/backupReminder";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
@@ -2421,6 +2422,26 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     // ── โหมดสร้างใหม่ ──
     // 📅 ออกบิลย้อนหลังได้ — เลขที่เอกสารจะอยู่ในชุดของเดือนตามวันที่ที่เลือก
     const docDateStr = isoToDocDate(invoiceForm.docDate);
+
+    // 🔁 กันออกบิลซ้ำ — ลูกค้าเดิม ยอดเท่ากัน ในเวลาไล่เลี่ยกัน
+    //    เดิมกันเฉพาะบิลที่ออกจากใบสั่งของ ออกมือเปล่าไม่มีอะไรกันเลย
+    //    เตือนอย่างเดียว ไม่บล็อก — ลูกค้าสั่งของชุดเดิมซ้ำจริง ๆ ก็มี
+    const dups = findDuplicateInvoices(invoices, {
+      customerId: invoiceForm.customerId, customerName: invoiceForm.customerName,
+      total: calc.total, date: docDateStr,
+    });
+    if (dups.length > 0) {
+      const lines = dups.slice(0, 5).map(d => `  • ${d.invoiceNo} · ${(d.date || "").split(" ")[0]} · ฿${(Number(d.total) || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}`);
+      const NLx = String.fromCharCode(10);
+      const ok = window.confirm([
+        `เคยออกบิลยอดนี้ให้ ${invoiceForm.customerName} ไปแล้ว ${dups.length} ใบ`, "",
+        ...lines,
+        dups.length > 5 ? `  … และอีก ${dups.length - 5} ใบ` : "", "",
+        "ออกอีกใบ = ลูกค้าจะโดนเก็บเงิน 2 รอบ", "",
+        "ถ้าลูกค้าสั่งของชุดเดิมซ้ำจริง ๆ กดตกลงเพื่อออกต่อ",
+      ].filter(x => x !== "").join(NLx));
+      if (!ok) return;
+    }
     const invNo = await reserveDocNo(db, "INV", invoices, "invoiceNo", isoToJsDate(invoiceForm.docDate));
     // 💰 มัดจำที่กรอกในหน้าออกบิล → เพิ่มเป็นการชำระ (รวมกับมัดจำที่ผูกจากใบสั่ง ถ้ามี)
     const inlineDep = Number(invoiceForm.depositAmount) || 0;

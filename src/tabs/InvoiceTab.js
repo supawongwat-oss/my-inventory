@@ -1,6 +1,7 @@
 import React from "react";
 import LoadRangeBar from "../components/LoadRangeBar";
 import { invoiceItemsText, matchesTokens, returnSummaryOf } from "../utils/returns";
+import { duplicateGroups } from "../utils/dupInvoice";
 
 // 📜 วาดทีละกี่ใบ — กันหน้าค้างตอนมีบิลเป็นพันใบในช่วงที่เลือก
 const PAGE_SIZE = 60;
@@ -141,6 +142,8 @@ export default function InvoiceTab({
         </div>
       ) : (() => {
         const q = norm(invoiceSearch);
+        // 🔁 บิลที่ยอด+ลูกค้าตรงกันในช่วงเวลาใกล้กัน — ติดป้ายให้เห็น จะได้ตามไปยกเลิกใบเกิน
+        const dupMap = duplicateGroups(invoices);
         let fInv = invoiceStatusFilter === "ทั้งหมด" ? invoices : invoices.filter(x => (x.status || "ออกแล้ว") === invoiceStatusFilter);
         if (q) fInv = fInv.filter(inv =>
           norm(inv.customerName).includes(q)
@@ -242,6 +245,12 @@ export default function InvoiceTab({
                                       <div style={{ fontWeight: 600, color: T.text, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>{inv.customerName}
                                         {inv.mergedInto && <span title={`รวมเข้า ${inv.mergedInto.invoiceNo}`} style={{ padding: "1px 6px", fontSize: 9, background: "rgba(184,134,0,0.15)", color: T.amber, borderRadius: 5, fontWeight: 700 }}>🔗 รวมแล้ว</span>}
                                         {inv.mergedFrom?.length > 0 && <span title={`รวมจาก ${inv.mergedFrom.length} บิล`} style={{ padding: "1px 6px", fontSize: 9, background: "rgba(58,122,82,0.15)", color: T.green, borderRadius: 5, fontWeight: 700 }}>🔗 บิลรวม ×{inv.mergedFrom.length}</span>}
+                                        {dupMap.has(inv.id) && (
+                                          <span title={`ยอดเท่ากับ: ${dupMap.get(inv.id).map(o => `${o.invoiceNo} (${(o.date || "").split(" ")[0]})`).join(", ")}\nตรวจว่าออกซ้ำหรือไม่ — ถ้าซ้ำให้ยกเลิกใบที่เกิน`}
+                                            style={{ padding: "1px 6px", fontSize: 9, background: "rgba(185,74,72,0.15)", color: T.red, borderRadius: 5, fontWeight: 700, cursor: "help" }}>
+                                            🔁 ยอดซ้ำ ×{dupMap.get(inv.id).length + 1}
+                                          </span>
+                                        )}
                                       </div>
                                       <div style={{ fontSize: 10, color: T.muted }}>{inv.customerPhone}</div>
                                     </div>
