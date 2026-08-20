@@ -24,16 +24,22 @@ export default function PrintInvoiceModal({
   downloadInvoicePdf,
 }) {
   // 📷 QR เลขที่บิล — ต้องประกาศก่อน early return ด้านล่าง (hook เรียกแบบมีเงื่อนไขไม่ได้)
-  //    เข้ารหัสเป็นลิงก์ ?doc=<เลขที่บิล> → สแกนด้วยมือถือแล้วเปิดแอปพร้อมค้นบิลใบนั้นให้เลย
-  //    เครื่องสแกนบาร์โค้ดแบบต่อคอมก็ใช้ได้ — มันพิมพ์ข้อความลงช่องที่โฟกัสอยู่
+  //
+  // ⚠️ เก็บ "เลขที่บิลอย่างเดียว" ห้ามใส่ URL ของระบบเด็ดขาด
+  //    บิลใบนี้อยู่ในมือลูกค้า ถ้า QR เป็นลิงก์ = แจก URL ของ ERP ให้ลูกค้าทุกคน
+  //    ตอนนี้ใครเปิด URL ก็ได้ token จาก signInAnonymously ทันที และกฎ Firestore
+  //    ให้สิทธิ์ทุก collection กับใครก็ตามที่มี token → เท่ากับยื่นข้อมูลทั้งร้านให้
+  //    (รูโหว่นี้มีอยู่ก่อนแล้ว ต้องแก้ที่ระบบ login ไม่ใช่ที่ QR — แต่ QR ต้องไม่ไปขยายมัน)
+  //
+  //    สแกนแล้วได้ข้อความ "INV6908-0063" → เอาไปวางในช่องค้นหา (Ctrl+K) เจอบิลทันที
+  //    เครื่องสแกนแบบต่อคอมพิมพ์ข้อความลงช่องที่โฟกัสอยู่ให้เอง
   const [docQr, setDocQr] = React.useState("");
   const invoiceNo = invoice?.invoiceNo || "";
   React.useEffect(() => {
     if (!invoiceNo) { setDocQr(""); return; }
     let alive = true;
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
     import("qrcode")
-      .then(m => (m.default || m).toDataURL(`${origin}/?doc=${encodeURIComponent(invoiceNo)}`, { width: 232, margin: 0, errorCorrectionLevel: "M" }))
+      .then(m => (m.default || m).toDataURL(invoiceNo, { width: 232, margin: 0, errorCorrectionLevel: "M" }))
       .then(url => { if (alive) setDocQr(url); })
       .catch(e => console.warn("[invoice] สร้าง QR ไม่สำเร็จ:", e?.message || e));
     return () => { alive = false; };
@@ -79,12 +85,13 @@ export default function PrintInvoiceModal({
 
                 {/* ประเภทเอกสาร + เลขที่ */}
                 <div style={{textAlign:"right",minWidth:200}}>
-                  {/* 📷 QR เลขที่บิล — ลูกค้าส่งของคืนมาพร้อมบิล สแกนแล้วเปิดบิลใบนี้ได้เลย
+                  {/* 📷 QR เลขที่บิล — ลูกค้าส่งของคืนมาพร้อมบิล สแกนแล้ววางในช่องค้นหาได้เลย
+                      เก็บแค่เลขที่บิล ไม่ใช่ลิงก์ (ดูเหตุผลที่หัวไฟล์)
                       ขนาดตายตัว เพื่อให้หัวบิลของทั้ง 3 ชุดสูงเท่ากันเป๊ะ ไม่ให้ตัดหน้าคนละแถว */}
                   {docQr && (
                     <div style={{float:"left",marginRight:8,textAlign:"center",width:58}}>
                       <img src={docQr} alt="" style={{width:58,height:58,display:"block"}}/>
-                      <div style={{fontSize:6,color:"#000",marginTop:1,letterSpacing:0}}>สแกนเปิดบิลนี้</div>
+                      <div style={{fontSize:6,color:"#000",marginTop:1,letterSpacing:0}}>สแกนหาบิลนี้</div>
                     </div>
                   )}
                   {/* ⚠️ nowrap สำคัญกับ PDF 3 ชุด — ข้อความป้ายแต่ละชุดยาวไม่เท่ากัน

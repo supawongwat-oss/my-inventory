@@ -103,7 +103,9 @@ export default function App() {
   }, []);
 
   const [activeTab, setActiveTab] = useState("dashboard");
-  // 📷 สแกน QR บนบิล → เปิดแอปมาพร้อม ?doc=INVxxxx → เด้งช่องค้นหาพร้อมเลขที่บิลให้เลย
+  // 🔗 ลิงก์ภายในถึงเอกสารหนึ่งใบ — /?doc=INVxxxx เปิดแอปมาพร้อมค้นบิลใบนั้นให้เลย
+  //    ใช้ส่งลิงก์ให้กันเองในทีม (QR บนบิลไม่ได้ใช้ทางนี้ — บิลอยู่ในมือลูกค้า
+  //    เลยเก็บแค่เลขที่บิล ไม่ใส่ URL ของระบบลงไป)
   //    อ่านครั้งเดียวตอนโหลด แล้วลบ query ทิ้งจาก address bar ไม่ให้ค้างเวลากด refresh
   const [scannedDoc] = useState(() => {
     if (typeof window === "undefined") return "";
