@@ -7,6 +7,7 @@ import { BarcodeDisplay, Modal, MHead, Toast, Input, BtnPrimary, BtnSuccess, Btn
 import LoginPage, { CompanyEditor } from "./components/LoginPage";
 import { useFirestore } from "./hooks/useFirestore";
 import { useFormDraft, timeAgoTH } from "./hooks/useFormDraft";
+import { qcStatusOf } from "./utils/returns";
 import InstallPWA from "./components/InstallPWA";
 import { shouldRemindBackup, getLastBackupDate } from "./utils/backupReminder";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
@@ -104,8 +105,8 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState("dashboard");
   // 🔗 ลิงก์ภายในถึงเอกสารหนึ่งใบ — /?doc=INVxxxx เปิดแอปมาพร้อมค้นบิลใบนั้นให้เลย
-  //    ใช้ส่งลิงก์ให้กันเองในทีม (QR บนบิลไม่ได้ใช้ทางนี้ — บิลอยู่ในมือลูกค้า
-  //    เลยเก็บแค่เลขที่บิล ไม่ใส่ URL ของระบบลงไป)
+  //    ใช้ส่งลิงก์ให้กันเองในทีมเท่านั้น — บิลที่พิมพ์ให้ลูกค้าไม่มี QR/ลิงก์ใด ๆ แล้ว
+  //    พนักงานหาบิลด้วยการพิมพ์เลขที่บิลในช่องค้นหา (Ctrl+K)
   //    อ่านครั้งเดียวตอนโหลด แล้วลบ query ทิ้งจาก address bar ไม่ให้ค้างเวลากด refresh
   const [scannedDoc] = useState(() => {
     if (typeof window === "undefined") return "";
@@ -118,7 +119,7 @@ export default function App() {
 
   const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, ordersRange, setOrdersRange, ordersCapped, customers, invoices, invoicesRange, setInvoicesRange, invoicesCapped, catalogRange, setCatalogRange, catalogCapped, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs, catalogOrders, attendance, payrollRuns, customSizes, pendingMixSales, usersLoaded, returns } = useFirestore(activeTab);
   // 📏 ไซส์ที่ใช้จริง = มาตรฐาน + ที่เพิ่มเอง
-  // มาจากสแกน QR บนบิล → เปิดช่องค้นหาให้เลย ไม่ต้องกด Ctrl+K เอง
+  // เปิดมาด้วยลิงก์ ?doc= → เด้งช่องค้นหาพร้อมเลขที่เอกสารให้เลย
   useEffect(() => { if (scannedDoc) setShowGlobalSearch(true); }, [scannedDoc]);
   const apparelSizes = useMemo(() => mergeSizes(SIZES, customSizes?.apparel), [customSizes]);
   const shoeSizes = useMemo(() => mergeSizes(SHOE_SIZES, customSizes?.shoe), [customSizes]);
@@ -2694,14 +2695,14 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [editingReturn, setEditingReturn] = useState(null);
 
-  // คืนของเข้าสต็อก — ทำเฉพาะชิ้นที่สภาพยังขายต่อได้
-  // จับกลุ่มตามรุ่นก่อนเขียน ไม่งั้นคืนหลายไซส์ของรุ่นเดียวกันจะเขียนทับกันเอง
-  const restockReturnedItems = async (items, refNo) => {
+  // 📦 ปรับสต็อกจากใบรับคืน — sign +1 = ของเข้า, -1 = ย้อนคืน (ตอนยกเลิกใบที่เข้าสต็อกไปแล้ว)
+  //    ทำเฉพาะชิ้นที่สภาพยังขายต่อได้ · จับกลุ่มตามรุ่นก่อนเขียน
+  //    ไม่งั้นคืนหลายไซส์ของรุ่นเดียวกันจะเขียนทับกันเอง
+  const applyReturnStock = async (items, refNo, sign = 1) => {
+    const usable = (it) => !!it.restock && it.colorIdx != null && !!clothingItems.find(c => c.id === it.clothingId);
     const byClothing = new Map();
     for (const it of items) {
-      if (!it.restock) continue;
-      if (it.colorIdx == null) continue;                       // ไม่รู้ว่าสีไหนในรุ่น → เติมสต็อกมั่วไม่ได้
-      if (!clothingItems.find(c => c.id === it.clothingId)) continue;
+      if (!usable(it)) continue;                               // ไม่รู้ว่าสีไหนในรุ่น → เติมสต็อกมั่วไม่ได้
       if (!byClothing.has(it.clothingId)) byClothing.set(it.clothingId, []);
       byClothing.get(it.clothingId).push(it);
     }
@@ -2711,19 +2712,24 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         const adds = its.filter(x => x.colorIdx === i);
         if (adds.length === 0) return c;
         const stock = { ...(c.stock || {}) };
-        for (const a of adds) stock[a.size] = (Number(stock[a.size]) || 0) + (Number(a.qty) || 0);
+        for (const x of adds) {
+          const next = (Number(stock[x.size]) || 0) + sign * (Number(x.qty) || 0);
+          stock[x.size] = sign < 0 ? Math.max(0, next) : next;   // ย้อนแล้วห้ามติดลบ
+        }
         return { ...c, stock };
       });
       await updateDoc(doc(db, "clothing", clothingId), { colors: newColors });
     }
-    // ลงบันทึกรับเข้าทุกชิ้น รวมชิ้นที่ไม่ได้เข้าสต็อก — ของเสียก็ต้องมีร่องรอยว่าเคยรับมา
+    // ลงบันทึกทุกชิ้น รวมชิ้นที่ไม่ได้เข้าสต็อก — ของเสียก็ต้องมีร่องรอยว่าเคยรับมา
     for (const it of items) {
       await addDoc(collection(db, "transactions"), {
-        type: "รับ", code: it.clothingId || "",
+        type: sign > 0 ? "รับ" : "จ่าย", code: it.clothingId || "",
         name: `${it.clothingName}${it.colorName ? " / " + it.colorName : ""}${it.size ? " / " + it.size : ""}`,
         qty: Number(it.qty) || 0, by: user.name, date: now(),
-        note: `รับคืนจากลูกค้า ${refNo}${it.restock ? "" : ` (${it.condition} — ไม่เข้าสต็อก)`}`,
-        stockAffected: !!it.restock && it.colorIdx != null && !!clothingItems.find(c => c.id === it.clothingId),
+        note: sign > 0
+          ? `รับคืนจากลูกค้า ${refNo}${it.restock ? "" : ` (${it.condition} — ไม่เข้าสต็อก)`}`
+          : `ย้อนใบรับคืน ${refNo} (ยกเลิกใบ)`,
+        stockAffected: usable(it),
         createdAt: serverTimestamp(), category: "เสื้อผ้า",
       });
     }
@@ -2739,6 +2745,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       // id เป็นของ Firestore ไม่ใช่ข้อมูลในเอกสาร — ติดมากับฟอร์มตอนแก้ใบเดิม
       id: undefined,
       receivedBy: editing?.receivedBy || user.name,
+      // เส้นของแยกจากเส้นเงิน — ใบใหม่เริ่มที่ "รอตรวจ" เสมอ แก้ใบเดิมไม่ไปรีเซ็ตสถานะตรวจ
+      qcStatus: editing ? (editing.qcStatus || "รอตรวจ") : "รอตรวจ",
       lastEditedBy: user.name, lastEditedAt: now(),
     };
     delete payload.id;
@@ -2751,8 +2759,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       await addDoc(collection(db, "returns"), payload);
     }
     const refNo = payload.returnNo || editing?.returnNo || "";
-    // คืนสต็อกตอน "เพิ่งจับคู่ได้" เท่านั้น — แก้ใบที่จับคู่ไปแล้วต้องไม่คืนซ้ำ
-    if (matchNow && !wasMatched) await restockReturnedItems(payload.items || [], refNo);
+    // ⚠️ ของ "ไม่" เข้าสต็อกตรงนี้ — การจับคู่บิลเป็นเรื่องเงิน ไม่ใช่เรื่องสภาพของ
+    //    ของเข้าสต็อกตอนกด "ตรวจแล้ว" ที่หน้ารับคืน (handleQcReturn) เท่านั้น
     logAudit(user, {
       action: editing ? AUDIT_ACTIONS.UPDATE : AUDIT_ACTIONS.CREATE,
       collection: "returns", targetId: editing?.id || refNo,
@@ -2763,13 +2771,54 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     setEditingReturn(null);
   };
 
+  // 🔍 ตรวจสภาพเสร็จ → ของเข้าสต็อก (เฉพาะชิ้นที่ยัง "ขายต่อได้")
+  //    แยกจากการจับคู่บิลโดยตั้งใจ — ของถึงร้านกับรู้ว่าเป็นบิลไหน เกิดคนละเวลากัน
+  const handleQcReturn = async (r) => {
+    if (!r?.id) return;
+    if (qcStatusOf(r) === "ตรวจแล้ว") { alert("ใบนี้ตรวจไปแล้ว"); return; }
+    const items = r.items || [];
+    const inStock = items.filter(i => i.restock);
+    const skipped = items.filter(i => !i.restock);
+    const line = (i) => `  • ${i.clothingName}${i.colorName ? " " + i.colorName : ""}${i.size ? " " + i.size : ""} × ${i.qty}`;
+    const NL = String.fromCharCode(10);
+    const msg = [
+      `ยืนยันว่าตรวจสภาพ ${r.returnNo} แล้ว?`, "",
+      inStock.length ? `เข้าสต็อก ${inStock.length} รายการ` : "ไม่มีรายการที่เข้าสต็อก",
+      ...inStock.map(line),
+      "",
+      ...(skipped.length ? [`ไม่เข้าสต็อก ${skipped.length} รายการ (ตำหนิ/ชำรุด)`, ""] : []),
+      "ถ้าสภาพไม่ตรงกับที่บันทึกไว้ กดยกเลิก แล้วไปแก้สภาพในใบก่อน",
+    ].join(NL);
+    if (!window.confirm(msg)) return;
+    await applyReturnStock(items, r.returnNo || "", 1);
+    await updateDoc(doc(db, "returns", r.id), {
+      qcStatus: "ตรวจแล้ว", checkedBy: user.name, checkedAt: now(),
+    });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.UPDATE, collection: "returns", targetId: r.id,
+      targetLabel: `${r.returnNo} · ${r.customerName || "ไม่ทราบผู้ส่ง"}`,
+      note: `ตรวจสภาพแล้ว · เข้าสต็อก ${inStock.reduce((a, i) => a + (Number(i.qty) || 0), 0)} ตัว`,
+    });
+  };
   const handleCancelReturn = async (r) => {
     if (user.role !== "admin") { alert("ยกเลิกใบรับคืนได้เฉพาะ admin"); return; }
-    const warn = r.status === "จับคู่แล้ว"
-      ? "\n\n⚠️ ใบนี้คืนสต็อกและลดหนี้ไปแล้ว — ระบบจะไม่ย้อนสต็อกให้อัตโนมัติ ต้องไปปรับเองที่ 🔄 รับ/จ่ายสินค้า"
+    if (r.appliedStatementNo) {
+      alert(`ยกเลิกไม่ได้ — ใบนี้ถูกหักในใบวางบิล ${r.appliedStatementNo} ไปแล้ว` +
+        String.fromCharCode(10, 10) + "ต้องลบใบวางบิลนั้นก่อน แล้วค่อยยกเลิกใบรับคืน");
+      return;
+    }
+    // เคยเข้าสต็อกไปแล้ว (ตรวจผ่าน) → ต้องย้อนออก ไม่ให้สต็อกค้างเกินจริง
+    const wasStocked = qcStatusOf(r) === "ตรวจแล้ว";
+    const backQty = wasStocked ? (r.items || []).filter(i => i.restock).reduce((a2, i) => a2 + (Number(i.qty) || 0), 0) : 0;
+    const warn = backQty > 0
+      ? String.fromCharCode(10, 10) + `จะย้อนสต็อกออก ${backQty} ตัว (ที่เคยเติมเข้าไปตอนตรวจ)`
       : "";
     if (!window.confirm(`ยกเลิกใบรับคืน ${r.returnNo}?${warn}`)) return;
-    await updateDoc(doc(db, "returns", r.id), { status: "ยกเลิก", cancelledBy: user.name, cancelledAt: now() });
+    if (wasStocked) await applyReturnStock(r.items || [], r.returnNo || "", -1);
+    await updateDoc(doc(db, "returns", r.id), {
+      status: "ยกเลิก", cancelledBy: user.name, cancelledAt: now(),
+      ...(wasStocked ? { qcStatus: "รอตรวจ", stockReversedAt: now() } : {}),
+    });
     logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: "returns", targetId: r.id, targetLabel: r.returnNo, note: "ยกเลิกใบรับคืน" });
   };
 
@@ -3951,6 +4000,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               onNewReturn={()=>{setEditingReturn(null);setShowReturnModal(true);}}
               onEditReturn={(r)=>{setEditingReturn(r);setShowReturnModal(true);}}
               onCancelReturn={handleCancelReturn}
+              onQcReturn={handleQcReturn}
               onOpenInvoice={(id)=>{const inv=invoices.find(i=>i.id===id); if(inv) setShowPrintInvoice(inv); else alert("บิลใบนี้อยู่นอกช่วงที่โหลดมา — ขยายช่วงวันที่ในแท็บออกบิลก่อน");}}
             />
           )}
@@ -3958,6 +4008,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           {activeTab==="statements"&&(
             <StatementTab
               statements={statements}
+              returns={returns}
               invoices={invoices}
               customers={customers}
               companyInfo={companyInfo}

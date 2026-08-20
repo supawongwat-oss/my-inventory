@@ -5,6 +5,7 @@ import { T } from "../theme";
 import { Modal, MHead, Input, BtnPrimary, BtnGhost, CardBox } from "../components/ui";
 import { matchTokens } from "../utils/search";
 import BulkStatementModal from "../components/BulkStatementModal";
+import { creditsForStatement, sumCredits } from "../utils/statement";
 
 // ── helpers ────────────────────────────────────────────────
 const pad2 = n => String(n).padStart(2, "0");
@@ -78,7 +79,7 @@ export const filterInvoicesForStatement = (invoices, customerId, customerName, s
 };
 
 // === Main Component ===
-export default function StatementTab({ statements, invoices, customers, companyInfo, user, role, printElementById }) {
+export default function StatementTab({ statements, invoices, returns = [], customers, companyInfo, user, role, printElementById }) {
   const [showCreate, setShowCreate] = useState(false);
   const [showBulk, setShowBulk] = useState(false); // 📅 ออกใบวางบิลทั้งเดือนทีเดียว
   const [statusFilter, setStatusFilter] = useState("ทั้งหมด");
@@ -148,6 +149,26 @@ export default function StatementTab({ statements, invoices, customers, companyI
   );
   const previewTotal = pickedInvoices.reduce((s, inv) => s + (Number(inv.total) || 0), 0);
 
+  // ↩️ ของที่ลูกค้ารายนี้คืนมาและยังไม่เคยถูกหักในใบวางบิลใบไหน
+  //    เก็บเป็น "ใบที่ตัดออก" เหมือนฝั่งบิล — ใบลดหนี้ที่โผล่มาใหม่จะถูกเลือกให้เองเสมอ
+  const previewCredits = useMemo(
+    () => creditsForStatement(returns, form.customerId, form.customerName, parseISODate(form.periodEnd)),
+    [returns, form.customerId, form.customerName, form.periodEnd]
+  );
+  const [excludedCredits, setExcludedCredits] = useState(() => new Set());
+  useEffect(() => { setExcludedCredits(new Set()); }, [pickKey]);
+  const toggleCredit = (id) => setExcludedCredits(prev => {
+    const n = new Set(prev);
+    n.has(id) ? n.delete(id) : n.add(id);
+    return n;
+  });
+  const pickedCredits = useMemo(
+    () => previewCredits.filter(r => !excludedCredits.has(r.id)),
+    [previewCredits, excludedCredits]
+  );
+  const creditTotal = sumCredits(pickedCredits);
+  const netTotal = Math.max(0, previewTotal - creditTotal);
+
   // === Filtered list ของ statements ที่แสดงในหน้าหลัก ===
   const filteredStatements = statements.filter(st => {
     if (statusFilter !== "ทั้งหมด" && (st.status || "ออกแล้ว") !== statusFilter) return false;
@@ -212,13 +233,22 @@ export default function StatementTab({ statements, invoices, customers, companyI
       customerTaxId: form.customerTaxId,
       periodStart: fmtDDMMYYYY(startD),
       periodEnd: fmtDDMMYYYY(endD),
-      invoiceIds: previewInvoices.map(i => i.id),
-      invoicesSnapshot: previewInvoices.map(i => ({
+      invoiceIds: pickedInvoices.map(i => i.id),
+      invoicesSnapshot: pickedInvoices.map(i => ({
         id: i.id, invoiceNo: i.invoiceNo, date: i.date,
         total: Number(i.total) || 0, status: i.status || "ออกแล้ว",
         docType: i.docType || "receipt",
       })),
       totalAmount: previewTotal,
+      // ↩️ ของที่คืนในงวดนี้ (หรือค้างมาจากงวดก่อน) — netAmount คือยอดที่ต้องเก็บจริง
+      creditTotal,
+      netAmount: netTotal,
+      returnIds: pickedCredits.map(r => r.id),
+      returnsSnapshot: pickedCredits.map(r => ({
+        id: r.id, returnNo: r.returnNo, invoiceNo: r.invoiceNo || "",
+        receivedAt: r.receivedAt || "", reason: r.reason || "",
+        qty: Number(r.creditQty) || 0, total: Number(r.creditTotal) || 0,
+      })),
       invoiceCount: pickedInvoices.length,
       filterMode: form.filterMode,
       status: "ออกแล้ว",
@@ -232,6 +262,23 @@ export default function StatementTab({ statements, invoices, customers, companyI
     };
 
     const ref = await addDoc(collection(db, "statements"), data);
+    // ปั๊มใบรับคืนว่าถูกหักในใบวางบิลใบนี้แล้ว
+    // ถ้าไม่ปั๊ม ใบเดิมจะถูกหักซ้ำทุกครั้งที่วางบิลรอบถัดไป
+    if (pickedCredits.length > 0) {
+      try {
+        for (let i = 0; i < pickedCredits.length; i += 400) {
+          const b = writeBatch(db);
+          pickedCredits.slice(i, i + 400).forEach(r =>
+            b.update(doc(db, "returns", r.id), {
+              appliedStatementId: ref.id, appliedStatementNo: data.statementNo, appliedAt: now(),
+            }));
+          await b.commit();
+        }
+      } catch (e) {
+        console.warn("[statement] ปั๊มใบรับคืนไม่สำเร็จ:", e?.message || e);
+        alert("บันทึกใบวางบิลแล้ว แต่ทำเครื่องหมายใบรับคืนไม่สำเร็จ — ตรวจสอบก่อนวางบิลรอบหน้า ไม่งั้นอาจหักซ้ำ");
+      }
+    }
     setShowCreate(false);
     resetForm();
     if (alsoPrint) {
@@ -261,9 +308,26 @@ export default function StatementTab({ statements, invoices, customers, companyI
   };
 
   const handleDelete = async (st) => {
-    if (window.confirm(`ลบใบวางบิล ${st.statementNo}?`)) {
-      await deleteDoc(doc(db, "statements", st.id));
+    const rel = (st.returnIds || []).length;
+    const extra = rel > 0
+      ? String.fromCharCode(10, 10) + `ใบรับคืน ${rel} ใบที่หักไว้จะถูกปล่อยกลับ ไปหักในใบวางบิลรอบหน้าแทน`
+      : "";
+    if (!window.confirm(`ลบใบวางบิล ${st.statementNo}?` + extra)) return;
+    // ปล่อยก่อนลบ — ถ้าลบเอกสารสำเร็จแต่ปล่อยไม่สำเร็จ ใบลดหนี้จะค้างชี้ไปหาใบที่ไม่มีแล้ว
+    if (rel > 0) {
+      try {
+        for (let i = 0; i < st.returnIds.length; i += 400) {
+          const b = writeBatch(db);
+          st.returnIds.slice(i, i + 400).forEach(rid =>
+            b.update(doc(db, "returns", rid), { appliedStatementId: "", appliedStatementNo: "", appliedAt: "" }));
+          await b.commit();
+        }
+      } catch (e) {
+        alert("ปล่อยใบรับคืนไม่สำเร็จ จึงยังไม่ลบใบวางบิล: " + (e?.message || e));
+        return;
+      }
     }
+    await deleteDoc(doc(db, "statements", st.id));
   };
 
   const handlePrint = (st) => {
@@ -337,7 +401,10 @@ export default function StatementTab({ statements, invoices, customers, companyI
                   <div style={{ fontSize: 10, color: T.muted }}>{st.customerPhone || "—"}</div>
                 </div>
                 <div style={{ fontSize: 11, color: T.sub }}>{st.periodStart} → {st.periodEnd}</div>
-                <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.green, fontSize: 13 }}>฿{Number(st.totalAmount || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontFamily: "monospace", fontWeight: 700, color: T.green, fontSize: 13 }}>฿{Number(st.netAmount != null ? st.netAmount : st.totalAmount || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
+                  {Number(st.creditTotal) > 0 && <div style={{ fontSize: 10, color: "#047857" }}>หักของคืน -฿{Number(st.creditTotal).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>}
+                </div>
                 <div style={{ textAlign: "center", fontSize: 12, fontFamily: "monospace", color: T.accent, fontWeight: 700 }}>{st.invoiceCount} ใบ</div>
                 <div onClick={e => e.stopPropagation()}>
                   <select value={st.status || "ออกแล้ว"} onChange={e => handleUpdateStatus(st, e.target.value)}
@@ -358,6 +425,7 @@ export default function StatementTab({ statements, invoices, customers, companyI
       {showBulk && (
         <BulkStatementModal
           invoices={invoices} customers={customers} statements={statements}
+          returns={returns}
           companyInfo={companyInfo} user={user}
           onClose={() => setShowBulk(false)}
         />
@@ -431,6 +499,37 @@ export default function StatementTab({ statements, invoices, customers, companyI
             </label>
           </div>
 
+          {/* ↩️ ใบลดหนี้จากการรับคืน — หักออกจากยอดวางบิลงวดนี้ */}
+          {previewCredits.length > 0 && (
+            <div style={{ marginBottom: 14, background: "rgba(16,185,129,0.05)", borderRadius: 10, border: "1px solid rgba(16,185,129,0.3)", padding: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#047857" }}>↩️ ของที่คืน — หักออกจากยอด</span>
+                <div style={{ display: "flex", gap: 5 }}>
+                  <button onClick={() => setExcludedCredits(new Set())}
+                    style={{ padding: "3px 10px", borderRadius: 6, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 10, fontFamily: "inherit" }}>เลือกทั้งหมด</button>
+                  <button onClick={() => setExcludedCredits(new Set(previewCredits.map(r => r.id)))}
+                    style={{ padding: "3px 10px", borderRadius: 6, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 10, fontFamily: "inherit" }}>ล้าง</button>
+                </div>
+              </div>
+              <div className="scroll-col" style={{ maxHeight: 160, overflowY: "auto" }}>
+                {previewCredits.map(r => {
+                  const off = excludedCredits.has(r.id);
+                  return (
+                    <label key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 7, cursor: "pointer", opacity: off ? 0.45 : 1, background: off ? "transparent" : "rgba(255,255,255,0.7)", marginBottom: 3 }}>
+                      <input type="checkbox" checked={!off} onChange={() => toggleCredit(r.id)} style={{ cursor: "pointer" }} />
+                      <span style={{ fontFamily: "monospace", fontSize: 11, fontWeight: 700, color: "#047857", textDecoration: off ? "line-through" : "none" }}>{r.returnNo}</span>
+                      <span style={{ fontSize: 11, color: T.sub }}>{(r.receivedAt || "").split(" ")[0]}</span>
+                      <span style={{ fontSize: 11, color: T.muted }}>{r.invoiceNo ? `จากบิล ${r.invoiceNo}` : ""} · {r.reason || "-"}</span>
+                      <span style={{ marginLeft: "auto", fontFamily: "monospace", fontSize: 12, fontWeight: 700, color: "#047857", textDecoration: off ? "line-through" : "none" }}>-฿{Number(r.creditTotal || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 10, color: T.muted, marginTop: 6, lineHeight: 1.6 }}>
+                💡 ใบที่เลือกจะถูกทำเครื่องหมายว่าหักแล้ว — รอบหน้าจะไม่ถูกหักซ้ำ · ใบที่ตัดออกจะยกไปหักรอบถัดไป
+              </div>
+            </div>
+          )}
           {/* 4. Preview */}
           <div style={{ marginBottom: 14, background: "rgba(241,243,246,0.5)", borderRadius: 10, border: `1px solid ${T.border}`, padding: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
@@ -445,6 +544,10 @@ export default function StatementTab({ statements, invoices, customers, companyI
               )}
               <span style={{ fontSize: 12, color: T.muted, marginLeft: "auto" }}>
                 เลือก <b style={{ color: T.text }}>{pickedInvoices.length}</b>/{previewInvoices.length} ใบ · รวม <b style={{ color: T.green }}>฿{previewTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</b>
+                {creditTotal > 0 && (
+                  <> · หักของคืน <b style={{ color: "#047857" }}>-฿{creditTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</b>
+                  {" "}· <b style={{ color: T.text }}>เก็บจริง ฿{netTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</b></>
+                )}
               </span>
             </div>
             {previewInvoices.length === 0 ? (
@@ -684,12 +787,39 @@ function StatementPrintLayout({ statement, companyInfo }) {
           ))}
         </tbody>
         <tfoot>
-          <tr style={{ background: "#f1f5f9", fontWeight: 800 }}>
-            <td colSpan={3} style={{ padding: "6px 8px", textAlign: "right", color: "#000", fontSize: 11, border: "2px solid #000" }}>รวมทั้งสิ้น</td>
-            <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 13, color: "#000", border: "2px solid #000", whiteSpace: "nowrap" }}>
-              ฿{Number(statement.totalAmount || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-            </td>
-          </tr>
+          {Number(statement.creditTotal) > 0 ? (
+            <>
+              <tr style={{ background: "#f8fafc" }}>
+                <td colSpan={3} style={{ padding: "5px 8px", textAlign: "right", color: "#000", fontSize: 10, border: "1px solid #000" }}>รวมบิล</td>
+                <td style={{ padding: "5px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 11, color: "#000", border: "1px solid #000", whiteSpace: "nowrap" }}>
+                  ฿{Number(statement.totalAmount || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                </td>
+              </tr>
+              {(statement.returnsSnapshot || []).map((r, i) => (
+                <tr key={i} style={{ background: "#f8fafc" }}>
+                  <td colSpan={3} style={{ padding: "4px 8px", textAlign: "right", color: "#000", fontSize: 9, border: "1px solid #000" }}>
+                    หัก รับคืนสินค้า {r.returnNo}{r.invoiceNo ? ` (บิล ${r.invoiceNo})` : ""}{r.qty ? ` · ${r.qty} ชิ้น` : ""}
+                  </td>
+                  <td style={{ padding: "4px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 10, color: "#000", border: "1px solid #000", whiteSpace: "nowrap" }}>
+                    -{Number(r.total || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              ))}
+              <tr style={{ background: "#f1f5f9", fontWeight: 800 }}>
+                <td colSpan={3} style={{ padding: "6px 8px", textAlign: "right", color: "#000", fontSize: 11, border: "2px solid #000" }}>ยอดที่ต้องชำระ</td>
+                <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 13, color: "#000", border: "2px solid #000", whiteSpace: "nowrap" }}>
+                  ฿{Number(statement.netAmount != null ? statement.netAmount : statement.totalAmount || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                </td>
+              </tr>
+            </>
+          ) : (
+            <tr style={{ background: "#f1f5f9", fontWeight: 800 }}>
+              <td colSpan={3} style={{ padding: "6px 8px", textAlign: "right", color: "#000", fontSize: 11, border: "2px solid #000" }}>รวมทั้งสิ้น</td>
+              <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 13, color: "#000", border: "2px solid #000", whiteSpace: "nowrap" }}>
+                ฿{Number(statement.totalAmount || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+              </td>
+            </tr>
+          )}
         </tfoot>
       </table>
       </div>

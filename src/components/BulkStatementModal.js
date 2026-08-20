@@ -2,17 +2,17 @@
 //    แล้วติ๊กเลือกว่าจะออกให้ใครบ้าง → สร้างทีเดียวทั้งหมด
 // (เดิมต้องสร้างทีละราย — 235 ลูกค้า = 2-3 ชม.)
 import { useState, useMemo } from "react";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
 import { Modal, MHead, BtnPrimary, BtnGhost } from "./ui";
 import { T } from "../theme";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
-import { filterInvoicesForStatement, fmtISO, fmtDDMMYYYY, parseISODate as parseISO } from "../utils/statement";
+import { filterInvoicesForStatement, creditsForStatement, sumCredits, fmtISO, fmtDDMMYYYY, parseISODate as parseISO } from "../utils/statement";
 
 const fmtB = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const now = () => { const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
 
-export default function BulkStatementModal({ invoices = [], customers = [], statements = [], companyInfo = {}, user, onClose, onDone }) {
+export default function BulkStatementModal({ invoices = [], customers = [], statements = [], returns = [], companyInfo = {}, user, onClose, onDone }) {
   const t = new Date();
   const [periodStart, setPeriodStart] = useState(fmtISO(new Date(t.getFullYear(), t.getMonth(), 1)));
   const [periodEnd, setPeriodEnd] = useState(fmtISO(new Date(t.getFullYear(), t.getMonth()+1, 0)));
@@ -55,10 +55,14 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
         ((s.customerId && s.customerId === c.customerId) || (!s.customerId && s.customerName === c.customerName)) &&
         s.periodStart === fmtDDMMYYYY(startD) && s.periodEnd === fmtDDMMYYYY(endD) && s.status !== "ยกเลิก"
       );
-      rows.push({ key, ...c, invoices: invs, total: invs.reduce((s,i)=>s+(Number(i.total)||0),0), dupe });
+      // ↩️ ของที่ลูกค้ารายนี้คืนและยังไม่เคยถูกหัก → หักในใบวางบิลรอบนี้
+      const credits = creditsForStatement(returns, c.customerId, c.customerName, endD);
+      const creditTotal = sumCredits(credits);
+      const total = invs.reduce((s,i)=>s+(Number(i.total)||0),0);
+      rows.push({ key, ...c, invoices: invs, total, credits, creditTotal, net: Math.max(0, total - creditTotal), dupe });
     });
     return rows.sort((a,b) => b.total - a.total);
-  }, [invoices, customers, statements, periodStart, periodEnd, filterMode, onlyCredit]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [invoices, customers, statements, returns, periodStart, periodEnd, filterMode, onlyCredit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -74,6 +78,8 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
   };
   const selected = groups.filter(isPicked);
   const selTotal = selected.reduce((s,g) => s + g.total, 0);
+  const selCredit = selected.reduce((s,g) => s + (g.creditTotal || 0), 0);
+  const selNet = Math.max(0, selTotal - selCredit);
   const selInvCount = selected.reduce((s,g) => s + g.invoices.length, 0);
   const dupeCount = groups.filter(g => g.dupe).length;
 
@@ -84,6 +90,7 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
       `สร้างใบวางบิล ${selected.length} ใบ?\n\n`+
       `• รวมบิล ${selInvCount.toLocaleString("th-TH")} ใบ\n`+
       `• ยอดรวม ฿${fmtB(selTotal)}\n`+
+      (selCredit > 0 ? `• หักของที่คืน -฿${fmtB(selCredit)} → เก็บจริง ฿${fmtB(selNet)}\n` : "")+
       `• ช่วง ${fmtDDMMYYYY(startD)} – ${fmtDDMMYYYY(endD)}\n`+
       (dupeSelected > 0 ? `\n⚠️ มี ${dupeSelected} รายที่เคยออกช่วงนี้ไปแล้ว — จะได้ใบซ้ำ\n` : "")
     )) return;
@@ -93,8 +100,9 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
     for (let i = 0; i < selected.length; i++) {
       const g = selected[i];
       try {
-        await addDoc(collection(db, "statements"), {
-          statementNo: "STM-" + Date.now() + "-" + i,
+        const stmtNo = "STM-" + Date.now() + "-" + i;
+        const ref = await addDoc(collection(db, "statements"), {
+          statementNo: stmtNo,
           customerId: g.customerId || "",
           customerName: g.customerName,
           customerPhone: g.phone || "",
@@ -109,6 +117,14 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
             docType: x.docType || "receipt",
           })),
           totalAmount: g.total,
+          creditTotal: g.creditTotal || 0,
+          netAmount: g.net != null ? g.net : g.total,
+          returnIds: (g.credits || []).map(r => r.id),
+          returnsSnapshot: (g.credits || []).map(r => ({
+            id: r.id, returnNo: r.returnNo, invoiceNo: r.invoiceNo || "",
+            receivedAt: r.receivedAt || "", reason: r.reason || "",
+            qty: Number(r.creditQty) || 0, total: Number(r.creditTotal) || 0,
+          })),
           invoiceCount: g.invoices.length,
           filterMode,
           status: "ออกแล้ว",
@@ -120,6 +136,16 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
           date: now(),
           createdAt: serverTimestamp(),
         });
+        // ปั๊มใบรับคืนของรายนี้ว่าถูกหักไปแล้ว — ไม่งั้นเดือนหน้าจะถูกหักซ้ำ
+        const rids = (g.credits || []).map(r => r.id);
+        for (let k = 0; k < rids.length; k += 400) {
+          const b = writeBatch(db);
+          rids.slice(k, k + 400).forEach(rid =>
+            b.update(doc(db, "returns", rid), {
+              appliedStatementId: ref.id, appliedStatementNo: stmtNo, appliedAt: now(),
+            }));
+          await b.commit();
+        }
       } catch (e) {
         fails.push(`• ${g.customerName} — ${e.message || e}`);
       }
@@ -219,7 +245,10 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
                     </span>
                   </div>
                 </div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: T.green, fontFamily: "monospace", flexShrink: 0 }}>฿{fmtB(g.total)}</div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: T.green, fontFamily: "monospace" }}>฿{fmtB(g.creditTotal > 0 ? g.net : g.total)}</div>
+                  {g.creditTotal > 0 && <div style={{ fontSize: 10, color: "#047857" }}>฿{fmtB(g.total)} · หักคืน -฿{fmtB(g.creditTotal)}</div>}
+                </div>
               </label>
             );
           })}

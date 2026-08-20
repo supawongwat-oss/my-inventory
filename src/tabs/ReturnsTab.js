@@ -3,7 +3,7 @@
 // จึงดันขึ้นบนสุดและทำให้เห็นชัด ไม่ให้ค้างลืม
 import React from "react";
 import { T } from "../theme";
-import { RETURN_STATUSES, norm, matchesTokens } from "../utils/returns";
+import { RETURN_STATUSES, qcStatusOf, needsQC, norm, matchesTokens } from "../utils/returns";
 
 const money = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 });
 
@@ -15,7 +15,7 @@ const statusStyle = (s) => ({
 
 export default function ReturnsTab({
   returns = [], role = {}, user,
-  onNewReturn, onEditReturn, onCancelReturn, onOpenInvoice,
+  onNewReturn, onEditReturn, onCancelReturn, onOpenInvoice, onQcReturn,
 }) {
   const [search, setSearch] = React.useState("");
   const [filter, setFilter] = React.useState("ทั้งหมด");
@@ -38,6 +38,8 @@ export default function ReturnsTab({
   }, [returns, filter, search]);
 
   const pending = returns.filter(r => r.status === "รอจับคู่บิล");
+  const waitingQc = returns.filter(needsQC);
+  const waitingQcQty = waitingQc.reduce((a, r) => a + (r.items || []).filter(i => i.restock).reduce((b, i) => b + (Number(i.qty) || 0), 0), 0);
   const pendingQty = pending.reduce((s, r) => s + (Number(r.creditQty) || 0), 0);
   const creditTotal = returns.filter(r => r.status === "จับคู่แล้ว").reduce((s, r) => s + (Number(r.creditTotal) || 0), 0);
 
@@ -60,6 +62,11 @@ export default function ReturnsTab({
         )}
       </div>
 
+      {waitingQc.length > 0 && (
+        <div style={{ padding: "10px 14px", background: "rgba(59,91,139,0.07)", border: "1px solid rgba(59,91,139,0.3)", borderRadius: 10, marginBottom: 10, fontSize: 12, color: T.accent }}>
+          🔍 รอตรวจสภาพ <b>{waitingQc.length}</b> ใบ — ของยังไม่เข้าสต็อกจนกว่าจะกด “ตรวจแล้ว” (จะเข้า <b>{waitingQcQty}</b> ชิ้น)
+        </div>
+      )}
       {pending.length > 0 && (
         <div style={{ padding: "10px 14px", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 10, marginBottom: 14, fontSize: 12, color: "#92400e" }}>
           ⏳ มี <b>{pending.length}</b> ใบที่ยังไม่รู้ว่ามาจากบิลไหน รวม <b>{pendingQty}</b> ชิ้น — ยังไม่ได้ลดหนี้ให้ลูกค้าและยังไม่ได้คืนเข้าสต็อก
@@ -118,7 +125,9 @@ export default function ReturnsTab({
                 {r.invoiceNo
                   ? <button onClick={() => onOpenInvoice?.(r.invoiceId)} style={{ background: "none", border: "none", color: T.accent, cursor: "pointer", fontSize: 11, fontFamily: "inherit", textDecoration: "underline", padding: 0 }}>🧾 {r.invoiceNo}</button>
                   : <span style={{ color: T.amber }}>ยังไม่ผูกกับบิล</span>}
-                {r.status === "จับคู่แล้ว" && <span style={{ color: T.green }}>คืนเข้าสต็อก {restock} ชิ้น</span>}
+                {qcStatusOf(r) === "ตรวจแล้ว"
+                  ? <span style={{ color: T.green }}>✅ ตรวจแล้ว · เข้าสต็อก {restock} ชิ้น</span>
+                  : r.status !== "ยกเลิก" && <span style={{ color: T.accent }}>🔍 รอตรวจสภาพ</span>}
                 {(r.images || []).length > 0 && <span>📷 {(r.images || []).length} รูป</span>}
               </div>
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -127,6 +136,12 @@ export default function ReturnsTab({
                 )}
                 {canEdit && r.status !== "ยกเลิก" && (
                   <>
+                    {needsQC(r) && (
+                      <button onClick={() => onQcReturn?.(r)} title="ตรวจสภาพแล้ว → เอาของที่ยังขายต่อได้เข้าสต็อก"
+                        style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid rgba(59,91,139,0.4)", background: "rgba(59,91,139,0.1)", color: T.accent, cursor: "pointer", fontSize: 11, fontFamily: "inherit", fontWeight: 700 }}>
+                        🔍 ตรวจแล้ว
+                      </button>
+                    )}
                     <button onClick={() => onEditReturn?.(r)} title={r.status === "รอจับคู่บิล" ? "จับคู่บิล" : "แก้ไข"}
                       style={{ padding: "4px 10px", borderRadius: 7, border: `1px solid ${r.status === "รอจับคู่บิล" ? "rgba(245,158,11,0.4)" : T.border}`, background: r.status === "รอจับคู่บิล" ? "rgba(245,158,11,0.1)" : "white", color: r.status === "รอจับคู่บิล" ? "#b45309" : T.sub, cursor: "pointer", fontSize: 11, fontFamily: "inherit", fontWeight: r.status === "รอจับคู่บิล" ? 700 : 400 }}>
                       {r.status === "รอจับคู่บิล" ? "🔗 จับคู่บิล" : "✏️"}

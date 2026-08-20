@@ -57,3 +57,34 @@ export const filterInvoicesForStatement = (invoices, customerId, customerName, s
     return true;
   });
 };
+
+// ── ↩️ ใบลดหนี้จากการรับคืน ──────────────────────────────────
+// ของที่ลูกค้าคืนต้องไปหักตอนวางบิล ไม่งั้นสิ้นเดือนจะเก็บเงินเต็มทั้งที่คืนของแล้ว
+//
+// เอาใบไหนมาหัก:
+//   · จับคู่บิลแล้วเท่านั้น (ยังไม่จับคู่ = ยังไม่รู้ราคา ยังคิดยอดไม่ได้)
+//   · ยังไม่เคยถูกหักในใบวางบิลใบไหน (appliedStatementId ว่าง) ← กันหักซ้ำทุกเดือน
+//   · วันที่รับของ ≤ วันสิ้นงวด
+//
+// ไม่กำหนดขอบล่างของช่วงโดยตั้งใจ — ของที่คืนหลังตัดยอดเดือนก่อนไปแล้ว
+// จะถูกยกมาหักในใบวางบิลรอบถัดไปเอง ตรงกับที่ร้านทำจริง
+export const creditsForStatement = (returns = [], customerId, customerName, endDate) => {
+  const endMs = endDate
+    ? new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59).getTime()
+    : Infinity;
+  return returns.filter(r => {
+    if ((r.status || "") !== "จับคู่แล้ว") return false;
+    if (r.appliedStatementId) return false;
+    if (!(Number(r.creditTotal) > 0)) return false;
+    const sameCustomer = (r.customerId && r.customerId === customerId)
+      || (!r.customerId && r.customerName === customerName)
+      || (customerName && r.customerName === customerName);
+    if (!sameCustomer) return false;
+    const d = parseDDMMYYYY(r.receivedAt) || parseDDMMYYYY(r.checkedAt);
+    if (!d) return true;                       // ไม่มีวันที่ → ปล่อยให้หักได้ ดีกว่าตกหล่น
+    return d.getTime() <= endMs;
+  });
+};
+
+export const sumCredits = (list = []) =>
+  list.reduce((a, r) => a + (Number(r.creditTotal) || 0), 0);
