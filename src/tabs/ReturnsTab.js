@@ -37,6 +37,13 @@ export default function ReturnsTab({
     });
   }, [returns, filter, search]);
 
+  // 🗃️ ใบที่ยกเลิกแล้ว — ไม่ลบทิ้ง (เป็นหลักฐานว่าเคยมีของเข้ามา) แต่ไม่ควรปนกับงานที่ยังต้องทำ
+  //    เก็บพับไว้ท้ายหน้า · ถ้าเลือกกรอง "ยกเลิก" เองก็ให้แสดงในรายการหลักตามปกติ
+  const showCancelledInline = filter === "ยกเลิก";
+  const activeList = showCancelledInline ? list : list.filter(r => r.status !== "ยกเลิก");
+  const cancelledList = showCancelledInline ? [] : list.filter(r => r.status === "ยกเลิก");
+  const [showCancelled, setShowCancelled] = React.useState(false);
+
   const pending = returns.filter(r => r.status === "รอจับคู่บิล");
   const waitingQc = returns.filter(needsQC);
   const waitingQcQty = waitingQc.reduce((a, r) => a + (r.items || []).filter(i => i.restock).reduce((b, i) => b + (Number(i.qty) || 0), 0), 0);
@@ -45,53 +52,8 @@ export default function ReturnsTab({
 
   const canEdit = role.canIssueInvoice !== false;
 
-  return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
-        <div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>↩️ รับคืนสินค้า</div>
-          <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>
-            ของที่ลูกค้าส่งคืนมา — รับเข้าระบบก่อนได้ แล้วค่อยจับคู่บิลทีหลัง · ทั้งหมด {returns.length} ใบ
-          </div>
-        </div>
-        {canEdit && (
-          <button onClick={onNewReturn}
-            style={{ padding: "10px 18px", borderRadius: 9, border: "none", background: "linear-gradient(135deg,#d97706,#b45309)", color: "white", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Sarabun',sans-serif", boxShadow: "0 4px 14px rgba(217,119,6,0.3)" }}>
-            ➕ รับของคืน
-          </button>
-        )}
-      </div>
-
-      {waitingQc.length > 0 && (
-        <div style={{ padding: "10px 14px", background: "rgba(59,91,139,0.07)", border: "1px solid rgba(59,91,139,0.3)", borderRadius: 10, marginBottom: 10, fontSize: 12, color: T.accent }}>
-          🔍 รอตรวจสภาพ <b>{waitingQc.length}</b> ใบ — ของยังไม่เข้าสต็อกจนกว่าจะกด “ตรวจแล้ว” (จะเข้า <b>{waitingQcQty}</b> ชิ้น)
-        </div>
-      )}
-      {pending.length > 0 && (
-        <div style={{ padding: "10px 14px", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 10, marginBottom: 14, fontSize: 12, color: "#92400e" }}>
-          ⏳ มี <b>{pending.length}</b> ใบที่ยังไม่รู้ว่ามาจากบิลไหน รวม <b>{pendingQty}</b> ชิ้น — ยังไม่ได้ลดหนี้ให้ลูกค้าและยังไม่ได้คืนเข้าสต็อก
-        </div>
-      )}
-
-      <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center", flexWrap: "wrap", padding: 10, background: T.card, borderRadius: 10, border: `1px solid ${T.border}` }}>
-        <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="🔍 เลขที่ / ลูกค้า / เลขพัสดุ / ชื่อรุ่น สี ไซส์..."
-          style={{ flex: "1 1 240px", padding: "8px 12px", borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, fontFamily: "inherit" }}/>
-        <select value={filter} onChange={e => setFilter(e.target.value)}
-          style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, fontFamily: "inherit" }}>
-          <option value="ทั้งหมด">ทุกสถานะ</option>
-          {RETURN_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <div style={{ fontSize: 12, color: T.sub, marginLeft: "auto" }}>
-          ลดหนี้รวม <b style={{ fontFamily: "monospace", color: T.green }}>฿{money(creditTotal)}</b>
-        </div>
-      </div>
-
-      {list.length === 0 ? (
-        <div style={{ textAlign: "center", padding: 40, color: T.muted, fontSize: 13 }}>
-          {search || filter !== "ทั้งหมด" ? "ไม่พบใบรับคืนที่ตรงกับที่ค้น" : "ยังไม่มีการรับคืนสินค้า"}
-        </div>
-      ) : list.map(r => {
+  // การ์ดใบรับคืน 1 ใบ — ใช้ทั้งรายการหลักและกล่องที่ยกเลิกแล้ว
+  const Row = (r) => {
         const st = statusStyle(r.status);
         const restock = (r.items || []).reduce((s, i) => s + (i.restock ? (Number(i.qty) || 0) : 0), 0);
         return (
@@ -174,7 +136,70 @@ export default function ReturnsTab({
             {r.note && <div style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>📝 {r.note}</div>}
           </div>
         );
-      })}
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>↩️ รับคืนสินค้า</div>
+          <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>
+            ของที่ลูกค้าส่งคืนมา — รับเข้าระบบก่อนได้ แล้วค่อยจับคู่บิลทีหลัง · ทั้งหมด {returns.length} ใบ
+          </div>
+        </div>
+        {canEdit && (
+          <button onClick={onNewReturn}
+            style={{ padding: "10px 18px", borderRadius: 9, border: "none", background: "linear-gradient(135deg,#d97706,#b45309)", color: "white", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Sarabun',sans-serif", boxShadow: "0 4px 14px rgba(217,119,6,0.3)" }}>
+            ➕ รับของคืน
+          </button>
+        )}
+      </div>
+
+      {waitingQc.length > 0 && (
+        <div style={{ padding: "10px 14px", background: "rgba(59,91,139,0.07)", border: "1px solid rgba(59,91,139,0.3)", borderRadius: 10, marginBottom: 10, fontSize: 12, color: T.accent }}>
+          🔍 รอตรวจสภาพ <b>{waitingQc.length}</b> ใบ — ของยังไม่เข้าสต็อกจนกว่าจะกด “ตรวจแล้ว” (จะเข้า <b>{waitingQcQty}</b> ชิ้น)
+        </div>
+      )}
+      {pending.length > 0 && (
+        <div style={{ padding: "10px 14px", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 10, marginBottom: 14, fontSize: 12, color: "#92400e" }}>
+          ⏳ มี <b>{pending.length}</b> ใบที่ยังไม่รู้ว่ามาจากบิลไหน รวม <b>{pendingQty}</b> ชิ้น — ยังไม่ได้ลดหนี้ให้ลูกค้าและยังไม่ได้คืนเข้าสต็อก
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center", flexWrap: "wrap", padding: 10, background: T.card, borderRadius: 10, border: `1px solid ${T.border}` }}>
+        <input value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="🔍 เลขที่ / ลูกค้า / เลขพัสดุ / ชื่อรุ่น สี ไซส์..."
+          style={{ flex: "1 1 240px", padding: "8px 12px", borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, fontFamily: "inherit" }}/>
+        <select value={filter} onChange={e => setFilter(e.target.value)}
+          style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, fontFamily: "inherit" }}>
+          <option value="ทั้งหมด">ทุกสถานะ</option>
+          {RETURN_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <div style={{ fontSize: 12, color: T.sub, marginLeft: "auto" }}>
+          ลดหนี้รวม <b style={{ fontFamily: "monospace", color: T.green }}>฿{money(creditTotal)}</b>
+        </div>
+      </div>
+
+      {activeList.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 40, color: T.muted, fontSize: 13 }}>
+          {search || filter !== "ทั้งหมด" ? "ไม่พบใบรับคืนที่ตรงกับที่ค้น" : "ยังไม่มีการรับคืนสินค้า"}
+        </div>
+      ) : activeList.map(Row)}
+
+      {/* 🗃️ ยกเลิกแล้ว — พับไว้ ไม่ให้เกะกะงานที่ยังต้องทำ แต่ยังเปิดดูย้อนหลังได้ */}
+      {cancelledList.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <div onClick={() => setShowCancelled(v => !v)}
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "rgba(148,163,184,0.1)", border: `1px dashed ${T.border}`, borderRadius: 10, cursor: "pointer", userSelect: "none" }}>
+            <span style={{ fontSize: 12, color: T.sub, fontWeight: 600 }}>
+              🗃️ ยกเลิกแล้ว ({cancelledList.length})
+            </span>
+            <span style={{ fontSize: 10, color: T.muted }}>เก็บไว้เป็นหลักฐาน ไม่นับรวมในยอดใด ๆ</span>
+            <span style={{ marginLeft: "auto", fontSize: 11, color: T.muted }}>{showCancelled ? "▲ ซ่อน" : "▼ เปิดดู"}</span>
+          </div>
+          {showCancelled && <div style={{ marginTop: 8, opacity: 0.72 }}>{cancelledList.map(Row)}</div>}
+        </div>
+      )}
     </div>
   );
 }
