@@ -355,6 +355,7 @@ export default function NewInvoiceModal({
   addItemCollapsed, setAddItemCollapsed,
   handleAddInvoiceItem,
   handleConfirmInvoice,
+  savingInvoice = false,
   handleImportFromOrder,
   docTypeLabel,
   calcInvoice,
@@ -863,9 +864,15 @@ export default function NewInvoiceModal({
           </div>
 
           <div style={{display:"flex",gap:10}}>
-            <BtnGhost onClick={()=>{onClose();}} style={{flex:1}}>ยกเลิก</BtnGhost>
-            <BtnPrimary onClick={handleConfirmInvoice} disabled={!invoiceForm.customerName||invoiceForm.items.length===0} style={{flex:2,opacity:(!invoiceForm.customerName||invoiceForm.items.length===0)?0.45:1}}>
-              {editingInvoiceId ? `💾 บันทึกการแก้ไข ${docTypeLabel(invoiceDocType)}` : `✅ ออก${docTypeLabel(invoiceDocType)} + บันทึก`}
+            <BtnGhost onClick={()=>{onClose();}} disabled={savingInvoice} style={{flex:1,opacity:savingInvoice?0.5:1}}>ยกเลิก</BtnGhost>
+            {/* ⏳ ระหว่างบันทึก ปุ่มต้องเปลี่ยนสภาพให้เห็นชัด
+                ไม่งั้นพนักงานนึกว่ากดไม่ติดแล้วกดซ้ำ → ได้บิลคนละเลขแต่ยอดเดียวกัน */}
+            <BtnPrimary onClick={handleConfirmInvoice}
+              disabled={savingInvoice||!invoiceForm.customerName||invoiceForm.items.length===0}
+              style={{flex:2,opacity:(savingInvoice||!invoiceForm.customerName||invoiceForm.items.length===0)?0.55:1,cursor:savingInvoice?"wait":undefined}}>
+              {savingInvoice
+                ? "⏳ กำลังบันทึก... อย่าเพิ่งกดซ้ำ"
+                : (editingInvoiceId ? `💾 บันทึกการแก้ไข ${docTypeLabel(invoiceDocType)}` : `✅ ออก${docTypeLabel(invoiceDocType)} + บันทึก`)}
             </BtnPrimary>
           </div>
         </Modal>

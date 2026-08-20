@@ -439,6 +439,12 @@ export default function App() {
 
   // ── Invoice & Company state ───────────────────────────────────
   const [showNewInvoice, setShowNewInvoice] = useState(false);
+  // ⏳ กันกดปุ่มออกบิลซ้ำระหว่างที่ยังบันทึกไม่เสร็จ
+  //    ต้นเหตุจริงของบิลซ้ำ: บันทึกช้า (จองเลข → เขียนบิล → ปั๊มใบสั่ง) แต่ปุ่มไม่เปลี่ยนสภาพเลย
+    //  พนักงานนึกว่าไม่ติด เลยกดย้ำ → ได้บิลคนละเลขแต่ยอดเดียวกัน
+    //  ใช้ ref คู่กับ state: state ไว้เปลี่ยนหน้าตาปุ่ม · ref กันการกดรัวซึ่งเร็วกว่า re-render
+  const [savingInvoice, setSavingInvoice] = useState(false);
+  const savingInvoiceRef = useRef(false);
   const [invoiceOrderPool, setInvoiceOrderPool] = useState([]); // 📋 ใบสั่งของล่าสุดจาก DB (เผื่อเก่ากว่า window ในหน่วยความจำ) สำหรับ dropdown ดึงข้อมูล
   const [editingInvoiceId, setEditingInvoiceId] = useState(null); // ถ้ามี = โหมดแก้ไข
   const [profileCustomer, setProfileCustomer] = useState(null);
@@ -2362,6 +2368,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
 
   const handleConfirmInvoice = async () => {
+    if (savingInvoiceRef.current) return;   // กำลังบันทึกอยู่ — กดซ้ำไม่มีผล
     if(!invoiceForm.customerName||invoiceForm.items.length===0) return;
     // 🔒 บังคับเงื่อนไขใบกำกับภาษี
     if (invoiceDocType === "tax") {
@@ -2376,6 +2383,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       }
     }
     const calc = calcInvoice(invoiceForm.items, invoiceForm.vatRate, invoiceVat, invoiceForm.discount, invoiceForm.discountType, invoiceForm.useShipping, invoiceForm.shippingFee);
+    const beginSave = () => { savingInvoiceRef.current = true; setSavingInvoice(true); };
+    const endSave = () => { savingInvoiceRef.current = false; setSavingInvoice(false); };
     const bank = (invoiceForm.bankAccountIdx!=null&&invoiceForm.bankAccountIdx>=0)
       ? (companyInfo.bankAccounts||[])[invoiceForm.bankAccountIdx] : null;
 
@@ -2400,7 +2409,15 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       };
       delete updated.depositAmount; delete updated.depositMethod; // ฟิลด์ชั่วคราวของฟอร์ม (แก้บิลจัดการชำระผ่านปุ่ม 💵)
       delete updated.docDate; // ฟิลด์ของฟอร์มเท่านั้น — ตัวจริงเก็บใน date
-      await updateDoc(doc(db,"invoices",editingInvoiceId), withSearchKeys(updated));
+      beginSave();
+      try {
+        await updateDoc(doc(db,"invoices",editingInvoiceId), withSearchKeys(updated));
+      } catch (e) {
+        endSave();
+        alert("บันทึกไม่สำเร็จ: " + (e?.message || e));
+        return;
+      }
+      endSave();
       logAudit(user, {
         action: AUDIT_ACTIONS.UPDATE,
         collection: "invoices",
@@ -2442,7 +2459,15 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       ].filter(x => x !== "").join(NLx));
       if (!ok) return;
     }
-    const invNo = await reserveDocNo(db, "INV", invoices, "invoiceNo", isoToJsDate(invoiceForm.docDate));
+    beginSave();
+    let invNo;
+    try {
+      invNo = await reserveDocNo(db, "INV", invoices, "invoiceNo", isoToJsDate(invoiceForm.docDate));
+    } catch (e) {
+      endSave();
+      alert("จองเลขที่บิลไม่สำเร็จ: " + (e?.message || e));
+      return;
+    }
     // 💰 มัดจำที่กรอกในหน้าออกบิล → เพิ่มเป็นการชำระ (รวมกับมัดจำที่ผูกจากใบสั่ง ถ้ามี)
     const inlineDep = Number(invoiceForm.depositAmount) || 0;
     const finalPayments = [
@@ -2461,10 +2486,28 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     // 📦 Firestore จำกัดเอกสารละ 1MB — บิลที่รวมมาจากใบสั่งเยอะ ๆ อาจทะลุแล้วบันทึกไม่ผ่าน
     const invKB = Math.round(JSON.stringify(data).length / 1024);
     if (invKB > 900) {
+      endSave();
       alert(`บันทึกไม่ได้ — บิลนี้ใหญ่เกินขีดจำกัด (${invKB} KB / สูงสุด ~1000 KB)\n\nมี ${data.items.length.toLocaleString("th-TH")} แถว — แบ่งออกเป็นหลายบิลก่อนครับ`);
       return;
     }
-    const ref = await addDoc(collection(db,"invoices"), withSearchKeys(data));
+    let ref;
+    try {
+      ref = await addDoc(collection(db,"invoices"), withSearchKeys(data));
+    } catch (e) {
+      endSave();
+      alert("บันทึกบิลไม่สำเร็จ: " + (e?.message || e) + String.fromCharCode(10, 10) + "ยังไม่ได้ออกบิล ลองใหม่อีกครั้ง");
+      return;
+    }
+
+    // 👀 บิลเขียนลงระบบแล้ว — ปิดหน้าต่างและโชว์ใบให้เห็นทันที
+    //    งานที่เหลือ (ปั๊มใบสั่ง/ใบ custom) ไม่กระทบตัวบิล ปล่อยทำต่อเบื้องหลังได้
+    //    เดิมรอจนครบทุกขั้นถึงจะปิด ทำให้ดูเหมือนค้าง แล้วพนักงานกดปุ่มซ้ำ
+    endSave();
+    setShowPrintInvoice({...data, id:ref.id});
+    setShowNewInvoice(false);
+    clearInvoiceDraft();
+    setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0,...invoiceDefaults()});
+    setActiveTab("invoice");
     // 🔗 ปั๊ม "ออกบิลแล้ว" ลงในใบสั่งของโดยตรง
     // ทำไม: บิลโหลดมาแค่ช่วงวันที่ (ไม่ใช่ทั้งหมด) — ถ้าอ่านสถานะจากบิลที่โหลดมาอย่างเดียว
     // ใบสั่งเก่าจะกลับไปขึ้น "ยังไม่ออกบิล" ทั้งที่ออกไปแล้ว → เสี่ยงออกบิลซ้ำ
@@ -2500,13 +2543,6 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       targetLabel: `${invNo} · ${invoiceForm.customerName}`,
       note: `${docTypeLabel(invoiceDocType)} · ฿${(data.total||0).toLocaleString("th-TH",{minimumFractionDigits:2})}${invoiceVat?" · VAT":""}`,
     });
-    setShowPrintInvoice({...data, id:ref.id});
-    setShowNewInvoice(false);
-    // 💾 บันทึกลงระบบแล้ว → ไม่ต้องเก็บร่างไว้อีก
-    clearInvoiceDraft();
-    setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0,...invoiceDefaults()});
-    // 🧭 เด้งไปหน้า "ออกบิล" ให้เห็นบิลใหม่ในรายการทันที (โดยเฉพาะตอนออกบิลรวมจากหน้าใบสั่งของ)
-    setActiveTab("invoice");
   };
 
   // 🔗 toggle เลือกบิล
@@ -4948,6 +4984,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           setAddItemCollapsed={setAddItemCollapsed}
           handleAddInvoiceItem={handleAddInvoiceItem}
           handleConfirmInvoice={handleConfirmInvoice}
+          savingInvoice={savingInvoice}
           handleImportFromOrder={handleImportFromOrder}
           docTypeLabel={docTypeLabel}
           calcInvoice={calcInvoice}
