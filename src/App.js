@@ -7,7 +7,7 @@ import { BarcodeDisplay, Modal, MHead, Toast, Input, BtnPrimary, BtnSuccess, Btn
 import LoginPage, { CompanyEditor } from "./components/LoginPage";
 import { useFirestore } from "./hooks/useFirestore";
 import { useFormDraft, timeAgoTH } from "./hooks/useFormDraft";
-import { qcStatusOf } from "./utils/returns";
+import { qcStatusOf, isCashRefund } from "./utils/returns";
 import InstallPWA from "./components/InstallPWA";
 import { shouldRemindBackup, getLastBackupDate } from "./utils/backupReminder";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
@@ -2810,6 +2810,13 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       alert("ออกใบลดหนี้ได้เฉพาะใบที่จับคู่บิลแล้ว — ยังไม่รู้บิลต้นทางก็ยังไม่รู้ราคาที่จะลด");
       return;
     }
+    // ใบลดหนี้ใช้กับเคส "คืนเป็นเงินสด" เท่านั้น
+    // เคสหักในใบวางบิลมีหลักฐานอยู่ในใบวางบิลอยู่แล้ว ออกอีกใบจะกลายเป็นหลักฐานซ้อน
+    if (!isCashRefund(r)) {
+      alert("ใบนี้ตั้งไว้เป็นแบบหักในใบวางบิล — ยอดจะไปแสดงในใบวางบิลงวดถัดไปแทน" +
+        String.fromCharCode(10, 10) + "ถ้าลูกค้าขอรับเงินสดคืน ให้แก้ใบรับคืนเป็น \"คืนเป็นเงินสด\" ก่อน");
+      return;
+    }
     let withNo = r;
     if (!r.creditNoteNo) {
       try {
@@ -2826,6 +2833,26 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       }
     }
     setCreditNote(withNo);
+  };
+  // 💵 บันทึกว่าจ่ายเงินคืนลูกค้าแล้ว — ปิดวงเรื่องเงินของเคส "คืนเป็นเงินสด"
+  //    ใบแบบนี้ถูกกันออกจากใบวางบิลแล้ว (creditsForStatement) จึงไม่หักซ้ำ
+  const handleRefundPaid = async (r) => {
+    if (!r?.id || r.refundedAt) return;
+    const amount = Number(r.creditTotal) || 0;
+    const method = window.prompt(
+      `จ่ายเงินคืน ${r.customerName || ""} ฿${amount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}` +
+      String.fromCharCode(10, 10) + "จ่ายทางไหน? (เงินสด / โอน / อื่น ๆ)", "เงินสด");
+    if (method === null) return;
+    await updateDoc(doc(db, "returns", r.id), {
+      refundedAt: now(), refundedBy: user.name,
+      refundMethod: (method || "").trim() || "เงินสด",
+      refundAmount: amount,
+    });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.UPDATE, collection: "returns", targetId: r.id,
+      targetLabel: `${r.returnNo} · ${r.customerName || ""}`,
+      note: `จ่ายเงินคืน ฿${amount} · ${(method || "เงินสด").trim()}${r.creditNoteNo ? ` · ใบลดหนี้ ${r.creditNoteNo}` : ""}`,
+    });
   };
   const handleCancelReturn = async (r) => {
     if (user.role !== "admin") { alert("ยกเลิกใบรับคืนได้เฉพาะ admin"); return; }
@@ -4029,6 +4056,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               onCancelReturn={handleCancelReturn}
               onQcReturn={handleQcReturn}
               onCreditNote={openCreditNote}
+              onRefundPaid={handleRefundPaid}
               onOpenInvoice={(id)=>{const inv=invoices.find(i=>i.id===id); if(inv) setShowPrintInvoice(inv); else alert("บิลใบนี้อยู่นอกช่วงที่โหลดมา — ขยายช่วงวันที่ในแท็บออกบิลก่อน");}}
             />
           )}

@@ -3,7 +3,7 @@
 // จึงดันขึ้นบนสุดและทำให้เห็นชัด ไม่ให้ค้างลืม
 import React from "react";
 import { T } from "../theme";
-import { RETURN_STATUSES, qcStatusOf, needsQC, norm, matchesTokens } from "../utils/returns";
+import { RETURN_STATUSES, qcStatusOf, needsQC, isCashRefund, norm, matchesTokens } from "../utils/returns";
 
 const money = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 });
 
@@ -15,7 +15,7 @@ const statusStyle = (s) => ({
 
 export default function ReturnsTab({
   returns = [], role = {}, user,
-  onNewReturn, onEditReturn, onCancelReturn, onOpenInvoice, onQcReturn, onCreditNote,
+  onNewReturn, onEditReturn, onCancelReturn, onOpenInvoice, onQcReturn, onCreditNote, onRefundPaid,
 }) {
   const [search, setSearch] = React.useState("");
   const [filter, setFilter] = React.useState("ทั้งหมด");
@@ -128,6 +128,11 @@ export default function ReturnsTab({
                 {qcStatusOf(r) === "ตรวจแล้ว"
                   ? <span style={{ color: T.green }}>✅ ตรวจแล้ว · เข้าสต็อก {restock} ชิ้น</span>
                   : r.status !== "ยกเลิก" && <span style={{ color: T.accent }}>🔍 รอตรวจสภาพ</span>}
+                {r.status === "จับคู่แล้ว" && (isCashRefund(r)
+                  ? <span style={{ color: r.refundedAt ? T.green : "#b45309", fontWeight: 700 }}>
+                      💵 {r.refundedAt ? `จ่ายเงินคืนแล้ว ${(r.refundedAt || "").split(" ")[0]}` : "รอจ่ายเงินคืน"}
+                    </span>
+                  : <span style={{ color: T.sub }}>📃 {r.appliedStatementNo ? `หักแล้วในใบวางบิล ${r.appliedStatementNo}` : "รอหักในใบวางบิล"}</span>)}
                 {(r.images || []).length > 0 && <span>📷 {(r.images || []).length} รูป</span>}
               </div>
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -142,10 +147,16 @@ export default function ReturnsTab({
                         🔍 ตรวจแล้ว
                       </button>
                     )}
-                    {r.status === "จับคู่แล้ว" && (
+                    {r.status === "จับคู่แล้ว" && isCashRefund(r) && (
                       <button onClick={() => onCreditNote?.(r)} title="ออก/พิมพ์ใบลดหนี้ให้ลูกค้า"
                         style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.1)", color: "#047857", cursor: "pointer", fontSize: 11, fontFamily: "inherit", fontWeight: 700 }}>
                         🧾 ใบลดหนี้{r.creditNoteNo ? ` ${r.creditNoteNo}` : ""}
+                      </button>
+                    )}
+                    {r.status === "จับคู่แล้ว" && isCashRefund(r) && !r.refundedAt && (
+                      <button onClick={() => onRefundPaid?.(r)} title="บันทึกว่าจ่ายเงินคืนลูกค้าแล้ว"
+                        style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid rgba(217,119,6,0.45)", background: "rgba(217,119,6,0.12)", color: "#b45309", cursor: "pointer", fontSize: 11, fontFamily: "inherit", fontWeight: 700 }}>
+                        💵 จ่ายเงินคืนแล้ว
                       </button>
                     )}
                     <button onClick={() => onEditReturn?.(r)} title={r.status === "รอจับคู่บิล" ? "จับคู่บิล" : "แก้ไข"}

@@ -164,14 +164,22 @@ export default function PrintCreditNoteModal({
             </tfoot>
           </table>
 
+          {/* เอกสารนี้ใช้กับเคส "คืนเป็นเงินสด" — เป็นหลักฐานว่าลูกค้ารับเงินคืนไปแล้ว */}
           <div style={{ fontSize: 9, marginBottom: 10, lineHeight: 1.7 }}>
-            ยอดนี้จะถูกนำไปหักออกจากใบวางบิลงวดถัดไปของท่าน
-            {ret.appliedStatementNo ? ` (หักแล้วในใบวางบิล ${ret.appliedStatementNo})` : ""}
+            บริษัทได้รับคืนสินค้าตามรายการข้างต้น และคืนเงินให้แก่ท่านเป็นจำนวน {money(grand)} บาท
+            {ret.refundedAt
+              ? ` เมื่อวันที่ ${(ret.refundedAt || "").split(" ")[0]} โดยวิธี${ret.refundMethod || "เงินสด"}`
+              : " (รอดำเนินการจ่ายคืน)"}
           </div>
+          {ret.refundedAt && (
+            <div style={{ fontSize: 9, marginBottom: 10, padding: "5px 9px", border: "1px solid #000", borderRadius: 5, display: "inline-block" }}>
+              จ่ายคืนโดย {ret.refundedBy || "-"} · {ret.refundMethod || "เงินสด"} · {(ret.refundedAt || "").split(" ")[0]}
+            </div>
+          )}
 
           {/* ── ลายเซ็น ── */}
           <div style={{ display: "flex", gap: 20, marginTop: 26, paddingTop: 10, borderTop: "1px solid #000" }}>
-            {["ผู้จัดทำ", "ผู้ตรวจสอบ", "ผู้รับใบลดหนี้"].map((l, i) => (
+            {["ผู้จ่ายเงิน", "ผู้ตรวจสอบ", "ผู้รับเงินคืน"].map((l, i) => (
               <div key={i} style={{ flex: 1, textAlign: "center" }}>
                 <div style={{ borderTop: "1px solid #000", marginBottom: 4 }} />
                 <div style={{ fontSize: 10, fontWeight: 600 }}>{l}</div>

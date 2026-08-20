@@ -1,3 +1,5 @@
+import { settleModeOf } from "./returns";
+
 // 📃 ตัวช่วยของใบวางบิล — แยกมาไว้ที่นี่เพราะใช้ทั้งหน้าสร้างทีละใบ (StatementTab)
 //    และหน้าออกทั้งเดือน (BulkStatementModal) → กัน circular import
 const pad2 = n => String(n).padStart(2, "0");
@@ -75,6 +77,8 @@ export const creditsForStatement = (returns = [], customerId, customerName, endD
   return returns.filter(r => {
     if ((r.status || "") !== "จับคู่แล้ว") return false;
     if (r.appliedStatementId) return false;
+    // 💵 ใบที่จ่ายเงินคืนไปแล้ว ห้ามมาหักในบิลอีก ไม่งั้นลูกค้าได้คืน 2 ทาง
+    if (settleModeOf(r) === "cash") return false;
     if (!(Number(r.creditTotal) > 0)) return false;
     const sameCustomer = (r.customerId && r.customerId === customerId)
       || (!r.customerId && r.customerName === customerName)

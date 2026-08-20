@@ -13,7 +13,7 @@ import { compressImage } from "../utils/imageCompress";
 import { uploadImage, deleteFile } from "../utils/upload";
 import {
   RETURN_REASONS, RETURN_CONDITIONS, conditionRestocks,
-  calcReturn, suggestInvoices, lineKey, matchesTokens, invoiceItemsText, norm,
+  calcReturn, suggestInvoices, lineKey, matchesTokens, invoiceItemsText, norm, SETTLE_MODES, settleModeOf,
 } from "../utils/returns";
 
 const MAX_IMAGES = 6;
@@ -41,7 +41,7 @@ export default function ReturnModal({
     trackingNo: "", reason: RETURN_REASONS[0], note: "",
     items: [emptyItem()],
     images: [],
-    invoiceId: "", invoiceNo: "",
+    invoiceId: "", invoiceNo: "", settleMode: "statement",
   });
   const [busy, setBusy] = React.useState(false);
   const [invSearch, setInvSearch] = React.useState("");
@@ -163,6 +163,7 @@ export default function ReturnModal({
         restockQty: calc.restockQty,
         invoiceId: matchNow ? form.invoiceId : "",
         invoiceNo: matchNow ? form.invoiceNo : "",
+        settleMode: settleModeOf(form),
       }, matchNow);
       onClose();
     } catch (e) {
@@ -354,6 +355,33 @@ export default function ReturnModal({
         </div>
       )}
 
+      {/* 💰 คืนเงินให้ลูกค้าทางไหน — ต้องเลือกทางเดียว ไม่งั้นได้คืน 2 ทาง */}
+      {pickedInvoice && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>คืนเงินให้ลูกค้าทางไหน</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {SETTLE_MODES.map(m => {
+              const on = settleModeOf(form) === m.id;
+              return (
+                <label key={m.id} style={{ flex: "1 1 200px", display: "flex", alignItems: "flex-start", gap: 8, padding: "9px 12px", borderRadius: 9, cursor: "pointer", border: `1px solid ${on ? (m.id === "cash" ? "#b45309" : T.accent) : T.border}`, background: on ? (m.id === "cash" ? "rgba(217,119,6,0.08)" : "rgba(59,91,139,0.06)") : T.input }}>
+                  <input type="radio" name="settleMode" checked={on} onChange={() => patch({ settleMode: m.id })} style={{ marginTop: 2, cursor: "pointer" }} />
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: on ? 700 : 500, color: on ? (m.id === "cash" ? "#b45309" : T.accent) : T.text }}>
+                      {m.id === "cash" ? "💵 " : "📃 "}{m.label}
+                    </div>
+                    <div style={{ fontSize: 10, color: T.muted, marginTop: 2 }}>{m.hint}</div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+          {settleModeOf(form) === "cash" && (
+            <div style={{ fontSize: 10, color: "#b45309", marginTop: 6, lineHeight: 1.6 }}>
+              ⚠️ ใบนี้จะไม่ถูกนำไปหักในใบวางบิล — พิมพ์ใบลดหนี้ให้ลูกค้าเก็บไว้เป็นหลักฐานการรับเงินคืน
+            </div>
+          )}
+        </div>
+      )}
       {/* ── สรุป ── */}
       <div style={{ marginTop: 16, padding: "10px 14px", background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div style={{ fontSize: 12, color: T.sub }}>
@@ -379,7 +407,7 @@ export default function ReturnModal({
         </BtnPrimary>
       </div>
       <div style={{ fontSize: 10, color: T.muted, marginTop: 8, lineHeight: 1.6 }}>
-        บิลต้นทางจะไม่ถูกแก้ — เอกสารที่ออกไปแล้วคงสภาพเดิม ระบบบันทึกเป็นการลดหนี้แยกใบ แล้วโชว์ยอดสุทธิให้แทน
+        บิลต้นทางจะไม่ถูกแก้ — เอกสารที่ออกไปแล้วคงสภาพเดิม · หักในใบวางบิล = ยกไปหักงวดถัดไป · คืนเงินสด = พิมพ์ใบลดหนี้ให้ลูกค้า
         {calc.restockQty > 0 && ` · ของสภาพดี ${calc.restockQty} ชิ้นจะถูกคืนเข้าสต็อกอัตโนมัติ`}
       </div>
     </Modal>
