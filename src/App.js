@@ -51,6 +51,7 @@ const BackupRestore = lazy(() => import("./components/BackupRestore"));
 const StorageCleanup = lazy(() => import("./components/StorageCleanup"));
 const ReturnsTab = lazy(() => import("./tabs/ReturnsTab"));
 const ReturnModal = lazy(() => import("./components/ReturnModal"));
+const PrintCreditNoteModal = lazy(() => import("./components/PrintCreditNoteModal"));
 const NewInvoiceModal = lazy(() => import("./components/NewInvoiceModal"));
 const NewOrderModal = lazy(() => import("./components/NewOrderModal"));
 const PrintInvoiceModal = lazy(() => import("./components/PrintInvoiceModal"));
@@ -2693,6 +2694,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
   // ── ↩️ รับคืนสินค้า ─────────────────────────────────────────
   const [showReturnModal, setShowReturnModal] = useState(false);
+  const [creditNote, setCreditNote] = useState(null); // ใบรับคืนที่กำลังเปิดใบลดหนี้
   const [editingReturn, setEditingReturn] = useState(null);
 
   // 📦 ปรับสต็อกจากใบรับคืน — sign +1 = ของเข้า, -1 = ย้อนคืน (ตอนยกเลิกใบที่เข้าสต็อกไปแล้ว)
@@ -2799,6 +2801,31 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       targetLabel: `${r.returnNo} · ${r.customerName || "ไม่ทราบผู้ส่ง"}`,
       note: `ตรวจสภาพแล้ว · เข้าสต็อก ${inStock.reduce((a, i) => a + (Number(i.qty) || 0), 0)} ตัว`,
     });
+  };
+  // 🧾↩️ เปิดใบลดหนี้ — จองเลขชุด CN ครั้งแรกที่เปิด แล้วเก็บติดใบไว้
+  //    เก็บเลขไว้เพราะเอกสารการเงินต้องพิมพ์ซ้ำแล้วได้เลขเดิมเสมอ
+  const openCreditNote = async (r) => {
+    if (!r?.id) return;
+    if ((r.status || "") !== "จับคู่แล้ว") {
+      alert("ออกใบลดหนี้ได้เฉพาะใบที่จับคู่บิลแล้ว — ยังไม่รู้บิลต้นทางก็ยังไม่รู้ราคาที่จะลด");
+      return;
+    }
+    let withNo = r;
+    if (!r.creditNoteNo) {
+      try {
+        const cnNo = await reserveDocNo(db, "CN", returns, "creditNoteNo", new Date());
+        await updateDoc(doc(db, "returns", r.id), { creditNoteNo: cnNo, creditNoteAt: now(), creditNoteBy: user.name });
+        withNo = { ...r, creditNoteNo: cnNo };
+        logAudit(user, {
+          action: AUDIT_ACTIONS.CREATE, collection: "returns", targetId: r.id,
+          targetLabel: `${cnNo} · ${r.customerName || ""}`,
+          note: `ออกใบลดหนี้ ${cnNo} · อ้างบิล ${r.invoiceNo || "-"} · ฿${r.creditTotal || 0}`,
+        });
+      } catch (e) {
+        console.warn("[creditNote] จองเลขไม่สำเร็จ:", e?.message || e);
+      }
+    }
+    setCreditNote(withNo);
   };
   const handleCancelReturn = async (r) => {
     if (user.role !== "admin") { alert("ยกเลิกใบรับคืนได้เฉพาะ admin"); return; }
@@ -4001,6 +4028,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               onEditReturn={(r)=>{setEditingReturn(r);setShowReturnModal(true);}}
               onCancelReturn={handleCancelReturn}
               onQcReturn={handleQcReturn}
+              onCreditNote={openCreditNote}
               onOpenInvoice={(id)=>{const inv=invoices.find(i=>i.id===id); if(inv) setShowPrintInvoice(inv); else alert("บิลใบนี้อยู่นอกช่วงที่โหลดมา — ขยายช่วงวันที่ในแท็บออกบิลก่อน");}}
             />
           )}
@@ -4618,6 +4646,19 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           onSave={handleSaveReturn}
           onClose={()=>{setShowReturnModal(false);setEditingReturn(null);}}
         />
+      )}
+
+      {/* 🧾↩️ ใบลดหนี้ — เอกสารแยกใบ อ้างถึงบิลต้นทาง (ไม่แก้ยอดบิลเดิม) */}
+      {creditNote && (
+        <Suspense fallback={null}>
+          <PrintCreditNoteModal
+            ret={creditNote}
+            invoice={invoices.find(i => i.id === creditNote.invoiceId) || null}
+            companyInfo={companyInfo}
+            printElementById={printElementById}
+            onClose={() => setCreditNote(null)}
+          />
+        </Suspense>
       )}
 
       {/* ── MODAL: Settings ── */}

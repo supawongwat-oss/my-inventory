@@ -15,7 +15,7 @@ const statusStyle = (s) => ({
 
 export default function ReturnsTab({
   returns = [], role = {}, user,
-  onNewReturn, onEditReturn, onCancelReturn, onOpenInvoice, onQcReturn,
+  onNewReturn, onEditReturn, onCancelReturn, onOpenInvoice, onQcReturn, onCreditNote,
 }) {
   const [search, setSearch] = React.useState("");
   const [filter, setFilter] = React.useState("ทั้งหมด");
@@ -140,6 +140,12 @@ export default function ReturnsTab({
                       <button onClick={() => onQcReturn?.(r)} title="ตรวจสภาพแล้ว → เอาของที่ยังขายต่อได้เข้าสต็อก"
                         style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid rgba(59,91,139,0.4)", background: "rgba(59,91,139,0.1)", color: T.accent, cursor: "pointer", fontSize: 11, fontFamily: "inherit", fontWeight: 700 }}>
                         🔍 ตรวจแล้ว
+                      </button>
+                    )}
+                    {r.status === "จับคู่แล้ว" && (
+                      <button onClick={() => onCreditNote?.(r)} title="ออก/พิมพ์ใบลดหนี้ให้ลูกค้า"
+                        style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.1)", color: "#047857", cursor: "pointer", fontSize: 11, fontFamily: "inherit", fontWeight: 700 }}>
+                        🧾 ใบลดหนี้{r.creditNoteNo ? ` ${r.creditNoteNo}` : ""}
                       </button>
                     )}
                     <button onClick={() => onEditReturn?.(r)} title={r.status === "รอจับคู่บิล" ? "จับคู่บิล" : "แก้ไข"}
