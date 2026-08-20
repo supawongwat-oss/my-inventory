@@ -1,5 +1,6 @@
 import React from "react";
 import LoadRangeBar from "../components/LoadRangeBar";
+import { invoiceItemsText, matchesTokens, returnSummaryOf } from "../utils/returns";
 
 // 📜 วาดทีละกี่ใบ — กันหน้าค้างตอนมีบิลเป็นพันใบในช่วงที่เลือก
 const PAGE_SIZE = 60;
@@ -49,6 +50,7 @@ export default function InvoiceTab({
   handleUnmergeInvoice,
   handleEditInvoice,
   handleDeleteInvoice,
+  returns = [],
 }) {
   // 📜 วาดทีละหน้า — รีเซ็ตเมื่อเปลี่ยนคำค้น/สถานะ/ชุดข้อมูล
   const [shown, setShown] = React.useState(PAGE_SIZE);
@@ -107,7 +109,7 @@ export default function InvoiceTab({
       {/* 🔍 ค้นหาบิล */}
       <div style={{ marginBottom: 12, position: "relative" }}>
         <input value={typed} onChange={e => setTyped(e.target.value)}
-          placeholder="🔍 ค้นหาบิล — ชื่อลูกค้า / เบอร์โทร / เลขที่บิล / เลขผู้เสียภาษี / ที่อยู่ / โน้ต"
+          placeholder="🔍 ค้นหาบิล — ลูกค้า / เบอร์ / เลขที่บิล / หรือชื่อรุ่น สี ไซส์ เช่น &quot;k-12 แดง 2xl&quot;"
           style={{ width: "100%", boxSizing: "border-box", background: T.input, border: `1px solid ${typed ? T.accent : T.inputBorder}`, color: T.text, borderRadius: 10, padding: "10px 40px 10px 14px", fontFamily: "'Sarabun',sans-serif", fontSize: 13, outline: "none" }} />
         {typed && <button onClick={() => { setTyped(""); setInvoiceSearch(""); }} title="ล้าง" style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", padding: "3px 9px", borderRadius: 6, border: "none", background: "rgba(59,91,139,0.1)", color: T.sub, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>✕</button>}
       </div>
@@ -147,6 +149,9 @@ export default function InvoiceTab({
           || norm(inv.customerTaxId).includes(q)
           || norm(inv.customerAddress).includes(q)
           || norm(inv.note).includes(q)
+          // 🔎 ค้นเข้าไปในตัวสินค้าด้วย — จำเป็นตอนลูกค้าส่งของคืนมาโดยไม่มีบิล
+          //    ทุกคำต้องเจอ พิมพ์ "k-12 แดง 2xl" จึงได้เฉพาะบิลที่มีครบทั้งสาม
+          || matchesTokens(invoiceItemsText(inv), q)
         );
         if (fInv.length === 0) return (
           <div style={{ textAlign: "center", padding: 40, color: T.muted, fontSize: 13 }}>
@@ -242,6 +247,12 @@ export default function InvoiceTab({
                                     </div>
                                     <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#34d399", fontSize: 13 }}>
                                       ฿{(inv.total || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                                      {/* ↩️ ของที่ลูกค้าคืนแล้ว — บิลต้นฉบับคงยอดเดิม โชว์ยอดสุทธิเพิ่มให้แทน */}
+                                      {(() => { const rs = returnSummaryOf(returns, inv.id); if (rs.total <= 0) return null; return (
+                                        <div title={`คืน ${rs.qty} ชิ้น จาก ${rs.count} ใบรับคืน`} style={{ fontSize: 9, color: "#b45309", fontWeight: 700, marginTop: 2 }}>
+                                          ↩️ -฿{rs.total.toLocaleString("th-TH", { minimumFractionDigits: 2 })} · สุทธิ ฿{Math.max(0, (inv.total || 0) - rs.total).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                                        </div>
+                                      ); })()}
                                       {(inv.payments || []).length > 0 && (() => { const paid = getPaidTotal(inv); const pct = getPaidPct(inv); return (
                                         <div style={{ fontSize: 9, color: pct >= 100 ? "#16a34a" : T.amber, fontWeight: 600, marginTop: 2 }}>💵 ฿{paid.toLocaleString("th-TH", { minimumFractionDigits: 2 })} ({pct}%)</div>
                                       ); })()}

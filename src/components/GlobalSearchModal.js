@@ -19,8 +19,8 @@ const KIND_HINT = {
 const qtyOf = (o) => (o.items || []).reduce((s, i) => s + (Number(i.qty) || 0), 0);
 const baht = (n) => `฿${Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}`;
 
-export default function GlobalSearchModal({ open, onClose, onOpenOrder, onOpenInvoice, onOpenCustomer, customers = [] }) {
-  const [term, setTerm] = useState("");
+export default function GlobalSearchModal({ open, onClose, onOpenOrder, onOpenInvoice, onOpenCustomer, customers = [], initialTerm = "" }) {
+  const [term, setTerm] = useState(initialTerm);
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState(null);
   const [err, setErr] = useState("");
@@ -32,6 +32,8 @@ export default function GlobalSearchModal({ open, onClose, onOpenOrder, onOpenIn
 
   useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 50); }, [open]);
   useEffect(() => { if (!open) { setTerm(""); setRes(null); setErr(""); } }, [open]);
+  // 📷 เปิดมาพร้อมคำค้น (สแกน QR บนบิล) — ค้นให้เลย ไม่ต้องพิมพ์ซ้ำ
+  useEffect(() => { if (open && initialTerm) setTerm(initialTerm); }, [open, initialTerm]);
 
   const run = useCallback(async (q) => {
     const my = ++reqId.current;

@@ -48,6 +48,8 @@ const BarcodeScanner = lazy(() => import("./components/BarcodeScanner"));
 const BackupRestore = lazy(() => import("./components/BackupRestore"));
 // 🧹 ล้างพื้นที่ Storage — ใช้นาน ๆ ครั้ง โหลดเฉพาะตอนเปิดแท็บ
 const StorageCleanup = lazy(() => import("./components/StorageCleanup"));
+const ReturnsTab = lazy(() => import("./tabs/ReturnsTab"));
+const ReturnModal = lazy(() => import("./components/ReturnModal"));
 const NewInvoiceModal = lazy(() => import("./components/NewInvoiceModal"));
 const NewOrderModal = lazy(() => import("./components/NewOrderModal"));
 const PrintInvoiceModal = lazy(() => import("./components/PrintInvoiceModal"));
@@ -101,8 +103,21 @@ export default function App() {
   }, []);
 
   const [activeTab, setActiveTab] = useState("dashboard");
-  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, ordersRange, setOrdersRange, ordersCapped, customers, invoices, invoicesRange, setInvoicesRange, invoicesCapped, catalogRange, setCatalogRange, catalogCapped, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs, catalogOrders, attendance, payrollRuns, customSizes, pendingMixSales, usersLoaded } = useFirestore(activeTab);
+  // 📷 สแกน QR บนบิล → เปิดแอปมาพร้อม ?doc=INVxxxx → เด้งช่องค้นหาพร้อมเลขที่บิลให้เลย
+  //    อ่านครั้งเดียวตอนโหลด แล้วลบ query ทิ้งจาก address bar ไม่ให้ค้างเวลากด refresh
+  const [scannedDoc] = useState(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      const v = new URLSearchParams(window.location.search).get("doc") || "";
+      if (v) window.history.replaceState({}, "", window.location.pathname);
+      return v;
+    } catch (e) { return ""; }
+  });
+
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, ordersRange, setOrdersRange, ordersCapped, customers, invoices, invoicesRange, setInvoicesRange, invoicesCapped, catalogRange, setCatalogRange, catalogCapped, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs, catalogOrders, attendance, payrollRuns, customSizes, pendingMixSales, usersLoaded, returns } = useFirestore(activeTab);
   // 📏 ไซส์ที่ใช้จริง = มาตรฐาน + ที่เพิ่มเอง
+  // มาจากสแกน QR บนบิล → เปิดช่องค้นหาให้เลย ไม่ต้องกด Ctrl+K เอง
+  useEffect(() => { if (scannedDoc) setShowGlobalSearch(true); }, [scannedDoc]);
   const apparelSizes = useMemo(() => mergeSizes(SIZES, customSizes?.apparel), [customSizes]);
   const shoeSizes = useMemo(() => mergeSizes(SHOE_SIZES, customSizes?.shoe), [customSizes]);
   // 📏 ไซส์ของรุ่นหนึ่งๆ = ไซส์มาตรฐาน + ไซส์ที่เพิ่มในตั้งค่า (ใช้ทุกรุ่น) + ไซส์เฉพาะรุ่นนี้ (item.extraSizes)
@@ -2651,11 +2666,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     // 🖼️ รูปที่บิลใบนี้เป็นเจ้าของ — ลบเอกสารอย่างเดียวจะเหลือไฟล์กำพร้าค้างใน Storage ตลอดไป
     //    (รูปที่มาจากใบ custom ไม่ถูกนับ — เป็นไฟล์เดียวกับที่ใบ custom ยังใช้อยู่)
     const ownedImgs = ownedImagePathsOf(inv);
-    const imgLine = ownedImgs.length ? `
-🖼️ รูปที่แนบไว้ในบิล ${ownedImgs.length} รูปจะถูกลบด้วย` : "";
-    if (!window.confirm(`ลบบิล ${inv.invoiceNo}?${imgLine}
-
-การลบไม่สามารถกู้คืนได้ (ใช้ "แก้ไข" แทนถ้าแค่กรอกผิด)`)) return;
+    const imgLine = ownedImgs.length ? `\n🖼️ รูปที่แนบไว้ในบิล ${ownedImgs.length} รูปจะถูกลบด้วย` : "";
+    if (!window.confirm(`ลบบิล ${inv.invoiceNo}?${imgLine}\n\nการลบไม่สามารถกู้คืนได้ (ใช้ "แก้ไข" แทนถ้าแค่กรอกผิด)`)) return;
     await deleteDoc(doc(db, "invoices", inv.id));
     // ลบเอกสารสำเร็จก่อนค่อยลบรูป — ถ้าลบรูปพลาด ไม่ให้กระทบผลลัพธ์หลัก
     if (ownedImgs.length) {
@@ -2674,6 +2686,89 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       } catch (e) { console.warn("[invoice] unmark orders failed:", e); }
     }
     logAudit(user, { action: AUDIT_ACTIONS.DELETE, collection: "invoices", targetId: inv.id, targetLabel: `${inv.invoiceNo} · ${inv.customerName}`, before: { total: inv.total, status: inv.status, docType: inv.docType } });
+  };
+
+  // ── ↩️ รับคืนสินค้า ─────────────────────────────────────────
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const [editingReturn, setEditingReturn] = useState(null);
+
+  // คืนของเข้าสต็อก — ทำเฉพาะชิ้นที่สภาพยังขายต่อได้
+  // จับกลุ่มตามรุ่นก่อนเขียน ไม่งั้นคืนหลายไซส์ของรุ่นเดียวกันจะเขียนทับกันเอง
+  const restockReturnedItems = async (items, refNo) => {
+    const byClothing = new Map();
+    for (const it of items) {
+      if (!it.restock) continue;
+      if (it.colorIdx == null) continue;                       // ไม่รู้ว่าสีไหนในรุ่น → เติมสต็อกมั่วไม่ได้
+      if (!clothingItems.find(c => c.id === it.clothingId)) continue;
+      if (!byClothing.has(it.clothingId)) byClothing.set(it.clothingId, []);
+      byClothing.get(it.clothingId).push(it);
+    }
+    for (const [clothingId, its] of byClothing) {
+      const item = clothingItems.find(c => c.id === clothingId);
+      const newColors = (item.colors || []).map((c, i) => {
+        const adds = its.filter(x => x.colorIdx === i);
+        if (adds.length === 0) return c;
+        const stock = { ...(c.stock || {}) };
+        for (const a of adds) stock[a.size] = (Number(stock[a.size]) || 0) + (Number(a.qty) || 0);
+        return { ...c, stock };
+      });
+      await updateDoc(doc(db, "clothing", clothingId), { colors: newColors });
+    }
+    // ลงบันทึกรับเข้าทุกชิ้น รวมชิ้นที่ไม่ได้เข้าสต็อก — ของเสียก็ต้องมีร่องรอยว่าเคยรับมา
+    for (const it of items) {
+      await addDoc(collection(db, "transactions"), {
+        type: "รับ", code: it.clothingId || "",
+        name: `${it.clothingName}${it.colorName ? " / " + it.colorName : ""}${it.size ? " / " + it.size : ""}`,
+        qty: Number(it.qty) || 0, by: user.name, date: now(),
+        note: `รับคืนจากลูกค้า ${refNo}${it.restock ? "" : ` (${it.condition} — ไม่เข้าสต็อก)`}`,
+        stockAffected: !!it.restock && it.colorIdx != null && !!clothingItems.find(c => c.id === it.clothingId),
+        createdAt: serverTimestamp(), category: "เสื้อผ้า",
+      });
+    }
+  };
+
+  const handleSaveReturn = async (data, matchNow) => {
+    // อ่านสถานะล่าสุดจาก snapshot — ตัวที่ส่งเข้ามาอาจเก่าถ้ามีคนอื่นแก้ระหว่างเปิดหน้าต่างค้างไว้
+    const editing = editingReturn?.id ? (returns.find(r => r.id === editingReturn.id) || editingReturn) : null;
+    const wasMatched = editing?.status === "จับคู่แล้ว";
+    const payload = {
+      ...data,
+      receivedAt: editing?.receivedAt || now(),
+      // id เป็นของ Firestore ไม่ใช่ข้อมูลในเอกสาร — ติดมากับฟอร์มตอนแก้ใบเดิม
+      id: undefined,
+      receivedBy: editing?.receivedBy || user.name,
+      lastEditedBy: user.name, lastEditedAt: now(),
+    };
+    delete payload.id;
+    if (editing) {
+      await updateDoc(doc(db, "returns", editing.id), payload);
+    } else {
+      const retNo = await reserveDocNo(db, "RET", returns, "returnNo", new Date());
+      payload.returnNo = retNo;
+      payload.createdAt = serverTimestamp();
+      await addDoc(collection(db, "returns"), payload);
+    }
+    const refNo = payload.returnNo || editing?.returnNo || "";
+    // คืนสต็อกตอน "เพิ่งจับคู่ได้" เท่านั้น — แก้ใบที่จับคู่ไปแล้วต้องไม่คืนซ้ำ
+    if (matchNow && !wasMatched) await restockReturnedItems(payload.items || [], refNo);
+    logAudit(user, {
+      action: editing ? AUDIT_ACTIONS.UPDATE : AUDIT_ACTIONS.CREATE,
+      collection: "returns", targetId: editing?.id || refNo,
+      targetLabel: `${refNo} · ${payload.customerName || "ไม่ทราบผู้ส่ง"}`,
+      after: { status: payload.status, qty: payload.creditQty, credit: payload.creditTotal, invoiceNo: payload.invoiceNo },
+      note: matchNow && !wasMatched ? `จับคู่บิล ${payload.invoiceNo} · ลดหนี้ ฿${payload.creditTotal}` : "",
+    });
+    setEditingReturn(null);
+  };
+
+  const handleCancelReturn = async (r) => {
+    if (user.role !== "admin") { alert("ยกเลิกใบรับคืนได้เฉพาะ admin"); return; }
+    const warn = r.status === "จับคู่แล้ว"
+      ? "\n\n⚠️ ใบนี้คืนสต็อกและลดหนี้ไปแล้ว — ระบบจะไม่ย้อนสต็อกให้อัตโนมัติ ต้องไปปรับเองที่ 🔄 รับ/จ่ายสินค้า"
+      : "";
+    if (!window.confirm(`ยกเลิกใบรับคืน ${r.returnNo}?${warn}`)) return;
+    await updateDoc(doc(db, "returns", r.id), { status: "ยกเลิก", cancelledBy: user.name, cancelledAt: now() });
+    logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: "returns", targetId: r.id, targetLabel: r.returnNo, note: "ยกเลิกใบรับคืน" });
   };
 
   const handleUpdateInvoiceStatus = async (invId, newStatus) => {
@@ -2837,6 +2932,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     { type:"group", id:"billing", icon:"🧾", label:"บิล & เก็บเงิน", children:[
       { id:"invoice",    icon:"🧾", label:"ออกบิล" },
       { id:"statements", icon:"📃", label:"วางบิลเก็บเงิน" },
+      { id:"returns",    icon:"↩️", label:"รับคืนสินค้า", badge: (returns||[]).filter(r=>r.status==="รอจับคู่บิล").length },
     ]},
     { type:"item",  id:"catalogInbox", icon:"📥", label:"Inbox (Catalog)", badge: (catalogOrders||[]).filter(o=>!o.status||o.status==="new").length },
     { type:"item",  id:"customers", icon:"👤", label:"ลูกค้า" },
@@ -3002,9 +3098,10 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   {entry.children.map(c => {
                     const active = activeTab === c.id;
                     return (
-                      <div key={c.id} onClick={() => guardedSetActiveTab(c.id)} title={c.label}
-                        style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontSize:13,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,justifyContent:"center"}}>
+                      <div key={c.id} onClick={() => guardedSetActiveTab(c.id)} title={c.badge>0?`${c.label} (${c.badge})`:c.label}
+                        style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontSize:13,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,justifyContent:"center",position:"relative"}}>
                         <span style={{fontSize:15}}>{c.icon}</span>
+                        {c.badge>0&&<span style={{position:"absolute",top:5,right:9,width:7,height:7,borderRadius:4,background:T.red}}/>}
                       </div>
                     );
                   })}
@@ -3030,6 +3127,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                       style={{display:"flex",alignItems:"center",gap:10,padding:"8px 14px 8px 26px",borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontWeight:active?600:400,fontSize:12.5,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,position:"relative",boxShadow:active?"0 0 12px rgba(59,91,139,0.08)":"none"}}>
                       <span style={{fontSize:14,flexShrink:0}}>{c.icon}</span>
                       <span style={{fontFamily:"'DM Sans','Sarabun',sans-serif"}}>{c.label}</span>
+                      {c.badge>0&&<span style={{marginLeft:"auto",background:T.red,color:"white",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{c.badge}</span>}
                     </div>
                   );
                 })}
@@ -3391,6 +3489,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               invoicesRange={invoicesRange} setInvoicesRange={setInvoicesRange} invoicesCapped={invoicesCapped}
               invoiceStatusFilter={invoiceStatusFilter} setInvoiceStatusFilter={setInvoiceStatusFilter}
               invoiceSearch={invoiceSearch} setInvoiceSearch={setInvoiceSearch}
+              returns={returns}
               selectedInvoices={selectedInvoices} setSelectedInvoices={setSelectedInvoices} toggleInvoiceSelect={toggleInvoiceSelect}
               collapsedInvoiceMonths={collapsedInvoiceMonths} setCollapsedInvoiceMonths={setCollapsedInvoiceMonths}
               collapsedInvoiceDates={collapsedInvoiceDates} setCollapsedInvoiceDates={setCollapsedInvoiceDates}
@@ -3844,6 +3943,16 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           )}
 
           {/* ── STATEMENTS (ใบวางบิลรวมเดือน) ── */}
+          {activeTab==="returns"&&(
+            <ReturnsTab
+              returns={returns} role={role} user={user}
+              onNewReturn={()=>{setEditingReturn(null);setShowReturnModal(true);}}
+              onEditReturn={(r)=>{setEditingReturn(r);setShowReturnModal(true);}}
+              onCancelReturn={handleCancelReturn}
+              onOpenInvoice={(id)=>{const inv=invoices.find(i=>i.id===id); if(inv) setShowPrintInvoice(inv); else alert("บิลใบนี้อยู่นอกช่วงที่โหลดมา — ขยายช่วงวันที่ในแท็บออกบิลก่อน");}}
+            />
+          )}
+
           {activeTab==="statements"&&(
             <StatementTab
               statements={statements}
@@ -4445,6 +4554,19 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         />
       )}
 
+      {/* ── MODAL: รับคืนสินค้า ── */}
+      {showReturnModal&&(
+        <ReturnModal
+          existing={editingReturn}
+          customers={customers}
+          clothingItems={clothingItems}
+          invoices={invoices}
+          user={user}
+          onSave={handleSaveReturn}
+          onClose={()=>{setShowReturnModal(false);setEditingReturn(null);}}
+        />
+      )}
+
       {/* ── MODAL: Settings ── */}
       {showSettings&&(
         <Modal onClose={()=>setShowSettings(false)} w={640}>
@@ -4642,6 +4764,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       {showGlobalSearch && (
       <GlobalSearchModal
         open
+        initialTerm={scannedDoc}
         customers={customers}
         onClose={() => setShowGlobalSearch(false)}
         onOpenOrder={(o) => setShowPrintOrder(o)}

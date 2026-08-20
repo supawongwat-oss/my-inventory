@@ -23,6 +23,22 @@ export default function PrintInvoiceModal({
   printInvoiceCopies,
   downloadInvoicePdf,
 }) {
+  // 📷 QR เลขที่บิล — ต้องประกาศก่อน early return ด้านล่าง (hook เรียกแบบมีเงื่อนไขไม่ได้)
+  //    เข้ารหัสเป็นลิงก์ ?doc=<เลขที่บิล> → สแกนด้วยมือถือแล้วเปิดแอปพร้อมค้นบิลใบนั้นให้เลย
+  //    เครื่องสแกนบาร์โค้ดแบบต่อคอมก็ใช้ได้ — มันพิมพ์ข้อความลงช่องที่โฟกัสอยู่
+  const [docQr, setDocQr] = React.useState("");
+  const invoiceNo = invoice?.invoiceNo || "";
+  React.useEffect(() => {
+    if (!invoiceNo) { setDocQr(""); return; }
+    let alive = true;
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    import("qrcode")
+      .then(m => (m.default || m).toDataURL(`${origin}/?doc=${encodeURIComponent(invoiceNo)}`, { width: 232, margin: 0, errorCorrectionLevel: "M" }))
+      .then(url => { if (alive) setDocQr(url); })
+      .catch(e => console.warn("[invoice] สร้าง QR ไม่สำเร็จ:", e?.message || e));
+    return () => { alive = false; };
+  }, [invoiceNo]);
+
   if (!invoice) return null;
   // 🕶️ ซ่อนข้อมูลบริษัท — ชื่อย่อ + ไม่โชว์ที่อยู่/เลขภาษี/กล่อง "ออกโดย"
   const hideCo = invoice.hideCompanyDetails === true;
@@ -63,6 +79,14 @@ export default function PrintInvoiceModal({
 
                 {/* ประเภทเอกสาร + เลขที่ */}
                 <div style={{textAlign:"right",minWidth:200}}>
+                  {/* 📷 QR เลขที่บิล — ลูกค้าส่งของคืนมาพร้อมบิล สแกนแล้วเปิดบิลใบนี้ได้เลย
+                      ขนาดตายตัว เพื่อให้หัวบิลของทั้ง 3 ชุดสูงเท่ากันเป๊ะ ไม่ให้ตัดหน้าคนละแถว */}
+                  {docQr && (
+                    <div style={{float:"left",marginRight:8,textAlign:"center",width:58}}>
+                      <img src={docQr} alt="" style={{width:58,height:58,display:"block"}}/>
+                      <div style={{fontSize:6,color:"#000",marginTop:1,letterSpacing:0}}>สแกนเปิดบิลนี้</div>
+                    </div>
+                  )}
                   {/* ⚠️ nowrap สำคัญกับ PDF 3 ชุด — ข้อความป้ายแต่ละชุดยาวไม่เท่ากัน
                       ("(ต้นฉบับ)" ยาวกว่า "(สำเนา)") ถ้าปล่อยให้ตัดบรรทัดได้
                       ชุดที่ป้ายตกบรรทัดจะมีหัวบิลสูงกว่า แล้วทุกอย่างข้างล่างเลื่อนตาม
