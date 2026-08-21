@@ -28,10 +28,20 @@ export default function PackRunTab({
   const [pick, setPick] = React.useState(null);      // { item, colorIdx } พร้อมแตะไซส์ (ขั้นที่ 2)
   const [modelSearch, setModelSearch] = React.useState("");
   const [scan, setScan] = React.useState("");
+  const [editSize, setEditSize] = React.useState(null);   // ไซส์ที่กำลังพิมพ์จำนวนทับ
   const [flash, setFlash] = React.useState("");
   const flashTimer = React.useRef(null);
 
   const canEdit = role.canAdd !== false;
+
+  // 🔫 ช่องสแกนจะโผล่ก็ต่อเมื่อมีบาร์โค้ดในคลังจริง
+  //    ตอนนี้ยังไม่มีสีไหนมีบาร์โค้ดเลย (ระบบไม่เคยเขียนค่าลง colors[].barcode)
+  //    โชว์ช่องที่สแกนแล้วไม่มีวันเจอ = หลอกให้พนักงานลองแล้วงง
+  //    พอสร้างบาร์โค้ดจริงเมื่อไหร่ ช่องนี้จะกลับมาเอง ไม่ต้องแก้โค้ดอีก
+  const hasAnyBarcode = React.useMemo(
+    () => clothingItems.some(c => (c.colors || []).some(col => col.barcode)),
+    [clothingItems]
+  );
 
   const open = React.useMemo(() => packRuns.filter(r => r.status !== "ปิดแล้ว"), [packRuns]);
   const closed = React.useMemo(() => packRuns.filter(r => r.status === "ปิดแล้ว"), [packRuns]);
@@ -102,11 +112,22 @@ export default function PackRunTab({
       colorHex: colorOf(col),
       size,
     }, delta);
-    say(`${delta > 0 ? "+1" : "−1"}  ${pick.item.model || ""} ${col.colorName || ""} ${size}`);
+    say(`${delta > 0 ? "+" : "−"}${Math.abs(delta)}  ${pick.item.model || ""} ${col.colorName || ""} ${size}`);
   };
 
   const qtyOfSize = (size) =>
     (run && pick) ? (Number((run.counts || {})[keyOf(pick.item.id, pick.colorIdx, size)]) || 0) : 0;
+
+  // ✍️ พิมพ์จำนวนทับไปเลย — แยกใบเป็นกองตามแบบแล้วนับได้ 40 ก็พิมพ์ 40 ทีเดียว
+  //    ไม่ใช้ "ตัวคูณ" ที่ค้างไว้ เพราะลืมรีเซ็ตแล้วยอดพุ่งโดยไม่รู้ตัว
+  //    วิธีนี้ไม่มีโหมดค้าง และใช้แก้ยอดที่นับผิดได้ด้วยในตัว
+  const setSizeQty = (size, raw) => {
+    const target = Math.max(0, Math.floor(Number(raw)));
+    if (!Number.isFinite(target)) { setEditSize(null); return; }
+    const delta = target - qtyOfSize(size);
+    if (delta !== 0) bump(size, delta);
+    setEditSize(null);
+  };
 
   const Btn = ({ children, style = {}, ...rest }) => (
     <button {...rest}
@@ -207,9 +228,11 @@ export default function PackRunTab({
 
           {canEdit && (
             <CardBox style={{ marginBottom: 12 }}>
-              <input value={scan} onChange={e => setScan(e.target.value)} onKeyDown={onScanKey}
-                placeholder="🔫 สแกนบาร์โค้ดรุ่น+สี (ถ้ามีเครื่องสแกน)"
-                style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 9, border: `2px solid ${T.accent}40`, fontSize: 14, fontFamily: "inherit", outline: "none", marginBottom: 12 }}/>
+              {hasAnyBarcode && (
+                <input value={scan} onChange={e => setScan(e.target.value)} onKeyDown={onScanKey}
+                  placeholder="🔫 สแกนบาร์โค้ดรุ่น+สี"
+                  style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 9, border: `2px solid ${T.accent}40`, fontSize: 14, fontFamily: "inherit", outline: "none", marginBottom: 12 }}/>
+              )}
 
               {/* ⭐ ที่ใช้ในรอบนี้แล้ว — ทางลัดหลัก แตะครั้งเดียว */}
               {recent.length > 0 && (
@@ -260,21 +283,36 @@ export default function PackRunTab({
                   <div style={{ fontSize: 13, color: T.text, marginBottom: 8, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <span style={{ width: 14, height: 14, borderRadius: 4, background: colorOf(pick.item.colors?.[pick.colorIdx]), border: "1px solid rgba(0,0,0,0.2)" }}/>
                     <b>{pick.item.model || pick.item.name} · {pick.item.colors?.[pick.colorIdx]?.colorName}</b>
-                    <span style={{ color: T.muted, fontSize: 12 }}>— แตะไซส์เพื่อ +1 · ปุ่ม − ที่มุมเพื่อลบ 1</span>
+                    <span style={{ color: T.muted, fontSize: 12 }}>— แตะชื่อไซส์ = +1 · แตะตัวเลข = พิมพ์จำนวนทับ · ปุ่ม − = ลบ 1</span>
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     {sizes.map(sz => {
                       const q = qtyOfSize(sz);
                       return (
                         <div key={sz} style={{ position: "relative" }}>
-                          <button onClick={() => bump(sz, 1)}
-                            style={{ minWidth: 78, padding: "14px 10px", borderRadius: 12, cursor: "pointer", fontFamily: "'Sarabun',sans-serif",
-                              border: q > 0 ? `2px solid ${T.accent}` : `1px solid ${T.border}`,
-                              background: q > 0 ? "rgba(59,91,139,0.1)" : "white" }}>
-                            <div style={{ fontSize: 15, fontWeight: 700, color: T.text, fontFamily: "monospace" }}>{sz}</div>
-                            <div style={{ fontSize: 20, fontWeight: 800, color: q > 0 ? T.accent : "#d7dbe2", fontFamily: "monospace", lineHeight: 1.15 }}>{q}</div>
-                          </button>
-                          {q > 0 && (
+                          <div style={{ minWidth: 78, padding: "10px 8px 8px", borderRadius: 12, textAlign: "center",
+                            border: q > 0 ? `2px solid ${T.accent}` : `1px solid ${T.border}`,
+                            background: q > 0 ? "rgba(59,91,139,0.1)" : "white" }}>
+                            {/* แตะที่ชื่อไซส์ = +1 (ทางเร็ว ใช้ตอนแพ็คทีละกล่อง) */}
+                            <button onClick={() => bump(sz, 1)} title={`เพิ่ม 1 ตัวใน ${sz}`}
+                              style={{ display: "block", width: "100%", border: "none", background: "none", cursor: "pointer", padding: "2px 0", fontFamily: "monospace", fontSize: 15, fontWeight: 700, color: T.text }}>
+                              {sz}
+                            </button>
+                            {/* แตะที่ตัวเลข = พิมพ์จำนวนทับ (ใช้ตอนนับมาเป็นกองแล้ว หรือแก้ที่นับผิด) */}
+                            {editSize === sz ? (
+                              <input autoFocus type="number" min="0" defaultValue={q}
+                                onFocus={e => e.target.select()}
+                                onKeyDown={e => { if (e.key === "Enter") setSizeQty(sz, e.target.value); if (e.key === "Escape") setEditSize(null); }}
+                                onBlur={e => setSizeQty(sz, e.target.value)}
+                                style={{ width: 62, textAlign: "center", fontFamily: "monospace", fontSize: 19, fontWeight: 800, color: T.accent, border: `2px solid ${T.accent}`, borderRadius: 7, padding: "1px 2px", outline: "none" }}/>
+                            ) : (
+                              <button onClick={() => setEditSize(sz)} title="แตะเพื่อพิมพ์จำนวนทับ"
+                                style={{ display: "block", width: "100%", border: "none", background: "none", cursor: "pointer", padding: "1px 0", fontFamily: "monospace", fontSize: 20, fontWeight: 800, lineHeight: 1.15, color: q > 0 ? T.accent : "#d7dbe2", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>
+                                {q}
+                              </button>
+                            )}
+                          </div>
+                          {q > 0 && editSize !== sz && (
                             <button onClick={() => bump(sz, -1)} title={`ลบ 1 ออกจาก ${sz}`}
                               style={{ position: "absolute", top: -6, right: -6, width: 26, height: 26, borderRadius: 13, border: "1px solid rgba(239,68,68,0.4)", background: "#fff", color: "#dc2626", cursor: "pointer", fontSize: 16, fontWeight: 700, lineHeight: 1, padding: 0, boxShadow: "0 1px 4px rgba(0,0,0,0.15)" }}>−</button>
                           )}
