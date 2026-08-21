@@ -478,7 +478,8 @@ export default function NewInvoiceModal({
             const invoicedSet = new Set();
             invoices.forEach(inv => (inv.mergedFromOrderIds||[]).forEach(id => invoicedSet.add(id)));
             // o.invoiceId = ปั๊มไว้ในใบสั่งตอนออกบิล → ถูกต้องแม้บิลใบนั้นอยู่นอกช่วงที่โหลดมา
-            const isInvoiced = (o) => !!o.invoiceId || invoicedSet.has(o.id);
+            // noInvoiceNeeded = ปิดใบเองว่าไม่ต้องออกบิล → ไม่ต้องมารบกวนในรายการนี้อีก
+            const isInvoiced = (o) => !!o.invoiceId || !!o.noInvoiceNeeded || invoicedSet.has(o.id);
             const tsOf = (o) => o.createdAt?.seconds || 0;
             const label = (o) => `${o.orderNo} · ${o.customerName} · ${o.date}`;
             const pending = allOrders.filter(o => !isInvoiced(o)).sort((a,b)=>tsOf(b)-tsOf(a));

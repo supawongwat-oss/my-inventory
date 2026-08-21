@@ -51,6 +51,7 @@ export default function OrdersTab({
   setOrderForm, setShowNewOrder,
   setShowPrintOrder,
   openFillOrderMix, handleCutStockNow, handleDeleteOrder,
+  onToggleNoInvoice,
   openEditOrder,
 }) {
   const invoicedIds = React.useMemo(() => invoicedOrderIds(invoices), [invoices]);
@@ -87,7 +88,9 @@ export default function OrdersTab({
     return true;
   }), [orders, orderSearch, orderDateFrom, orderDateTo]);
 
-  const isInvoiced = React.useCallback((o) => !!o.invoiceId || invoicedIds.has(o.id), [invoicedIds]);
+  // noInvoiceNeeded = ปิดใบเองว่า "ไม่ต้องออกบิล" (ใบเก่าที่ตามลิงก์ไม่เจอแล้ว / ยกเลิกไปแล้ว)
+  //   ไม่ใช่การลบ — ประวัติยังอยู่ครบ แค่เลิกค้างอยู่ในรายการที่ต้องทำ
+  const isInvoiced = React.useCallback((o) => !!o.invoiceId || !!o.noInvoiceNeeded || invoicedIds.has(o.id), [invoicedIds]);
 
   // 📜 ยอดรวม/สถิติ นับจาก "ทุกใบที่ตรงเงื่อนไข" — ไม่ใช่แค่ที่วาดอยู่
   const { totalQtyAll, notInvoiced } = React.useMemo(() => ({
@@ -294,7 +297,12 @@ export default function OrdersTab({
                                           ? <span title="ยังไม่ได้ระบุสี/ไซส์ของรายการคละ — ยังไม่ตัดสต็อก" style={{ padding: "2px 7px", borderRadius: 20, fontSize: 10, fontWeight: 700, background: "rgba(184,134,0,0.15)", color: T.amber, border: "1px solid rgba(184,134,0,0.4)", whiteSpace: "nowrap" }}>🕐 รอระบุ</span>
                                           : <span style={{ padding: "2px 7px", borderRadius: 20, fontSize: 10, fontWeight: 600, background: "rgba(52,211,153,0.1)", color: "#34d399", border: "1px solid rgba(52,211,153,0.2)", whiteSpace: "nowrap" }}>{o.status}</span>}
                                         {o.deferStockCut && <span title="ขายก่อน ไม่ตัดสต๊อก" style={{ padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700, background: "rgba(124,58,237,0.12)", color: "#7c3aed", border: "1px solid rgba(124,58,237,0.35)", whiteSpace: "nowrap" }}>🔓 ไม่ตัด</span>}
-                                        {invoiced
+                                        {o.noInvoiceNeeded
+                                          ? <span onClick={e => { e.stopPropagation(); onToggleNoInvoice?.(o); }}
+                                              title={`ปิดไว้ว่าไม่ต้องออกบิล${o.noInvoiceBy ? ` โดย ${o.noInvoiceBy}` : ""}${o.noInvoiceAt ? ` · ${o.noInvoiceAt}` : ""}
+กดเพื่อเอาเครื่องหมายออก`}
+                                              style={{ padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 600, background: "rgba(100,116,139,0.12)", color: T.sub, border: "1px solid rgba(100,116,139,0.3)", whiteSpace: "nowrap", cursor: onToggleNoInvoice ? "pointer" : "default" }}>🚫 ไม่ต้องออกบิล</span>
+                                          : invoiced
                                           ? <span title="ออกบิลแล้ว" style={{ padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 600, background: "rgba(59,91,139,0.1)", color: T.accent, border: "1px solid rgba(59,91,139,0.25)", whiteSpace: "nowrap" }}>🧾 ออกบิลแล้ว</span>
                                           : <span title="ยังไม่ออกบิล" style={{ padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700, background: "rgba(220,38,38,0.08)", color: "#dc2626", border: "1px solid rgba(220,38,38,0.3)", whiteSpace: "nowrap" }}>⏳ ยังไม่ออกบิล</span>}
                                       </div>

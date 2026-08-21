@@ -28,8 +28,8 @@ const fmtDate = (ms) => {
   return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 };
 
-export default function OrderLinkBackfill({ user }) {
-  const [phase, setPhase] = useState("idle");   // idle | scanning | done | fixing
+export default function OrderLinkBackfill({ user, onMarkNoInvoice }) {
+  const [phase, setPhase] = useState("idle");   // idle | scanning | done | fixing | closing
   const [step, setStep] = useState("");
   const [err, setErr] = useState("");
   const [days, setDays] = useState(60);
@@ -133,6 +133,31 @@ export default function OrderLinkBackfill({ user }) {
     setPhase("done");
   };
 
+  // ปิดใบทั้งกอง "ไม่มีบิลไหนอ้างถึง" ทีเดียว — ทางออกให้พนักงานเลิกสับสน โดยไม่ต้องลบข้อมูล
+  const markAllNoInvoice = async () => {
+    const list = (res?.unlinked || []).filter(o => !o.noInvoiceNeeded);
+    if (!list.length) return;
+    if (!window.confirm(
+      `ปิดใบสั่งของ ${list.length} ใบว่า "ไม่ต้องออกบิล"?
+
+` +
+      `ใบจะไม่ขึ้นในรายการที่รอออกบิลอีก แต่ไม่ได้ลบ — ประวัติ ยอดขาย และสต๊อกยังอยู่ครบ
+` +
+      `เอาออกทีหลังได้ที่ป้ายในหน้าใบสั่งของ`
+    )) return;
+    setPhase("closing");
+    let ok = 0;
+    for (const o of list) {
+      try { await onMarkNoInvoice(o, true); ok++; }
+      catch (e) { console.warn("[backfill] ปิดใบไม่สำเร็จ:", o.orderNo, e); }
+      setStep(`ปิดแล้ว ${ok} / ${list.length} ใบ...`);
+    }
+    setDoneMsg(`ปิดใบแล้ว ${ok} ใบ — รายการ "ยังไม่ออกบิล" จะสะอาดขึ้นทันที`);
+    setRes(r => ({ ...r, unlinked: [] }));
+    setStep("");
+    setPhase("done");
+  };
+
   const Stat = ({ label, value, color, hint }) => (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, padding: "7px 0", borderBottom: `1px solid ${T.border}` }}>
       <div>
@@ -218,6 +243,18 @@ export default function OrderLinkBackfill({ user }) {
                 ))}
                 {res.unlinked.length > 150 && <div style={{ fontSize: 10, color: T.muted, marginTop: 4 }}>...และอีก {res.unlinked.length - 150} ใบ</div>}
               </div>
+              {onMarkNoInvoice && (
+                <>
+                  <button onClick={markAllNoInvoice} disabled={phase === "closing"}
+                    style={{ marginTop: 10, padding: "9px 18px", borderRadius: 9, border: `1px solid ${T.border}`, background: "white", color: T.sub, fontSize: 13, fontWeight: 600, cursor: phase === "closing" ? "wait" : "pointer", fontFamily: "'Sarabun',sans-serif", opacity: phase === "closing" ? 0.6 : 1 }}>
+                    {phase === "closing" ? "⏳ กำลังปิดใบ..." : `🚫 ปิดทั้ง ${res.unlinked.length} ใบว่า "ไม่ต้องออกบิล"`}
+                  </button>
+                  <div style={{ fontSize: 10, color: T.muted, marginTop: 6, lineHeight: 1.6 }}>
+                    ไม่ใช่การลบ — ใบยังอยู่ครบ ยอดขายและสต๊อกไม่เปลี่ยน แค่เลิกค้างในรายการที่รอออกบิล
+                    <br/>กดที่ป้าย "🚫 ไม่ต้องออกบิล" ในหน้าใบสั่งของเพื่อเอาออกทีหลังได้
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

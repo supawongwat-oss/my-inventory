@@ -2151,6 +2151,28 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     });
   };
 
+  // 🚫 ปิดใบสั่งว่า "ไม่ต้องออกบิล" — ทางเลือกแทนการลบทิ้ง
+  //    ใบเก่าที่ตามลิงก์บิลไม่เจอแล้วจะค้างในรายการ "ยังไม่ออกบิล" ตลอดไป พนักงานสับสน
+  //    ลบทิ้งจะเสียประวัติการสั่ง (และต้องยุ่งกับสต๊อกด้วย) — ปิดใบแทน ข้อมูลอยู่ครบ กดคืนได้
+  const handleToggleNoInvoice = async (o, silent = false) => {
+    if (!o) return;
+    const on = !o.noInvoiceNeeded;
+    if (!silent && !window.confirm(on
+      ? `ทำเครื่องหมาย "ไม่ต้องออกบิล" ให้ ${o.orderNo}?
+
+ใบจะไม่ขึ้นในรายการที่รอออกบิลอีก แต่ประวัติยังอยู่ครบ
+กดที่ป้ายอีกครั้งเพื่อเอาออก`
+      : `เอาเครื่องหมาย "ไม่ต้องออกบิล" ออกจาก ${o.orderNo}?`)) return;
+    await updateDoc(doc(db, "orders", o.id), on
+      ? { noInvoiceNeeded: true, noInvoiceBy: user.name, noInvoiceAt: now() }
+      : { noInvoiceNeeded: false, noInvoiceBy: null, noInvoiceAt: null });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.UPDATE, collection: "orders", targetId: o.id,
+      targetLabel: `${o.orderNo} · ${o.customerName}`,
+      note: on ? "ปิดใบ: ไม่ต้องออกบิล" : "เอาเครื่องหมาย ไม่ต้องออกบิล ออก",
+    });
+  };
+
   const handleClothingTx = async () => {
     if (txSaving) return; // กัน double-submit (ใช้ flag เดียวกัน)
     if (!clothingTxModal) return;
@@ -3822,6 +3844,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               openFillOrderMix={openFillOrderMix}
               handleCutStockNow={handleCutStockNow}
               handleDeleteOrder={handleDeleteOrder}
+              onToggleNoInvoice={user.role === "admin" ? handleToggleNoInvoice : undefined}
               openEditOrder={openEditOrder}
             />
           )}
@@ -4873,7 +4896,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           {settingsTab==="dupes"&&user.role==="admin"&&(
             <>
               <DuplicateOrderCleanup user={user} onDeleteOrder={deleteOrderInner}/>
-              <OrderLinkBackfill user={user}/>
+              <OrderLinkBackfill user={user} onMarkNoInvoice={handleToggleNoInvoice}/>
             </>
           )}
 
