@@ -41,6 +41,7 @@ service cloud.firestore {
     match /payrollRuns/{doc}   { allow read, write: if isAuthed(); }
     match /counters/{doc}      { allow read, write: if isAuthed(); } // 🔢 เลขรันเอกสารแบบ atomic (กันเลขซ้ำ)
     match /returns/{doc}       { allow read, write: if isAuthed(); } // ↩️ ใบรับคืนสินค้า
+    match /packRuns/{doc}      { allow read, write: if isAuthed(); } // 📦 รอบแพ็ค (ลูกค้าขายบนแพลตฟอร์ม)
     match /pendingMixSales/{doc} { allow read, write: if isAuthed(); } // 🧺 รายการคละที่ยังไม่ระบุสี/ไซส์
 
     // ── Default DENY — ทุก collection อื่นที่ไม่ได้ระบุ → block ──

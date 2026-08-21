@@ -1,6 +1,6 @@
 ﻿import React, { useState, useRef, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import { db, authReady } from "./firebase";
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, runTransaction, serverTimestamp, query, orderBy, where, Timestamp, limit } from "firebase/firestore";
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, runTransaction, serverTimestamp, query, orderBy, where, Timestamp, limit, increment, FieldPath } from "firebase/firestore";
 import { T, SIZES, SHOE_SIZES, getSizesFor, mergeSizes, PRESET_COLORS, MASTER_KEY, SIZE_GROUPS, priceRowsForSizes, getPriceForSize, compareSizes, splitSizesIntoRows } from "./theme";
 import { INIT_USERS, ROLES, INIT_CATS } from "./constants";
 import { BarcodeDisplay, Modal, MHead, Toast, Input, BtnPrimary, BtnSuccess, BtnDanger, BtnGhost, Badge, CardBox } from "./components/ui";
@@ -18,6 +18,7 @@ import { compressImage } from "./utils/imageCompress";
 import { uploadImage, deleteFile } from "./utils/upload";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiRegion";
 import { reserveDocNo } from "./utils/docNumber";
+import { runToItems, groupRun, totalOf } from "./utils/packRun";
 import { withSearchKeys, withCustomerSearchKeys } from "./utils/searchKeys";
 
 // 🚀 Code splitting — tabs โหลดเฉพาะตอนคลิกใช้งาน (ลด first-load bundle)
@@ -53,6 +54,7 @@ const StorageCleanup = lazy(() => import("./components/StorageCleanup"));
 const DuplicateOrderCleanup = lazy(() => import("./components/DuplicateOrderCleanup"));
 const OrderLinkBackfill = lazy(() => import("./components/OrderLinkBackfill"));
 const TransactionsTab = lazy(() => import("./tabs/TransactionsTab"));
+const PackRunTab = lazy(() => import("./tabs/PackRunTab"));
 const ReturnsTab = lazy(() => import("./tabs/ReturnsTab"));
 const ReturnModal = lazy(() => import("./components/ReturnModal"));
 const PrintCreditNoteModal = lazy(() => import("./components/PrintCreditNoteModal"));
@@ -122,7 +124,7 @@ export default function App() {
     } catch (e) { return ""; }
   });
 
-  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, ordersRange, setOrdersRange, ordersCapped, customers, invoices, invoicesRange, setInvoicesRange, invoicesCapped, catalogRange, setCatalogRange, catalogCapped, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs, catalogOrders, attendance, payrollRuns, customSizes, pendingMixSales, usersLoaded, returns } = useFirestore(activeTab);
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, ordersRange, setOrdersRange, ordersCapped, customers, invoices, invoicesRange, setInvoicesRange, invoicesCapped, catalogRange, setCatalogRange, catalogCapped, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs, catalogOrders, attendance, payrollRuns, customSizes, pendingMixSales, usersLoaded, returns, packRuns } = useFirestore(activeTab);
   // 📏 ไซส์ที่ใช้จริง = มาตรฐาน + ที่เพิ่มเอง
   // เปิดมาด้วยลิงก์ ?doc= → เด้งช่องค้นหาพร้อมเลขที่เอกสารให้เลย
   useEffect(() => { if (scannedDoc) setShowGlobalSearch(true); }, [scannedDoc]);
@@ -2178,6 +2180,130 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     });
   };
 
+  // ── 📦 รอบแพ็ค ───────────────────────────────────────────────
+  const [printPackRun, setPrintPackRun] = useState(null);
+
+  // 🖨️ ใบหยิบของ — วาดนอกจอแล้วสั่งพิมพ์ทันที ไม่ต้องเปิดหน้าต่างให้กดซ้ำ
+  //    รอ 1 จังหวะให้ React วาดเสร็จก่อน ไม่งั้นจะพิมพ์กล่องเปล่า
+  useEffect(() => {
+    if (!printPackRun) return;
+    const t = setTimeout(() => {
+      printElementById("packrun-print-area", "A4 portrait", "8mm");
+      setPrintPackRun(null);
+    }, 150);
+    return () => clearTimeout(t);
+  }, [printPackRun]);
+
+  const handleOpenPackRun = async (cust) => {
+    if (!cust) return;
+    const runNo = await reserveDocNo(db, "PK", packRuns, "runNo", new Date());
+    await addDoc(collection(db, "packRuns"), {
+      runNo, status: "เปิดอยู่",
+      customerId: cust.id, customerName: cust.name || "", customerPhone: cust.phone || "",
+      counts: {}, meta: {},
+      openedBy: user.name, openedAt: now(), date: now(),
+      createdAt: serverTimestamp(),
+    });
+  };
+
+  // +1 / −1 ทีละช่อง — ใช้ increment กับ FieldPath ไม่ใช่เขียนทั้งก้อนใหม่
+  //   · เขียนเล็กมาก กดรัว ๆ ตอนแพ็คได้ไม่หน่วง
+  //   · แพ็คพร้อมกันหลายโต๊ะแล้วยอดไม่ทับกัน (เขียนทั้งก้อนจะทับ)
+  //   · FieldPath รับ key ที่มีอักขระพิเศษได้ เช่นไซส์ภาษาไทย "ฟรีไซส์"
+  const handleBumpPackRun = async (run, m, delta) => {
+    if (!run || !m) return;
+    const key = `${m.clothingId}|${m.colorIdx ?? ""}|${m.size ?? ""}`;
+    const item = clothingItems.find(c => c.id === m.clothingId);
+    const col = item?.colors?.[m.colorIdx];
+    const unitPrice = getPriceForSize(col, m.size) || 0;
+    try {
+      await updateDoc(doc(db, "packRuns", run.id),
+        new FieldPath("counts", key), increment(delta),
+        new FieldPath("meta", key), { ...m, unitPrice });
+    } catch (e) {
+      console.warn("[packRun] นับไม่สำเร็จ:", e);
+      alert("นับไม่สำเร็จ: " + (e?.message || e));
+    }
+  };
+
+  // ตัด/คืนสต็อกของทั้งรอบ — sign = -1 ตัด, +1 คืน
+  const applyPackRunStock = async (run, sign, reason) => {
+    const items = runToItems(run);
+    const byClothing = new Map();
+    for (const it of items) {
+      if (it.colorIdx == null) continue;
+      if (!clothingItems.find(c => c.id === it.clothingId)) continue;
+      if (!byClothing.has(it.clothingId)) byClothing.set(it.clothingId, []);
+      byClothing.get(it.clothingId).push(it);
+    }
+    for (const [clothingId, its] of byClothing) {
+      const item = clothingItems.find(c => c.id === clothingId);
+      const newColors = (item.colors || []).map((c, i) => {
+        const mine = its.filter(x => x.colorIdx === i);
+        if (!mine.length) return c;
+        const stock = { ...(c.stock || {}) };
+        for (const x of mine) stock[x.size] = Math.max(0, (Number(stock[x.size]) || 0) + sign * (Number(x.qty) || 0));
+        return { ...c, stock };
+      });
+      await updateDoc(doc(db, "clothing", clothingId), { colors: newColors });
+    }
+    for (const it of items) {
+      await addDoc(collection(db, "transactions"), {
+        type: sign < 0 ? "จ่าย" : "รับ", code: it.clothingId,
+        name: `${it.clothingName} / ${it.colorName} / ${it.size}`,
+        qty: Number(it.qty) || 0, by: user.name, date: now(),
+        note: `${reason} ${run.runNo} · ${run.customerName}`,
+        stockAffected: it.colorIdx != null && !!clothingItems.find(c => c.id === it.clothingId),
+        createdAt: serverTimestamp(), category: "เสื้อผ้า",
+      });
+    }
+  };
+
+  const handleClosePackRun = async (run) => {
+    const total = Object.values(run.counts || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+    if (total <= 0) { alert("รอบนี้ยังไม่มีของ — ยังปิดไม่ได้"); return; }
+    if (!window.confirm(`ปิดรอบ ${run.runNo} · ${run.customerName}?\n\nรวม ${total.toLocaleString("th-TH")} ชิ้น — จะตัดสต๊อกทั้งรอบทีเดียว\nปิดแล้วออกบิลใบเดียวจากรอบนี้ได้เลย`)) return;
+    await applyPackRunStock(run, -1, "ตัดสต๊อกรอบแพ็ค");
+    await updateDoc(doc(db, "packRuns", run.id), {
+      status: "ปิดแล้ว", closedBy: user.name, closedAt: now(), totalQty: total, stockCut: true,
+    });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.UPDATE, collection: "packRuns", targetId: run.id,
+      targetLabel: `${run.runNo} · ${run.customerName}`,
+      note: `ปิดรอบ ${total} ชิ้น + ตัดสต๊อก`,
+    });
+  };
+
+  const handleReopenPackRun = async (run) => {
+    if (run.invoiceNo) { alert("รอบนี้ออกบิลไปแล้ว เปิดกลับไม่ได้ — ถ้าต้องแก้ ให้แก้ที่บิลแทน"); return; }
+    if (!window.confirm(`เปิดรอบ ${run.runNo} กลับมาแก้?\n\nสต๊อกที่ตัดไปตอนปิดรอบจะถูกคืนกลับให้`)) return;
+    if (run.stockCut) await applyPackRunStock(run, +1, "คืนสต๊อก เปิดรอบแพ็คกลับ");
+    await updateDoc(doc(db, "packRuns", run.id), { status: "เปิดอยู่", stockCut: false, reopenedBy: user.name, reopenedAt: now() });
+  };
+
+  // ปิดรอบแล้ว → ออกบิลใบเดียวจากยอดทั้งรอบ (เปิดฟอร์มให้ ยังไม่บันทึกเอง)
+  const handleBillPackRun = (run) => {
+    const items = runToItems(run);
+    if (!items.length) { alert("รอบนี้ไม่มีรายการ"); return; }
+    const cust = customers.find(c => c.id === run.customerId);
+    setInvoiceDocType("receipt");
+    setInvoiceVat(false);
+    setInvoiceForm(f => ({
+      ...f,
+      customerId: run.customerId || "",
+      customerName: run.customerName || cust?.name || "",
+      customerPhone: run.customerPhone || cust?.phone || "",
+      customerAddress: cust?.address || "",
+      customerTaxId: cust?.taxId || "",
+      items,
+      note: `รอบแพ็ค ${run.runNo} · ${items.reduce((s, i) => s + i.qty, 0)} ชิ้น`,
+      packRunId: run.id,
+      mergedFromOrderIds: [],
+    }));
+    setShowNewInvoice(true);
+    setActiveTab("invoice");
+  };
+
   const handleClothingTx = async () => {
     if (txSaving) return; // กัน double-submit (ใช้ flag เดียวกัน)
     if (!clothingTxModal) return;
@@ -2580,6 +2706,11 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     // 🎨 ปั๊ม "ออกบิลแล้ว" ลงใบสั่งผลิต custom ที่บิลนี้มาจาก
     // ทำไม: ก่อนหน้านี้ใบ custom ไม่มีสถานะนี้ ออกบิลไปแล้วใบยังค้างในช่อง "กำลังผลิต"
     // พนักงานจึงเปิดใบใหม่ซ้ำเวลาจะออกบิล → งาน+รูปกองสะสม
+    // 📦 ออกบิลจากรอบแพ็ค → ปั๊มเลขบิลกลับไปที่รอบ กันออกซ้ำและตามย้อนได้
+    if (invoiceForm.packRunId) {
+      try { await updateDoc(doc(db, "packRuns", invoiceForm.packRunId), { invoiceId: ref.id, invoiceNo: invNo, billedAt: serverTimestamp() }); }
+      catch (e) { console.warn("[packRun]", e); }
+    }
     const customIds = [...new Set((invoiceForm.customDetails?.orderIds) || [])];
     if (customIds.length) {
       try {
@@ -3162,6 +3293,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       { id:"stocktake", icon:"🧮", label:"นับสต็อก" },
       { id:"production",icon:"🏭", label:"การผลิต" },
       { id:"productionHistory",icon:"📜", label:"ประวัติการผลิต" },
+      { id:"packrun", icon:"📦", label:"รอบแพ็ค", badge: (packRuns||[]).filter(r=>r.status!=="ปิดแล้ว").length },
     ]},
     { type:"item",  id:"orders",       icon:"📋", label:"ใบสั่งของ" },
     { type:"group", id:"billing", icon:"🧾", label:"บิล & เก็บเงิน", children:[
@@ -3684,6 +3816,19 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           )}
 
           {/* TRANSACTIONS */}
+          {activeTab==="packrun"&&(
+            <PackRunTab
+              packRuns={packRuns} customers={customers} clothingItems={clothingItems}
+              sizesFor={sizesFor} user={user} role={role}
+              onOpenRun={handleOpenPackRun}
+              onBump={handleBumpPackRun}
+              onCloseRun={handleClosePackRun}
+              onReopenRun={handleReopenPackRun}
+              onBillRun={handleBillPackRun}
+              onPrintPickList={setPrintPackRun}
+            />
+          )}
+
           {activeTab==="transactions"&&(
             <TransactionsTab transactions={transactions}/>
           )}
@@ -4774,6 +4919,56 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
             setShowNewInvoice(true);
           }}
         />
+      )}
+
+      {/* 🖨️ ใบหยิบของของรอบแพ็ค — อยู่นอกจอ ใช้ตอนสั่งพิมพ์เท่านั้น */}
+      {printPackRun && (
+        <div id="packrun-print-area" style={{position:"fixed",left:-99999,top:0,width:"190mm",background:"white",color:"#000",fontFamily:"'Sarabun',sans-serif"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",borderBottom:"2px solid #000",paddingBottom:6,marginBottom:10}}>
+            <div>
+              <div style={{fontSize:18,fontWeight:800}}>ใบหยิบของ</div>
+              <div style={{fontSize:13,fontWeight:700}}>{printPackRun.customerName}</div>
+            </div>
+            <div style={{textAlign:"right",fontSize:11}}>
+              <div style={{fontFamily:"monospace",fontWeight:700,fontSize:13}}>{printPackRun.runNo}</div>
+              <div>{printPackRun.closedAt || printPackRun.openedAt || ""}</div>
+              <div>พิมพ์ {now()}</div>
+            </div>
+          </div>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead>
+              <tr style={{background:"#eee"}}>
+                <th style={{border:"1px solid #000",padding:"5px 8px",textAlign:"left"}}>รุ่น</th>
+                <th style={{border:"1px solid #000",padding:"5px 8px",textAlign:"left"}}>สี</th>
+                <th style={{border:"1px solid #000",padding:"5px 8px",textAlign:"left"}}>ไซส์ · จำนวน</th>
+                <th style={{border:"1px solid #000",padding:"5px 8px",textAlign:"center",width:60}}>รวม</th>
+                <th style={{border:"1px solid #000",padding:"5px 8px",textAlign:"center",width:50}}>เช็ค</th>
+              </tr>
+            </thead>
+            <tbody>
+              {groupRun(printPackRun).map(g => (
+                <tr key={g.key}>
+                  <td style={{border:"1px solid #000",padding:"5px 8px",fontWeight:600}}>{g.clothingName}</td>
+                  <td style={{border:"1px solid #000",padding:"5px 8px"}}>{g.colorName}</td>
+                  <td style={{border:"1px solid #000",padding:"5px 8px",fontFamily:"monospace"}}>
+                    {g.sizes.map(s => `${s.size} × ${s.qty}`).join("   ")}
+                  </td>
+                  <td style={{border:"1px solid #000",padding:"5px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:14}}>{g.qty}</td>
+                  <td style={{border:"1px solid #000",padding:"5px 8px"}}/>
+                </tr>
+              ))}
+              <tr style={{background:"#f1f1f1"}}>
+                <td colSpan={3} style={{border:"1px solid #000",padding:"6px 8px",textAlign:"right",fontWeight:700}}>รวมทั้งหมด</td>
+                <td style={{border:"1px solid #000",padding:"6px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:800,fontSize:15}}>{totalOf(printPackRun)}</td>
+                <td style={{border:"1px solid #000"}}/>
+              </tr>
+            </tbody>
+          </table>
+          <div style={{marginTop:14,fontSize:11,display:"flex",justifyContent:"space-between"}}>
+            <div>ผู้หยิบ ______________________</div>
+            <div>ผู้ตรวจ ______________________</div>
+          </div>
+        </div>
       )}
 
       {/* ── MODAL: รับคืนสินค้า ── */}

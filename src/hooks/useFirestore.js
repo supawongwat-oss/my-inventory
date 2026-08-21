@@ -23,6 +23,7 @@ const LIMITS = {
   customOrders: 800,       // ใบสั่งผลิต custom
   statements: 500,         // ใบแจ้งยอด
   returns: 500,            // ใบรับคืนสินค้า
+  packRuns: 200,           // รอบแพ็ค (ลูกค้าขายบนแพลตฟอร์ม)
   payrollRuns: 200,        // รอบเงินเดือน
   pendingMixSales: 300,    // ขายคละที่รอระบุ
   auditLogs: 500,          // ประวัติการใช้งาน
@@ -58,6 +59,7 @@ export function useFirestore(activeTab = "") {
   const [invoicesCapped, setInvoicesCapped] = useState(false);
   const [statements, setStatements] = useState([]);
   const [returns, setReturns] = useState([]);
+  const [packRuns, setPackRuns] = useState([]);
   const [companyInfo, setCompanyInfo] = useState({ name:"CPU", address:"", phone:"", email:"", taxId:"", logo:"⚙️" });
   const [roleLabels, setRoleLabels] = useState({}); // {admin:"...", manager:"...", staff:"..."}
   const [auditLogs, setAuditLogs] = useState([]);
@@ -228,6 +230,14 @@ export function useFirestore(activeTab = "") {
     return () => unsub();
   }, [deferReady]);
 
+  // 📦 รอบแพ็ค — จำนวนน้อย แต่ต้องเห็นเลขค้างที่เมนูตลอด จึงโหลดพร้อมชุดหลัก
+  useEffect(() => {
+    if (!deferReady) return;
+    const q = query(collection(db, "packRuns"), orderBy("createdAt","desc"), limit(LIMITS.packRuns));
+    const unsub = onSnapshot(q, snap => setPackRuns(snap.docs.map(d=>({...d.data(),id:d.id}))), ()=>{});
+    return () => unsub();
+  }, [deferReady]);
+
   useEffect(() => {
     const unsub = onSnapshot(doc(db,"settings","company"), snap => {
       if(snap.exists()) setCompanyInfo(snap.data());
@@ -359,6 +369,7 @@ export function useFirestore(activeTab = "") {
     invoicesRange, setInvoicesRange, invoicesCapped,
     statements,
     returns,
+    packRuns,
     companyInfo, setCompanyInfo,
     roleLabels,
     auditLogs,
