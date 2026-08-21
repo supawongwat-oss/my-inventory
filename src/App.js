@@ -3070,6 +3070,14 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     //    ตัวฟังก์ชันเองไม่เคยตรวจสิทธิ์ — เช็คซ้ำตรงนี้ให้ตรงกับที่ประกาศไว้ใน ROLES
     if (!role?.canDelete) { alert("ลบบิลได้เฉพาะผู้ดูแลระบบและผู้จัดการ"); return; }
 
+    // 🔐 บิลที่เก็บเงินแล้ว = admin เท่านั้น
+    //    เงินเข้าไปแล้ว การลบทิ้งทำให้ยอดรับกับเอกสารไม่ตรงกัน และไล่ย้อนไม่ได้ว่าเคยมีบิลนี้
+    if ((inv.status || "") === "ชำระแล้ว" && user?.role !== "admin") {
+      alert("บิลนี้ชำระเงินแล้ว — ลบได้เฉพาะผู้ดูแลระบบ" +
+        String.fromCharCode(10, 10) + "ถ้าต้องการยกเลิก ใช้ปุ่ม 🚫 ยกเลิกบิล แทน เลขที่บิลจะไม่ขาดช่วง");
+      return;
+    }
+
     // 🚫 บิลที่ถูกรวมไว้ในใบวางบิลแล้ว ห้ามลบ
     //    ใบวางบิลเก็บ invoiceIds ไว้ ถ้าลบบิลทิ้ง ใบวางบิลจะอ้างถึงเอกสารที่ไม่มีอยู่
     //    และลูกค้าถูกเรียกเก็บยอดนั้นไปแล้ว — ยอดในใบวางบิลกับบิลจริงจะไม่ตรงกันถาวร
@@ -3289,8 +3297,64 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: "returns", targetId: r.id, targetLabel: r.returnNo, note: "ยกเลิกใบรับคืน" });
   };
 
+  // 🚫 ยกเลิกบิล — ทางที่ควรใช้แทนการลบ เพราะเลขที่บิลไม่ขาดช่วง ตรวจย้อนหลังได้
+  //
+  //    admin / manager : ยกเลิกได้เอง
+  //    staff           : กดได้ แต่เป็นการ "ขออนุมัติ" — ต้องให้ admin/manager กดอนุมัติก่อน
+  //                      เก็บคำขอไว้ในตัวบิลเอง ไม่ต้องมี collection ใหม่ และหายไปพร้อมบิลถ้าบิลถูกลบ
+  const handleCancelInvoice = async (inv) => {
+    if (!inv) return;
+    if ((inv.status || "") === "ยกเลิก") { alert("บิลนี้ยกเลิกไปแล้ว"); return; }
+
+    const canDecide = !!role?.canDelete;   // admin + manager
+    if (!canDecide) {
+      if (inv.cancelRequest) { alert("ส่งคำขอยกเลิกไปแล้ว รออนุมัติอยู่"); return; }
+      const reason = window.prompt(`ขอยกเลิกบิล ${inv.invoiceNo}` +
+        String.fromCharCode(10, 10) + "เหตุผล (ให้ผู้อนุมัติอ่าน):", "");
+      if (reason === null) return;
+      await updateDoc(doc(db, "invoices", inv.id), {
+        cancelRequest: { by: user.name, at: now(), reason: (reason || "").trim() },
+      });
+      logAudit(user, {
+        action: AUDIT_ACTIONS.UPDATE, collection: "invoices", targetId: inv.id,
+        targetLabel: `${inv.invoiceNo} · ${inv.customerName}`,
+        note: `ขออนุมัติยกเลิกบิล${(reason || "").trim() ? ` — ${(reason || "").trim()}` : ""}`,
+      });
+      alert("ส่งคำขอแล้ว — รอผู้ดูแลระบบหรือผู้จัดการอนุมัติ");
+      return;
+    }
+
+    const paidLine = (inv.status || "") === "ชำระแล้ว"
+      ? String.fromCharCode(10) + "⚠️ บิลนี้ชำระเงินแล้ว — ตรวจเรื่องคืนเงินให้เรียบร้อยก่อน" : "";
+    if (!window.confirm(`ยกเลิกบิล ${inv.invoiceNo} · ${inv.customerName}?${paidLine}` +
+      String.fromCharCode(10, 10) + "บิลยังอยู่ในระบบ เลขที่ไม่ขาดช่วง แต่จะไม่ถูกนับเป็นยอดขายและยอดค้าง")) return;
+    await updateDoc(doc(db, "invoices", inv.id), {
+      status: "ยกเลิก", cancelledBy: user.name, cancelledAt: now(), cancelRequest: null,
+    });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.STATUS, collection: "invoices", targetId: inv.id,
+      targetLabel: `${inv.invoiceNo} · ${inv.customerName}`,
+      before: { status: inv.status || "ออกแล้ว" }, after: { status: "ยกเลิก" },
+      note: inv.cancelRequest ? `อนุมัติคำขอของ ${inv.cancelRequest.by}` : "ยกเลิกบิล",
+    });
+  };
+
+  // ปฏิเสธคำขอยกเลิกของ staff
+  const handleRejectCancel = async (inv) => {
+    if (!inv?.cancelRequest || !role?.canDelete) return;
+    if (!window.confirm(`ไม่อนุมัติคำขอยกเลิกบิล ${inv.invoiceNo} ของ ${inv.cancelRequest.by}?`)) return;
+    await updateDoc(doc(db, "invoices", inv.id), { cancelRequest: null });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.UPDATE, collection: "invoices", targetId: inv.id,
+      targetLabel: `${inv.invoiceNo} · ${inv.customerName}`,
+      note: `ไม่อนุมัติคำขอยกเลิกของ ${inv.cancelRequest.by}`,
+    });
+  };
   const handleUpdateInvoiceStatus = async (invId, newStatus) => {
     const inv = invoices.find(i => i.id === invId);
+    // 🚫 ยกเลิกผ่านช่องสถานะไม่ได้ — ไม่งั้นเลี่ยงขั้นขออนุมัติได้ทันที
+    //    ต้องไปทางปุ่มยกเลิกซึ่งแยก admin/manager กับ staff ไว้แล้ว
+    if (newStatus === "ยกเลิก") { await handleCancelInvoice(inv); return; }
     const oldStatus = inv?.status || "ออกแล้ว";
     await updateDoc(doc(db,"invoices",invId), { status: newStatus });
     logAudit(user, {
@@ -4022,6 +4086,9 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               handleUnmergeInvoice={handleUnmergeInvoice}
               handleEditInvoice={handleEditInvoice}
               handleDeleteInvoice={handleDeleteInvoice}
+              handleCancelInvoice={handleCancelInvoice}
+              handleRejectCancel={handleRejectCancel}
+              user={user}
             />
           )}
 

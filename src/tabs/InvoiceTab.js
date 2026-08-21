@@ -50,7 +50,7 @@ export default function InvoiceTab({
   handleConvertQuotation,
   handleUnmergeInvoice,
   handleEditInvoice,
-  handleDeleteInvoice,
+  handleDeleteInvoice, handleCancelInvoice, handleRejectCancel, user,
   returns = [],
 }) {
   // 📜 วาดทีละหน้า — รีเซ็ตเมื่อเปลี่ยนคำค้น/สถานะ/ชุดข้อมูล
@@ -270,7 +270,10 @@ export default function InvoiceTab({
                                     <div onClick={e => e.stopPropagation()}>
                                       <select value={inv.status || "ออกแล้ว"} onChange={e => handleUpdateInvoiceStatus(inv.id, e.target.value)}
                                         style={{ background: st.bg, border: st.border, borderRadius: 10, padding: "4px 8px", fontSize: 10, fontWeight: 600, color: st.color, cursor: "pointer", fontFamily: "'Sarabun',sans-serif", outline: "none" }}>
-                                        {PAYMENT_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                                        {/* "ยกเลิก" ไม่อยู่ในช่องนี้ — ใช้ปุ่ม 🚫 แทน จะได้ผ่านขั้นขออนุมัติของ staff
+                                            แต่ถ้าบิลถูกยกเลิกไปแล้วต้องมีตัวเลือกไว้ ไม่งั้น select จะไม่มีค่าที่ตรง */}
+                                        {PAYMENT_STATUSES.filter(x => x !== "ยกเลิก" || (inv.status || "") === "ยกเลิก")
+                                          .map(s => <option key={s} value={s}>{s}</option>)}
                                       </select>
                                     </div>
                                     <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", flexWrap: "nowrap" }} onClick={e => e.stopPropagation()}>
@@ -286,7 +289,30 @@ export default function InvoiceTab({
                                         <button onClick={() => handleUnmergeInvoice(inv)} title="ยกเลิกการรวม — คืนบิลเดิม" style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(184,134,0,0.3)", background: "rgba(184,134,0,0.08)", color: T.amber, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>🔓</button>
                                       )}
                                       {role.canIssueInvoice !== false && <button onClick={() => handleEditInvoice(inv)} title="แก้ไข" style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(184,134,0,0.3)", background: "rgba(184,134,0,0.08)", color: T.amber, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>✏️</button>}
-                                      {role.canDelete && <button onClick={() => handleDeleteInvoice(inv)} title="ลบ" style={{ padding: "4px 6px", borderRadius: 7, border: "1px solid rgba(248,113,113,0.25)", background: "rgba(248,113,113,0.08)", color: "#f87171", cursor: "pointer", fontSize: 11 }}>✕</button>}
+                                      {/* 🚫 ยกเลิกบิล — staff กดได้เหมือนกัน แต่จะกลายเป็น "คำขอ" รออนุมัติ
+                                          ใช้แทนการลบ: เลขที่บิลไม่ขาดช่วง ตรวจย้อนหลังได้ */}
+                                      {(inv.status || "") !== "ยกเลิก" && !inv.cancelRequest && (
+                                        <button onClick={() => handleCancelInvoice(inv)}
+                                          title={role.canDelete ? "ยกเลิกบิล" : "ขออนุมัติยกเลิกบิล"}
+                                          style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(217,119,6,0.35)", background: "rgba(217,119,6,0.08)", color: "#b45309", cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>
+                                          {role.canDelete ? "🚫" : "🙋 ขอยกเลิก"}
+                                        </button>
+                                      )}
+                                      {inv.cancelRequest && (role.canDelete ? (
+                                        <>
+                                          <span title={`${inv.cancelRequest.by} ขอเมื่อ ${inv.cancelRequest.at}${inv.cancelRequest.reason ? ` — ${inv.cancelRequest.reason}` : ""}`}
+                                            style={{ padding: "3px 7px", borderRadius: 7, background: "rgba(217,119,6,0.12)", color: "#b45309", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>
+                                            🙋 {inv.cancelRequest.by} ขอยกเลิก
+                                          </span>
+                                          <button onClick={() => handleCancelInvoice(inv)} title="อนุมัติ — ยกเลิกบิลนี้"
+                                            style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(185,74,72,0.4)", background: "rgba(185,74,72,0.1)", color: T.red, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "'Sarabun',sans-serif" }}>✔ อนุมัติ</button>
+                                          <button onClick={() => handleRejectCancel(inv)} title="ไม่อนุมัติ"
+                                            style={{ padding: "4px 7px", borderRadius: 7, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>✕</button>
+                                        </>
+                                      ) : (
+                                        <span style={{ padding: "3px 7px", borderRadius: 7, background: "rgba(217,119,6,0.12)", color: "#b45309", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>⏳ รออนุมัติยกเลิก</span>
+                                      ))}
+                                      {role.canDelete && !((inv.status || "") === "ชำระแล้ว" && user?.role !== "admin") && <button onClick={() => handleDeleteInvoice(inv)} title="ลบ" style={{ padding: "4px 6px", borderRadius: 7, border: "1px solid rgba(248,113,113,0.25)", background: "rgba(248,113,113,0.08)", color: "#f87171", cursor: "pointer", fontSize: 11 }}>✕</button>}
                                     </div>
                                   </div>
                                 );
