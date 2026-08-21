@@ -362,6 +362,9 @@ export default function NewInvoiceModal({
   apparelSizes = [],
   shoeSizes = [],
 }) {
+  // 📋 ปกติจะออกบิลจากใบที่ "ยังไม่ออกบิล" เท่านั้น
+  //    ใบที่ออกบิลไปแล้วจึงพับไว้ ต้องกดเปิดเอง — ลดโอกาสเผลอเลือกใบเก่าแล้วออกบิลซ้ำ
+  const [showBilledOrders, setShowBilledOrders] = React.useState(false);
   return (
         <Modal onClose={()=>{onClose();}} w={1100}>
           <MHead title={editingInvoiceId?"✏️ แก้ไขบิล":"🧾 ออกบิลใหม่"} sub={editingInvoiceId?`${invoices.find(i=>i.id===editingInvoiceId)?.invoiceNo || ""} · เลขที่บิลคงเดิม`:""} onClose={()=>{onClose();}} color={editingInvoiceId?T.amber:T.accent}/>
@@ -486,14 +489,25 @@ export default function NewInvoiceModal({
             const billed = allOrders.filter(o => isInvoiced(o)).sort((a,b)=>tsOf(b)-tsOf(a));
             return (
             <div style={{marginBottom:16,padding:12,background:"rgba(59,91,139,0.06)",border:"1px solid rgba(59,91,139,0.2)",borderRadius:10}}>
-              <div style={{fontSize:11,color:T.accent,fontWeight:600,marginBottom:8}}>📋 ดึงข้อมูลจากใบสั่งของ <span style={{color:T.muted,fontWeight:400}}>· ยังไม่ออกบิล {pending.length} ใบ</span></div>
+              <div style={{fontSize:11,color:T.accent,fontWeight:600,marginBottom:8,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                <span>📋 ดึงข้อมูลจากใบสั่งของ</span>
+                <span style={{color:pending.length?T.muted:T.green,fontWeight:400}}>
+                  · {pending.length ? `ยังไม่ออกบิล ${pending.length} ใบ` : "ออกบิลครบทุกใบแล้ว"}
+                </span>
+                {billed.length>0 && (
+                  <button type="button" onClick={()=>setShowBilledOrders(v=>!v)}
+                    style={{marginLeft:"auto",background:"none",border:"none",color:T.sub,cursor:"pointer",fontSize:10,fontFamily:"inherit",textDecoration:"underline",padding:0}}>
+                    {showBilledOrders ? `▾ ซ่อนใบที่ออกบิลแล้ว (${billed.length})` : `▸ แสดงใบที่ออกบิลแล้วด้วย (${billed.length})`}
+                  </button>
+                )}
+              </div>
               <select value="" onChange={e=>{const o=allOrders.find(x=>x.id===e.target.value);if(o)handleImportFromOrder(o);}}
                 style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
-                <option value="">-- เลือกใบสั่งของ (ถ้ามี) --</option>
+                <option value="">{(pending.length || showBilledOrders) ? "-- เลือกใบสั่งของ (ถ้ามี) --" : "-- ไม่มีใบที่รอออกบิล --"}</option>
                 {pending.length>0 && <optgroup label={`⏳ ยังไม่ออกบิล (${pending.length})`}>
                   {pending.map(o=><option key={o.id} value={o.id}>{label(o)}</option>)}
                 </optgroup>}
-                {billed.length>0 && <optgroup label={`✅ ออกบิลแล้ว (${billed.length}${billed.length>50?" · แสดง 50 ล่าสุด":""})`}>
+                {showBilledOrders && billed.length>0 && <optgroup label={`✅ ออกบิลแล้ว (${billed.length}${billed.length>50?" · แสดง 50 ล่าสุด":""})`}>
                   {billed.slice(0,50).map(o=><option key={o.id} value={o.id}>{label(o)}</option>)}
                 </optgroup>}
               </select>
