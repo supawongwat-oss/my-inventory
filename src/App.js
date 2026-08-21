@@ -3350,6 +3350,105 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       note: `ไม่อนุมัติคำขอยกเลิกของ ${inv.cancelRequest.by}`,
     });
   };
+  // 📦 ทำทีละหลายใบจากแถบเลือกด้านล่าง — เดิมต้องกดทีละแถว ปุ่มเลยกองอยู่ท้ายทุกแถว
+  //    ใช้เกณฑ์สิทธิ์ชุดเดียวกับการทำทีละใบ ไม่มีทางลัด
+  const handleBulkCancelInvoices = async (list = []) => {
+    const NLx = String.fromCharCode(10);
+    const targets = list.filter(i => (i.status || "") !== "ยกเลิก");
+    if (!targets.length) { alert("บิลที่เลือกยกเลิกไปแล้วทั้งหมด"); return; }
+
+    // staff → ยื่นคำขอทีเดียวทั้งชุด
+    if (!role?.canDelete) {
+      const pending = targets.filter(i => !i.cancelRequest);
+      if (!pending.length) { alert("ส่งคำขอไปแล้วทั้งหมด รออนุมัติอยู่"); return; }
+      const reason = window.prompt(`ขอยกเลิก ${pending.length} บิล` + NLx + NLx + "เหตุผล (ให้ผู้อนุมัติอ่าน):", "");
+      if (reason === null) return;
+      for (const inv of pending) {
+        await updateDoc(doc(db, "invoices", inv.id), {
+          cancelRequest: { by: user.name, at: now(), reason: (reason || "").trim() },
+        });
+      }
+      logAudit(user, {
+        action: AUDIT_ACTIONS.UPDATE, collection: "invoices", targetId: "bulk",
+        targetLabel: `${pending.length} บิล`,
+        note: `ขออนุมัติยกเลิก ${pending.length} บิล${(reason || "").trim() ? ` — ${(reason || "").trim()}` : ""}`,
+      });
+      setSelectedInvoices(new Set());
+      alert(`ส่งคำขอแล้ว ${pending.length} บิล — รออนุมัติ`);
+      return;
+    }
+
+    const paid = targets.filter(i => (i.status || "") === "ชำระแล้ว").length;
+    if (!window.confirm([
+      `ยกเลิก ${targets.length} บิล?`, "",
+      ...targets.slice(0, 8).map(i => `  • ${i.invoiceNo} · ${i.customerName}`),
+      targets.length > 8 ? `  … และอีก ${targets.length - 8} ใบ` : "", "",
+      paid ? `⚠️ มี ${paid} ใบที่ชำระเงินแล้ว — ตรวจเรื่องคืนเงินก่อน` : "",
+      "บิลยังอยู่ในระบบ เลขที่ไม่ขาดช่วง แต่จะไม่ถูกนับเป็นยอดขายและยอดค้าง",
+    ].filter(x => x !== "").join(NLx))) return;
+
+    for (const inv of targets) {
+      await updateDoc(doc(db, "invoices", inv.id), {
+        status: "ยกเลิก", cancelledBy: user.name, cancelledAt: now(), cancelRequest: null,
+      });
+    }
+    logAudit(user, {
+      action: AUDIT_ACTIONS.STATUS, collection: "invoices", targetId: "bulk",
+      targetLabel: `${targets.length} บิล`, note: `ยกเลิก ${targets.length} บิล`,
+    });
+    setSelectedInvoices(new Set());
+  };
+
+  const handleBulkDeleteInvoices = async (list = []) => {
+    const NLx = String.fromCharCode(10);
+    if (!role?.canDelete) { alert("ลบบิลได้เฉพาะผู้ดูแลระบบและผู้จัดการ"); return; }
+    // คัดใบที่ลบไม่ได้ออกก่อน แล้วบอกเหตุผล — ดีกว่าลบไปครึ่งหนึ่งแล้วเงียบ
+    const paidBlocked = list.filter(i => (i.status || "") === "ชำระแล้ว" && user?.role !== "admin");
+    const stmtBlocked = list.filter(i => (statements || []).some(st =>
+      (st.invoiceIds || []).includes(i.id) && (st.status || "") !== "ยกเลิก"));
+    const blockedIds = new Set([...paidBlocked, ...stmtBlocked].map(i => i.id));
+    const targets = list.filter(i => !blockedIds.has(i.id));
+    if (!targets.length) {
+      alert("ลบไม่ได้สักใบ" + NLx + NLx +
+        (paidBlocked.length ? `• ชำระแล้ว ${paidBlocked.length} ใบ (ลบได้เฉพาะ admin)` + NLx : "") +
+        (stmtBlocked.length ? `• อยู่ในใบวางบิลแล้ว ${stmtBlocked.length} ใบ` : ""));
+      return;
+    }
+    if (!window.confirm([
+      `ลบถาวร ${targets.length} บิล?`, "",
+      ...targets.slice(0, 8).map(i => `  • ${i.invoiceNo} · ${i.customerName}`),
+      targets.length > 8 ? `  … และอีก ${targets.length - 8} ใบ` : "", "",
+      blockedIds.size ? `⏭ ข้าม ${blockedIds.size} ใบที่ลบไม่ได้ (ชำระแล้ว/อยู่ในใบวางบิล)` : "",
+      "กู้คืนไม่ได้ — ถ้าแค่ต้องการให้เป็นโมฆะ ใช้ 🚫 ยกเลิก แทน",
+    ].filter(x => x !== "").join(NLx))) return;
+    for (const inv of targets) await handleDeleteInvoiceSilent(inv);
+    setSelectedInvoices(new Set());
+  };
+
+  // ลบจริงโดยไม่ถามซ้ำ — ใช้จากการลบหลายใบ (ตัวถามอยู่ชั้นบนแล้ว)
+  const handleDeleteInvoiceSilent = async (inv) => {
+    const ownedImgs = ownedImagePathsOf(inv);
+    await deleteDoc(doc(db, "invoices", inv.id));
+    if (ownedImgs.length) {
+      try { await Promise.all(ownedImgs.map(x => deleteFile(x))); }
+      catch (e) { console.warn("[invoice] ลบรูปไม่สำเร็จ:", e); }
+    }
+    const linkIds = [...new Set(inv.mergedFromOrderIds || [])];
+    if (linkIds.length) {
+      try {
+        for (let i = 0; i < linkIds.length; i += 400) {
+          const b = writeBatch(db);
+          linkIds.slice(i, i + 400).forEach(oid => b.update(doc(db, "orders", oid), { invoiceId: null, invoiceNo: null, invoicedAt: null }));
+          await b.commit();
+        }
+      } catch (e) { console.warn("[invoice] unmark orders failed:", e); }
+    }
+    logAudit(user, {
+      action: AUDIT_ACTIONS.DELETE, collection: "invoices", targetId: inv.id,
+      targetLabel: `${inv.invoiceNo} · ${inv.customerName}`,
+      before: { total: inv.total, status: inv.status, docType: inv.docType },
+    });
+  };
   const handleUpdateInvoiceStatus = async (invId, newStatus) => {
     const inv = invoices.find(i => i.id === invId);
     // 🚫 ยกเลิกผ่านช่องสถานะไม่ได้ — ไม่งั้นเลี่ยงขั้นขออนุมัติได้ทันที
@@ -4088,6 +4187,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               handleDeleteInvoice={handleDeleteInvoice}
               handleCancelInvoice={handleCancelInvoice}
               handleRejectCancel={handleRejectCancel}
+              handleBulkCancelInvoices={handleBulkCancelInvoices}
+              handleBulkDeleteInvoices={handleBulkDeleteInvoices}
               user={user}
             />
           )}
