@@ -48,7 +48,18 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
   const [source, setSource] = React.useState("");
   const [aliases, setAliases] = React.useState({});      // ของลูกค้ารายนี้ — ปล่อยผ่านอัตโนมัติ
   const [gAliases, setGAliases] = React.useState({});     // ของรายอื่น — เติมให้ แต่ต้องกดยืนยัน
-  const [learn, setLearn] = React.useState({});          // { rowIdx: true }
+  const [learn, setLearn] = React.useState({});          // { rowIdx: true|false } — ไม่มีค่า = ใช้ค่าเริ่มต้น
+
+  // 🧠 แถวไหนควร "จำ" ไว้ใช้ครั้งหน้า
+  //
+  // เดิมติ๊กให้เฉพาะตอนคนแก้แถวเอง (patchRow) — แต่แถวที่ระบบเดาถูกอยู่แล้ว
+  // แล้วคนแค่กดยืนยัน จะไม่ถูกจำเลย ครั้งหน้าก็ขึ้น "กำกวม" ให้ยืนยันซ้ำอีก
+  // ทั้งที่การกดยืนยันนั่นแหละคือการบอกว่า "ใช่ อันนี้ถูก"
+  //
+  // จึงตั้งค่าเริ่มต้นเป็นติ๊กไว้ สำหรับแถวที่ต้องให้คนตัดสิน
+  // แถว "พร้อมลง" ไม่ต้องจำ — มันตรงด้วยรหัสรุ่นอยู่แล้ว จำไปก็ไม่ได้อะไรเพิ่ม
+  const NEEDS_DECISION = ["กำกวม", "ให้ยืนยัน"];
+  const willLearn = (i, r) => learn[i] !== undefined ? learn[i] : NEEDS_DECISION.includes(r?.status);
   const [importId] = React.useState(() => `imp_${Date.now().toString(36)}`);
   const fileRef = React.useRef(null);
 
@@ -166,7 +177,7 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
       // จำการจับคู่ที่คนแก้ไว้ — แยกชั้นรุ่นกับสี ครั้งหน้าแก้ 1 ครั้งได้ทุกสีใต้ชื่อนั้น
       const next = { ...aliases };
       rows.forEach((r, i) => {
-        if (!learn[i] || !r.pick || r.status === "ข้าม") return;
+        if (!willLearn(i, r) || !r.pick || r.status === "ข้าม") return;
         next[`p:${looseKey(r.productText)}`] = { clothingId: r.pick.clothingId, text: r.productText || "", by: user?.name || "", at: new Date().toISOString() };
         if (r.pick.colorIdx != null) {
           // กุญแจต้องเป็นตัวเดียวกับตอนอ่านใน matchRow — ลายเซ็นของแถว ไม่ใช่ชื่อสีที่แปลได้
@@ -342,7 +353,7 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
                       </select>
                       <label title="จำไว้ ครั้งหน้าลูกค้ารายนี้เขียนแบบนี้จะจับคู่ให้เอง"
                         style={{ fontSize: 10, color: T.sub, display: "flex", alignItems: "center", gap: 3, whiteSpace: "nowrap", cursor: "pointer" }}>
-                        <input type="checkbox" checked={!!learn[i]} onChange={e => setLearn(l => ({ ...l, [i]: e.target.checked }))}/>
+                        <input type="checkbox" checked={willLearn(i, r)} onChange={e => setLearn(l => ({ ...l, [i]: e.target.checked }))}/>
                         จำ
                       </label>
                     </div>
@@ -369,6 +380,15 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
           </div>
           <div style={{ fontSize: 10, color: T.muted, marginTop: 8, lineHeight: 1.6 }}>
             ยังไม่ตัดสต๊อกตอนนี้ — ตัดตอนปิดรอบเหมือนเดิม · ลงผิดกดถอนได้ที่ประวัติการนำเข้าในหน้ารอบแพ็ค
+            {(() => {
+              const n = (rows || []).filter((r, i) => willLearn(i, r) && r.pick && r.status !== "ข้าม").length;
+              if (!n) return null;
+              return (
+                <div style={{ marginTop: 3, color: "#047857" }}>
+                  🧠 จะจำการจับคู่ {n} แถว — ครั้งหน้าไม่ต้องยืนยันซ้ำ · ไม่อยากให้จำแถวไหน ติ๊ก “จำ” ท้ายแถวนั้นออก
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
