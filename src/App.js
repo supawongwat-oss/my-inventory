@@ -2351,18 +2351,27 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     });
   };
 
-  const handleClosePackRun = async (run) => {
+  const handleClosePackRun = async (run, cutStock = true) => {
     const total = Object.values(run.counts || {}).reduce((s, v) => s + (Number(v) || 0), 0);
     if (total <= 0) { alert("รอบนี้ยังไม่มีของ — ยังปิดไม่ได้"); return; }
-    if (!window.confirm(`ปิดรอบ ${run.runNo} · ${run.customerName}?\n\nรวม ${total.toLocaleString("th-TH")} ชิ้น — จะตัดสต๊อกทั้งรอบทีเดียว\nปิดแล้วออกบิลใบเดียวจากรอบนี้ได้เลย`)) return;
-    await applyPackRunStock(run, -1, "ตัดสต๊อกรอบแพ็ค");
+    const NLx = String.fromCharCode(10);
+    const msg = [
+      `ปิดรอบ ${run.runNo} · ${run.customerName}?`, "",
+      `รวม ${total.toLocaleString("th-TH")} ชิ้น`,
+      cutStock
+        ? "จะตัดสต๊อกทั้งรอบทีเดียวตอนนี้"
+        : "ยังไม่ตัดสต๊อก — ค่อยกดตัดทีหลังได้ที่รายการรอบที่ปิดแล้ว",
+      "", "ปิดแล้วออกบิลใบเดียวจากรอบนี้ได้เลย",
+    ].join(NLx);
+    if (!window.confirm(msg)) return;
+    if (cutStock) await applyPackRunStock(run, -1, "ตัดสต๊อกรอบแพ็ค");
     await updateDoc(doc(db, "packRuns", run.id), {
-      status: "ปิดแล้ว", closedBy: user.name, closedAt: now(), totalQty: total, stockCut: true,
+      status: "ปิดแล้ว", closedBy: user.name, closedAt: now(), totalQty: total, stockCut: !!cutStock,
     });
     logAudit(user, {
       action: AUDIT_ACTIONS.UPDATE, collection: "packRuns", targetId: run.id,
       targetLabel: `${run.runNo} · ${run.customerName}`,
-      note: `ปิดรอบ ${total} ชิ้น + ตัดสต๊อก`,
+      note: `ปิดรอบ ${total} ชิ้น${cutStock ? " + ตัดสต๊อก" : " (ยังไม่ตัดสต๊อก)"}`,
     });
   };
 
@@ -2384,9 +2393,26 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     });
   };
 
+  // ✂️ ตัดสต๊อกของรอบที่ปิดไว้แบบยังไม่ตัด
+  //    แยกจังหวะ "จัดของเสร็จ" ออกจาก "ตัดสต๊อก" — ของออกจากชั้นวางแล้วแต่ตัวเลขยังไม่ขยับ
+  //    เหมือน 🔓 ขายก่อนไม่ตัดสต๊อก ของใบสั่งของ
+  const handleCutPackRunStock = async (run) => {
+    if (!run || run.stockCut) return;
+    const total = Object.values(run.counts || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+    if (!window.confirm(`ตัดสต๊อกรอบ ${run.runNo}?` + String.fromCharCode(10, 10) +
+      `${total.toLocaleString("th-TH")} ชิ้น จะถูกหักออกจากคลังตอนนี้`)) return;
+    await applyPackRunStock(run, -1, "ตัดสต๊อกรอบแพ็ค (ตัดทีหลัง)");
+    await updateDoc(doc(db, "packRuns", run.id), { stockCut: true, stockCutBy: user.name, stockCutAt: now() });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.UPDATE, collection: "packRuns", targetId: run.id,
+      targetLabel: `${run.runNo} · ${run.customerName}`,
+      note: `ตัดสต๊อกภายหลัง ${total} ชิ้น`,
+    });
+  };
   const handleReopenPackRun = async (run) => {
     if (run.invoiceNo) { alert("รอบนี้ออกบิลไปแล้ว เปิดกลับไม่ได้ — ถ้าต้องแก้ ให้แก้ที่บิลแทน"); return; }
-    if (!window.confirm(`เปิดรอบ ${run.runNo} กลับมาแก้?\n\nสต๊อกที่ตัดไปตอนปิดรอบจะถูกคืนกลับให้`)) return;
+    if (!window.confirm(`เปิดรอบ ${run.runNo} กลับมาแก้?` + String.fromCharCode(10, 10) +
+      (run.stockCut ? "สต๊อกที่ตัดไปตอนปิดรอบจะถูกคืนกลับให้" : "รอบนี้ยังไม่ได้ตัดสต๊อก — คลังไม่กระทบ"))) return;
     if (run.stockCut) await applyPackRunStock(run, +1, "คืนสต๊อก เปิดรอบแพ็คกลับ");
     await updateDoc(doc(db, "packRuns", run.id), { status: "เปิดอยู่", stockCut: false, reopenedBy: user.name, reopenedAt: now() });
   };
@@ -3934,6 +3960,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               onOpenRun={handleOpenPackRun}
               onBump={handleBumpPackRun}
               onCloseRun={handleClosePackRun}
+              onCutStock={handleCutPackRunStock}
               onReopenRun={handleReopenPackRun}
               onCancelRun={handleCancelPackRun}
               onBillRun={handleBillPackRun}

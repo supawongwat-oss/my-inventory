@@ -21,7 +21,7 @@ const colorOf = (col) => col?.colorHex || col?.hex || "#ccc";
 
 export default function PackRunTab({
   packRuns = [], customers = [], clothingItems = [], sizesFor, user, role = {},
-  onOpenRun, onBump, onCloseRun, onReopenRun, onCancelRun, onBillRun, onPrintPickList,
+  onOpenRun, onBump, onCloseRun, onCutStock, onReopenRun, onCancelRun, onBillRun, onPrintPickList,
   onBulkImport, onUndoImport, onManageAliases,
 }) {
   const [custId, setCustId] = React.useState("");
@@ -418,7 +418,12 @@ export default function PackRunTab({
               <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>ยอดสะสมในรอบ</div>
               <div style={{ display: "flex", gap: 8 }}>
                 <Btn onClick={() => onPrintPickList?.(run)}>🖨️ ใบหยิบของ</Btn>
-                {canEdit && <Btn onClick={() => onCloseRun(run)} style={{ background: "linear-gradient(135deg,#d97706,#b45309)", color: "white", border: "none", fontWeight: 700 }}>
+                {/* 🔓 จัดของเสร็จแล้วแต่ยังไม่อยากให้ตัวเลขสต๊อกขยับ — เหมือนใบสั่งของ
+                    ของบางรอบต้องรอตรวจ/รอส่งจริงก่อน ค่อยตัดทีหลังได้ */}
+                {canEdit && <Btn onClick={() => onCloseRun(run, false)} title="ปิดรอบไว้ก่อน ค่อยตัดสต็อกทีหลัง">
+                  🔓 ปิดรอบ ยังไม่ตัดสต็อก
+                </Btn>}
+                {canEdit && <Btn onClick={() => onCloseRun(run, true)} style={{ background: "linear-gradient(135deg,#d97706,#b45309)", color: "white", border: "none", fontWeight: 700 }}>
                   ✅ ปิดรอบ + ตัดสต็อก
                 </Btn>}
               </div>
@@ -472,8 +477,11 @@ export default function PackRunTab({
               {r.invoiceNo
                 ? <span style={{ color: T.accent }}>🧾 {r.invoiceNo}</span>
                 : <span style={{ color: T.amber }}>ยังไม่ออกบิล</span>}
+              {!r.stockCut && <span title="ของจัดแล้วแต่ยังไม่หักออกจากคลัง" style={{ padding: "1px 8px", borderRadius: 9, fontSize: 10, fontWeight: 700, background: "rgba(217,119,6,0.12)", color: "#b45309", border: "1px solid rgba(217,119,6,0.3)" }}>🔓 ยังไม่ตัดสต็อก</span>}
               <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
                 <Btn onClick={() => onPrintPickList?.(r)} style={{ padding: "3px 10px", fontSize: 11 }}>🖨️</Btn>
+                {canEdit && !r.stockCut && <Btn onClick={() => onCutStock?.(r)} title="หักยอดรอบนี้ออกจากคลังตอนนี้"
+                  style={{ padding: "3px 10px", fontSize: 11, color: "#b45309", borderColor: "rgba(217,119,6,0.45)", background: "rgba(217,119,6,0.08)", fontWeight: 700 }}>✂️ ตัดสต็อกตอนนี้</Btn>}
                 {canEdit && !r.invoiceNo && <Btn onClick={() => onBillRun(r)} style={{ padding: "3px 10px", fontSize: 11, color: T.accent, borderColor: "rgba(59,91,139,0.4)" }}>🧾 ออกบิล</Btn>}
                 {user?.role === "admin" && !r.invoiceNo && <Btn onClick={() => onReopenRun(r)} style={{ padding: "3px 10px", fontSize: 11 }} title="เปิดรอบกลับมาแก้ (คืนสต็อกที่ตัดไป)">↩️ เปิดกลับ</Btn>}
               </div>
