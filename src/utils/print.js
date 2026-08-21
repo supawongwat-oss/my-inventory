@@ -44,6 +44,24 @@ const PDF_MARGIN_BOTTOM_MM = 8;
 const PDF_WIDTH_PX = 764;
 // เตือนเรื่องรูปใส่ไม่ได้แค่ครั้งเดียวต่อการเปิดแอป — ไม่งั้นเด้งทุกครั้งที่กด PDF
 let warnedImgCors = false;
+// 🩹 ดึงสำเนาที่จะพิมพ์กลับเข้าหน้ากระดาษ
+//
+// บางหน้าวาดเนื้อหาที่จะพิมพ์ซ่อนไว้นอกจอ (position:fixed; left:-99999px) แล้วสั่งพิมพ์เลย
+// เช่นใบหยิบของของรอบแพ็ค — วิธีนี้ดีตรงที่ไม่ต้องเปิดหน้าต่างให้คนกดซ้ำ
+// แต่ cloneNode ลอก inline style มาด้วย สำเนาจึงยังลอยอยู่ที่ -99999px
+// ผลคือสั่งพิมพ์แล้วได้กระดาษเปล่า เพราะเนื้อหาอยู่นอกหน้ากระดาษจริง ๆ
+function bringIntoPage(node) {
+  if (!node || !node.style) return node;
+  const pos = node.style.position;
+  if (pos === "fixed" || pos === "absolute") {
+    node.style.position = "static";
+    node.style.left = "auto";
+    node.style.top = "auto";
+    node.style.right = "auto";
+    node.style.bottom = "auto";
+  }
+  return node;
+}
 export const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
   // ต้อง attach root เข้า DOM ชั่วคราวเพื่ออ่าน computed style
   const holder = document.createElement("div");
@@ -110,7 +128,7 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
     const cssPageSizeM = sizeMapM[pageSize] || pageSize;
     const ownPad = el.getAttribute("data-print-pad");
     const pageMarginM = ownPad ? pageMargin : "6mm";
-    const cloneM = el.cloneNode(true);
+    const cloneM = bringIntoPage(el.cloneNode(true));
     cloneM.removeAttribute("id");
     // 🩹 Samsung/mobile: ลด fontScale ลง (default 1.3 มักทำให้ตกขอบ)
     const mobileFontScale = Math.min(fontScale, 1.0);
@@ -192,7 +210,7 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
   document.getElementById("__print_root__")?.remove();
   document.getElementById("__print_style__")?.remove();
 
-  const clone = el.cloneNode(true);
+  const clone = bringIntoPage(el.cloneNode(true));
   clone.removeAttribute("id");
   const finalEl = isThermal ? clone : scaleFontInElement(clone, fontScale);
 
@@ -335,7 +353,7 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
     };
     const cssPageSizeM = sizeMapM[pageSize] || pageSize;
     const allHtml = labels.map((label, i) => {
-      const cl = el.cloneNode(true);
+      const cl = bringIntoPage(el.cloneNode(true));
       cl.removeAttribute("id");
       const tag = cl.querySelector("[data-doc-label]");
       if (tag) tag.textContent = label;
@@ -402,7 +420,7 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
   const root = document.createElement("div");
   root.id = "__print_root__";
   labels.forEach((label, i) => {
-    const clone = el.cloneNode(true);
+    const clone = bringIntoPage(el.cloneNode(true));
     clone.removeAttribute("id");
     const tag = clone.querySelector("[data-doc-label]");
     if (tag) tag.textContent = label;
@@ -568,7 +586,7 @@ export const downloadInvoicePdf = async (inv, copies = false) => {
 
   // 🧾 เตรียม "บิล 1 ชุด" ให้พร้อมวาด (ทุกชุดผ่านขั้นตอนเดียวกันเป๊ะ)
   const prepareBill = (label) => {
-    const c = scaleFontInElement(el.cloneNode(true), INVOICE_PDF_FONT_SCALE);
+    const c = scaleFontInElement(bringIntoPage(el.cloneNode(true)), INVOICE_PDF_FONT_SCALE);
     c.removeAttribute("id");
     if (label) { const t = c.querySelector("[data-doc-label]"); if (t) t.textContent = label; }
     // 🖼️ ใส่รูปที่ตรวจแล้วว่าเปิดได้ · รูปที่ใช้ไม่ได้ให้ซ่อนทั้งช่อง

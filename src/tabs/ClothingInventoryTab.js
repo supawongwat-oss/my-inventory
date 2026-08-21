@@ -30,8 +30,20 @@ export default function ClothingInventoryTab({
   editingStock, setEditingStock, handleUpdateClothingStock,
   setPriceForm, setPriceModal,
   setClothingTxModal, setClothingTxType, setClothingTxQty, setClothingTxSizeQty, setClothingTxNote,
-  handleDeleteClothingColor,
+  handleDeleteClothingColor, onRenameClothing,
 }) {
+  // ✏️ แก้ชื่อรุ่นได้ตรงนี้ — ชื่อพิมพ์ผิดตั้งแต่วันแรกแล้วไปโผล่ทุกบิล
+  //    เอกสารเก่าไม่เปลี่ยนตาม เพราะบิล/ใบสั่งเก็บชื่อ ณ ตอนออกไว้ในตัวเองแล้ว
+  const [renameId, setRenameId] = React.useState(null);
+  const [renameText, setRenameText] = React.useState("");
+  const startRename = (it) => { setRenameId(it.id); setRenameText(it.model || ""); };
+  const commitRename = async (it) => {
+    const next = renameText.trim();
+    setRenameId(null);
+    if (!next || next === (it.model || "")) return;
+    await onRenameClothing?.(it, next);
+  };
+
   // 👕 clothing tab → apparel + รุ่นเก่าที่ไม่มี sizeType | 👟 sports tab → shoe items only
   let tabItems = clothingItems.filter(it =>
     inventoryTab === "sports" ? it.sizeType === "shoe" : it.sizeType !== "shoe"
@@ -149,7 +161,25 @@ export default function ClothingInventoryTab({
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>
-                {item.model}
+                {renameId === item.id ? (
+                  <input autoFocus value={renameText}
+                    onChange={e => setRenameText(e.target.value)}
+                    onClick={e => e.stopPropagation()}
+                    onBlur={() => commitRename(item)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") e.currentTarget.blur();
+                      if (e.key === "Escape") { setRenameId(null); }
+                    }}
+                    style={{ fontSize: 14, fontWeight: 700, color: T.text, padding: "3px 8px", borderRadius: 7, border: `1px solid ${T.accent}`, fontFamily: "inherit", minWidth: 220, outline: "none" }}/>
+                ) : (
+                  <>
+                    {item.model}
+                    {role?.canEdit !== false && (
+                      <button onClick={e => { e.stopPropagation(); startRename(item); }} title="แก้ชื่อรุ่น"
+                        style={{ marginLeft: 6, padding: "1px 6px", borderRadius: 6, border: "none", background: "transparent", color: T.muted, cursor: "pointer", fontSize: 11, verticalAlign: "middle" }}>✏️</button>
+                    )}
+                  </>
+                )}
                 {item.brand && <span style={{ marginLeft: 7, fontSize: 10, padding: "2px 8px", background: "rgba(59,91,139,0.1)", color: T.accent, borderRadius: 10, fontWeight: 700, verticalAlign: "middle" }}>{item.brand}</span>}
                 {item.category && <span style={{ marginLeft: 4, fontSize: 10, padding: "2px 8px", background: "#f1f5f9", color: T.sub, borderRadius: 10, fontWeight: 600, verticalAlign: "middle" }}>{item.category}</span>}
               </div>

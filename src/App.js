@@ -1576,6 +1576,24 @@ export default function App() {
     }
   };
 
+  // ✏️ เปลี่ยนชื่อรุ่นในคลัง
+  //    ปลอดภัยกับเอกสารเก่า — บิล/ใบสั่ง/รอบแพ็ค เก็บชื่อ ณ ตอนบันทึกไว้ในตัวเองแล้ว
+  //    และการจับคู่ชื่อสินค้าของรอบแพ็คผูกด้วย id ไม่ใช่ชื่อ จึงไม่หลุด
+  const handleRenameClothing = async (item, newName) => {
+    const dup = clothingItems.find(c => c.id !== item.id && (c.model || "").trim() === newName);
+    if (dup && !window.confirm(`มีรุ่นชื่อ "${newName}" อยู่แล้ว` + String.fromCharCode(10, 10) + "ตั้งชื่อซ้ำจะแยกกันยากตอนออกบิลและตอนอ่านใบปะหน้า — ใช้ชื่อนี้ต่อ?")) return;
+    const before = item.model || "";
+    try {
+      await updateDoc(doc(db, "clothing", item.id), { model: newName });
+      logAudit(user, {
+        action: AUDIT_ACTIONS.UPDATE, collection: "clothing", targetId: item.id,
+        targetLabel: newName, before: { model: before }, after: { model: newName },
+        note: `เปลี่ยนชื่อรุ่น: ${before} → ${newName}`,
+      });
+    } catch (e) {
+      alert("เปลี่ยนชื่อไม่สำเร็จ: " + (e?.message || e));
+    }
+  };
   const handleDeleteClothingColor = async (itemId, colorIdx) => {
     const item = clothingItems.find(i => i.id === itemId);
     if (!item) return;
@@ -3898,6 +3916,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   setPriceForm={setPriceForm} setPriceModal={setPriceModal}
                   setClothingTxModal={setClothingTxModal} setClothingTxType={setClothingTxType} setClothingTxQty={setClothingTxQty} setClothingTxSizeQty={setClothingTxSizeQty} setClothingTxNote={setClothingTxNote}
                   handleDeleteClothingColor={handleDeleteClothingColor}
+                  onRenameClothing={handleRenameClothing}
                 />
               )}
             </div>
