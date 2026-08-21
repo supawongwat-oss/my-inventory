@@ -2274,6 +2274,24 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     });
   };
 
+  // ยกเลิกรอบที่ยังเปิดอยู่ — ยังไม่ได้ตัดสต๊อก จึงลบทิ้งได้เลย ไม่กระทบคลัง
+  //   (รอบที่ปิดแล้วห้ามมาทางนี้ ต้อง "เปิดกลับ" ก่อนเพื่อคืนสต๊อก)
+  const handleCancelPackRun = async (run) => {
+    if (!run) return;
+    if (run.status === "ปิดแล้ว") { alert("รอบนี้ปิดไปแล้ว — กด ↩️ เปิดกลับ ก่อน เพื่อคืนสต๊อกให้ถูกต้อง"); return; }
+    const total = Object.values(run.counts || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+    if (!window.confirm(`ยกเลิกรอบ ${run.runNo} · ${run.customerName}?
+
+นับไว้ ${total.toLocaleString("th-TH")} ชิ้น จะหายทั้งหมด
+รอบนี้ยังไม่ได้ตัดสต๊อก — คลังไม่กระทบ`)) return;
+    await deleteDoc(doc(db, "packRuns", run.id));
+    logAudit(user, {
+      action: AUDIT_ACTIONS.DELETE, collection: "packRuns", targetId: run.id,
+      targetLabel: `${run.runNo} · ${run.customerName}`,
+      note: `ยกเลิกรอบแพ็ค (นับไว้ ${total} ชิ้น)`,
+    });
+  };
+
   const handleReopenPackRun = async (run) => {
     if (run.invoiceNo) { alert("รอบนี้ออกบิลไปแล้ว เปิดกลับไม่ได้ — ถ้าต้องแก้ ให้แก้ที่บิลแทน"); return; }
     if (!window.confirm(`เปิดรอบ ${run.runNo} กลับมาแก้?\n\nสต๊อกที่ตัดไปตอนปิดรอบจะถูกคืนกลับให้`)) return;
@@ -3824,6 +3842,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               onBump={handleBumpPackRun}
               onCloseRun={handleClosePackRun}
               onReopenRun={handleReopenPackRun}
+              onCancelRun={handleCancelPackRun}
               onBillRun={handleBillPackRun}
               onPrintPickList={setPrintPackRun}
             />
