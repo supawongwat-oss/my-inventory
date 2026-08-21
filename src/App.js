@@ -56,6 +56,7 @@ const OrderLinkBackfill = lazy(() => import("./components/OrderLinkBackfill"));
 const TransactionsTab = lazy(() => import("./tabs/TransactionsTab"));
 const PackRunTab = lazy(() => import("./tabs/PackRunTab"));
 const ImportPackRunModal = lazy(() => import("./components/ImportPackRunModal"));
+const PackAliasesModal = lazy(() => import("./components/PackAliasesModal"));
 const ReturnsTab = lazy(() => import("./tabs/ReturnsTab"));
 const ReturnModal = lazy(() => import("./components/ReturnModal"));
 const PrintCreditNoteModal = lazy(() => import("./components/PrintCreditNoteModal"));
@@ -2184,6 +2185,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   // ── 📦 รอบแพ็ค ───────────────────────────────────────────────
   const [printPackRun, setPrintPackRun] = useState(null);
   const [importPackRun, setImportPackRun] = useState(null);
+  const [aliasCustomer, setAliasCustomer] = useState(null); // ลูกค้าที่กำลังดูการจับคู่ชื่อสินค้า
 
   // 🖨️ ใบหยิบของ — วาดนอกจอแล้วสั่งพิมพ์ทันที ไม่ต้องเปิดหน้าต่างให้กดซ้ำ
   //    รอ 1 จังหวะให้ React วาดเสร็จก่อน ไม่งั้นจะพิมพ์กล่องเปล่า
@@ -3915,6 +3917,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               onPrintPickList={setPrintPackRun}
               onBulkImport={setImportPackRun}
               onUndoImport={handleUndoPackImport}
+              onManageAliases={setAliasCustomer}
             />
           )}
 
@@ -5008,6 +5011,18 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
             setShowNewInvoice(true);
           }}
         />
+      )}
+
+      {/* 🧠 การจับคู่ชื่อสินค้าที่ระบบจำไว้ — แก้ได้ ไม่งั้นสอนผิดแล้วผิดตลอด */}
+      {aliasCustomer && (
+        <Suspense fallback={null}>
+          <PackAliasesModal
+            customer={aliasCustomer}
+            clothingItems={clothingItems}
+            user={user}
+            onClose={() => setAliasCustomer(null)}
+          />
+        </Suspense>
       )}
 
       {importPackRun && (

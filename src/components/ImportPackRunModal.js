@@ -167,11 +167,12 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
       const next = { ...aliases };
       rows.forEach((r, i) => {
         if (!learn[i] || !r.pick || r.status === "ข้าม") return;
-        next[`p:${looseKey(r.productText)}`] = { clothingId: r.pick.clothingId, by: user?.name || "", at: new Date().toISOString() };
+        next[`p:${looseKey(r.productText)}`] = { clothingId: r.pick.clothingId, text: r.productText || "", by: user?.name || "", at: new Date().toISOString() };
         if (r.pick.colorIdx != null) {
           // กุญแจต้องเป็นตัวเดียวกับตอนอ่านใน matchRow — ลายเซ็นของแถว ไม่ใช่ชื่อสีที่แปลได้
           next[`pc:${looseKey(r.productText)}##${looseKey(r.optionText || "")}`] =
-            { clothingId: r.pick.clothingId, colorIdx: r.pick.colorIdx, colorName: r.pick.colorName, by: user?.name || "" };
+            { clothingId: r.pick.clothingId, colorIdx: r.pick.colorIdx, colorName: r.pick.colorName,
+              text: r.productText || "", optionText: r.optionText || "", by: user?.name || "", at: new Date().toISOString() };
         }
       });
       if (Object.keys(next).length !== Object.keys(aliases).length) {

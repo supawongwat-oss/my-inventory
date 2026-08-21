@@ -22,7 +22,7 @@ const colorOf = (col) => col?.colorHex || col?.hex || "#ccc";
 export default function PackRunTab({
   packRuns = [], customers = [], clothingItems = [], sizesFor, user, role = {},
   onOpenRun, onBump, onCloseRun, onReopenRun, onCancelRun, onBillRun, onPrintPickList,
-  onBulkImport, onUndoImport,
+  onBulkImport, onUndoImport, onManageAliases,
 }) {
   const [custId, setCustId] = React.useState("");
   const [model, setModel] = React.useState(null);    // รุ่นที่เลือกอยู่ (ขั้นที่ 1)
@@ -301,6 +301,15 @@ export default function PackRunTab({
                 <div style={{ fontSize: 11, fontWeight: 400, color: T.muted, marginTop: 3 }}>
                   หรือวางข้อความจากแชท / ไฟล์ Excel — ไม่ต้องนั่งกดทีละใบ
                 </div>
+              </button>
+
+              {/* 🧠 สิ่งที่ระบบจำไว้จากการแก้ครั้งก่อน — ต้องมีทางย้อนกลับมาดู
+                  จับคู่ผิดไว้ครั้งเดียวจะผิดเงียบ ๆ ทุกรอบถัดไป ทั้งสต๊อกและบิล */}
+              <button onClick={() => onManageAliases?.(customers.find(c => c.id === custId))}
+                style={{ width: "100%", padding: "8px 12px", borderRadius: 9, marginBottom: 12, cursor: "pointer",
+                  border: `1px solid ${T.border}`, background: "white", color: T.sub,
+                  fontSize: 12, fontFamily: "'Sarabun',sans-serif" }}>
+                🧠 ดู/แก้การจับคู่ชื่อสินค้าที่ระบบจำไว้
               </button>
 
               {hasAnyBarcode && (

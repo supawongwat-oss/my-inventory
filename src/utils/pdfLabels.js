@@ -25,9 +25,16 @@ async function getPdfjs() {
   if (!pdfjsPromise) {
     pdfjsPromise = (async () => {
       const pdfjs = await import("pdfjs-dist");
-      // ปิด worker แยกไฟล์ — CRA ไม่ได้ตั้ง path ของ worker ไว้ให้
-      // ช้ากว่านิดหน่อยแต่ไม่ต้องยุ่งกับ build config และไม่มีปัญหาไฟล์หาไม่เจอตอน deploy
-      if (pdfjs.GlobalWorkerOptions) pdfjs.GlobalWorkerOptions.workerSrc = "";
+      // ⚙️ ต้องชี้ไฟล์ worker ให้ pdf.js เสมอ
+      //    ตั้งเป็นค่าว่างไม่ได้ (เคยตั้งไว้แบบนั้น) — v4 ขึ้นไปจะโยน
+      //    No "GlobalWorkerOptions.workerSrc" specified ทันทีที่เปิดไฟล์แรก
+      //
+      //    new URL(..., import.meta.url) ให้ webpack หยิบไฟล์ worker มารวมใน build
+      //    แล้วคืน URL จริงหลัง deploy — ไม่ต้องก็อปไฟล์ไป public เอง และไม่พึ่ง CDN
+      if (pdfjs.GlobalWorkerOptions && !pdfjs.GlobalWorkerOptions.workerSrc) {
+        pdfjs.GlobalWorkerOptions.workerSrc =
+          new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+      }
       return pdfjs;
     })();
   }
