@@ -182,7 +182,18 @@ export default function ReturnsTab({
 
       {activeList.length === 0 ? (
         <div style={{ textAlign: "center", padding: 40, color: T.muted, fontSize: 13 }}>
-          {search || filter !== "ทั้งหมด" ? "ไม่พบใบรับคืนที่ตรงกับที่ค้น" : "ยังไม่มีการรับคืนสินค้า"}
+          {/* แยก "ยังไม่เคยมีเลย" ออกจาก "มีแต่ยกเลิกไปหมดแล้ว" — คนละความหมาย
+              เดิมขึ้นว่ายังไม่มีการรับคืน ทั้งที่มีของอยู่ในกล่องยกเลิกด้านล่าง */}
+          {search || filter !== "ทั้งหมด"
+            ? "ไม่พบใบรับคืนที่ตรงกับที่ค้น"
+            : cancelledList.length > 0
+              ? "ไม่มีใบที่ต้องดำเนินการ"
+              : "ยังไม่มีการรับคืนสินค้า"}
+          {!search && filter === "ทั้งหมด" && cancelledList.length > 0 && (
+            <div style={{ fontSize: 11, marginTop: 6 }}>
+              ที่มีอยู่ {cancelledList.length} ใบถูกยกเลิกไปแล้ว — ดูได้ในกล่องด้านล่าง
+            </div>
+          )}
         </div>
       ) : activeList.map(Row)}
 
