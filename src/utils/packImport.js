@@ -212,10 +212,20 @@ export function scoreModel(entry, productText, aliasId) {
 }
 
 // ── จับคู่ 1 แถว ────────────────────────────────────────────
-export function matchRow(row, index, aliases = {}) {
+// aliases       = ที่ลูกค้า "รายนี้" เคยจับคู่ไว้      → เชื่อได้ ปล่อยผ่านอัตโนมัติ
+// globalAliases = ที่ลูกค้า "รายอื่น" เคยจับคู่ไว้     → เติมให้ล่วงหน้า แต่ยังให้คนกดยืนยัน
+//
+// ทำไมต้องแยกสองชั้น: ลูกค้าทุกเจ้าขายของจากคลังเดียวกัน ถ้าแยกตามลูกค้าล้วน ๆ
+// จะต้องสอนซ้ำทั้ง 10 เจ้าทั้งที่เป็นสินค้าตัวเดียวกัน — เสียเวลาเกินจำเป็น
+// แต่จะเอาของรายอื่นมาใช้อัตโนมัติเลยก็ไม่ได้ เพราะคนละร้านอาจเรียกชื่อซ้ำกันแต่หมายถึงคนละตัว
+// (เช่นต่างคนต่างเรียกรุ่นขายดีของตัวเองว่า "รุ่นฮิต")
+// → รายอื่นสอนไว้ = เติมให้ กดยืนยันทีเดียวจบ · พอยืนยันแล้วครั้งต่อไปของรายนี้จะอัตโนมัติ
+export function matchRow(row, index, aliases = {}, globalAliases = {}) {
   const productRaw = row.productText || "";
   const optionRaw = row.optionText || "";
-  const aModel = aliases[`p:${looseKey(productRaw)}`];
+  const pKey = `p:${looseKey(productRaw)}`;
+  const aModel = aliases[pKey];
+  const gModel = !aModel ? globalAliases[pKey] : null;
 
   // สีอาจอยู่ท้ายชื่อสินค้า หรืออยู่หน้าคอมมาในช่องตัวเลือก
   const optHead = optionRaw.split(",")[0] || "";
@@ -229,12 +239,21 @@ export function matchRow(row, index, aliases = {}) {
       const fromName = splitTailColor(productRaw, allColors);
       const colorName = row.colorText || fromOpt.color || fromName.color || "";
       const cleanProduct = fromName.color ? fromName.name : productRaw;
-      const m = scoreModel(entry, cleanProduct, aModel?.clothingId);
+      let m = scoreModel(entry, cleanProduct, aModel?.clothingId);
+      // รายอื่นเคยสอนไว้ — ดันขึ้นมาเป็นตัวเลือกแรก แต่ติดธง global ไว้ให้ต้องยืนยัน
+      if (!aModel && gModel && entry.id === gModel.clothingId) {
+        m = { score: 96, why: ["ลูกค้ารายอื่นเคยจับคู่แบบนี้"], tier: "global" };
+      }
       if (m.score <= 0) return null;
 
-      const aColor = aliases[`pc:${looseKey(productRaw)}##${looseKey(colorName)}`];
+      // 🔑 กุญแจของสีต้องผูกกับ "ข้อความดิบทั้งแถว" ไม่ใช่ชื่อสีที่แปลได้
+      //    เพราะเคสที่ต้องจำที่สุดคือเคสที่แปลไม่ได้ (เช่น "สายรุ้ง/WHTMULTI" ไม่มีในคลัง)
+      //    ถ้าใช้ชื่อสีที่แปลได้เป็นกุญแจ เคสนั้นจะได้กุญแจว่างเปล่า = จำไม่ได้ตลอดไป
+      //    ใช้ลายเซ็นของแถว ซึ่งเป็นตัวเดียวกับที่ collapseRows ใช้ยุบแถวซ้ำอยู่แล้ว
+      const cKey = `pc:${looseKey(productRaw)}##${looseKey(optionRaw)}`;
+      const aColor = aliases[cKey] || globalAliases[cKey];
       let color = null, cWhy = "";
-      if (aColor && entry.colors[aColor.colorIdx]) { color = entry.colors[aColor.colorIdx]; cWhy = "สีที่เคยจับคู่ไว้"; }
+      if (aColor && entry.id === aColor.clothingId && entry.colors[aColor.colorIdx]) { color = entry.colors[aColor.colorIdx]; cWhy = "สีที่เคยจับคู่ไว้"; }
       else if (colorName) {
         const ck = looseKey(colorName);
         color = entry.colors.find(c => c.key === ck)
@@ -267,6 +286,7 @@ export function matchRow(row, index, aliases = {}) {
     else if (second && top.modelScore - second.modelScore < 8) status = "กำกวม";
     // ปล่อยผ่านเองได้เฉพาะตอนมีหลักฐานชั้นแข็ง — รหัสรุ่นตรง หรือเคยจับคู่ไว้
     // "ชื่อรุ่นใกล้เคียง" แปลว่าชื่อรุ่นเราเป็นแค่เศษหนึ่งของข้อความเขา ยังไม่พอให้ลงเอง
+    // ชั้น global ไม่อยู่ในรายการนี้โดยตั้งใจ — ของรายอื่นต้องให้คนกดยืนยันเสมอ
     else if (top.confidence >= 85 && ["alias", "code", "name"].includes(top.tier)) status = "พร้อมลง";
     else status = "ให้ยืนยัน";
   }

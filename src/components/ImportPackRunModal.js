@@ -46,26 +46,33 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
   const [rows, setRows] = React.useState(null);         // MatchedRow[]
   const [skipped, setSkipped] = React.useState(0);
   const [source, setSource] = React.useState("");
-  const [aliases, setAliases] = React.useState({});
+  const [aliases, setAliases] = React.useState({});      // ของลูกค้ารายนี้ — ปล่อยผ่านอัตโนมัติ
+  const [gAliases, setGAliases] = React.useState({});     // ของรายอื่น — เติมให้ แต่ต้องกดยืนยัน
   const [learn, setLearn] = React.useState({});          // { rowIdx: true }
   const [importId] = React.useState(() => `imp_${Date.now().toString(36)}`);
   const fileRef = React.useRef(null);
 
   const index = React.useMemo(() => buildCatalogIndex(clothingItems, sizesFor), [clothingItems, sizesFor]);
 
-  // อ่านการจับคู่ที่เคยจำไว้ของลูกค้ารายนี้ — อ่านครั้งเดียว ไม่ subscribe
+  // อ่านการจับคู่ที่จำไว้ — ของลูกค้ารายนี้ + ของกลางที่รายอื่นเคยสอน
+  // อ่านครั้งเดียวตอนเปิด ไม่ subscribe (ใช้แค่ในหน้าต่างนี้)
   React.useEffect(() => {
     if (!run?.customerId) return;
     let alive = true;
-    getDoc(doc(db, "packAliases", run.customerId))
-      .then(s => { if (alive && s.exists()) setAliases(s.data().aliases || {}); })
-      .catch(e => console.warn("[packImport] อ่านการจับคู่ที่จำไว้ไม่ได้:", e?.message || e));
+    Promise.all([
+      getDoc(doc(db, "packAliases", run.customerId)).catch(() => null),
+      getDoc(doc(db, "packAliases", "_shared")).catch(() => null),
+    ]).then(([mine, shared]) => {
+      if (!alive) return;
+      if (mine?.exists()) setAliases(mine.data().aliases || {});
+      if (shared?.exists()) setGAliases(shared.data().aliases || {});
+    }).catch(e => console.warn("[packImport] อ่านการจับคู่ที่จำไว้ไม่ได้:", e?.message || e));
     return () => { alive = false; };
   }, [run?.customerId]);
 
   const runMatch = (raw, skip, src) => {
     const collapsed = collapseRows(raw);
-    setRows(collapsed.map(r => matchRow(r, index, aliases)));
+    setRows(collapsed.map(r => matchRow(r, index, aliases, gAliases)));
     setSkipped(skip);
     setSource(src);
   };
@@ -110,7 +117,10 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
   };
 
   // ── แก้ทีละแถว ─────────────────────────────────────────────
-  const patchRow = (i, patch) => setRows(rs => rs.map((r, j) => {
+  const patchRow = (i, patch) => {
+    // แก้เองแปลว่าตั้งใจสอน — ติ๊ก "จำ" ให้อัตโนมัติ ไม่ต้องกดเพิ่มอีกที
+    setLearn(l => (l[i] === false ? l : { ...l, [i]: true }));
+    setRows(rs => rs.map((r, j) => {
     if (j !== i) return r;
     const pick = { ...(r.pick || {}), ...patch };
     const entry = index.find(e => e.id === pick.clothingId);
@@ -122,6 +132,7 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
     const ok = pick.clothingId && pick.colorIdx != null && pick.size;
     return { ...r, pick, status: r.status === "ข้าม" ? "ข้าม" : (ok ? "ให้ยืนยัน" : (pick.colorIdx == null ? "ต้องเลือกสี" : "ต้องเลือกไซส์")) };
   }));
+  };
 
   const toggleSkip = (i) => setRows(rs => rs.map((r, j) => j === i ? { ...r, status: r.status === "ข้าม" ? (r.pick ? "ให้ยืนยัน" : "ไม่พบ") : "ข้าม" } : r));
 
@@ -133,6 +144,16 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
     const fp = fingerprintOf(entries);
     return Object.values(run?.imports || {}).some(x => x && x.fp === fp) ? fp : "";
   }, [entries, run]);
+
+  // แถวที่ระบบเติมครบแล้วรอแค่คนพยักหน้า — กดทีเดียวจบ ไม่ต้องไล่ทีละแถว
+  //   ช่วยมากตอนของกลางเติมมาให้ (ลูกค้าเจ้าที่ 2-10 ที่ขายสินค้าตัวเดียวกัน)
+  const confirmable = React.useMemo(
+    () => (rows || []).filter(r => r.status === "ให้ยืนยัน" && r.pick?.clothingId && r.pick?.colorIdx != null && r.pick?.size).length,
+    [rows]
+  );
+  const acceptAllSuggested = () => setRows(rs => rs.map(r =>
+    (r.status === "ให้ยืนยัน" && r.pick?.clothingId && r.pick?.colorIdx != null && r.pick?.size)
+      ? { ...r, status: "พร้อมลง" } : r));
 
   const commit = async () => {
     if (!entries.length || blocked.length) return;
@@ -148,14 +169,22 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
         if (!learn[i] || !r.pick || r.status === "ข้าม") return;
         next[`p:${looseKey(r.productText)}`] = { clothingId: r.pick.clothingId, by: user?.name || "", at: new Date().toISOString() };
         if (r.pick.colorIdx != null) {
-          next[`pc:${looseKey(r.productText)}##${looseKey(r.pick.colorName)}`] =
+          // กุญแจต้องเป็นตัวเดียวกับตอนอ่านใน matchRow — ลายเซ็นของแถว ไม่ใช่ชื่อสีที่แปลได้
+          next[`pc:${looseKey(r.productText)}##${looseKey(r.optionText || "")}`] =
             { clothingId: r.pick.clothingId, colorIdx: r.pick.colorIdx, colorName: r.pick.colorName, by: user?.name || "" };
         }
       });
       if (Object.keys(next).length !== Object.keys(aliases).length) {
-        await setDoc(doc(db, "packAliases", run.customerId),
-          { customerName: run.customerName || "", aliases: next, updatedAt: serverTimestamp() }, { merge: true })
-          .catch(e => console.warn("[packImport] จำการจับคู่ไม่สำเร็จ:", e?.message || e));
+        // เขียน 2 ที่: ของลูกค้ารายนี้ (ใช้อัตโนมัติครั้งหน้า) และของกลาง (ให้รายอื่นได้ใช้เป็นตัวเติม)
+        // ลูกค้าทุกเจ้าขายของจากคลังเดียวกัน สอนครั้งเดียวจึงควรช่วยทุกเจ้า
+        const learned = {};
+        Object.keys(next).forEach(k => { if (!aliases[k]) learned[k] = next[k]; });
+        await Promise.all([
+          setDoc(doc(db, "packAliases", run.customerId),
+            { customerName: run.customerName || "", aliases: next, updatedAt: serverTimestamp() }, { merge: true }),
+          setDoc(doc(db, "packAliases", "_shared"),
+            { aliases: learned, updatedAt: serverTimestamp() }, { merge: true }),
+        ]).catch(e => console.warn("[packImport] จำการจับคู่ไม่สำเร็จ:", e?.message || e));
       }
       onClose();
     } catch (e) {
@@ -322,6 +351,11 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
 
           <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
             <BtnGhost onClick={() => { setRows(null); setSheet(null); setPaste(""); setSource(""); setLearn({}); }}>เริ่มใหม่</BtnGhost>
+            {confirmable > 0 && (
+              <BtnGhost onClick={acceptAllSuggested} title="แถวที่ระบบเติมรุ่น/สี/ไซส์ครบแล้ว กดยอมรับทีเดียว">
+                ✅ ยอมรับที่เดาไว้ทั้งหมด ({confirmable})
+              </BtnGhost>
+            )}
             <BtnPrimary onClick={commit} disabled={!!busy || !entries.length || blocked.length > 0}
               style={{ flex: 1, opacity: (!!busy || !entries.length || blocked.length > 0) ? 0.45 : 1 }}>
               {busy || `✅ ลง ${entries.length} รายการ (${totalQty.toLocaleString("th-TH")} ชิ้น) เข้ารอบ`}
