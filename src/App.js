@@ -2210,7 +2210,11 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   useEffect(() => {
     if (!printPackRun) return;
     const t = setTimeout(() => {
-      printElementById("packrun-print-area", "A4 portrait", "8mm");
+      // 📏 สเกล 1.0 = ใช้ขนาดตามที่เขียนไว้ในตาราง (ตาราง 12px ≈ 9pt)
+      //    ไม่ส่งค่านี้ไปจะได้ค่าเริ่มต้น 1.3 ซึ่งทำมาเพื่อป้ายม้วน/เอกสารสั้น ๆ
+      //    พอเอามาใช้กับตารางเต็มหน้าเลยกลายเป็นตัวหนังสือ 11.7pt ใหญ่เกินจำเป็น
+      //    และรอบแพ็คมีเป็นร้อยแถว ยิ่งใหญ่ยิ่งเปลืองกระดาษ
+      printElementById("packrun-print-area", "A4 portrait", "8mm", 1.0);
       setPrintPackRun(null);
     }, 150);
     return () => clearTimeout(t);
