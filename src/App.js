@@ -5067,31 +5067,47 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               <div>พิมพ์ {now()}</div>
             </div>
           </div>
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          {/* 📋 ตารางแบบเดียวกับใบสั่งของ/บิล — รุ่น | สี | SIZE×จำนวน 4 ช่อง | รวม | เช็ค
+              พนักงานอ่านฟอร์มนี้อยู่ทุกวันแล้ว ไม่ต้องเรียนรู้ใหม่
+              และไซส์แยกเป็นช่อง ๆ อ่านตอนหยิบของเร็วกว่าเขียนต่อกันในช่องเดียว */}
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
             <thead>
               <tr style={{background:"#eee"}}>
-                <th style={{border:"1px solid #000",padding:"5px 8px",textAlign:"left"}}>รุ่น</th>
-                <th style={{border:"1px solid #000",padding:"5px 8px",textAlign:"left"}}>สี</th>
-                <th style={{border:"1px solid #000",padding:"5px 8px",textAlign:"left"}}>ไซส์ · จำนวน</th>
-                <th style={{border:"1px solid #000",padding:"5px 8px",textAlign:"center",width:60}}>รวม</th>
-                <th style={{border:"1px solid #000",padding:"5px 8px",textAlign:"center",width:50}}>เช็ค</th>
+                <th style={{border:"1px solid #000",padding:"5px 6px",textAlign:"left",width:"22%"}}>รุ่น</th>
+                <th style={{border:"1px solid #000",padding:"5px 6px",textAlign:"left",width:"13%"}}>สี</th>
+                {Array.from({length:4}).flatMap((_,i)=>[
+                  <th key={`s${i}`} style={{border:"1px solid #000",padding:"5px 2px",textAlign:"center",background:"#e2e8f0"}}>SIZE</th>,
+                  <th key={`q${i}`} style={{border:"1px solid #000",padding:"5px 2px",textAlign:"center"}}>จำนวน</th>
+                ])}
+                <th style={{border:"1px solid #000",padding:"5px 4px",textAlign:"center",width:"7%"}}>รวม</th>
+                <th style={{border:"1px solid #000",padding:"5px 4px",textAlign:"center",width:"6%"}}>เช็ค</th>
               </tr>
             </thead>
             <tbody>
-              {groupRun(printPackRun).map(g => (
-                <tr key={g.key}>
-                  <td style={{border:"1px solid #000",padding:"5px 8px",fontWeight:600}}>{g.clothingName}</td>
-                  <td style={{border:"1px solid #000",padding:"5px 8px"}}>{g.colorName}</td>
-                  <td style={{border:"1px solid #000",padding:"5px 8px",fontFamily:"monospace"}}>
-                    {g.sizes.map(s => `${s.size} × ${s.qty}`).join("   ")}
-                  </td>
-                  <td style={{border:"1px solid #000",padding:"5px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:14}}>{g.qty}</td>
-                  <td style={{border:"1px solid #000",padding:"5px 8px"}}/>
-                </tr>
-              ))}
+              {groupRun(printPackRun).flatMap(g => {
+                const rows = splitSizesIntoRows(g.sizes, 4);
+                return rows.map((chunk, ci) => (
+                  <tr key={`${g.key}-${ci}`}>
+                    <td style={{border:"1px solid #000",padding:"5px 6px",fontWeight:600,wordBreak:"break-word"}}>{ci===0 ? g.clothingName : ""}</td>
+                    <td style={{border:"1px solid #000",padding:"5px 6px",wordBreak:"break-word"}}>{ci===0 ? g.colorName : ""}</td>
+                    {chunk.flatMap((sz, k) => [
+                      <td key={`s${k}`} style={{border:"1px solid #000",padding:"5px 2px",textAlign:"center",fontFamily:"monospace",fontWeight:700,background:"#f8fafc"}}>{sz.size}</td>,
+                      <td key={`q${k}`} style={{border:"1px solid #000",padding:"5px 2px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:13}}>{sz.qty}</td>,
+                    ])}
+                    {Array.from({length:Math.max(0,4-chunk.length)}).flatMap((_,k)=>[
+                      <td key={`es${k}`} style={{border:"1px solid #000",background:"#fafafa"}}/>,
+                      <td key={`eq${k}`} style={{border:"1px solid #000",background:"#fafafa"}}/>,
+                    ])}
+                    <td style={{border:"1px solid #000",padding:"5px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:700,fontSize:13}}>
+                      {chunk.reduce((t,x)=>t+(Number(x.qty)||0),0)}
+                    </td>
+                    <td style={{border:"1px solid #000"}}/>
+                  </tr>
+                ));
+              })}
               <tr style={{background:"#f1f1f1"}}>
-                <td colSpan={3} style={{border:"1px solid #000",padding:"6px 8px",textAlign:"right",fontWeight:700}}>รวมทั้งหมด</td>
-                <td style={{border:"1px solid #000",padding:"6px 8px",textAlign:"center",fontFamily:"monospace",fontWeight:800,fontSize:15}}>{totalOf(printPackRun)}</td>
+                <td colSpan={2+4*2} style={{border:"1px solid #000",padding:"6px 8px",textAlign:"right",fontWeight:700}}>รวมทั้งหมด</td>
+                <td style={{border:"1px solid #000",padding:"6px 4px",textAlign:"center",fontFamily:"monospace",fontWeight:800,fontSize:15}}>{totalOf(printPackRun)}</td>
                 <td style={{border:"1px solid #000"}}/>
               </tr>
             </tbody>
