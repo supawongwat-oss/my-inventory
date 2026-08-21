@@ -51,6 +51,7 @@ const BackupRestore = lazy(() => import("./components/BackupRestore"));
 // 🧹 ล้างพื้นที่ Storage — ใช้นาน ๆ ครั้ง โหลดเฉพาะตอนเปิดแท็บ
 const StorageCleanup = lazy(() => import("./components/StorageCleanup"));
 const DuplicateOrderCleanup = lazy(() => import("./components/DuplicateOrderCleanup"));
+const OrderLinkBackfill = lazy(() => import("./components/OrderLinkBackfill"));
 const ReturnsTab = lazy(() => import("./tabs/ReturnsTab"));
 const ReturnModal = lazy(() => import("./components/ReturnModal"));
 const PrintCreditNoteModal = lazy(() => import("./components/PrintCreditNoteModal"));
@@ -4779,7 +4780,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           <MHead title="⚙️ ตั้งค่าระบบ" onClose={()=>setShowSettings(false)}/>
           {/* Settings tabs */}
           <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:`1px solid ${T.border}`,paddingBottom:12}}>
-            {[{id:"profile",label:"👤 โปรไฟล์"},...(user.role==="admin"?[{id:"system",label:"🏢 ระบบ 🔒"},{id:"backup",label:"💾 Backup"},{id:"storage",label:"🧹 ล้างพื้นที่"},{id:"dupes",label:"👯 ใบซ้ำ"}]:[]),{id:"install",label:"📱 ติดตั้งแอป"},{id:"about",label:"ℹ️ เกี่ยวกับ"}].map(t=>(
+            {[{id:"profile",label:"👤 โปรไฟล์"},...(user.role==="admin"?[{id:"system",label:"🏢 ระบบ 🔒"},{id:"backup",label:"💾 Backup"},{id:"storage",label:"🧹 ล้างพื้นที่"},{id:"dupes",label:"🧰 ซ่อมใบสั่งของ"}]:[]),{id:"install",label:"📱 ติดตั้งแอป"},{id:"about",label:"ℹ️ เกี่ยวกับ"}].map(t=>(
               <button key={t.id} onClick={()=>{ if(t.id==="system" && user.role==="admin" && Date.now()>=pwSessionExp){ requireAuth(()=>setSettingsTab("system"),"ใส่รหัสแอดมินเพื่อเข้า “ตั้งค่าระบบ”"); } else setSettingsTab(t.id); }} style={{padding:"7px 16px",borderRadius:8,border:settingsTab===t.id?`1px solid ${T.navActiveBorder}`:`1px solid transparent`,background:settingsTab===t.id?"rgba(59,91,139,0.15)":"transparent",color:settingsTab===t.id?"#3b5b8b":T.sub,cursor:"pointer",fontSize:13,fontFamily:"'Sarabun',sans-serif",fontWeight:settingsTab===t.id?600:400}}>{t.label}</button>
             ))}
           </div>
@@ -4852,7 +4853,10 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           )}
 
           {settingsTab==="dupes"&&user.role==="admin"&&(
-            <DuplicateOrderCleanup user={user} onDeleteOrder={deleteOrderInner}/>
+            <>
+              <DuplicateOrderCleanup user={user} onDeleteOrder={deleteOrderInner}/>
+              <OrderLinkBackfill user={user}/>
+            </>
           )}
 
           {settingsTab==="storage"&&user.role==="admin"&&(
