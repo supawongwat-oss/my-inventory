@@ -50,6 +50,7 @@ const BarcodeScanner = lazy(() => import("./components/BarcodeScanner"));
 const BackupRestore = lazy(() => import("./components/BackupRestore"));
 // 🧹 ล้างพื้นที่ Storage — ใช้นาน ๆ ครั้ง โหลดเฉพาะตอนเปิดแท็บ
 const StorageCleanup = lazy(() => import("./components/StorageCleanup"));
+const DuplicateOrderCleanup = lazy(() => import("./components/DuplicateOrderCleanup"));
 const ReturnsTab = lazy(() => import("./tabs/ReturnsTab"));
 const ReturnModal = lazy(() => import("./components/ReturnModal"));
 const PrintCreditNoteModal = lazy(() => import("./components/PrintCreditNoteModal"));
@@ -2091,7 +2092,15 @@ export default function App() {
 ${(o.items||[]).length} รายการ · ${totalQty} ชิ้น
 
 ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดสต๊อก — ยกเลิกไม่คืนสต๊อก" : "⚠️ สินค้าจะถูกคืนกลับสต๊อก"}`)) return;
+    await deleteOrderInner(o, "ยกเลิก");
+  };
 
+  // ลบใบสั่งของ + คืนสต๊อก โดยไม่ถาม — แยกออกมาให้เครื่องมือล้างใบซ้ำเรียกทีละใบได้
+  // เดิมตรรกะนี้ผูกติดกับ window.confirm ใช้ซ้ำไม่ได้เลย
+  const deleteOrderInner = async (o, reason = "ยกเลิก") => {
+    if (!o) return;
+    const totalQty = (o.items || []).reduce((s,i) => s + (Number(i.qty)||0), 0);
+    const skipRestock = !!o.deferStockCut || !!o.hasPendingMix;
     // 🔓 ถ้าใบนี้ยังไม่ตัดสต๊อก → ไม่ต้องคืน
     if (!skipRestock) {
       // จัดกลุ่ม items ตาม clothingId เพื่อ updateDoc ครั้งเดียวต่อเสื้อ
@@ -2126,7 +2135,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         type: "รับ", code: oi.clothingId,
         name: `${oi.clothingName} / ${oi.colorName} / ${oi.size}`,
         qty: Number(oi.qty) || 0, by: user.name, date: now(),
-        note: `ยกเลิกใบสั่งของ: ${o.orderNo} · ${o.customerName}${noteSuffix}`,
+        note: `${reason}ใบสั่งของ: ${o.orderNo} · ${o.customerName}${noteSuffix}`,
         stockAffected: isLinked,
         createdAt: serverTimestamp(), category: "เสื้อผ้า"
       });
@@ -2137,7 +2146,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       collection: "orders",
       targetId: o.id,
       targetLabel: `${o.orderNo} · ${o.customerName}`,
-      note: `ยกเลิก + คืนสต๊อก (${(o.items||[]).length} รายการ · ${totalQty} ชิ้น)`,
+      note: `${reason}${skipRestock ? "" : " + คืนสต๊อก"} (${(o.items||[]).length} รายการ · ${totalQty} ชิ้น)`,
     });
   };
 
@@ -4770,7 +4779,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           <MHead title="⚙️ ตั้งค่าระบบ" onClose={()=>setShowSettings(false)}/>
           {/* Settings tabs */}
           <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:`1px solid ${T.border}`,paddingBottom:12}}>
-            {[{id:"profile",label:"👤 โปรไฟล์"},...(user.role==="admin"?[{id:"system",label:"🏢 ระบบ 🔒"},{id:"backup",label:"💾 Backup"},{id:"storage",label:"🧹 ล้างพื้นที่"}]:[]),{id:"install",label:"📱 ติดตั้งแอป"},{id:"about",label:"ℹ️ เกี่ยวกับ"}].map(t=>(
+            {[{id:"profile",label:"👤 โปรไฟล์"},...(user.role==="admin"?[{id:"system",label:"🏢 ระบบ 🔒"},{id:"backup",label:"💾 Backup"},{id:"storage",label:"🧹 ล้างพื้นที่"},{id:"dupes",label:"👯 ใบซ้ำ"}]:[]),{id:"install",label:"📱 ติดตั้งแอป"},{id:"about",label:"ℹ️ เกี่ยวกับ"}].map(t=>(
               <button key={t.id} onClick={()=>{ if(t.id==="system" && user.role==="admin" && Date.now()>=pwSessionExp){ requireAuth(()=>setSettingsTab("system"),"ใส่รหัสแอดมินเพื่อเข้า “ตั้งค่าระบบ”"); } else setSettingsTab(t.id); }} style={{padding:"7px 16px",borderRadius:8,border:settingsTab===t.id?`1px solid ${T.navActiveBorder}`:`1px solid transparent`,background:settingsTab===t.id?"rgba(59,91,139,0.15)":"transparent",color:settingsTab===t.id?"#3b5b8b":T.sub,cursor:"pointer",fontSize:13,fontFamily:"'Sarabun',sans-serif",fontWeight:settingsTab===t.id?600:400}}>{t.label}</button>
             ))}
           </div>
@@ -4840,6 +4849,10 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               user={user}
               role={role}
             />
+          )}
+
+          {settingsTab==="dupes"&&user.role==="admin"&&(
+            <DuplicateOrderCleanup user={user} onDeleteOrder={deleteOrderInner}/>
           )}
 
           {settingsTab==="storage"&&user.role==="admin"&&(
