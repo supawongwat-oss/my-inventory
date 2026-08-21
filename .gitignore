@@ -25,3 +25,6 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# ก็อปมาจาก node_modules ตอน build (scripts/copy-pdf-worker.js)
+/public/pdf.worker.min.mjs
