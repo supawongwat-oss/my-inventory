@@ -22,6 +22,7 @@ const colorOf = (col) => col?.colorHex || col?.hex || "#ccc";
 export default function PackRunTab({
   packRuns = [], customers = [], clothingItems = [], sizesFor, user, role = {},
   onOpenRun, onBump, onCloseRun, onReopenRun, onCancelRun, onBillRun, onPrintPickList,
+  onBulkImport, onUndoImport,
 }) {
   const [custId, setCustId] = React.useState("");
   const [model, setModel] = React.useState(null);    // รุ่นที่เลือกอยู่ (ขั้นที่ 1)
@@ -228,6 +229,17 @@ export default function PackRunTab({
 
           {canEdit && (
             <CardBox style={{ marginBottom: 12 }}>
+              {/* 📥 ทางที่เร็วที่สุด — วางไว้บนสุดให้เห็นก่อนการแตะทีละชิ้น */}
+              <button onClick={() => onBulkImport?.(run)}
+                style={{ width: "100%", padding: "12px 14px", borderRadius: 10, marginBottom: 12, cursor: "pointer",
+                  border: `2px dashed ${T.accent}66`, background: "rgba(59,91,139,0.06)", color: T.accent,
+                  fontSize: 14, fontWeight: 700, fontFamily: "'Sarabun',sans-serif" }}>
+                📥 นำเข้าทีเดียว — ลากไฟล์ใบปะหน้า PDF ที่ลูกค้าส่งมา
+                <div style={{ fontSize: 11, fontWeight: 400, color: T.muted, marginTop: 3 }}>
+                  หรือวางข้อความจากแชท / ไฟล์ Excel — ไม่ต้องนั่งกดทีละใบ
+                </div>
+              </button>
+
               {hasAnyBarcode && (
                 <input value={scan} onChange={e => setScan(e.target.value)} onKeyDown={onScanKey}
                   placeholder="🔫 สแกนบาร์โค้ดรุ่น+สี"
@@ -339,6 +351,22 @@ export default function PackRunTab({
                 </Btn>}
               </div>
             </div>
+            {Object.entries(run.imports || {}).length > 0 && (
+              <div style={{ marginBottom: 10, padding: "7px 10px", background: "rgba(59,91,139,0.05)", border: `1px solid ${T.border}`, borderRadius: 8 }}>
+                <div style={{ fontSize: 10, color: T.muted, fontWeight: 700, marginBottom: 4 }}>ประวัติการนำเข้าในรอบนี้</div>
+                {Object.entries(run.imports).sort((a, b) => String(b[1]?.at || "").localeCompare(String(a[1]?.at || ""))).map(([id, im]) => (
+                  <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: T.sub, padding: "2px 0", flexWrap: "wrap" }}>
+                    <span style={{ flex: 1, minWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{im?.source || "นำเข้า"}</span>
+                    <span style={{ fontFamily: "monospace" }}>{im?.rows || 0} รายการ · {im?.qty || 0} ชิ้น</span>
+                    <span style={{ color: T.muted }}>{im?.at || ""}</span>
+                    {canEdit && (
+                      <button onClick={() => onUndoImport?.(run, id)} title="ถอนการนำเข้าชุดนี้ (หักยอดกลับ)"
+                        style={{ border: "1px solid rgba(239,68,68,0.3)", background: "white", color: "#b91c1c", borderRadius: 6, cursor: "pointer", fontSize: 10, padding: "2px 7px", fontFamily: "inherit" }}>↩️ ถอน</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             {groups.length === 0 ? (
               <div style={{ padding: 20, textAlign: "center", color: T.muted, fontSize: 13 }}>ยังไม่ได้นับอะไรในรอบนี้</div>
             ) : groups.map(g => (

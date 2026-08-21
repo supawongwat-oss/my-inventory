@@ -1,6 +1,6 @@
 ﻿import React, { useState, useRef, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import { db, authReady } from "./firebase";
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, runTransaction, serverTimestamp, query, orderBy, where, Timestamp, limit, increment, FieldPath } from "firebase/firestore";
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, runTransaction, serverTimestamp, query, orderBy, where, Timestamp, limit, increment, FieldPath, deleteField } from "firebase/firestore";
 import { T, SIZES, SHOE_SIZES, getSizesFor, mergeSizes, PRESET_COLORS, MASTER_KEY, SIZE_GROUPS, priceRowsForSizes, getPriceForSize, compareSizes, splitSizesIntoRows } from "./theme";
 import { INIT_USERS, ROLES, INIT_CATS } from "./constants";
 import { BarcodeDisplay, Modal, MHead, Toast, Input, BtnPrimary, BtnSuccess, BtnDanger, BtnGhost, Badge, CardBox } from "./components/ui";
@@ -55,6 +55,7 @@ const DuplicateOrderCleanup = lazy(() => import("./components/DuplicateOrderClea
 const OrderLinkBackfill = lazy(() => import("./components/OrderLinkBackfill"));
 const TransactionsTab = lazy(() => import("./tabs/TransactionsTab"));
 const PackRunTab = lazy(() => import("./tabs/PackRunTab"));
+const ImportPackRunModal = lazy(() => import("./components/ImportPackRunModal"));
 const ReturnsTab = lazy(() => import("./tabs/ReturnsTab"));
 const ReturnModal = lazy(() => import("./components/ReturnModal"));
 const PrintCreditNoteModal = lazy(() => import("./components/PrintCreditNoteModal"));
@@ -2182,6 +2183,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
   // ── 📦 รอบแพ็ค ───────────────────────────────────────────────
   const [printPackRun, setPrintPackRun] = useState(null);
+  const [importPackRun, setImportPackRun] = useState(null);
 
   // 🖨️ ใบหยิบของ — วาดนอกจอแล้วสั่งพิมพ์ทันที ไม่ต้องเปิดหน้าต่างให้กดซ้ำ
   //    รอ 1 จังหวะให้ React วาดเสร็จก่อน ไม่งั้นจะพิมพ์กล่องเปล่า
@@ -2257,6 +2259,72 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         createdAt: serverTimestamp(), category: "เสื้อผ้า",
       });
     }
+  };
+
+  // 📥 ลงรายการทั้งชุดเข้ารอบ — เขียนครั้งเดียวด้วย increment หลายช่องพร้อมกัน
+  //   · atomic ไม่มีสภาพลงค้างครึ่งทาง
+  //   · ชนกับการแตะจากอีกโต๊ะไม่ได้ เพราะทุกช่องเป็น increment รวมกันฝั่งเซิร์ฟเวอร์
+  //     (ถ้าอ่านมาบวกแล้วเขียนทับ จะกลืนยอดที่คนอื่นแตะระหว่างนั้น)
+  //   · ต้องใช้ FieldPath เสมอ ห้าม {["counts."+key]: ...} — ไซส์ที่ตั้งเองอาจมีจุด
+  //   · จด imports ไว้เป็นบัญชีคุม กันลงซ้ำและใช้ถอนย้อนได้
+  const handleBulkAddPackRun = async (run, entries, meta) => {
+    if (!run || !entries?.length) return;
+    const live = packRuns.find(r => r.id === run.id) || run;
+    if (live.status === "ปิดแล้ว") throw new Error("รอบนี้ถูกปิดไปแล้ว");
+    if (live.imports && live.imports[meta.importId]) throw new Error("ชุดนี้ลงไปแล้ว");
+
+    const args = [];
+    const keys = [];
+    for (const e of entries) {
+      const item = clothingItems.find(c => c.id === e.clothingId);
+      const col = item?.colors?.[e.colorIdx];
+      // 🔒 colorIdx เป็นเลขลำดับ ถ้ามีคนสลับ/ลบสีระหว่างที่กำลังตรวจตาราง ข้อมูลจะเพี้ยน
+      if (!col || (e.colorName && col.colorName && col.colorName !== e.colorName)) {
+        throw new Error(`สีของ "${e.clothingName}" ในคลังเปลี่ยนไประหว่างที่กำลังตรวจ — กดตรวจใหม่อีกครั้ง`);
+      }
+      const key = `${e.clothingId}|${e.colorIdx}|${e.size}`;
+      keys.push(key);
+      args.push(new FieldPath("counts", key), increment(Number(e.qty) || 0));
+      args.push(new FieldPath("meta", key), {
+        clothingId: e.clothingId, clothingName: e.clothingName,
+        colorIdx: e.colorIdx, colorName: e.colorName, colorHex: col.colorHex || col.hex || "",
+        size: e.size, unitPrice: getPriceForSize(col, e.size) || 0,
+      });
+    }
+    args.push(new FieldPath("imports", meta.importId), {
+      at: now(), by: user.name, source: meta.source || "",
+      rows: meta.rows || entries.length, qty: meta.qty || 0, fp: meta.fp || "", keys,
+    });
+    await updateDoc(doc(db, "packRuns", run.id), ...args);
+    logAudit(user, {
+      action: AUDIT_ACTIONS.UPDATE, collection: "packRuns", targetId: run.id,
+      targetLabel: `${run.runNo} · ${run.customerName}`,
+      note: `นำเข้า ${entries.length} รายการ ${meta.qty} ชิ้น (${meta.source || "-"})`,
+    });
+  };
+
+  // ถอนการนำเข้าชุดหนึ่ง — เขียน increment ค่าลบตามที่จดไว้
+  // มีตั้งแต่แรกโดยตั้งใจ: ปุ่มที่ไปแตะสต๊อกกับเงินต้องมีทางถอย ไม่งั้นไม่มีใครกล้ากด
+  const handleUndoPackImport = async (run, importId) => {
+    const rec = run?.imports?.[importId];
+    if (!rec) return;
+    if (run.status === "ปิดแล้ว") { alert("รอบนี้ปิดไปแล้ว — กด ↩️ เปิดกลับ ก่อนถึงจะถอนได้"); return; }
+    if (!window.confirm(`ถอนการนำเข้าชุดนี้?\n\n${rec.source || ""}\n${rec.rows || 0} รายการ · ${rec.qty || 0} ชิ้น\n\nยอดในรอบจะถูกหักกลับ`)) return;
+    const counts = run.counts || {};
+    const args = [];
+    for (const k of rec.keys || []) {
+      const cur = Number(counts[k]) || 0;
+      if (cur <= 0) continue;
+      // ถอนไม่เกินที่มีอยู่จริง — เผื่อมีคนลบ/แก้ยอดด้วยมือหลังนำเข้า
+      args.push(new FieldPath("counts", k), increment(-cur));
+    }
+    args.push(new FieldPath("imports", importId), deleteField());
+    if (!args.length) return;
+    await updateDoc(doc(db, "packRuns", run.id), ...args);
+    logAudit(user, {
+      action: AUDIT_ACTIONS.UPDATE, collection: "packRuns", targetId: run.id,
+      targetLabel: `${run.runNo} · ${run.customerName}`, note: `ถอนการนำเข้า (${rec.qty || 0} ชิ้น)`,
+    });
   };
 
   const handleClosePackRun = async (run) => {
@@ -3845,6 +3913,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               onCancelRun={handleCancelPackRun}
               onBillRun={handleBillPackRun}
               onPrintPickList={setPrintPackRun}
+              onBulkImport={setImportPackRun}
+              onUndoImport={handleUndoPackImport}
             />
           )}
 
@@ -4937,6 +5007,15 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
             setInvoiceForm(f=>({...f,customerId:c.id||"",customerName:c.name||"",customerPhone:c.phone||"",customerAddress:c.address||"",customerTaxId:c.taxId||""}));
             setShowNewInvoice(true);
           }}
+        />
+      )}
+
+      {importPackRun && (
+        <ImportPackRunModal
+          run={packRuns.find(r => r.id === importPackRun.id) || importPackRun}
+          clothingItems={clothingItems} sizesFor={sizesFor} user={user}
+          onCommit={handleBulkAddPackRun}
+          onClose={() => setImportPackRun(null)}
         />
       )}
 
