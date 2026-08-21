@@ -16,7 +16,7 @@ import { T } from "../theme";
 import { Modal, MHead, BtnPrimary, BtnGhost } from "./ui";
 import {
   buildCatalogIndex, matchRow, collapseRows, toCountEntries, fingerprintOf,
-  parsePaste, rowsFromSheet, guessPackField, PACK_FIELDS, PACK_FIELD_LABELS, looseKey,
+  parsePaste, rowsFromSheet, guessPackField, PACK_FIELDS, PACK_FIELD_LABELS, looseKey, displayText,
 } from "../utils/packImport";
 import { readLabelPdf, isPdf } from "../utils/pdfLabels";
 
@@ -308,7 +308,7 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}>
                     <span style={{ fontSize: 11, fontWeight: 700, color: st.color, whiteSpace: "nowrap" }}>{st.icon} {r.status}</span>
                     <span style={{ fontSize: 12, color: T.text, flex: 1, minWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.raw || r.productText}>
-                      {r.productText}{r.optionText ? ` ${r.optionText}` : ""}
+                      {displayText(r.productText)}{r.optionText ? ` ${displayText(r.optionText)}` : ""}
                     </span>
                     <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 700, color: T.text }}>×{r.qty}</span>
                     <button onClick={() => toggleSkip(i)} title={r.status === "ข้าม" ? "เอากลับมาลง" : "ข้ามแถวนี้"}

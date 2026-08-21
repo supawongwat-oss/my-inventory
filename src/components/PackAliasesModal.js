@@ -15,6 +15,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { T } from "../theme";
 import { Modal, MHead, BtnGhost } from "./ui";
+import { displayText } from "../utils/packImport";
 
 const SHARED = "_shared";
 
@@ -90,9 +91,10 @@ export default function PackAliasesModal({ customer, clothingItems = [], user, o
       || clothingItems.find(c => c.id === id)?.name || "(รุ่นที่ถูกลบไปแล้ว)";
     const out = Object.entries(aliases).map(([key, v]) => {
       const isColor = key.startsWith("pc:");
-      const label = v?.text
+      const label0 = v?.text
         ? (isColor && v.optionText ? `${v.text} · ${v.optionText}` : v.text)
         : key.replace(/^pc?:/, "");
+      const label = displayText(label0) || label0;
       const item = clothingItems.find(c => c.id === v?.clothingId);
       const col = isColor && v?.colorIdx != null ? item?.colors?.[v.colorIdx] : null;
       return {
