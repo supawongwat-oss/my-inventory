@@ -28,6 +28,8 @@ export default function PackRunTab({
   const [model, setModel] = React.useState(null);    // รุ่นที่เลือกอยู่ (ขั้นที่ 1)
   const [pick, setPick] = React.useState(null);      // { item, colorIdx } พร้อมแตะไซส์ (ขั้นที่ 2)
   const [modelSearch, setModelSearch] = React.useState("");
+  const [custSearch, setCustSearch] = React.useState("");
+  const [showAllCust, setShowAllCust] = React.useState(false);
   const [scan, setScan] = React.useState("");
   const [editSize, setEditSize] = React.useState(null);   // ไซส์ที่กำลังพิมพ์จำนวนทับ
   const [flash, setFlash] = React.useState("");
@@ -47,6 +49,29 @@ export default function PackRunTab({
   const open = React.useMemo(() => packRuns.filter(r => r.status !== "ปิดแล้ว"), [packRuns]);
   const closed = React.useMemo(() => packRuns.filter(r => r.status === "ปิดแล้ว"), [packRuns]);
   const run = React.useMemo(() => open.find(r => r.customerId === custId) || null, [open, custId]);
+
+  // 👥 ลูกค้าแพ็คมีแค่ไม่กี่เจ้า แต่ในระบบมีลูกค้าเป็นร้อย
+  //    เดิมเป็น <select> ที่เทลูกค้าทุกคนลงมา ไม่มีช่องค้นหา → หาเจ้าที่ต้องการไม่เจอ
+  //    ที่นี่ใช้ "เคยเปิดรอบแพ็คมาก่อน" เป็นตัวคัด — ไม่ต้องให้ใครมานั่งติ๊กตั้งค่าเพิ่ม
+  const packedIds = React.useMemo(
+    () => new Set(packRuns.map(r => r.customerId).filter(Boolean)),
+    [packRuns]
+  );
+  const custOptions = React.useMemo(() => {
+    const q = custSearch.trim().toLowerCase();
+    const base = (showAllCust || q)
+      ? customers
+      : customers.filter(c => packedIds.has(c.id));
+    const hit = q
+      ? base.filter(c => (c.name || "").toLowerCase().includes(q) || (c.phone || "").includes(q))
+      : base;
+    // เจ้าที่กำลังแพ็คอยู่ขึ้นก่อน แล้วค่อยเจ้าที่เคยแพ็ค
+    return [...hit].sort((a, b) => {
+      const ra = open.some(r => r.customerId === a.id) ? 0 : packedIds.has(a.id) ? 1 : 2;
+      const rb = open.some(r => r.customerId === b.id) ? 0 : packedIds.has(b.id) ? 1 : 2;
+      return ra !== rb ? ra - rb : (a.name || "").localeCompare(b.name || "", "th");
+    });
+  }, [customers, custSearch, showAllCust, packedIds, open]);
 
   const say = (msg) => {
     setFlash(msg);
@@ -164,16 +189,50 @@ export default function PackRunTab({
         </div>
       </div>
 
+      {/* 🟢 รอบที่เปิดค้างอยู่ — ต้องเห็นก่อนเป็นอันดับแรก
+          โต๊ะแพ็คกลับมาทำงานต่อทุกวัน สิ่งที่อยากได้คือ "กดกลับเข้ารอบเดิม" ไม่ใช่ไปหาชื่อในลิสต์ */}
+      {open.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 10, marginBottom: 12 }}>
+          {open.map(r => {
+            const on = r.customerId === custId;
+            return (
+              <div key={r.id} onClick={() => { setCustId(r.customerId); setPick(null); setModel(null); }}
+                style={{ padding: "12px 14px", borderRadius: 12, cursor: "pointer", background: on ? "rgba(59,91,139,0.10)" : T.card,
+                  border: `2px solid ${on ? T.accent : "rgba(16,185,129,0.45)"}`, transition: "background 0.15s" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 4, background: "#16a34a", flexShrink: 0 }}/>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.customerName}</span>
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "monospace", color: T.accent }}>
+                  {totalOf(r).toLocaleString("th-TH")} <span style={{ fontSize: 11, fontWeight: 500, color: T.muted }}>ชิ้น</span>
+                </div>
+                <div style={{ fontSize: 10, color: T.muted, marginTop: 2 }}>เปิด {(r.openedAt || "").split(" ")[0]}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <CardBox style={{ marginBottom: 12 }}>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <input value={custSearch} onChange={e => setCustSearch(e.target.value)}
+            placeholder="🔍 พิมพ์ชื่อลูกค้า / เบอร์..."
+            style={{ flex: "1 1 200px", padding: "10px 12px", borderRadius: 9, border: `1px solid ${T.border}`, fontSize: 14, fontFamily: "inherit", outline: "none" }}/>
           <select value={custId} onChange={e => { setCustId(e.target.value); setPick(null); setModel(null); }}
             style={{ flex: "1 1 260px", padding: "10px 12px", borderRadius: 9, border: `1px solid ${T.border}`, fontSize: 14, fontFamily: "inherit" }}>
-            <option value="">— เลือกลูกค้า —</option>
-            {customers.map(c => {
+            <option value="">— เลือกลูกค้า ({custOptions.length}) —</option>
+            {custOptions.map(c => {
               const r = open.find(x => x.customerId === c.id);
               return <option key={c.id} value={c.id}>{c.name}{r ? `  ● กำลังแพ็ค ${totalOf(r)} ชิ้น` : ""}</option>;
             })}
           </select>
+          {/* ค่าเริ่มต้นโชว์เฉพาะเจ้าที่เคยแพ็ค — เจ้าใหม่กดปุ่มนี้ทีเดียว */}
+          {!custSearch.trim() && (
+            <button onClick={() => setShowAllCust(v => !v)}
+              style={{ padding: "9px 14px", borderRadius: 9, border: `1px solid ${T.border}`, background: showAllCust ? "rgba(59,91,139,0.1)" : "white", color: showAllCust ? T.accent : T.sub, cursor: "pointer", fontSize: 12, fontFamily: "inherit", fontWeight: 600, whiteSpace: "nowrap" }}>
+              {showAllCust ? `👥 ทุกราย (${customers.length})` : `📦 เฉพาะเจ้าที่แพ็ค (${packedIds.size})`}
+            </button>
+          )}
           {custId && !run && canEdit && (
             <Btn onClick={() => onOpenRun(customers.find(c => c.id === custId))}
               style={{ background: "linear-gradient(135deg,#3b5b8b,#3b5b8b)", color: "white", border: "none", fontWeight: 700, fontSize: 14 }}>
@@ -190,7 +249,11 @@ export default function PackRunTab({
 
       {!custId && (
         <div style={{ padding: 30, textAlign: "center", color: T.muted, fontSize: 13, background: T.card, border: `1px solid ${T.border}`, borderRadius: 10 }}>
-          เลือกลูกค้าด้านบนเพื่อเริ่มแพ็ค
+          {open.length > 0
+            ? "แตะการ์ดรอบที่เปิดอยู่ด้านบน เพื่อแพ็คต่อ — หรือเลือกลูกค้ารายใหม่"
+            : packedIds.size === 0
+              ? "ยังไม่เคยเปิดรอบแพ็ค — กดปุ่ม \"เฉพาะเจ้าที่แพ็ค\" สลับเป็นทุกราย เพื่อเลือกลูกค้าเจ้าแรก"
+              : "เลือกลูกค้าด้านบนเพื่อเริ่มแพ็ค"}
         </div>
       )}
       {custId && !run && (
