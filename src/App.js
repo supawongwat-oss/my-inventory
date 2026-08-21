@@ -1751,8 +1751,26 @@ export default function App() {
     setFillOrderMix(null); setFillRowsByIdx({});
   };
 
+  // 🔒 ล็อกกันกดซ้ำ — ปุ่มบันทึกเดิม disable แค่ตอนยังไม่มีสินค้า ไม่ได้กันตอนกำลังบันทึก
+  //    handler เป็น async และมี await หลายจังหวะ (คืนสต๊อก → ตัดสต๊อก → จองเลข → เขียนเอกสาร)
+  //    แตะสองทีบนแท็บเล็ตจึงวิ่งซ้ำได้ทั้งชุด → ได้เอกสารซ้ำ และถ้าจองเลขพลาดพร้อมกัน
+  //    ทั้งคู่จะ fallback ไปคำนวณเลขจากรายการในหน่วยความจำชุดเดียวกัน = ได้เลขที่ซ้ำกันด้วย
+  //    ใช้ ref ไม่ใช่ state — ต้องเห็นผลทันทีในจังหวะเดียวกัน ไม่ต้องรอ re-render
+  //    (ฝั่งบิลมีล็อกของตัวเองอยู่แล้วที่ savingInvoiceRef)
+  const savingOrderRef = useRef(false);
+
   const handleConfirmOrder = async () => {
     if (!orderForm.customerName || orderForm.items.length === 0) return;
+    if (savingOrderRef.current) return;
+    savingOrderRef.current = true;
+    try {
+      return await confirmOrderInner();
+    } finally {
+      savingOrderRef.current = false;
+    }
+  };
+
+  const confirmOrderInner = async () => {
     const isEditing = !!editingOrderId;
     const oldOrder = isEditing ? orders.find(o => o.id === editingOrderId) : null;
     if (isEditing && !oldOrder) { alert("ไม่พบใบสั่งของที่จะแก้ไข"); return; }

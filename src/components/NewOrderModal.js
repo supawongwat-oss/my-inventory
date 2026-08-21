@@ -20,6 +20,14 @@ export default function NewOrderModal({
   handleConfirmOrder,
   addOrderMixItem,
 }) {
+  // 🔒 กันกดบันทึกซ้ำ — ตัวจริงล็อกอยู่ที่ handler แล้ว ตรงนี้ทำให้ "เห็น" ว่ากำลังบันทึกอยู่
+  //    ไม่งั้นพนักงานไม่รู้ว่าระบบรับไปแล้ว เลยกดซ้ำ (ต้นเหตุใบสั่งซ้ำเลขเดียวกัน)
+  const [saving, setSaving] = React.useState(false);
+  const confirmOnce = async () => {
+    if (saving) return;
+    setSaving(true);
+    try { await handleConfirmOrder(); } finally { setSaving(false); }
+  };
   // 🔍 ช่องพิมพ์ค้นหารุ่น/สี — กรองรายการใน dropdown (ค้นแบบสลับลำดับคำได้)
   const [modelSearch, setModelSearch] = React.useState("");
   const [colorSearch, setColorSearch] = React.useState("");
@@ -432,9 +440,11 @@ export default function NewOrderModal({
           </div>
 
           <div style={{display:"flex",gap:10}}>
-            <BtnGhost onClick={()=>onClose()} style={{flex:1}}>ยกเลิก</BtnGhost>
-            <BtnPrimary onClick={handleConfirmOrder} disabled={orderForm.items.length===0} style={{flex:2,opacity:orderForm.items.length===0?0.45:1}}>
-              {orderForm.items.length===0
+            <BtnGhost onClick={()=>onClose()} disabled={saving} style={{flex:1,opacity:saving?0.5:1}}>ยกเลิก</BtnGhost>
+            <BtnPrimary onClick={confirmOnce} disabled={saving||orderForm.items.length===0} style={{flex:2,opacity:(saving||orderForm.items.length===0)?0.55:1,cursor:saving?"wait":undefined}}>
+              {saving
+                ? "⏳ กำลังบันทึก... อย่าเพิ่งกดซ้ำ"
+                : orderForm.items.length===0
                 ? "กรุณาเพิ่มสินค้าก่อน"
                 : editingOrderId
                   ? "💾 บันทึกการแก้ไข"
