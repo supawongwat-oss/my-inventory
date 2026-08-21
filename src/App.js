@@ -52,6 +52,7 @@ const BackupRestore = lazy(() => import("./components/BackupRestore"));
 const StorageCleanup = lazy(() => import("./components/StorageCleanup"));
 const DuplicateOrderCleanup = lazy(() => import("./components/DuplicateOrderCleanup"));
 const OrderLinkBackfill = lazy(() => import("./components/OrderLinkBackfill"));
+const TransactionsTab = lazy(() => import("./tabs/TransactionsTab"));
 const ReturnsTab = lazy(() => import("./tabs/ReturnsTab"));
 const ReturnModal = lazy(() => import("./components/ReturnModal"));
 const PrintCreditNoteModal = lazy(() => import("./components/PrintCreditNoteModal"));
@@ -748,6 +749,9 @@ export default function App() {
           type: txType, code: prod.code, name: prod.name, qty,
           by: user.name, date: now(), note: txNote||"",
           createdAt: serverTimestamp(),
+          // 🏷️ ติดหมวดของตัวสินค้าไปด้วย — ฝั่งเสื้อผ้าใส่ "เสื้อผ้า" มานานแล้ว ฝั่งนี้เดิมไม่ใส่อะไรเลย
+          //    หน้าประวัติจึงแยกสินค้า/วัตถุดิบไม่ได้ (ข้อมูลเก่าที่ไม่มีหมวด ถือเป็นวัตถุดิบ)
+          category: prod.category || "วัตถุดิบ",
         });
         logAudit(user, {
           action: AUDIT_ACTIONS.STOCK,
@@ -812,6 +816,7 @@ export default function App() {
           type: bulkTxModal.type, code: prod.code, name: prod.name, qty,
           by: user.name, date: now(), note: bulkTxNote||"",
           createdAt: serverTimestamp(),
+          category: prod.category || "วัตถุดิบ",
         });
         logAudit(user, {
           action: AUDIT_ACTIONS.STOCK,
@@ -3680,25 +3685,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
           {/* TRANSACTIONS */}
           {activeTab==="transactions"&&(
-            <CardBox style={{padding:0,overflow:"hidden"}}>
-              <div style={{padding:"14px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div style={{fontSize:13,fontWeight:600,color:T.text}}>ประวัติการเคลื่อนไหว <span style={{color:T.muted,fontWeight:400}}>({transactions.length} รายการ)</span></div>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"70px 80px 1fr 80px 160px 170px",alignItems:"center",padding:"10px 16px",background:"#f8f9fb",borderBottom:`1px solid ${T.border}`,color:T.muted,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>
-                <div>#</div><div>ประเภท</div><div>สินค้า</div><div style={{textAlign:"right"}}>จำนวน</div><div>ผู้ดำเนินการ</div><div>วันที่/เวลา</div>
-              </div>
-              {transactions.length===0?<div style={{padding:40,textAlign:"center",color:T.muted,fontSize:13}}>ยังไม่มีรายการ</div>:transactions.map((t,i)=>(
-                <div key={t.id} style={{display:"grid",gridTemplateColumns:"70px 80px 1fr 80px 160px 170px",alignItems:"center",padding:"11px 16px",borderBottom:i<transactions.length-1?`1px solid ${T.border}`:"none"}}
-                  onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.05)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  <div style={{fontFamily:"monospace",fontSize:10,color:T.muted}}>#{String(i+1).padStart(4,"0")}</div>
-                  <div><Badge bg={t.type==="รับ"?"#dcfce7":"#fef2f2"} color={t.type==="รับ"?T.green:T.red}>{t.type==="รับ"?"⬇ รับ":"⬆ จ่าย"}</Badge></div>
-                  <div><div style={{fontWeight:500,color:T.text,fontSize:13}}>{t.name}</div><div style={{fontSize:10,color:T.muted}}>{t.note||"-"}</div></div>
-                  <div style={{textAlign:"right",fontFamily:"monospace",fontWeight:700,color:t.type==="รับ"?T.green:T.red}}>{t.type==="รับ"?"+":"-"}{t.qty}</div>
-                  <div style={{fontSize:12,color:T.sub}}>{t.by}</div>
-                  <div style={{fontSize:11,color:T.muted,fontFamily:"monospace"}}>{t.date}</div>
-                </div>
-              ))}
-            </CardBox>
+            <TransactionsTab transactions={transactions}/>
           )}
 
           {/* BARCODE */}
