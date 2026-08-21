@@ -47,13 +47,42 @@ export default function OrderLinkBackfill({ user }) {
 
       setStep("กำลังอ่านบิล...");
       const invSnap = await getDocs(query(collection(db, "invoices"), where("createdAt", ">=", ts), orderBy("createdAt", "desc")));
-      // orderId → บิลที่อ้างถึง (ข้ามบิลที่ถูกยุบ/แปลงไปแล้ว ไม่งั้นจะปั๊มบิลที่ตายแล้วลงไป)
+      const byId = new Map();
+      invSnap.forEach(d => byId.set(d.id, { ...d.data(), id: d.id }));
+
+      // 🔗 เดินตามสายบิลไปหา "ใบที่ยังใช้อยู่จริง"
+      //    บิลที่ถูกรวม (mergedInto) หรือแปลงไปแล้ว (convertedTo) ถือว่าตายแล้ว
+      //    แต่ลิงก์ "มาจากใบสั่งไหน" ยังอยู่ที่ใบเก่า → ต้องตามไปหาใบปลายทางแทนที่จะทิ้ง
+      //    (เดิมข้ามใบพวกนี้ทิ้ง ใบสั่งที่ผูกอยู่จึงกลายเป็นหาบิลไม่เจอ ทั้งที่ออกบิลแล้ว)
+      const resolveFinal = (id, hops = 0) => {
+        const v = byId.get(id);
+        if (!v) return null;
+        const nextId = v.mergedInto?.id || v.convertedTo?.id;
+        if (nextId && hops < 6) {
+          const nxt = resolveFinal(nextId, hops + 1);
+          if (nxt) return nxt;
+        }
+        return v;
+      };
+
+      // orderId → บิลปลายทางที่ยังใช้อยู่
       const linkOf = new Map();
-      invSnap.forEach(d => {
-        const v = d.data();
-        if (v.mergedInto || v.convertedTo) return;
-        (v.mergedFromOrderIds || []).forEach(oid => {
-          if (!linkOf.has(oid)) linkOf.set(oid, { id: d.id, invoiceNo: v.invoiceNo || "" });
+      byId.forEach(v => {
+        const ids = v.mergedFromOrderIds || [];
+        if (!ids.length) return;
+        const fin = resolveFinal(v.id);
+        if (!fin) return;
+        ids.forEach(oid => {
+          const cur = linkOf.get(oid);
+          // ใบที่ยังไม่ตายชนะเสมอ — เผื่อใบสั่งเดียวถูกอ้างจากหลายใบ
+          if (!cur || (cur.dead && !fin.mergedInto && !fin.convertedTo)) {
+            linkOf.set(oid, {
+              id: fin.id,
+              invoiceNo: fin.invoiceNo || "",
+              via: fin.id !== v.id ? (v.invoiceNo || "") : "",
+              dead: !!(fin.mergedInto || fin.convertedTo),
+            });
+          }
         });
       });
 
@@ -120,6 +149,7 @@ export default function OrderLinkBackfill({ user }) {
       <div style={{ fontSize: 12, color: T.muted, marginBottom: 14, lineHeight: 1.7 }}>
         ใบสั่งของที่ออกบิลไปแล้วแต่ยังขึ้นว่า "ยังไม่ออกบิล" — เพราะตราที่ปั๊มบนใบสั่งเพิ่งมีตั้งแต่ 7 ส.ค.
         ใบก่อนหน้านั้นต้องไปไล่ดูจากบิลที่โหลดอยู่ ซึ่งโหลดมาแค่ช่วงวันที่
+        <br/>เดินตามสายบิลที่ถูก "รวมบิล" ไปแล้วให้ด้วย — ปั๊มเลขบิลรวมใบที่ยังใช้อยู่จริง
         <br/>ปั๊มเฉพาะใบที่มีบิลอ้างถึงอยู่แล้วจริง ๆ · ไม่เดา · ไม่แตะยอดเงินและสต๊อก
       </div>
 
@@ -158,7 +188,9 @@ export default function OrderLinkBackfill({ user }) {
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       <b style={{ fontFamily: "monospace" }}>{o.orderNo}</b> · {o.customerName} · {fmtDate(tsOf(o))}
                     </span>
-                    <span style={{ whiteSpace: "nowrap", color: T.green, fontFamily: "monospace" }}>→ {o.__link.invoiceNo}</span>
+                    <span style={{ whiteSpace: "nowrap", color: T.green, fontFamily: "monospace" }}>
+                      → {o.__link.invoiceNo}{o.__link.via ? <span style={{ color: T.muted }}> (รวมจาก {o.__link.via})</span> : ""}
+                    </span>
                   </div>
                 ))}
                 {res.fixable.length > 150 && <div style={{ fontSize: 10, color: T.muted, marginTop: 4 }}>...และอีก {res.fixable.length - 150} ใบ</div>}

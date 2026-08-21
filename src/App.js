@@ -2621,6 +2621,11 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       ...calc,
       payments,
       mergedFrom: ordered.map(i => ({ id: i.id, invoiceNo: i.invoiceNo, total: i.total })),
+      // 🔗 ยกลิงก์ "มาจากใบสั่งของไหน" ของทุกใบที่รวมมาด้วย
+      //    เดิม newData = {...base} = เอาของ "ใบแรก" ใบเดียว ลิงก์ของใบที่ 2,3,... หายหมด
+      //    ใบสั่งของที่ผูกกับใบเหล่านั้นจึงกลายเป็นไม่มีบิลไหนอ้างถึง
+      //    → เด้งกลับไปขึ้น "ยังไม่ออกบิล" ทั้งที่ออกบิล (และรวมบิล) ไปแล้ว
+      mergedFromOrderIds: [...new Set(ordered.flatMap(i => i.mergedFromOrderIds || []))],
       by: user.name, date: base.date, createdAt: serverTimestamp(),
       status: base.status || "ออกแล้ว",
       note: [base.note, `🔗 รวมจาก ${ordered.map(i => i.invoiceNo).join(", ")}`].filter(Boolean).join(" · "),
@@ -2636,6 +2641,19 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       const ref = await addDoc(collection(db, "invoices"), newData);
       for (const i of ordered) {
         await updateDoc(doc(db, "invoices", i.id), { mergedInto: { id: ref.id, invoiceNo: invNo } });
+      }
+      // 🔗 ชี้ใบสั่งของมาที่บิลรวมใบใหม่ — เดิมยังชี้ไปที่บิลเดิมที่ถูกยุบไปแล้ว
+      //    กดเปิดบิลจากใบสั่งจึงไปเจอใบที่ไม่ควรใช้แล้ว
+      const linkIds = [...new Set(ordered.flatMap(i => i.mergedFromOrderIds || []))];
+      if (linkIds.length) {
+        try {
+          for (let k = 0; k < linkIds.length; k += 400) {
+            const b = writeBatch(db);
+            linkIds.slice(k, k + 400).forEach(oid =>
+              b.update(doc(db, "orders", oid), { invoiceId: ref.id, invoiceNo: invNo }));
+            await b.commit();
+          }
+        } catch (e) { console.warn("[mergeInvoices] ชี้ใบสั่งมาที่บิลรวมไม่สำเร็จ:", e); }
       }
       logAudit(user, {
         action: AUDIT_ACTIONS.CREATE, collection: "invoices", targetId: ref.id,
