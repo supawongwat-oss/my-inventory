@@ -30,6 +30,10 @@ const STATUS_STYLE = {
   "ข้าม":         { bg: "rgba(100,116,139,0.10)", color: T.sub,    icon: "⏭️" },
 };
 const READY = ["พร้อมลง", "ให้ยืนยัน"];
+// แถวที่ระบบเติมครบแล้ว แต่ยังอยากให้คนดูก่อน — ต้องมีทางกด "ใช่ ถูกแล้ว" ได้
+// เดิม "กำกวม" ไม่มีอยู่ในลิสต์ไหนเลย: ปุ่มลงถูกล็อก และปุ่มยอมรับก็ข้ามไป
+// ถ้าตัวที่ระบบเลือกถูกอยู่แล้วจะไม่มีอะไรให้แก้ → กดต่อไม่ได้ ติดตาย
+const NEEDS_OK = ["ให้ยืนยัน", "กำกวม"];
 const MAX_QTY_PER_ROW = 200;   // 1 ออเดอร์แพลตฟอร์ม = 1 ชิ้น เกินนี้คือแมปคอลัมน์ผิด
 
 const inputStyle = {
@@ -159,12 +163,16 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
   // แถวที่ระบบเติมครบแล้วรอแค่คนพยักหน้า — กดทีเดียวจบ ไม่ต้องไล่ทีละแถว
   //   ช่วยมากตอนของกลางเติมมาให้ (ลูกค้าเจ้าที่ 2-10 ที่ขายสินค้าตัวเดียวกัน)
   const confirmable = React.useMemo(
-    () => (rows || []).filter(r => r.status === "ให้ยืนยัน" && r.pick?.clothingId && r.pick?.colorIdx != null && r.pick?.size).length,
+    () => (rows || []).filter(r => NEEDS_OK.includes(r.status) && r.pick?.clothingId && r.pick?.colorIdx != null && r.pick?.size).length,
     [rows]
   );
   const acceptAllSuggested = () => setRows(rs => rs.map(r =>
-    (r.status === "ให้ยืนยัน" && r.pick?.clothingId && r.pick?.colorIdx != null && r.pick?.size)
+    (NEEDS_OK.includes(r.status) && r.pick?.clothingId && r.pick?.colorIdx != null && r.pick?.size)
       ? { ...r, status: "พร้อมลง" } : r));
+
+  // ยอมรับทีละแถว — บางทีถูกแค่บางแถว ไม่อยากกดยอมรับยกชุด
+  const acceptRow = (i) => setRows(rs => rs.map((r, j) => (j === i && NEEDS_OK.includes(r.status)
+    && r.pick?.clothingId && r.pick?.colorIdx != null && r.pick?.size) ? { ...r, status: "พร้อมลง" } : r));
 
   const commit = async () => {
     if (!entries.length || blocked.length) return;
@@ -301,7 +309,7 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
 
           {blocked.length > 0 && (
             <div style={{ padding: "8px 12px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.35)", borderRadius: 9, fontSize: 12, color: "#92400e", marginBottom: 10 }}>
-              ยังลงไม่ได้ — มี <b>{blocked.length}</b> แถวที่ต้องเลือกให้ชัดก่อน (หรือกด ⏭️ ข้ามแถวนั้น)
+              ยังลงไม่ได้ — มี <b>{blocked.length}</b> แถวที่ต้องให้คนตัดสินก่อน · ถ้าที่ระบบเลือกไว้ถูกแล้ว กด <b>✓ ถูกแล้ว</b> ท้ายแถว (หรือ <b>ยอมรับที่เดาไว้ทั้งหมด</b> ด้านล่าง) · ไม่เอาแถวไหนกด ⏭️ ข้าม
             </div>
           )}
           {overQty && (
@@ -327,6 +335,12 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
                       {displayText(r.productText)}{r.optionText ? ` ${displayText(r.optionText)}` : ""}
                     </span>
                     <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 700, color: T.text }}>×{r.qty}</span>
+                    {NEEDS_OK.includes(r.status) && r.pick?.clothingId && r.pick?.colorIdx != null && r.pick?.size && (
+                      <button onClick={() => acceptRow(i)} title="ใช่ ที่เลือกไว้ถูกแล้ว"
+                        style={{ border: "1px solid rgba(16,185,129,0.45)", background: "rgba(16,185,129,0.12)", color: "#047857", cursor: "pointer", fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 7, fontFamily: "inherit" }}>
+                        ✓ ถูกแล้ว
+                      </button>
+                    )}
                     <button onClick={() => toggleSkip(i)} title={r.status === "ข้าม" ? "เอากลับมาลง" : "ข้ามแถวนี้"}
                       style={{ border: "none", background: "none", cursor: "pointer", fontSize: 13, padding: 0 }}>
                       {r.status === "ข้าม" ? "↩️" : "⏭️"}
