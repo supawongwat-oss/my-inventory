@@ -307,7 +307,12 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
                 <div key={i} style={{ padding: "9px 12px", borderBottom: `1px solid ${T.border}`, background: st.bg, opacity: r.status === "ข้าม" ? 0.5 : 1 }}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}>
                     <span style={{ fontSize: 11, fontWeight: 700, color: st.color, whiteSpace: "nowrap" }}>{st.icon} {r.status}</span>
-                    <span style={{ fontSize: 12, color: T.text, flex: 1, minWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.raw || r.productText}>
+                    {/* ⚠️ ห้ามตัดท้ายทิ้ง — ไซส์อยู่ท้ายสุดของข้อความเสมอ ("...,EUR: 38 (25 CM.)")
+                        เดิมตั้ง nowrap+ellipsis ชื่อสินค้ายาว ๆ เลยกินที่จนไซส์ถูกตัดหาย
+                        คนตรวจอ่านไม่เห็นไซส์ = ตรวจไม่ได้จริง · ให้ตัดบรรทัดได้ จำกัดไว้ 2 บรรทัด */}
+                    <span style={{ fontSize: 12, color: T.text, flex: 1, minWidth: 180, overflow: "hidden",
+                      display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+                      whiteSpace: "normal", wordBreak: "break-word", lineHeight: 1.45 }} title={r.raw || r.productText}>
                       {displayText(r.productText)}{r.optionText ? ` ${displayText(r.optionText)}` : ""}
                     </span>
                     <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 700, color: T.text }}>×{r.qty}</span>
