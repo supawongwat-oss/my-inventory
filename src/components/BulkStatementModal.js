@@ -40,6 +40,7 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
   const [search, setSearch] = useState("");
   const [picked, setPicked] = useState(null);   // Set<key> — null = ยังไม่เคยแตะ (เลือกทั้งหมด)
   const [busy, setBusy] = useState(null);       // { done, total }
+  const [openKey, setOpenKey] = useState(null); // แถวที่กางรายการบิลอยู่
 
   const startD = parseISO(periodStart), endD = parseISO(periodEnd);
 
@@ -122,13 +123,7 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
       const oddCount = new Map();
       oddNames.forEach(i => { const nm = (i.customerName || "").trim(); oddCount.set(nm, (oddCount.get(nm) || 0) + 1); });
       const oddSummary = [...oddCount.entries()].map(([nm, n]) => `${nm} (${n} ใบ)`);
-      const oddTitle = oddNames.length === 0 ? "" : [
-        `บิลพวกนี้ผูกรหัส/เบอร์ไว้กับ "${r.customerName}" แต่ชื่อที่พิมพ์ในบิลเป็นอีกชื่อ`,
-        `ถ้าเป็นคนละเจ้ากันจริง ให้ไปแก้ลูกค้าในบิลก่อน แล้วค่อยวางบิล`,
-        "",
-        ...oddNames.map(x => `${x.invoiceNo} · ${x.customerName || "(ไม่ระบุ)"} · ฿${fmtB(x.total)}`),
-      ].join(String.fromCharCode(10));
-      rows.push({ ...r, invoices: invs, total, credits, creditTotal, net: Math.max(0, total - creditTotal), dupe, oddNames, oddSummary, oddTitle });
+      rows.push({ ...r, invoices: invs, total, credits, creditTotal, net: Math.max(0, total - creditTotal), dupe, oddNames, oddSummary });
     });
     return rows.sort((a,b) => b.total - a.total);
   }, [invoices, customers, statements, returns, periodStart, periodEnd, filterMode, onlyCredit]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -151,6 +146,31 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
   const selNet = Math.max(0, selTotal - selCredit);
   const selInvCount = selected.reduce((s,g) => s + g.invoices.length, 0);
   const dupeCount = groups.filter(g => g.dupe).length;
+
+  // 📋 คัดลอกรายการบิลของแถวนี้เป็นข้อความ — เอาไปวางในไลน์ถามพนักงานได้
+  //    เจ้าของร้านไม่ได้เป็นคนออกบิลเอง เรื่องชื่อ/ที่อยู่ลูกค้าต้องถามคนที่คีย์
+  //    ถ้าข้อมูลอยู่แต่ในหน้าจอ ก็ส่งต่อให้ใครดูไม่ได้ กลายเป็นตรวจไม่ได้ทั้งงวด
+  const copyRow = (g) => {
+    const lines = [
+      `${g.customerName || "(ไม่ระบุชื่อ)"}${g.phone ? ` · ${g.phone}` : ""}`,
+      `ช่วง ${fmtDDMMYYYY(startD)}–${fmtDDMMYYYY(endD)} · ${g.invoices.length} บิล · ฿${fmtB(g.total)}`,
+      "",
+      ...g.invoices.map(x => {
+        const odd = g.oddNames.some(o => o.id === x.id);
+        return `${x.invoiceNo} · ${(x.date || "").split(" ")[0]} · ฿${fmtB(x.total)}`
+          + (odd ? `  ⚠️ ชื่อในบิล: ${x.customerName || "(ไม่ระบุ)"}` : "");
+      }),
+    ];
+    if (g.oddNames.length > 0) {
+      lines.push("", `⚠️ ช่วยเช็กให้หน่อยว่าบิลที่ทำเครื่องหมายไว้ เป็นของ "${g.customerName}" จริงไหม`);
+    }
+    const text = lines.join(String.fromCharCode(10));
+    // คลิปบอร์ดใช้ไม่ได้ในบางเบราว์เซอร์/บางเครื่อง — ต้องมีทางสำรองให้ลากคัดลอกเองเสมอ
+    const fallback = () => window.prompt("คัดลอกข้อความนี้ (Ctrl+C)", text);
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => alert("คัดลอกแล้ว — วางในไลน์ได้เลย"), fallback);
+    } else fallback();
+  };
 
   const createAll = async () => {
     if (selected.length === 0 || busy) return;
@@ -303,38 +323,65 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
         <div className="scroll-col" style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "42vh", overflowY: "auto", marginBottom: 12 }}>
           {visible.map(g => {
             const on = isPicked(g);
+            const open = openKey === g.key;
             return (
-              <label key={g.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 9, cursor: "pointer",
-                border: `1px solid ${on ? "rgba(58,122,82,0.4)" : T.border}`, background: on ? "rgba(58,122,82,0.05)" : "white" }}>
-                <input type="checkbox" checked={on} onChange={()=>toggle(g)} style={{ width: 16, height: 16, cursor: "pointer", flexShrink: 0 }}/>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {g.customerName || "(ไม่ระบุชื่อ)"}
-                    {g.dupe && <span style={{ marginLeft: 6, fontSize: 10, padding: "1px 7px", background: "#fef3c7", color: "#b45309", borderRadius: 8, fontWeight: 700 }}>เคยออกแล้ว</span>}
-                    {!g.customerId && <span style={{ marginLeft: 6, fontSize: 10, color: T.muted }}>· ไม่ผูกลูกค้า</span>}
+              <div key={g.key} style={{ borderRadius: 9, border: `1px solid ${on ? "rgba(58,122,82,0.4)" : T.border}`, background: on ? "rgba(58,122,82,0.05)" : "white" }}>
+                {/* ติ๊กเลือกอยู่ใน label · ปุ่มกางรายละเอียดอยู่นอก label — ไม่งั้นกดดูข้อมูลแล้วติ๊กหลุด */}
+                <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", cursor: "pointer" }}>
+                  <input type="checkbox" checked={on} onChange={()=>toggle(g)} style={{ width: 16, height: 16, cursor: "pointer", flexShrink: 0 }}/>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {g.customerName || "(ไม่ระบุชื่อ)"}
+                      {g.dupe && <span style={{ marginLeft: 6, fontSize: 10, padding: "1px 7px", background: "#fef3c7", color: "#b45309", borderRadius: 8, fontWeight: 700 }}>เคยออกแล้ว</span>}
+                      {!g.customerId && <span style={{ marginLeft: 6, fontSize: 10, color: T.muted }}>· ไม่ผูกลูกค้า</span>}
+                    </div>
+                    <div style={{ fontSize: 11, color: T.muted }}>
+                      {g.invoices.length} บิล{g.phone ? ` · ${g.phone}` : ""}
+                      {/* บิลที่ชื่อในตัวบิลต่างจากชื่อแถวนี้ — ต้องเห็นก่อนกด ไม่งั้นวางบิลผิดเจ้าโดยไม่รู้ตัว */}
+                      {g.oddNames?.length > 0 && (
+                        <span style={{ marginLeft: 6, color: "#b45309" }}>
+                          ⚠️ ชื่อในบิลเขียนว่า {g.oddSummary.slice(0, 2).join(" · ")}
+                          {g.oddSummary.length > 2 ? ` +อีก ${g.oddSummary.length - 2}` : ""}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 11, color: T.muted }}>
-                    {g.invoices.length} บิล{g.phone ? ` · ${g.phone}` : ""}
-                    {/* บิลที่ชื่อในตัวบิลต่างจากชื่อแถวนี้ — ต้องเห็นก่อนกด ไม่งั้นวางบิลผิดเจ้าโดยไม่รู้ตัว */}
-                    {g.oddNames?.length > 0 && (
-                      <span title={g.oddTitle}
-                        style={{ marginLeft: 6, color: "#b45309", cursor: "help", textDecoration: "underline dotted" }}>
-                        ⚠️ ชื่อในบิลเขียนว่า {g.oddSummary.slice(0, 2).join(" · ")}
-                        {g.oddSummary.length > 2 ? ` +อีก ${g.oddSummary.length - 2}` : ""}
-                      </span>
-                    )}
-                    {/* ดูเลขที่บิลได้ว่ารวมใบไหนบ้าง — กันงงว่ายอดมาจากไหน */}
-                    <span title={g.invoices.map(x => `${x.invoiceNo} · ฿${fmtB(x.total)}`).join("\n")}
-                      style={{ marginLeft: 6, color: T.accent, cursor: "help", textDecoration: "underline dotted" }}>
-                      ดูเลขบิล
-                    </span>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: T.green, fontFamily: "monospace" }}>฿{fmtB(g.creditTotal > 0 ? g.net : g.total)}</div>
+                    {g.creditTotal > 0 && <div style={{ fontSize: 10, color: "#047857" }}>฿{fmtB(g.total)} · หักคืน -฿{fmtB(g.creditTotal)}</div>}
                   </div>
+                </label>
+
+                {/* ดูว่ายอดมาจากบิลใบไหนบ้าง — ของเดิมเป็น tooltip ซึ่งบนแท็บเล็ตไม่มี hover จึงเปิดดูไม่ได้เลย */}
+                <div style={{ padding: "0 12px 8px 38px", display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => setOpenKey(open ? null : g.key)}
+                    style={{ padding: 0, border: "none", background: "none", color: T.accent, cursor: "pointer", fontSize: 11, fontFamily: "inherit", textDecoration: "underline" }}>
+                    {open ? "▲ ซ่อนรายการบิล" : `▼ ดูรายการบิล (${g.invoices.length})`}
+                  </button>
+                  {open && (
+                    <button type="button" onClick={() => copyRow(g)}
+                      style={{ padding: 0, border: "none", background: "none", color: T.accent, cursor: "pointer", fontSize: 11, fontFamily: "inherit", textDecoration: "underline" }}>
+                      📋 คัดลอกไปถามพนักงาน
+                    </button>
+                  )}
                 </div>
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: T.green, fontFamily: "monospace" }}>฿{fmtB(g.creditTotal > 0 ? g.net : g.total)}</div>
-                  {g.creditTotal > 0 && <div style={{ fontSize: 10, color: "#047857" }}>฿{fmtB(g.total)} · หักคืน -฿{fmtB(g.creditTotal)}</div>}
-                </div>
-              </label>
+
+                {open && (
+                  <div className="scroll-col" style={{ maxHeight: 200, overflowY: "auto", margin: "0 12px 10px 38px", padding: 8, background: "#f8fafc", border: `1px solid ${T.border}`, borderRadius: 8 }}>
+                    {g.invoices.map(x => {
+                      const odd = g.oddNames.some(o => o.id === x.id);
+                      return (
+                        <div key={x.id} style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", padding: "3px 0", fontSize: 11, color: odd ? "#b45309" : T.sub }}>
+                          <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{x.invoiceNo}</span>
+                          <span style={{ color: T.muted }}>{(x.date || "").split(" ")[0]}</span>
+                          {odd && <span style={{ fontWeight: 700 }}>⚠️ ชื่อในบิล: {x.customerName || "(ไม่ระบุ)"}</span>}
+                          <span style={{ marginLeft: "auto", fontFamily: "monospace" }}>฿{fmtB(x.total)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
