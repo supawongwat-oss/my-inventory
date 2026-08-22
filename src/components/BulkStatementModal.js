@@ -7,7 +7,7 @@ import { db } from "../firebase";
 import { Modal, MHead, BtnPrimary, BtnGhost } from "./ui";
 import { T } from "../theme";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
-import { filterInvoicesForStatement, creditsForStatement, sumCredits, fmtISO, fmtDDMMYYYY, parseISODate as parseISO } from "../utils/statement";
+import { filterInvoicesForStatement, creditsForStatement, sumCredits, matchCustomer, custKey, fmtISO, fmtDDMMYYYY, parseISODate as parseISO } from "../utils/statement";
 
 const fmtB = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const now = () => { const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
@@ -28,6 +28,14 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
   const startD = parseISO(periodStart), endD = parseISO(periodEnd);
 
   // 🔍 จัดกลุ่มบิลตามลูกค้า — ใช้ helper ตัวเดียวกับหน้าสร้างทีละใบ (ผลลัพธ์ตรงกันแน่นอน)
+  //
+  // ⚠️ กับดักที่ทำให้หน้านี้เคยเละ: helper จับคู่ลูกค้าเป็นชั้น ๆ (รหัส → เบอร์ → ชื่อ)
+  //    บิลใบเดียวจึงเข้าเงื่อนไขของ "หลายราย" พร้อมกันได้ —
+  //      · บิลบางใบไม่ได้ผูกลูกค้า แต่ชื่อตรงกับลูกค้าที่ผูกไว้แล้ว
+  //      · บิลผูกรหัสไว้กับรายหนึ่ง แต่ชื่อในบิลดันตรงกับอีกราย (FBT มี 3 บริษัทชื่อคล้ายกัน)
+  //    ของเดิมสร้างแถวให้ทุกรายชื่อ → ยอดชุดเดียวกันโผล่ 2 แถว ติ๊กทั้งคู่ = วางบิลซ้ำ ทวงเงิน 2 รอบ
+  //    ตอนนี้เลือก "เจ้าของ" ของบิล/ใบลดหนี้แต่ละใบไว้รายเดียว: ชั้นที่แน่นกว่าชนะ
+  //    เสมอกันให้ลูกค้าในทะเบียนชนะบิลลอย ๆ (ข้อมูลติดต่อครบกว่า ใบวางบิลจึงถูกต้องกว่า)
   const groups = useMemo(() => {
     if (!startD || !endD) return [];
     // รวมรายชื่อจากทั้งลูกค้าในระบบ + ชื่อที่โผล่ในบิล (เผื่อบิลที่ไม่ได้ผูกลูกค้า)
@@ -36,8 +44,11 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
       customerId: c.id, customerName: c.name || "", phone: c.phone||"", address: c.address||"", taxId: c.taxId||"",
       billingType: c.billingType || "credit", // ไม่เคยตั้ง = เครดิต (พฤติกรรมเดิม)
     }));
+    const knownIds = new Set(customers.map(c => c.id));
     invoices.forEach(inv => {
-      if (inv.customerId) return; // มีลูกค้าในระบบแล้ว
+      // บิลที่ผูกกับลูกค้าที่ยังอยู่ในทะเบียน → ไปรวมที่แถวของลูกค้ารายนั้น
+      // แต่ถ้าผูกกับรหัสที่ถูกลบไปแล้ว ต้องมีแถวรับ ไม่งั้นบิลหายเงียบ ๆ ไม่มีอะไรฟ้อง
+      if (inv.customerId && knownIds.has(inv.customerId)) return;
       const nm = (inv.customerName || "").trim();
       if (!nm) return;
       const k = `name:${nm}`;
@@ -45,21 +56,51 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
       if (!seen.has(k)) seen.set(k, { customerId: "", customerName: nm, phone: inv.customerPhone||"", address: inv.customerAddress||"", taxId: inv.customerTaxId||"", billingType: "credit", unlinked: true });
     });
 
+    const refs = [];
+    seen.forEach((c, key) => refs.push({ key, ...c }));
+
+    // 🧮 แจกบิล/ใบลดหนี้ให้เจ้าของรายเดียว
+    const RANK = { id: 3, phone: 2, name: 1 };
+    const refOf = (r) => ({ customerId: r.customerId, customerName: r.customerName, customerPhone: r.phone });
+    const claim = (owners, docLike, r) => {
+      const rank = RANK[matchCustomer(docLike, refOf(r))] || 0;
+      if (!rank) return;
+      const cur = owners.get(docLike.id);
+      if (!cur || rank > cur.rank || (rank === cur.rank && !cur.hasId && r.customerId))
+        owners.set(docLike.id, { key: r.key, rank, hasId: !!r.customerId });
+    };
+
+    const invOwner = new Map(), credOwner = new Map();
+    const cand = new Map(); // key → { invs, credits } ที่ "เข้าเงื่อนไข" (ยังไม่ตัดสินเจ้าของ)
+    refs.forEach(r => {
+      const invs = filterInvoicesForStatement(invoices, r.customerId, r.customerName, startD, endD, filterMode, r.phone);
+      const credits = creditsForStatement(returns, r.customerId, r.customerName, endD, r.phone);
+      cand.set(r.key, { invs, credits });
+      invs.forEach(inv => claim(invOwner, inv, r));
+      credits.forEach(cr => claim(credOwner, cr, r));
+    });
+
     const rows = [];
-    seen.forEach((c, key) => {
-      if (onlyCredit && c.billingType === "cash") return; // 💵 เงินสด — ไม่ต้องวางบิล
-      const invs = filterInvoicesForStatement(invoices, c.customerId, c.customerName, startD, endD, filterMode);
+    refs.forEach(r => {
+      // 💵 เงินสด — ไม่ต้องวางบิล (ตัดหลังตัดสินเจ้าของแล้ว บิลของรายนี้จึงไม่ไหลไปโผล่ที่แถวชื่อคล้ายกัน)
+      if (onlyCredit && r.billingType === "cash") return;
+      const c = cand.get(r.key);
+      const invs = c.invs.filter(i => invOwner.get(i.id)?.key === r.key);
       if (invs.length === 0) return;
       // ⚠️ เตือนถ้าเคยออกใบวางบิลช่วงเดียวกันไปแล้ว — กันออกซ้ำ
       const dupe = statements.some(s =>
-        ((s.customerId && s.customerId === c.customerId) || (!s.customerId && s.customerName === c.customerName)) &&
+        ((s.customerId && s.customerId === r.customerId) || (!s.customerId && s.customerName === r.customerName)) &&
         s.periodStart === fmtDDMMYYYY(startD) && s.periodEnd === fmtDDMMYYYY(endD) && s.status !== "ยกเลิก"
       );
       // ↩️ ของที่ลูกค้ารายนี้คืนและยังไม่เคยถูกหัก → หักในใบวางบิลรอบนี้
-      const credits = creditsForStatement(returns, c.customerId, c.customerName, endD);
+      const credits = c.credits.filter(x => credOwner.get(x.id)?.key === r.key);
       const creditTotal = sumCredits(credits);
       const total = invs.reduce((s,i)=>s+(Number(i.total)||0),0);
-      rows.push({ key, ...c, invoices: invs, total, credits, creditTotal, net: Math.max(0, total - creditTotal), dupe });
+      // ⚠️ บิลที่ชื่อในตัวบิลไม่ตรงกับชื่อแถวนี้ (เข้ามาเพราะผูกรหัสลูกค้าไว้)
+      //    ชื่อคล้ายกันไม่ได้แปลว่าเจ้าเดียวกัน — เช่น FBT มี 3 บริษัทแยกกัน
+      //    วางบิลผิดเจ้า = ทวงเงินผิดคน จึงต้องให้คนดูก่อน ห้ามกลืนเงียบ ๆ
+      const oddNames = invs.filter(i => custKey(i.customerName) !== custKey(r.customerName));
+      rows.push({ ...r, invoices: invs, total, credits, creditTotal, net: Math.max(0, total - creditTotal), dupe, oddNames });
     });
     return rows.sort((a,b) => b.total - a.total);
   }, [invoices, customers, statements, returns, periodStart, periodEnd, filterMode, onlyCredit]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -97,6 +138,10 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
 
     setBusy({ done: 0, total: selected.length });
     const fails = [];
+    // 🔖 ปั๊มรหัสรอบเดียวกันลงทุกใบ — กดพลาดทีเดียว 70-80 ใบ ต้องถอยทั้งรอบได้
+    //    ไม่งั้นต้องไล่ลบทีละใบ (ปุ่ม "↩️ ถอยทั้งรอบ" ที่หน้าวางบิลใช้ค่านี้)
+    const runId = "run-" + Date.now();
+    const runAt = now();
     for (let i = 0; i < selected.length; i++) {
       const g = selected[i];
       try {
@@ -127,6 +172,8 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
           })),
           invoiceCount: g.invoices.length,
           filterMode,
+          bulkRunId: runId,
+          bulkRunAt: runAt,
           status: "ออกแล้ว",
           dueDate,
           note: "",
@@ -238,6 +285,13 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
                   </div>
                   <div style={{ fontSize: 11, color: T.muted }}>
                     {g.invoices.length} บิล{g.phone ? ` · ${g.phone}` : ""}
+                    {/* บิลที่ชื่อในตัวบิลต่างจากชื่อแถวนี้ — ต้องเห็นก่อนกด ไม่งั้นวางบิลผิดเจ้าโดยไม่รู้ตัว */}
+                    {g.oddNames?.length > 0 && (
+                      <span title={g.oddNames.map(x => `${x.invoiceNo} · ชื่อในบิล: ${x.customerName || "(ไม่ระบุ)"}`).join("\n")}
+                        style={{ marginLeft: 6, color: "#b45309", cursor: "help", textDecoration: "underline dotted" }}>
+                        ⚠️ ชื่อในบิลต่างกัน {g.oddNames.length} ใบ
+                      </span>
+                    )}
                     {/* ดูเลขที่บิลได้ว่ารวมใบไหนบ้าง — กันงงว่ายอดมาจากไหน */}
                     <span title={g.invoices.map(x => `${x.invoiceNo} · ฿${fmtB(x.total)}`).join("\n")}
                       style={{ marginLeft: 6, color: T.accent, cursor: "help", textDecoration: "underline dotted" }}>

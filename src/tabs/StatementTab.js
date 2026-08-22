@@ -4,25 +4,15 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBa
 import { T } from "../theme";
 import { Modal, MHead, Input, BtnPrimary, BtnGhost, CardBox } from "../components/ui";
 import { matchTokens } from "../utils/search";
+import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import BulkStatementModal from "../components/BulkStatementModal";
-import { creditsForStatement, sumCredits, nearMissInvoices } from "../utils/statement";
+import { filterInvoicesForStatement, creditsForStatement, sumCredits, nearMissInvoices } from "../utils/statement";
 
 // ── helpers ────────────────────────────────────────────────
 const pad2 = n => String(n).padStart(2, "0");
 const now = () => {
   const d = new Date();
   return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-};
-
-// แปลง "DD/MM/YYYY HH:mm" (เก็บเป็น ค.ศ.) → Date
-// รองรับทั้ง พ.ศ. และ ค.ศ. — ถ้าปี > 2500 ตีว่า พ.ศ. แล้วลบ 543
-const parseDDMMYYYY = (s) => {
-  if (!s) return null;
-  const datePart = s.split(" ")[0];
-  const [d, m, y] = datePart.split("/").map(Number);
-  if (!d || !m || !y) return null;
-  const year = y > 2500 ? y - 543 : y;
-  return new Date(year, m - 1, d);
 };
 
 // แปลง yyyy-mm-dd (จาก input type=date) → Date 00:00 local
@@ -52,31 +42,9 @@ const statusStyle = (s) => ({
   "ยกเลิก":       { bg: "rgba(185,74,72,0.1)",  color: T.red,    border: "1px solid rgba(185,74,72,0.3)" },
 }[s] || { bg: "rgba(59,91,139,0.1)", color: T.accent, border: `1px solid ${T.border}` });
 
-// ── helper: filter invoices for a statement ────────────────
-export const filterInvoicesForStatement = (invoices, customerId, customerName, startDate, endDate, mode) => {
-  const startMs = startDate ? startDate.getTime() : -Infinity;
-  // endDate ตอนกรอง ให้รวมทั้งวัน (end of day)
-  const endMs = endDate ? new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59).getTime() : Infinity;
-
-  return invoices.filter(inv => {
-    // 1) match ลูกค้า
-    const sameCustomer = (inv.customerId && inv.customerId === customerId)
-      || (!inv.customerId && inv.customerName === customerName);
-    if (!sameCustomer) return false;
-
-    // 2) date range
-    const d = parseDDMMYYYY(inv.date);
-    if (!d) return false;
-    const t = d.getTime();
-    if (t < startMs || t > endMs) return false;
-
-    // 3) status filter
-    const status = inv.status || "ออกแล้ว";
-    if (mode === "unpaid" && (status === "ชำระแล้ว" || status === "ยกเลิก")) return false;
-
-    return true;
-  });
-};
+// 📃 การคัดบิลเข้าใบวางบิลย้ายไปอยู่ที่ utils/statement.js แล้ว — หน้านี้กับหน้าออกทั้งเดือน
+//    ต้องใช้ตัวเดียวกัน ไม่งั้นสองหน้าให้คนละคำตอบ (ของเดิมที่นี่เทียบชื่อเป๊ะ ๆ บิลจึงหาย
+//    และไม่กันบิลที่ถูกรวมเข้าบิลใหม่แล้ว ยอดเลยซ้ำ)
 
 // === Main Component ===
 export default function StatementTab({ statements, invoices, returns = [], customers, companyInfo, user, role, printElementById }) {
@@ -346,6 +314,74 @@ export default function StatementTab({ statements, invoices, returns = [], custo
     await deleteDoc(doc(db, "statements", st.id));
   };
 
+  // ── 📅 รอบวางบิลทั้งเดือน ────────────────────────────────
+  // ใบที่ออกพร้อมกันจากหน้า "ออกทั้งเดือน" ถูกปั๊ม bulkRunId ตัวเดียวกันไว้
+  // มีไว้เพื่อ "ถอยทั้งรอบ" — กดพลาดทีเดียว 70-80 ใบ ถ้าต้องไล่ลบทีละใบคนจะยอมปล่อยผิดไว้แทน
+  const bulkRuns = useMemo(() => {
+    const m = new Map();
+    statements.forEach(s => {
+      if (!s.bulkRunId) return;
+      const g = m.get(s.bulkRunId) || { id: s.bulkRunId, at: s.bulkRunAt || s.date || "", items: [] };
+      g.items.push(s);
+      m.set(s.bulkRunId, g);
+    });
+    return [...m.values()].sort((a, b) => String(b.id).localeCompare(String(a.id)));
+  }, [statements]);
+
+  const [undoBusy, setUndoBusy] = useState(null); // { run, done, total }
+
+  const undoBulkRun = async (run) => {
+    if (undoBusy) return;
+    // 💰 ใบที่เก็บเงินแล้วห้ามลบยกชุด — เงินเข้าบัญชีไปแล้ว ต้องไปสะสางทีละใบเอง
+    const locked = run.items.filter(s => (s.status || "") === "เก็บเงินแล้ว");
+    const targets = run.items.filter(s => (s.status || "") !== "เก็บเงินแล้ว");
+    if (targets.length === 0) { alert("รอบนี้เก็บเงินไปหมดแล้ว — ถอยทั้งรอบไม่ได้"); return; }
+    const sent = targets.filter(s => (s.status || "") === "ส่งแล้ว").length;
+    const amt = targets.reduce((a, s) => a + Number(s.netAmount != null ? s.netAmount : s.totalAmount || 0), 0);
+    const rel = targets.reduce((a, s) => a + (s.returnIds || []).length, 0);
+    const nl = String.fromCharCode(10);
+    if (!window.confirm(
+      `ถอยรอบวางบิล ${run.at || run.id}?` + nl + nl +
+      `• ลบใบวางบิล ${targets.length} ใบ · ฿${amt.toLocaleString("th-TH", { minimumFractionDigits: 2 })}` + nl +
+      (locked.length ? `• ข้าม ${locked.length} ใบที่เก็บเงินแล้ว (ลบไม่ได้)` + nl : "") +
+      (rel ? `• ใบรับคืน ${rel} ใบที่หักไว้จะถูกปล่อยกลับ ไปหักรอบหน้าแทน` + nl : "") +
+      (sent ? `⚠️ มี ${sent} ใบสถานะ "ส่งแล้ว" — ถ้าส่งกระดาษถึงมือลูกค้าไปแล้ว ต้องแจ้งลูกค้าเอง` + nl : "") +
+      nl + `ตัวบิลไม่ถูกแตะ — ยอดและสถานะของบิลคงเดิมทุกใบ`
+    )) return;
+    if (!window.confirm(`ยืนยันอีกครั้ง — ลบใบวางบิล ${targets.length} ใบ (ลบแล้วเรียกคืนไม่ได้)`)) return;
+
+    setUndoBusy({ run: run.id, done: 0, total: targets.length });
+    const fails = [];
+    for (let i = 0; i < targets.length; i++) {
+      const st = targets[i];
+      try {
+        // ปล่อยใบรับคืนก่อนลบเสมอ — ถ้าลบสำเร็จแต่ปล่อยพลาด ใบลดหนี้จะค้างชี้ใบที่ไม่มีแล้ว
+        const rids = st.returnIds || [];
+        for (let k = 0; k < rids.length; k += 400) {
+          const b = writeBatch(db);
+          rids.slice(k, k + 400).forEach(rid =>
+            b.update(doc(db, "returns", rid), { appliedStatementId: "", appliedStatementNo: "", appliedAt: "" }));
+          await b.commit();
+        }
+        await deleteDoc(doc(db, "statements", st.id));
+      } catch (e) {
+        fails.push(`• ${st.statementNo} — ${e?.message || e}`);
+      }
+      setUndoBusy({ run: run.id, done: i + 1, total: targets.length });
+    }
+    setUndoBusy(null);
+    logAudit(user, {
+      action: AUDIT_ACTIONS.DELETE, collection: "statements", targetId: run.id,
+      targetLabel: `ถอยรอบวางบิล ${run.at || run.id}`,
+      note: `ลบ ${targets.length - fails.length} ใบ` + (locked.length ? ` · ข้ามที่เก็บเงินแล้ว ${locked.length} ใบ` : ""),
+    });
+    alert(
+      `✅ ถอยแล้ว ${targets.length - fails.length} ใบ` +
+      (locked.length ? String.fromCharCode(10) + `ข้ามที่เก็บเงินแล้ว ${locked.length} ใบ` : "") +
+      (fails.length ? String.fromCharCode(10, 10) + `❌ ลบไม่สำเร็จ ${fails.length} ใบ:` + String.fromCharCode(10) + fails.slice(0, 8).join(String.fromCharCode(10)) : "")
+    );
+  };
+
   const handlePrint = (st) => {
     setPrintPreview(st);
     setTimeout(() => {
@@ -387,6 +423,30 @@ export default function StatementTab({ statements, invoices, returns = [], custo
 
       <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 ค้นหาเลขที่ใบวางบิล หรือชื่อลูกค้า..."
         style={{ width: 320, background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 8, padding: "8px 12px", fontFamily: "'Sarabun',sans-serif", fontSize: 13, outline: "none", marginBottom: 14 }} />
+
+      {/* 📅 รอบที่ออกทั้งเดือน — ถอยกลับได้ทั้งรอบถ้ากดผิดช่วง/ผิดเงื่อนไข */}
+      {role.canDelete && bulkRuns.slice(0, 3).map(run => {
+        const amt = run.items.reduce((a, s) => a + Number(s.netAmount != null ? s.netAmount : s.totalAmount || 0), 0);
+        const paid = run.items.filter(s => (s.status || "") === "เก็บเงินแล้ว").length;
+        const busyThis = undoBusy && undoBusy.run === run.id;
+        return (
+          <div key={run.id} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "9px 14px", marginBottom: 8,
+            background: "rgba(59,91,139,0.06)", border: "1px solid rgba(59,91,139,0.25)", borderRadius: 10 }}>
+            <span style={{ fontSize: 12, color: T.sub }}>
+              📅 ออกทั้งเดือน {run.at ? `· ${run.at}` : ""} · <b style={{ color: T.text }}>{run.items.length}</b> ใบ
+              {run.items[0]?.periodStart ? ` · ช่วง ${run.items[0].periodStart}–${run.items[0].periodEnd}` : ""}
+              {paid > 0 && <span style={{ color: T.green }}> · เก็บเงินแล้ว {paid} ใบ</span>}
+            </span>
+            <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 700, color: T.green }}>฿{amt.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
+            <button onClick={() => undoBulkRun(run)} disabled={!!undoBusy}
+              style={{ marginLeft: "auto", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(185,74,72,0.3)",
+                background: undoBusy ? "#f1f3f6" : "rgba(185,74,72,0.08)", color: T.red, cursor: undoBusy ? "default" : "pointer",
+                fontSize: 12, fontFamily: "'Sarabun',sans-serif", fontWeight: 600 }}>
+              {busyThis ? `กำลังถอย ${undoBusy.done}/${undoBusy.total}…` : "↩️ ถอยทั้งรอบ"}
+            </button>
+          </div>
+        );
+      })}
 
       {/* List */}
       {statements.length === 0 ? (
