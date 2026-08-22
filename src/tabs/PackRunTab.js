@@ -22,6 +22,7 @@ const colorOf = (col) => col?.colorHex || col?.hex || "#ccc";
 export default function PackRunTab({
   packRuns = [], customers = [], clothingItems = [], sizesFor, user, role = {},
   onOpenRun, onBump, onCloseRun, onCutStock, onReopenRun, onCancelRun, onBillRun, onPrintPickList,
+  openingInvoice = false,   // 🔒 เพิ่งกดไป กำลังเปิดหน้าออกบิล — ปิดปุ่มกันแตะซ้ำตอนเครื่องช้า
   onBulkImport, onUndoImport, onManageAliases,
 }) {
   const [custId, setCustId] = React.useState("");
@@ -482,7 +483,7 @@ export default function PackRunTab({
                 <Btn onClick={() => onPrintPickList?.(r)} style={{ padding: "3px 10px", fontSize: 11 }}>🖨️</Btn>
                 {canEdit && !r.stockCut && <Btn onClick={() => onCutStock?.(r)} title="หักยอดรอบนี้ออกจากคลังตอนนี้"
                   style={{ padding: "3px 10px", fontSize: 11, color: "#b45309", borderColor: "rgba(217,119,6,0.45)", background: "rgba(217,119,6,0.08)", fontWeight: 700 }}>✂️ ตัดสต็อกตอนนี้</Btn>}
-                {canEdit && !r.invoiceNo && <Btn onClick={() => onBillRun(r)} style={{ padding: "3px 10px", fontSize: 11, color: T.accent, borderColor: "rgba(59,91,139,0.4)" }}>🧾 ออกบิล</Btn>}
+                {canEdit && !r.invoiceNo && <Btn onClick={() => onBillRun(r)} disabled={openingInvoice} style={{ padding: "3px 10px", fontSize: 11, color: T.accent, borderColor: "rgba(59,91,139,0.4)", opacity: openingInvoice ? 0.5 : 1, cursor: openingInvoice ? "wait" : "pointer" }}>🧾 ออกบิล</Btn>}
                 {user?.role === "admin" && !r.invoiceNo && <Btn onClick={() => onReopenRun(r)} style={{ padding: "3px 10px", fontSize: 11 }} title="เปิดรอบกลับมาแก้ (คืนสต็อกที่ตัดไป)">↩️ เปิดกลับ</Btn>}
               </div>
             </div>

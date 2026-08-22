@@ -36,7 +36,7 @@ function parseThaiDate(s) {
   return new Date(`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`);
 }
 
-export default function ProductionTab({ productionOrders=[], customOrders=[], boms=[], products=[], clothingItems=[], customers=[], employees=[], companyInfo={}, user, role, printElementById, onCreateInvoiceFromCustom }) {
+export default function ProductionTab({ productionOrders=[], customOrders=[], boms=[], products=[], clothingItems=[], customers=[], employees=[], companyInfo={}, user, role, printElementById, onCreateInvoiceFromCustom, openingInvoice = false }) {
   const [subTab, setSubTab] = useState("kanban"); // kanban | orders | custom | bom
   const [showNew, setShowNew] = useState(false);
   const [editProdOrder, setEditProdOrder] = useState(null); // ✏️ ใบสั่งผลิตที่กำลังแก้ไข
@@ -378,7 +378,8 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
                   }
                   onCreateInvoiceFromCustom?.(selected);
                   setSelectedCustom(new Set());
-                }} style={{padding:"8px 14px",borderRadius:9,border:"none",cursor:"pointer",background:"#16a34a",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(22,163,74,0.3)"}}>🧾 ออกบิลรวม ({selectedCustom.size})</button>
+                }} disabled={openingInvoice}
+                style={{padding:"8px 14px",borderRadius:9,border:"none",cursor:openingInvoice?"wait":"pointer",background:openingInvoice?"#94a3b8":"#16a34a",color:"white",fontSize:12,fontWeight:600,fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 14px rgba(22,163,74,0.3)"}}>{openingInvoice?"⏳ กำลังเปิด...":`🧾 ออกบิลรวม (${selectedCustom.size})`}</button>
               )}
               {selectedCustom.size > 0 && (user?.role === "admin" || user?.role === "manager") && (
                 <button onClick={() => archiveSelectedCustom(customOrders.filter(o => selectedCustom.has(o.id)))} disabled={archiving}

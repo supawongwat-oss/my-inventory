@@ -48,6 +48,7 @@ export default function OrdersTab({
   collapsedOrderMonths, setCollapsedOrderMonths,
   selectedOrders, setSelectedOrders,
   toggleOrderSelect, handleMergeOrdersToInvoice,
+  openingInvoice = false,   // 🔒 เพิ่งกดไป กำลังเปิดหน้าออกบิล — ปิดปุ่มกันแตะซ้ำตอนเครื่องช้า
   setOrderForm, setShowNewOrder,
   setShowPrintOrder,
   openFillOrderMix, handleCutStockNow, handleDeleteOrder,
@@ -180,7 +181,7 @@ export default function OrdersTab({
               เลือก <b style={{ color: T.accent }}>{sel.length}</b> ใบสั่ง · รวม <b>{totalQty.toLocaleString("th-TH")}</b> ชิ้น
               {sameCustomer ? <> · <b>{cname}</b></> : <span style={{ color: T.red, marginLeft: 6 }}>⚠️ คนละลูกค้า</span>}
             </div>
-            <button onClick={handleMergeOrdersToInvoice} disabled={sel.length < 1}
+            <button onClick={handleMergeOrdersToInvoice} disabled={openingInvoice || sel.length < 1}
               style={{ padding: "8px 16px", borderRadius: 9, border: "none", cursor: sel.length < 1 ? "not-allowed" : "pointer", background: sel.length < 1 ? "rgba(59,91,139,0.3)" : T.accent, color: "white", fontSize: 13, fontWeight: 700, fontFamily: "'Sarabun',sans-serif" }}>🧾 ออกบิลรวม {sel.length > 1 ? `(${sel.length} ใบ)` : ""}</button>
             <button onClick={() => setSelectedOrders(new Set())} style={{ padding: "8px 12px", borderRadius: 9, border: `1px solid ${T.border}`, background: "transparent", color: T.sub, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif" }}>ยกเลิก</button>
           </div>

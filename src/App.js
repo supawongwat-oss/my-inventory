@@ -461,6 +461,33 @@ export default function App() {
   //
   // ล็อกแยกตามเป้าหมาย ไม่ล็อกรวมทั้งหน้า — คนละบิลยังทำพร้อมกันได้ตามปกติ
   // (หน้าออกบิลมีล็อกของตัวเองอยู่แล้วที่ savingInvoiceRef)
+  // 🔒 กันแตะปุ่ม "ออกบิล" ซ้ำตอนเครื่องช้า (จากใบสั่งของ / ใบ custom / รอบแพ็ค)
+  //
+  // ปุ่มพวกนี้ไม่ได้เขียนอะไรลงระบบ แค่เอาข้อมูลใส่ฟอร์มแล้วเปิดหน้าออกบิล
+  // บนคอมเร็วจนไม่ทันเห็นปัญหา แต่บนแท็บเล็ตจอหน่วง พนักงานที่ยังไม่เห็นอะไรขยับจะแตะซ้ำ
+  // แล้วเจอ 2 อาการ:
+  //   1) ฟอร์มถูกเขียนทับ — ถ้าแก้ราคาไปแล้วจะหายหมดโดยไม่มีอะไรเตือน
+  //   2) รายการที่ติ๊กไว้ถูกล้างไปตั้งแต่ครั้งแรก ครั้งที่สองเลยเด้ง "ไม่มีใบที่เลือก"
+  //      ซึ่งอ่านแล้วเหมือนระบบพัง ทั้งที่ครั้งแรกสำเร็จไปแล้ว
+  const openingInvoiceRef = useRef(0);
+  const [openingInvoice, setOpeningInvoice] = useState(false);
+  const openInvoiceOnce = (fill) => {
+    const t = Date.now();
+    if (t - openingInvoiceRef.current < 1500) return;   // แตะรัว ๆ ในช่วงที่จอยังไม่ทันขยับ
+    // มีบิลค้างอยู่ในฟอร์มและหน้าต่างเปิดอยู่ = กำลังทำอีกใบค้างไว้ ต้องถามก่อนทับ
+    if (showNewInvoice && (invoiceForm.items || []).length > 0) {
+      const NLx = String.fromCharCode(10);
+      if (!window.confirm(
+        `หน้าออกบิลเปิดค้างอยู่ และมีรายการอยู่แล้ว ${invoiceForm.items.length} แถว` + NLx + NLx +
+        `ทำต่อ = รายการเดิมในฟอร์มจะถูกแทนที่ทั้งหมด` + NLx + NLx + `ยืนยันไหม?`
+      )) return;
+    }
+    openingInvoiceRef.current = t;
+    setOpeningInvoice(true);
+    setTimeout(() => setOpeningInvoice(false), 1500);
+    fill();
+  };
+
   const docBusyRef = useRef(new Set());
   const [docBusy, setDocBusy] = useState(false);
   const runOnce = async (key, fn) => {
@@ -2440,7 +2467,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   };
 
   // ปิดรอบแล้ว → ออกบิลใบเดียวจากยอดทั้งรอบ (เปิดฟอร์มให้ ยังไม่บันทึกเอง)
-  const handleBillPackRun = (run) => {
+  const handleBillPackRun = (run) => openInvoiceOnce(() => handleBillPackRunInner(run));
+  const handleBillPackRunInner = (run) => {
     const items = runToItems(run);
     if (!items.length) { alert("รอบนี้ไม่มีรายการ"); return; }
     const cust = customers.find(c => c.id === run.customerId);
@@ -2564,7 +2592,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   const toggleOrderSelect = (id) => {
     setSelectedOrders(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   };
-  const handleMergeOrdersToInvoice = () => {
+  const handleMergeOrdersToInvoice = () => openInvoiceOnce(handleMergeOrdersToInvoiceInner);
+  const handleMergeOrdersToInvoiceInner = () => {
    try {
     const sel = orders.filter(o => selectedOrders.has(o.id));
     // ⚠️ เดิม return เงียบ ๆ — ถ้าใบที่ติ๊กไว้หลุดออกจากรายการที่โหลดอยู่ (เปลี่ยนช่วงวันที่/ตัวกรอง)
@@ -4183,6 +4212,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               onReopenRun={handleReopenPackRun}
               onCancelRun={handleCancelPackRun}
               onBillRun={handleBillPackRun}
+              openingInvoice={openingInvoice}
               onPrintPickList={setPrintPackRun}
               onBulkImport={setImportPackRun}
               onUndoImport={handleUndoPackImport}
@@ -4249,7 +4279,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               user={user}
               role={role}
               printElementById={printElementById}
-              onCreateInvoiceFromCustom={(orders)=>{
+              openingInvoice={openingInvoice}
+              onCreateInvoiceFromCustom={(orders)=>openInvoiceOnce(()=>{
                 if (!orders?.length) return;
                 // 🚫 กันออกบิลซ้ำจากใบ custom เดิม
                 //    ฝั่งใบสั่งของมีด่านนี้อยู่แล้ว แต่ฝั่ง custom ไม่มีเลย
@@ -4338,7 +4369,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                     customDetails,
                   });
                 }, 50);
-              }}
+              })}
             />
           )}
 
@@ -4354,6 +4385,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               selectedOrders={selectedOrders} setSelectedOrders={setSelectedOrders}
               toggleOrderSelect={toggleOrderSelect}
               handleMergeOrdersToInvoice={handleMergeOrdersToInvoice}
+              openingInvoice={openingInvoice}
               setOrderForm={setOrderForm} setShowNewOrder={setShowNewOrder}
               setShowPrintOrder={setShowPrintOrder}
               openFillOrderMix={openFillOrderMix}
