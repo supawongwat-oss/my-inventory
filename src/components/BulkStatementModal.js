@@ -99,8 +99,20 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
       // ⚠️ บิลที่ชื่อในตัวบิลไม่ตรงกับชื่อแถวนี้ (เข้ามาเพราะผูกรหัสลูกค้าไว้)
       //    ชื่อคล้ายกันไม่ได้แปลว่าเจ้าเดียวกัน — เช่น FBT มี 3 บริษัทแยกกัน
       //    วางบิลผิดเจ้า = ทวงเงินผิดคน จึงต้องให้คนดูก่อน ห้ามกลืนเงียบ ๆ
-      const oddNames = invs.filter(i => custKey(i.customerName) !== custKey(r.customerName));
-      rows.push({ ...r, invoices: invs, total, credits, creditTotal, net: Math.max(0, total - creditTotal), dupe, oddNames });
+      //    บิลไม่มีชื่อไม่นับ — "ไม่ได้กรอกชื่อ" คนละเรื่องกับ "ชื่อคนอื่น"
+      const oddNames = invs.filter(i => { const k = custKey(i.customerName); return k && k !== custKey(r.customerName); });
+      // สรุปเป็น "ชื่อ (n ใบ)" ไว้โชว์ตรง ๆ — ต้องอ่านออกโดยไม่ต้องเอาเมาส์ไปจ่อทีละแถว
+      // ไม่งั้นเห็นแค่ "ต่างกัน 1 ใบ" ก็ตัดสินใจอะไรไม่ได้ ต้องเดาว่าเป็นชื่อของใคร
+      const oddCount = new Map();
+      oddNames.forEach(i => { const nm = (i.customerName || "").trim(); oddCount.set(nm, (oddCount.get(nm) || 0) + 1); });
+      const oddSummary = [...oddCount.entries()].map(([nm, n]) => `${nm} (${n} ใบ)`);
+      const oddTitle = oddNames.length === 0 ? "" : [
+        `บิลพวกนี้ผูกรหัส/เบอร์ไว้กับ "${r.customerName}" แต่ชื่อที่พิมพ์ในบิลเป็นอีกชื่อ`,
+        `ถ้าเป็นคนละเจ้ากันจริง ให้ไปแก้ลูกค้าในบิลก่อน แล้วค่อยวางบิล`,
+        "",
+        ...oddNames.map(x => `${x.invoiceNo} · ${x.customerName || "(ไม่ระบุ)"} · ฿${fmtB(x.total)}`),
+      ].join(String.fromCharCode(10));
+      rows.push({ ...r, invoices: invs, total, credits, creditTotal, net: Math.max(0, total - creditTotal), dupe, oddNames, oddSummary, oddTitle });
     });
     return rows.sort((a,b) => b.total - a.total);
   }, [invoices, customers, statements, returns, periodStart, periodEnd, filterMode, onlyCredit]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -287,9 +299,10 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
                     {g.invoices.length} บิล{g.phone ? ` · ${g.phone}` : ""}
                     {/* บิลที่ชื่อในตัวบิลต่างจากชื่อแถวนี้ — ต้องเห็นก่อนกด ไม่งั้นวางบิลผิดเจ้าโดยไม่รู้ตัว */}
                     {g.oddNames?.length > 0 && (
-                      <span title={g.oddNames.map(x => `${x.invoiceNo} · ชื่อในบิล: ${x.customerName || "(ไม่ระบุ)"}`).join("\n")}
+                      <span title={g.oddTitle}
                         style={{ marginLeft: 6, color: "#b45309", cursor: "help", textDecoration: "underline dotted" }}>
-                        ⚠️ ชื่อในบิลต่างกัน {g.oddNames.length} ใบ
+                        ⚠️ ชื่อในบิลเขียนว่า {g.oddSummary.slice(0, 2).join(" · ")}
+                        {g.oddSummary.length > 2 ? ` +อีก ${g.oddSummary.length - 2}` : ""}
                       </span>
                     )}
                     {/* ดูเลขที่บิลได้ว่ารวมใบไหนบ้าง — กันงงว่ายอดมาจากไหน */}
