@@ -4251,6 +4251,22 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               printElementById={printElementById}
               onCreateInvoiceFromCustom={(orders)=>{
                 if (!orders?.length) return;
+                // 🚫 กันออกบิลซ้ำจากใบ custom เดิม
+                //    ฝั่งใบสั่งของมีด่านนี้อยู่แล้ว แต่ฝั่ง custom ไม่มีเลย
+                //    ใบที่ออกบิลแล้วจะถูกย้ายไปแท็บ "ออกบิลแล้ว" ก็จริง
+                //    แต่ถ้าเข้าไปเลือกจากแท็บนั้นแล้วกดออกบิลอีก จะไม่มีอะไรทัก
+                //    → ได้บิลซ้ำของงานเดียวกัน เก็บเงินลูกค้า 2 รอบ
+                const billed = orders.filter(o => o.invoiceNo);
+                if (billed.length) {
+                  const NLx = String.fromCharCode(10);
+                  const lines = billed.slice(0, 8).map(o => `• ${o.prodNo || "(ไม่มีเลขที่)"} → ออกเป็นบิล ${o.invoiceNo} แล้ว`).join(NLx);
+                  if (!window.confirm(
+                    `⚠️ มี ${billed.length} ใบ custom ที่ออกบิลไปแล้ว:` + NLx + NLx + lines +
+                    (billed.length > 8 ? `${NLx}... และอีก ${billed.length - 8} ใบ` : "") + NLx + NLx +
+                    `ออกบิลอีกครั้ง = ได้บิลซ้ำ ยอดจะเบิ้ล และเก็บเงินเกิน` + NLx + NLx +
+                    `ยืนยันออกบิลซ้ำจริง ๆ?`
+                  )) return;
+                }
                 const first = orders[0];
                 const items = [];
                 orders.forEach(o => {
