@@ -297,7 +297,7 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "10px 12px", background: "rgba(59,91,139,0.06)", border: "1px solid rgba(59,91,139,0.2)", borderRadius: 10, marginBottom: 10 }}>
             <div style={{ fontSize: 12, color: T.sub }}>
               {source} · ยุบเหลือ <b>{rows.length}</b> แบบ
-              {skipped > 0 && <span style={{ color: T.amber }}> · อ่านไม่ออก/ข้ามอัตโนมัติ {skipped}</span>}
+              {skipped > 0 && <span style={{ color: T.amber }}> · อ่านไม่ออก {skipped}</span>}
             </div>
             <div style={{ marginLeft: "auto", textAlign: "right" }}>
               <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "monospace", color: blocked.length ? T.amber : T.green, lineHeight: 1 }}>
@@ -307,6 +307,15 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
             </div>
           </div>
 
+          {skipped > 0 && (
+            <div style={{ padding: "8px 12px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.35)", borderRadius: 9, fontSize: 12, color: "#92400e", marginBottom: 10 }}>
+              📄 มี <b>{skipped}</b> ใบที่อ่านไม่ออก — ต้องแยกใบพวกนี้ออกมานับเองในหน้ารอบแพ็ค
+              <div style={{ fontSize: 11, marginTop: 3 }}>
+                เกิดจากใบที่มีสินค้าหลายรายการ หรือหน้าที่จัดวางต่างจากปกติ
+                — ระบบเลือกที่จะไม่เดา เพราะเดาผิดแล้วไปตัดสต๊อกและออกบิลผิดตาม
+              </div>
+            </div>
+          )}
           {blocked.length > 0 && (
             <div style={{ padding: "8px 12px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.35)", borderRadius: 9, fontSize: 12, color: "#92400e", marginBottom: 10 }}>
               ยังลงไม่ได้ — มี <b>{blocked.length}</b> แถวที่ต้องให้คนตัดสินก่อน · ถ้าที่ระบบเลือกไว้ถูกแล้ว กด <b>✓ ถูกแล้ว</b> ท้ายแถว (หรือ <b>ยอมรับที่เดาไว้ทั้งหมด</b> ด้านล่าง) · ไม่เอาแถวไหนกด ⏭️ ข้าม

@@ -3,22 +3,32 @@
 // ทำไมต้องมี: ลูกค้าส่ง "ใบปะหน้า" มาให้เราแปะอยู่แล้ว ไม่ได้ส่งไฟล์รายการสินค้า
 // ถ้าอ่านใบปะหน้าเองได้ = ไม่ต้องขออะไรเพิ่มจากลูกค้า และไม่ต้องนั่งอ่านทีละใบ
 //
-// ── สิ่งที่ทดสอบกับไฟล์จริงแล้ว (Shopee-TH-SPX 9 ใบ) ──────────────
-// ✅ ดึงได้ครบ 9/9 ใบ: ชื่อสินค้า · สี · ไซส์ · จำนวน · เลขออเดอร์ · เลขพัสดุ
+// ── ทดสอบกับไฟล์จริง 2 แพลตฟอร์ม ────────────────────────────
+//   Shopee + SPX    9 ใบ
+//   TikTok  + J&T 307 ใบ
+// สองเจ้าวางหน้ากระดาษคนละแบบสิ้นเชิง จึงไม่ยึดรูปแบบใดรูปแบบหนึ่ง
+// แต่ยึด "หัวตาราง" (Item / V Name / SKU / Qty) แล้วอ่านตามคอลัมน์ — ทั้งสองเจ้ามีเหมือนกัน
 //
-// ⚠️ 2 กับดักที่ทำให้พังถ้าไม่รู้:
+// ⚠️ กับดักที่เจอจากของจริงทั้งนั้น
 //
-// 1) ห้ามใช้ตัวอ่านข้อความสำเร็จรูปแบบต่อสตริงตรง ๆ
-//    สระ/วรรณยุกต์ไทยถูกวาดเป็นชิ้นข้อความแยกใน PDF และลำดับในไฟล์ไม่ใช่ลำดับที่อ่าน
-//    ต่อดื้อ ๆ จะได้ "เสื ้อกีฬา" / "่น K11รุ" (สลับที่)
-//    → ต้องเก็บทุกชิ้นพร้อมพิกัด แล้วจัดกลุ่มเป็นบรรทัดตาม y และเรียงตาม x
-//    (ลองด้วย pdftotext ของ poppler แล้วได้ภาษาไทย 0 ตัวอักษร ทั้งที่ไฟล์มีตารางแปลงอยู่ครบ
-//     — เป็นข้อจำกัดของเครื่องมือนั้น ไม่ใช่ของไฟล์ · pdf.js อ่านได้ถูกต้อง)
+// 1) ห้ามต่อข้อความตรง ๆ ต้องอ่านตามพิกัด
+//    สระ/วรรณยุกต์ไทยถูกวาดเป็นชิ้นแยก และลำดับในไฟล์ไม่ใช่ลำดับที่อ่าน
+//    ต่อดื้อ ๆ ได้ "่น K11รุ" (สลับที่)
+//    (pdftotext ของ poppler ดึงภาษาไทยได้ 0 ตัวอักษร ทั้งที่ตารางแปลงอยู่ครบในไฟล์
+//     เป็นข้อจำกัดของเครื่องมือนั้น ไม่ใช่ของไฟล์ · pdf.js อ่านได้ถูกต้อง)
 //
-// 2) วรรณยุกต์บางตัวหายไปเลยตอนดึง (ม่วง→มวง, รุ่น→รุน)
-//    → ห้ามเทียบข้อความแบบตรงตัว ตัวจับคู่ใน packImport.js ตัดวรรณยุกต์ทิ้งก่อนเทียบอยู่แล้ว
+// 2) 🔥 หน้าหนึ่งพิมพ์ตารางสินค้า "สองชุดซ้อนกัน"
+//    ชุดบนคือส่วนป้ายติดกล่อง ชุดล่างคือใบแนบของ — เนื้อหาเดียวกันแต่คนละคอลัมน์คนละกริด
+//    และแถวของสองชุดสลับกันไปมาตามแนวตั้ง (124=ชุดA, 116=ชุดB, 114=ชุดA, 108=ชุดB ...)
+//    ถ้าแยกด้วย y หรือรวมทั้งคอลัมน์ จะได้สองชุดปนกันจนอ่านไม่ออก
+//    เช่น SKU "โคตรถูก8_กุด4874" กลายเป็น "โคตรถูก8_กุ8_กุด4874ด4874"
+//    → แยกด้วย "แถวนี้ชิดคอลัมน์ของหัวตารางไหน" เพราะข้อความในแถวเดียวกัน
+//      ต้องเป็นของตารางเดียวกันเสมอ
 //
-// pdfjs-dist โหลดแบบ dynamic import — เป็นไลบรารีก้อนใหญ่ ไม่ควรถ่วงตอนเปิดแอป
+// 3) เนื้อหาในช่องตัดบรรทัดเอง ชื่อสินค้ายาว ๆ กินไป 2-3 แถว
+//    ต้องต่อทุกแถวของระเบียนเดียวกัน "แยกตามคอลัมน์"
+//
+// 4) วรรณยุกต์บางตัวหายหรืออยู่ในย่านอักขระพิเศษ — ตัวจับคู่ใน packImport.js จัดการให้แล้ว
 
 let pdfjsPromise = null;
 async function getPdfjs() {
@@ -42,122 +52,166 @@ async function getPdfjs() {
   return pdfjsPromise;
 }
 
-// จัดชิ้นข้อความเป็นบรรทัด: จับกลุ่มตาม y แล้วเรียงตาม x
-// ความคลาดเคลื่อนของ y ตั้งไว้กว้างหน่อย เพราะสระบน/ล่างอยู่คนละระดับกับพยัญชนะ
-const LINE_TOL = 2.2;
+const HDR_RE = /^(#|no\.?|item|v\s*name|name|product\s*name|seller\s*sku|sku|qty|quantity|จ[ําำ]นวน|ชื่อสินค|ตัวเลือก)$/i;
+const ROW_TOL = 2;      // ความคลาดเคลื่อนของ y ที่ยังถือว่าเป็นแถวเดียวกัน
+const COL_TOL = 5;      // ความคลาดเคลื่อนของ x ที่ยังถือว่าชิดคอลัมน์นั้น
 
-function itemsToLines(items) {
-  const buckets = new Map();
-  for (const it of items) {
-    const str = it.str;
-    if (!str) continue;
-    // transform = [a,b,c,d,e,f] — e,f คือพิกัด x,y ของชิ้นข้อความ
-    const x = it.transform ? it.transform[4] : 0;
-    const y = it.transform ? it.transform[5] : 0;
-    const key = Math.round(y / LINE_TOL);
-    if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key).push({ x, str });
-  }
-  return [...buckets.entries()]
-    .sort((a, b) => b[0] - a[0])                       // บนลงล่าง
-    .map(([, parts]) => parts.sort((a, b) => a.x - b.x).map(p => p.str).join(""))
-    .map(s => s.replace(/[ \t]{2,}/g, " ").trim())
-    .filter(Boolean);
+const pieces = (items) => items
+  .filter(i => i && typeof i.str === "string" && i.str.trim() !== "")
+  .map(i => ({ s: i.str, x: i.transform ? i.transform[4] : 0, y: i.transform ? i.transform[5] : 0 }));
+
+// จับชิ้นข้อความเป็นแถวตามพิกัด y
+function toRows(ps) {
+  const by = new Map();
+  ps.forEach(p => {
+    const k = Math.round(p.y / ROW_TOL);
+    if (!by.has(k)) by.set(k, []);
+    by.get(k).push(p);
+  });
+  return [...by.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([, v]) => ({ y: v[0].y, cells: v.sort((a, b) => a.x - b.x) }));
 }
 
-// ── แกะ 1 ใบ → รายการสินค้าในใบนั้น ─────────────────────────
-// รูปแบบที่เจอในของจริง (บรรทัดถัดจากหัวตารางภาษาไทย):
-//   "1CAPPUCCINO เสื้อกีฬาแขนยาว รุ่น K11สีแดง,M (อก38 ยาว26นิ้ว)1"
-//    ^ลำดับ      ^ชื่อสินค้า+สีติดกัน      ^ไซส์            ^จำนวน
-// สีถูกแยกออกจากชื่อสินค้าทีหลังโดย splitTailColor() ซึ่งใช้ชื่อสีในคลังเป็นตัวตัด
-const HEAD_RE = /ตัวเลือกสินค|ชื่อสินค|Item.*V\s*Name/i;
-
-// ท้ายส่วนไซส์ที่เหลือแต่คำว่า เบอร์/EUR/size — เผื่อวรรณยุกต์ ทัณฑฆาต และตัวที่แปลไม่ออก
-const SIZE_WORD_END = /(?:เบอร|eur|size|ไซส)[\s:.\u0E31\u0E34-\u0E3A\u0E47-\u0E4E\uE000-\uF8FF]*$/i;
-
-function parseLabelPage(lines) {
-  const orderNo = (lines.map(l => l.match(/Shopee Order No\.?\s*([A-Z0-9]{10,})/i)).find(Boolean) || [])[1] || "";
-  const tracking = (lines.map(l => l.match(/\b([A-Z]{2}\d{9,}[A-Z]?)\b/)).find(Boolean) || [])[1] || "";
-  const hi = lines.findIndex(l => HEAD_RE.test(l));
+// หาหัวตารางทุกชุดในหน้า — คืน [{ y, cols:[{name,x}] }] เรียงจากบนลงล่าง
+function findHeaders(ps) {
+  const cand = ps.filter(p => HDR_RE.test(p.s.trim()));
+  const by = new Map();
+  cand.forEach(p => {
+    const k = Math.round(p.y / 3);
+    if (!by.has(k)) by.set(k, []);
+    by.get(k).push(p);
+  });
   const out = [];
-  if (hi < 0) return { orderNo, tracking, rows: out };
+  by.forEach(v => {
+    const names = v.map(p => p.s.trim().toLowerCase());
+    const hasQty = names.some(n => /^(qty|quantity|จ[ําำ]นวน)$/.test(n));
+    const hasName = names.some(n => /(item|name|ชื่อสินค)/.test(n));
+    if (!hasQty || !hasName || v.length < 3) return;
+    out.push({ y: v[0].y, cols: v.sort((a, b) => a.x - b.x).map(p => ({ name: p.s.trim(), x: p.x })) });
+  });
+  return out.sort((a, b) => b.y - a.y);
+}
 
-  // อ่าน 5 บรรทัดถัดไป เผื่อใบที่มีสินค้าหลายรายการ
-  const window = lines.slice(hi + 1, hi + 7);
-  for (let k = 0; k < window.length; k++) {
-    const line = window[k];
-    if (/^No\.\d/i.test(line) || /Item.*V\s*Name/i.test(line)) continue;
-    // <ลำดับ><ชื่อ+สี>,<ไซส์...><จำนวน>
-    const m = line.match(/^\s*(\d{1,2})?\s*(.+?),\s*(.+?)\s*(\d{1,3})\s*$/);
-    if (!m) continue;
-    let productPlusColor = (m[2] || "").trim();
-    let sizePart = (m[3] || "").trim();
-    let qty = Number(m[4]) || 1;
+// แถวนี้ชิดคอลัมน์ของหัวตารางชุดไหนมากกว่ากัน
+const alignScore = (row, hdr) =>
+  row.cells.reduce((n, c) => n + (hdr.cols.some(k => Math.abs(c.x - k.x) <= COL_TOL) ? 1 : 0), 0);
 
-    // ⚠️ "เบอร์ 47" / "EUR: 41" — เลขท้ายบรรทัดคือไซส์ ไม่ใช่จำนวน
-    //    ถ้าตัดเลขออกแล้วส่วนไซส์เหลือแต่คำว่าเบอร์/EUR เปล่า ๆ แปลว่าตัดผิด ต้องคืนเลขกลับไป
-    //
-    //    ต้องเผื่อตัวที่ห้อยท้ายคำว่า "เบอร์" ด้วย:
-    //      · ทัณฑฆาต ์ และวรรณยุกต์ไทยอื่น ๆ
-    //      · ตัวที่ฟอนต์ในใบปะหน้าคืนมาเป็นรหัสของมันเอง (ย่าน PUA) — แปลไม่ออก
-    //    เดิมยอมแค่ช่องว่างกับ : เลยหลุดทุกใบที่เขียน "เบอร์" เต็ม ๆ
-    //    ผลคือ 47 ถูกอ่านเป็น "จำนวน 47 ชิ้น" แทนที่จะเป็น "เบอร์ 47"
-    if (SIZE_WORD_END.test(sizePart)) {
-      sizePart = `${sizePart}${qty}`;
-      qty = 1;
-    }
+// อ่านตารางหนึ่งชุด → ระเบียนเดียว
+// ตั้งใจอ่านใบละ 1 รายการ เพราะ 1 ออเดอร์บนแพลตฟอร์ม = 1 ชิ้นแทบทุกครั้ง
+// ใบที่มีหลายรายการจะถูก quality() ตีเป็น "อ่านไม่ออก" แล้วให้คนนับเอง
+// ปลอดภัยกว่าเดาแล้วยุบจำนวนผิด
+function readTable(rows, hdr) {
+  const cols = hdr.cols.map((c, i) => ({
+    key: c.name.toLowerCase(),
+    x0: c.x - COL_TOL,
+    x1: i + 1 < hdr.cols.length ? hdr.cols[i + 1].x - COL_TOL : Infinity,
+    parts: [],
+  }));
+  rows.forEach(r => r.cells.forEach(c => {
+    const col = cols.find(k => c.x >= k.x0 && c.x < k.x1);
+    if (col) col.parts.push({ s: c.s, x: c.x, rowY: r.y });
+  }));
+  const colOf = (pred) => cols.find(k => pred(k.key));
+  const textOf = (pred) => {
+    const col = colOf(pred);
+    if (!col) return "";
+    return col.parts.sort((a, b) => (b.rowY - a.rowY) || (a.x - b.x))
+      .map(q => q.s).join("").replace(/\s+/g, " ").trim();
+  };
+  const isQty = (k) => /^(qty|quantity|จ[ําำ]นวน)$/.test(k);
+  const qtyCol = colOf(isQty);
+  const qtyParts = qtyCol ? qtyCol.parts.length : 0;
+  const digits = String(textOf(isQty)).replace(/\D/g, "");
+  return {
+    name: textOf(k => /(item|^name|product\s*name|ชื่อสินค)/.test(k) && !/seller/.test(k)),
+    variation: textOf(k => /(v\s*name|ตัวเลือก)/.test(k)) || textOf(k => k === "sku"),
+    sku: textOf(k => /seller\s*sku/.test(k)) || textOf(k => k === "sku"),
+    // 🔒 ช่องจำนวนต้องมีข้อความ "ชิ้นเดียว" เท่านั้น
+    //    ถ้ามีหลายชิ้น = ตารางสองชุดปนกัน หรือใบนี้มีสินค้าหลายรายการ
+    //    ทั้งสองกรณีทำให้เลขต่อกันเป็นจำนวนปลอม ("1"+"1" → 11, "1"+"1"+"1" → 111)
+    //    เคยหลุดมาแล้วตอนทดสอบ เกือบตัดสต๊อก 111 ชิ้นจากใบที่สั่งจริง 1 ชิ้น
+    //    ช่องจำนวนไม่มีวันตัดบรรทัด จึงใช้ "ต้องมีชิ้นเดียว" เป็นเกณฑ์ได้เต็มปาก
+    qty: (qtyParts === 1 && digits && digits.length <= 2) ? parseInt(digits, 10) : null,
+  };
+}
 
-    // 🥅 ตาข่ายกันพลาดชั้นสอง — เผื่อคำบอกไซส์เพี้ยนจนจับไม่ได้เลย
-    //    ใบปะหน้าของแพลตฟอร์ม 1 ใบ = ของ 1-2 ชิ้น การเจอ "จำนวน 47" จึงผิดแน่นอน
-    //    และ 35-48 พอดีกับช่วงเบอร์รองเท้า → ถือว่าเป็นไซส์ที่หลุดมา ไม่ใช่จำนวน
-    //    ปล่อยผ่าน = ตัดสต๊อกเกินจริงยกล็อตโดยไม่มีอะไรเตือน
-    if (qty >= 35 && qty <= 48 && !/[0-9]/.test(sizePart)) {
-      sizePart = sizePart ? `${sizePart} ${qty}` : String(qty);
-      qty = 1;
-    }
-    // ⚠️ ชื่อสินค้ายาวจนตกไปบรรทัดบน — บรรทัดนี้จะเหลือแค่สีสั้น ๆ เช่น "ทอง"
-    //    ต่อหัวจากบรรทัดก่อนหน้ากลับเข้าไป ไม่งั้นจับคู่ไม่ได้เลย
-    if (productPlusColor.length < 12 && k > 0) {
-      const prev = window[k - 1];
-      if (prev && prev.length > 10 && !/^No\.\d/i.test(prev) && !/Item.*V\s*Name/i.test(prev)) {
-        productPlusColor = `${prev.replace(/^\s*\d{1,2}\s*/, "").trim()} ${productPlusColor}`.trim();
-      }
-    }
-    if (!productPlusColor || productPlusColor.length < 3) continue;
-    out.push({
-      productText: productPlusColor,
-      optionText: `,${sizePart}`,        // ให้ตัวจับคู่ไปแกะไซส์เอง
-      colorText: "", sizeText: "",
-      qty, orderNo, tracking, raw: line,
+// คุณภาพของสิ่งที่อ่านได้ — ใช้ 2 อย่าง: เลือกตารางที่ดีกว่า และตัดสินว่าเชื่อได้ไหม
+// หักคะแนนแรงถ้าคำที่เป็น "หัวตาราง" โผล่ในเนื้อหา = แบ่งเขตคอลัมน์ผิด ข้อมูลปนกันแล้ว
+const LEAK_RE = /(Item|V\s*Name|SKU|Qty|Product Name|Seller SKU|Package ID|NickName|Order ID|Store Name)/i;
+const quality = (r) =>
+  (r.name && r.name.length > 8 ? 2 : 0) +
+  (/_/.test(r.sku || "") ? 2 : 0) +
+  (/,/.test(r.variation || "") ? 1 : 0) +
+  (r.qty && r.qty >= 1 && r.qty <= 20 ? 1 : -6) +
+  (LEAK_RE.test(r.name || "") ? -5 : 0) +
+  (LEAK_RE.test(r.sku || "") ? -5 : 0) +
+  (LEAK_RE.test(r.variation || "") ? -4 : 0);
+
+function parsePage(ps) {
+  const headers = findHeaders(ps);
+  if (!headers.length) return null;
+  const rows = toRows(ps);
+  const footY = ps.filter(p => /Store Name|Total\s*:/i.test(p.s)).map(p => p.y).sort((a, b) => b - a)[0];
+  const body = rows.filter(r => r.y < headers[headers.length - 1].y - 1 && (footY == null || r.y > footY + 1));
+
+  // แจกแถวให้หัวตารางที่มันชิดที่สุด — แถวเดียวกันต้องเป็นของตารางเดียวกันเสมอ
+  const buckets = headers.map(() => []);
+  body.forEach(r => {
+    let best = -1, bestScore = 0;
+    headers.forEach((h, i) => {
+      const sc = alignScore(r, h);
+      if (sc > bestScore) { bestScore = sc; best = i; }
     });
-    break;                                // 1 ใบ = 1 รายการในทางปฏิบัติ
-  }
-  return { orderNo, tracking, rows: out };
+    if (best >= 0) buckets[best].push(r);
+  });
+
+  // อ่านทุกชุดแล้วเอาชุดที่อ่านออกดีที่สุด
+  let best = null;
+  headers.forEach((h, i) => {
+    if (!buckets[i].length) return;
+    const r = readTable(buckets[i], h);
+    const q = quality(r);
+    if (!best || q > best.q) best = { ...r, q };
+  });
+  // คุณภาพไม่ถึงเกณฑ์ = บอกว่าอ่านไม่ออก ดีกว่าเดาแล้วไปตัดสต๊อกและออกบิลผิด
+  return best && best.q >= 4 ? best : null;
 }
 
 /**
  * อ่านไฟล์ใบปะหน้า PDF → RawRow[] ชุดเดียวกับที่ตัววางข้อความ/Excel คืน
  * @param {File|ArrayBuffer} file
  * @param {(done:number,total:number)=>void} [onProgress]
- * @returns {Promise<{rows:Array, pages:number, skipped:number}>}
  */
 export async function readLabelPdf(file, onProgress) {
   const pdfjs = await getPdfjs();
   const data = file instanceof ArrayBuffer ? file : await file.arrayBuffer();
-  const doc = await pdfjs.getDocument({ data, disableWorker: true, isEvalSupported: false }).promise;
+  const doc = await pdfjs.getDocument({ data, isEvalSupported: false }).promise;
   const rows = [];
   let skipped = 0;
-  for (let p = 1; p <= doc.numPages; p++) {
-    const page = await doc.getPage(p);
-    const content = await page.getTextContent();
-    const lines = itemsToLines(content.items || []);
-    const parsed = parseLabelPage(lines);
-    if (parsed.rows.length) rows.push(...parsed.rows);
-    else skipped++;                       // อ่านใบนี้ไม่ออก — นับไว้ ไม่ทิ้งเงียบ
-    if (onProgress) onProgress(p, doc.numPages);
+  const total = doc.numPages;
+  for (let p = 1; p <= total; p++) {
+    let rec = null;
+    try {
+      const page = await doc.getPage(p);
+      rec = parsePage(pieces((await page.getTextContent()).items || []));
+      page.cleanup?.();
+    } catch (e) { rec = null; }
+    if (rec) {
+      rows.push({
+        productText: rec.name,
+        optionText: rec.variation,
+        skuText: rec.sku,
+        colorText: "", sizeText: "",
+        qty: rec.qty,
+        raw: `${rec.name} | ${rec.variation} | ${rec.sku}`,
+        page: p,
+      });
+    } else skipped++;              // อ่านใบนี้ไม่ออก — นับไว้ ไม่ทิ้งเงียบ
+    if (onProgress && (p % 5 === 0 || p === total)) onProgress(p, total);
   }
   try { await doc.destroy(); } catch (e) { /* ไม่สำคัญ */ }
-  return { rows, pages: doc.numPages, skipped };
+  return { rows, pages: total, skipped };
 }
 
 export const isPdf = (f) => !!f && (/\.pdf$/i.test(f.name || "") || f.type === "application/pdf");
