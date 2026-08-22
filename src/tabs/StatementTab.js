@@ -5,7 +5,7 @@ import { T } from "../theme";
 import { Modal, MHead, Input, BtnPrimary, BtnGhost, CardBox } from "../components/ui";
 import { matchTokens } from "../utils/search";
 import BulkStatementModal from "../components/BulkStatementModal";
-import { creditsForStatement, sumCredits } from "../utils/statement";
+import { creditsForStatement, sumCredits, nearMissInvoices } from "../utils/statement";
 
 // ── helpers ────────────────────────────────────────────────
 const pad2 = n => String(n).padStart(2, "0");
@@ -120,22 +120,38 @@ export default function StatementTab({ statements, invoices, returns = [], custo
     });
   };
 
+  // บิลชื่อใกล้เคียงที่คนกด "รวมด้วย" เอง — ต้องประกาศก่อน nearMiss ที่ใช้มัน
+  const [includedNearIds, setIncludedNearIds] = useState(() => new Set());
+
   // === Live preview ใน modal ===
   const previewInvoices = useMemo(() => {
     if (!form.customerId && !form.customerName) return [];
     return filterInvoicesForStatement(
       invoices, form.customerId, form.customerName,
       parseISODate(form.periodStart), parseISODate(form.periodEnd),
-      form.filterMode
+      form.filterMode, form.customerPhone
     );
-  }, [invoices, form.customerId, form.customerName, form.periodStart, form.periodEnd, form.filterMode]);
+  }, [invoices, form.customerId, form.customerName, form.customerPhone, form.periodStart, form.periodEnd, form.filterMode]);
+
+  // ⚠️ บิลที่ "ชื่อใกล้เคียง" แต่ยังไม่มั่นใจพอจะรวมให้เอง
+  //    ตัวนี้แหละที่ทำให้ปัญหา "บางบิลหายไป" มองเห็นได้ แทนที่จะหายเงียบ
+  //    ไม่รวมให้อัตโนมัติ เพราะวางบิลผิดคน = ทวงเงินผิดคน แย่กว่าตกหล่นแล้วเห็นค้างอยู่
+  const nearMiss = useMemo(() => {
+    if (!form.customerId && !form.customerName) return [];
+    return nearMissInvoices(
+      invoices, form.customerId, form.customerName,
+      parseISODate(form.periodStart), parseISODate(form.periodEnd),
+      form.filterMode, form.customerPhone
+    ).filter(inv => !includedNearIds.has(inv.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoices, form.customerId, form.customerName, form.customerPhone, form.periodStart, form.periodEnd, form.filterMode, includedNearIds]);
 
   // ☑️ เลือกบิลเองได้ — null = ยังไม่เคยแตะ (เอาทุกใบตามเงื่อนไข)
   //    เก็บเป็น "ใบที่ตัดออก" แทน "ใบที่เลือก" → เปลี่ยนช่วงวันที่แล้วใบใหม่ยังถูกเลือกอัตโนมัติ
   const [excludedIds, setExcludedIds] = useState(new Set());
   // เปลี่ยนลูกค้า/ช่วงเวลา → เริ่มเลือกใหม่ ไม่ให้ค้างของเดิม
   const pickKey = `${form.customerId}|${form.customerName}|${form.periodStart}|${form.periodEnd}|${form.filterMode}`;
-  useEffect(() => { setExcludedIds(new Set()); }, [pickKey]);
+  useEffect(() => { setExcludedIds(new Set()); setIncludedNearIds(new Set()); }, [pickKey]);
 
   const toggleInvoice = (id) => setExcludedIds(prev => {
     const n = new Set(prev);
@@ -143,17 +159,17 @@ export default function StatementTab({ statements, invoices, returns = [], custo
     return n;
   });
 
-  const pickedInvoices = useMemo(
-    () => previewInvoices.filter(inv => !excludedIds.has(inv.id)),
-    [previewInvoices, excludedIds]
-  );
+  const pickedInvoices = useMemo(() => {
+    const extra = invoices.filter(inv => includedNearIds.has(inv.id));
+    return [...previewInvoices, ...extra].filter(inv => !excludedIds.has(inv.id));
+  }, [previewInvoices, excludedIds, invoices, includedNearIds]);
   const previewTotal = pickedInvoices.reduce((s, inv) => s + (Number(inv.total) || 0), 0);
 
   // ↩️ ของที่ลูกค้ารายนี้คืนมาและยังไม่เคยถูกหักในใบวางบิลใบไหน
   //    เก็บเป็น "ใบที่ตัดออก" เหมือนฝั่งบิล — ใบลดหนี้ที่โผล่มาใหม่จะถูกเลือกให้เองเสมอ
   const previewCredits = useMemo(
-    () => creditsForStatement(returns, form.customerId, form.customerName, parseISODate(form.periodEnd)),
-    [returns, form.customerId, form.customerName, form.periodEnd]
+    () => creditsForStatement(returns, form.customerId, form.customerName, parseISODate(form.periodEnd), form.customerPhone),
+    [returns, form.customerId, form.customerName, form.customerPhone, form.periodEnd]
   );
   const [excludedCredits, setExcludedCredits] = useState(() => new Set());
   useEffect(() => { setExcludedCredits(new Set()); }, [pickKey]);
@@ -550,13 +566,34 @@ export default function StatementTab({ statements, invoices, returns = [], custo
                 )}
               </span>
             </div>
-            {previewInvoices.length === 0 ? (
+            {nearMiss.length > 0 && (
+              <div style={{ padding: "8px 10px", marginBottom: 8, background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.35)", borderRadius: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#92400e", marginBottom: 5 }}>
+                  ⚠️ มีบิลชื่อใกล้เคียงอีก {nearMiss.length} ใบ ที่ยังไม่ได้รวม
+                  <div style={{ fontWeight: 400, marginTop: 2 }}>ชื่อในบิลพิมพ์ไม่เหมือนในทะเบียน — ตรวจแล้วกด "รวมด้วย" ถ้าเป็นลูกค้ารายเดียวกัน</div>
+                </div>
+                {nearMiss.slice(0, 12).map(inv => (
+                  <div key={inv.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, padding: "3px 0", flexWrap: "wrap" }}>
+                    <span style={{ fontFamily: "monospace", color: T.accent }}>{inv.invoiceNo}</span>
+                    <span style={{ flex: 1, minWidth: 120, color: T.text }}>{inv.customerName}</span>
+                    <span style={{ fontFamily: "monospace", color: T.sub }}>฿{(Number(inv.total) || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
+                    <span style={{ color: T.muted }}>{inv.date}</span>
+                    <button onClick={() => setIncludedNearIds(prev => new Set(prev).add(inv.id))}
+                      style={{ border: "1px solid rgba(59,91,139,0.4)", background: "white", color: T.accent, borderRadius: 6, cursor: "pointer", fontSize: 10, padding: "2px 8px", fontFamily: "inherit", fontWeight: 700 }}>
+                      + รวมด้วย
+                    </button>
+                  </div>
+                ))}
+                {nearMiss.length > 12 && <div style={{ fontSize: 10, color: T.muted, marginTop: 3 }}>…และอีก {nearMiss.length - 12} ใบ</div>}
+              </div>
+            )}
+            {pickedInvoices.length === 0 && previewInvoices.length === 0 ? (
               <div style={{ textAlign: "center", padding: 16, fontSize: 12, color: T.muted }}>
                 {!form.customerName ? "เลือกลูกค้าก่อน" : "ไม่มีบิลในช่วงนี้"}
               </div>
             ) : (
               <div className="scroll-col" style={{ display: "flex", flexDirection: "column", maxHeight: 200, overflowY: "auto", background: T.card, borderRadius: 7, border: `1px solid ${T.border}` }}>
-                {previewInvoices.map((inv, i) => {
+                {[...previewInvoices, ...invoices.filter(inv => includedNearIds.has(inv.id))].map((inv, i) => {
                   const on = !excludedIds.has(inv.id);
                   return (
                     <label key={inv.id} title="ติ๊กออกถ้าไม่ต้องการรวมบิลใบนี้"
