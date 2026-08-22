@@ -856,7 +856,7 @@ export default function NewInvoiceModal({
                     ))}
                   </tbody>
                 </table>
-                {(()=>{const c=calcInvoice(invoiceForm.items,invoiceForm.vatRate,invoiceVat,invoiceForm.discount,invoiceForm.discountType,invoiceForm.useShipping,invoiceForm.shippingFee);return(
+                {(()=>{const c=calcInvoice(invoiceForm.items,invoiceForm.vatRate,invoiceVat,invoiceForm.discount,invoiceForm.discountType,invoiceForm.useShipping,invoiceForm.shippingFee,invoiceForm.designFee);return(
                   <div style={{padding:"10px 12px",borderTop:`1px solid ${T.border}`,fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"flex-end",gap:14,flexWrap:"wrap"}}>
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       {/* ส่วนลดท้ายบิล input */}
@@ -885,6 +885,16 @@ export default function NewInvoiceModal({
                           style={{width:80,textAlign:"right",background:invoiceForm.useShipping?"rgba(59,91,139,0.08)":"rgba(0,0,0,0.04)",border:`1px solid ${invoiceForm.useShipping?"rgba(59,91,139,0.3)":T.border}`,color:invoiceForm.useShipping?T.accent:T.muted,borderRadius:6,padding:"5px 8px",fontFamily:"monospace",fontSize:12,fontWeight:600,outline:"none"}}/>
                         <span style={{fontSize:11,color:T.muted}}>บาท</span>
                       </div>
+                      {/* 🎨 ค่าออกแบบ — ใส่ 0 = ไม่คิด แล้วจะไม่ขึ้นในบิลที่พิมพ์
+                          อยู่ในฐาน VAT เพราะเป็นค่าบริการ ต่างจากค่าจัดส่งที่บวกท้ายสุด */}
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <span style={{fontSize:11,color:T.muted,fontWeight:600}}>🎨 ค่าออกแบบ:</span>
+                        <input type="number" min="0" step="0.01" value={invoiceForm.designFee||0}
+                          onFocus={e=>e.target.select()}
+                          onChange={e=>setInvoiceForm(f=>({...f,designFee:Math.max(0,Number(e.target.value)||0)}))}
+                          style={{width:80,textAlign:"right",background:(Number(invoiceForm.designFee)>0)?"rgba(139,92,246,0.10)":"rgba(0,0,0,0.04)",border:`1px solid ${(Number(invoiceForm.designFee)>0)?"rgba(139,92,246,0.35)":T.border}`,color:(Number(invoiceForm.designFee)>0)?"#6d28d9":T.muted,borderRadius:6,padding:"5px 8px",fontFamily:"monospace",fontSize:12,fontWeight:600,outline:"none"}}/>
+                        <span style={{fontSize:11,color:T.muted}}>บาท</span>
+                      </div>
                     </div>
                     {/* Totals */}
                     <div style={{textAlign:"right"}}>
@@ -895,7 +905,8 @@ export default function NewInvoiceModal({
                       <div style={{color:T.sub,marginBottom:2,fontSize:11}}>ราคารวม: <b style={{fontFamily:"monospace",color:T.text}}>฿{c.grossSubtotal.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>
                       {c.itemDiscountTotal>0&&<div style={{color:T.amber,marginBottom:2,fontSize:11}}>ส่วนลดรายการ: <b style={{fontFamily:"monospace"}}>-฿{c.itemDiscountTotal.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>}
                       {c.billDiscount>0&&<div style={{color:T.amber,marginBottom:2,fontSize:11}}>ส่วนลดท้ายบิล: <b style={{fontFamily:"monospace"}}>-฿{c.billDiscount.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>}
-                      <div style={{color:T.sub,marginBottom:2}}>ยอดก่อนภาษี: <b style={{fontFamily:"monospace",color:T.text}}>฿{c.subtotal.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>
+                      {c.design>0&&<div style={{color:"#6d28d9",marginBottom:2,fontSize:11}}>🎨 ค่าออกแบบ: <b style={{fontFamily:"monospace"}}>+฿{c.design.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>}
+                      <div style={{color:T.sub,marginBottom:2}}>ยอดก่อนภาษี: <b style={{fontFamily:"monospace",color:T.text}}>฿{c.vatBase.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>
                       {invoiceVat&&<div style={{color:T.sub,marginBottom:2}}>VAT {invoiceForm.vatRate}%: <b style={{fontFamily:"monospace",color:T.text}}>฿{c.vat.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>}
                       {c.shipping>0&&<div style={{color:T.sub,marginBottom:2}}>🚚 ค่าจัดส่ง: <b style={{fontFamily:"monospace",color:T.text}}>฿{c.shipping.toLocaleString("th-TH",{minimumFractionDigits:2})}</b></div>}
                       <div style={{color:"#34d399",fontSize:14,fontWeight:700}}>ยอดรวม: <span style={{fontFamily:"monospace"}}>฿{c.total.toLocaleString("th-TH",{minimumFractionDigits:2})}</span></div>

@@ -452,6 +452,27 @@ export default function App() {
     //  ใช้ ref คู่กับ state: state ไว้เปลี่ยนหน้าตาปุ่ม · ref กันการกดรัวซึ่งเร็วกว่า re-render
   const [savingInvoice, setSavingInvoice] = useState(false);
   const savingInvoiceRef = useRef(false);
+
+  // 🔒 กันกดปุ่ม "สร้างเอกสาร" ซ้ำ (แปลงเอกสาร / รวมบิล)
+  //
+  // ปุ่มพวกนี้ทำงานหลายจังหวะ (จองเลขที่ → เขียนบิล → ปั๊มใบสั่งของ) กินเวลาเป็นวินาที
+  // ระหว่างนั้นปุ่มยังกดได้อยู่ พนักงานที่เห็นว่า "ยังไม่มีอะไรเกิดขึ้น" จะกดซ้ำ
+  // ผลคือได้เอกสารคนละเลขแต่เนื้อหาเดียวกัน = เก็บเงินลูกค้าซ้ำ
+  //
+  // ล็อกแยกตามเป้าหมาย ไม่ล็อกรวมทั้งหน้า — คนละบิลยังทำพร้อมกันได้ตามปกติ
+  // (หน้าออกบิลมีล็อกของตัวเองอยู่แล้วที่ savingInvoiceRef)
+  const docBusyRef = useRef(new Set());
+  const [docBusy, setDocBusy] = useState(false);
+  const runOnce = async (key, fn) => {
+    if (docBusyRef.current.has(key)) return;      // กำลังทำอยู่ — กดซ้ำไม่มีผล
+    docBusyRef.current.add(key);
+    setDocBusy(true);
+    try { return await fn(); }
+    finally {
+      docBusyRef.current.delete(key);
+      setDocBusy(docBusyRef.current.size > 0);
+    }
+  };
   const [invoiceOrderPool, setInvoiceOrderPool] = useState([]); // 📋 ใบสั่งของล่าสุดจาก DB (เผื่อเก่ากว่า window ในหน่วยความจำ) สำหรับ dropdown ดึงข้อมูล
   const [editingInvoiceId, setEditingInvoiceId] = useState(null); // ถ้ามี = โหมดแก้ไข
   const [profileCustomer, setProfileCustomer] = useState(null);
@@ -470,6 +491,7 @@ export default function App() {
     discount:0, discountType:"amount", // ส่วนลดท้ายบิล (amount หรือ percent)
     ...invoiceDefaults(), // showCompanyTaxId / hideCompanyDetails
     useShipping: false, shippingFee: 0, // ค่าจัดส่ง (เลือกเปิด/ปิด)
+    designFee: 0,                       // 🎨 ค่าออกแบบ (0 = ไม่คิด ไม่ขึ้นในบิล)
   });
   const [invoiceItemForm, setInvoiceItemForm] = useState({ description:"", qty:"", unitPrice:"", unit:"ชิ้น" });
   const [addItemCollapsed, setAddItemCollapsed] = useState(true); // พับฟอร์มเพิ่มรายการไว้ก่อน — ช่องหนา กินที่
@@ -2699,7 +2721,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         return;
       }
     }
-    const calc = calcInvoice(invoiceForm.items, invoiceForm.vatRate, invoiceVat, invoiceForm.discount, invoiceForm.discountType, invoiceForm.useShipping, invoiceForm.shippingFee);
+    const calc = calcInvoice(invoiceForm.items, invoiceForm.vatRate, invoiceVat, invoiceForm.discount, invoiceForm.discountType, invoiceForm.useShipping, invoiceForm.shippingFee, invoiceForm.designFee);
     const beginSave = () => { savingInvoiceRef.current = true; setSavingInvoice(true); };
     const endSave = () => { savingInvoiceRef.current = false; setSavingInvoice(false); };
     const bank = (invoiceForm.bankAccountIdx!=null&&invoiceForm.bankAccountIdx>=0)
@@ -2749,7 +2771,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       // 💾 บันทึกลงระบบแล้ว → ไม่ต้องเก็บร่างไว้อีก
       clearInvoiceDraft();
       setEditingInvoiceId(null);
-      setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0,...invoiceDefaults()});
+      setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0,designFee:0,...invoiceDefaults()});
       return;
     }
 
@@ -2823,7 +2845,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     setShowPrintInvoice({...data, id:ref.id});
     setShowNewInvoice(false);
     clearInvoiceDraft();
-    setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0,...invoiceDefaults()});
+    setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0,designFee:0,...invoiceDefaults()});
     setActiveTab("invoice");
     // 🔗 ปั๊ม "ออกบิลแล้ว" ลงในใบสั่งของโดยตรง
     // ทำไม: บิลโหลดมาแค่ช่วงวันที่ (ไม่ใช่ทั้งหมด) — ถ้าอ่านสถานะจากบิลที่โหลดมาอย่างเดียว
@@ -2875,7 +2897,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   });
 
   // 🔗 รวมหลายบิลของลูกค้าคนเดียวกัน → บิลเดียว
-  const handleMergeInvoices = async () => {
+  const handleMergeInvoices = () => runOnce("merge", handleMergeInvoicesInner);
+  const handleMergeInvoicesInner = async () => {
     const sel = invoices.filter(i => selectedInvoices.has(i.id));
     if (sel.length < 2) { alert("เลือกอย่างน้อย 2 บิล"); return; }
     // 👤 เทียบลูกค้าแบบไม่ซีเรียสช่องว่าง/ตัวพิมพ์ — ถ้ามีรหัสลูกค้าให้ใช้รหัสก่อน
@@ -2903,15 +2926,17 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     const discount = ordered.reduce((s, i) => s + (Number(i.billDiscount) || 0), 0);
     const shippingFee = ordered.reduce((s, i) => s + (Number(i.shipping) || 0), 0);
     const useShipping = shippingFee > 0;
+    // 🎨 ค่าออกแบบของทุกใบต้องยกมาด้วย ไม่งั้นรวมบิลแล้วยอดหายไปเงียบ ๆ
+    const designFee = ordered.reduce((s, i) => s + (Number(i.design) || 0), 0);
     const useVat = ordered.some(i => i.useVat || (Number(i.vat) || 0) > 0);
     const vatRate = base.vatRate || 7;
     const payments = ordered.flatMap(i => i.payments || []);
-    const calc = calcInvoice(items, vatRate, useVat, discount, "amount", useShipping, shippingFee);
+    const calc = calcInvoice(items, vatRate, useVat, discount, "amount", useShipping, shippingFee, designFee);
     const invNo = await reserveDocNo(db, "INV", invoices, "invoiceNo");
     const newData = {
       ...base,
       invoiceNo: invNo,
-      items, discount, discountType: "amount", useShipping, shippingFee, vatRate, useVat,
+      items, discount, discountType: "amount", useShipping, shippingFee, designFee, vatRate, useVat,
       ...calc,
       payments,
       mergedFrom: ordered.map(i => ({ id: i.id, invoiceNo: i.invoiceNo, total: i.total })),
@@ -2974,10 +2999,23 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   };
 
   // แปลงใบวางบิล (quotation) → ใบเสร็จ/ใบกำกับ
-  const handleConvertQuotation = async (sourceInv, targetDocType) => {
+  const handleConvertQuotation = (sourceInv, targetDocType) =>
+    runOnce(`convert:${sourceInv?.id}:${targetDocType}`, () => handleConvertQuotationInner(sourceInv, targetDocType));
+  const handleConvertQuotationInner = async (sourceInv, targetDocType) => {
     if (!sourceInv) return;
+    // 🚫 แปลงไปแล้วห้ามแปลงซ้ำ — เดิมไม่ได้เช็ค กดอีกทีก็ได้เอกสารใบใหม่อีกใบ
+    //    แล้ว convertedTo ของต้นทางถูกทับด้วยใบล่าสุด ใบก่อนหน้าจึงลอยอยู่โดยไม่มีอะไรชี้ถึง
+    //    (ใบกำกับภาษี 2 ใบจากการขายครั้งเดียว = ปัญหาทางบัญชี ไม่ใช่แค่รก)
+    if (sourceInv.convertedTo) {
+      alert(
+        `บิลนี้แปลงเป็น ${sourceInv.convertedTo.invoiceNo} ไปแล้ว` + String.fromCharCode(10, 10) +
+        `ถ้าออกอีกใบ ลูกค้าจะได้เอกสาร 2 ใบจากการขายครั้งเดียว` + String.fromCharCode(10, 10) +
+        `ถ้าใบเดิมผิดจริง ให้ยกเลิกใบ ${sourceInv.convertedTo.invoiceNo} ก่อน แล้วค่อยแปลงใหม่`
+      );
+      return;
+    }
     if (!window.confirm(`สร้าง${targetDocType==="tax"?"ใบกำกับภาษี":"ใบเสร็จ"}จาก ${sourceInv.invoiceNo} (${sourceInv.customerName})?`)) return;
-    const calc = calcInvoice(sourceInv.items||[], sourceInv.vatRate||7, targetDocType==="tax"||sourceInv.useVat, sourceInv.discount||0, sourceInv.discountType||"amount", !!sourceInv.useShipping, sourceInv.shippingFee||0);
+    const calc = calcInvoice(sourceInv.items||[], sourceInv.vatRate||7, targetDocType==="tax"||sourceInv.useVat, sourceInv.discount||0, sourceInv.discountType||"amount", !!sourceInv.useShipping, sourceInv.shippingFee||0, sourceInv.designFee||0);
     const invNo = await reserveDocNo(db, "INV", invoices, "invoiceNo");
     const newData = {
       customerId: sourceInv.customerId || "",
@@ -2993,6 +3031,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       discountType: sourceInv.discountType || "amount",
       useShipping: !!sourceInv.useShipping,
       shippingFee: sourceInv.shippingFee || 0,
+      designFee: sourceInv.designFee || 0,
       bankAccount: sourceInv.bankAccount || null,
       ...calc,
       invoiceNo: invNo,
@@ -3041,6 +3080,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       discountType: inv.discountType || "amount",
       useShipping: !!inv.useShipping,
       shippingFee: inv.shippingFee || 0,
+      designFee: inv.designFee || 0,
       bankAccountIdx: -1, // ผู้ใช้เลือกใหม่ถ้าต้องการ
       // 🧾 แก้บิลเดิม — คงหน้าตาเดิมของบิลไว้ ไม่ใช้ค่า default ของบิลใหม่
       showCompanyTaxId: inv.showCompanyTaxId !== false,
@@ -4178,6 +4218,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               collapsedInvoiceDates={collapsedInvoiceDates} setCollapsedInvoiceDates={setCollapsedInvoiceDates}
               setInvoiceForm={setInvoiceForm} setInvoiceDocType={setInvoiceDocType} setInvoiceVat={setInvoiceVat} setShowNewInvoice={setShowNewInvoice}
               handleMergeInvoices={handleMergeInvoices}
+              docBusy={docBusy}
               setShowPrintInvoice={setShowPrintInvoice}
               openPaymentModal={openPaymentModal}
               handleUpdateInvoiceStatus={handleUpdateInvoiceStatus}
@@ -4276,7 +4317,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                     vatRate: 7,
                     discount: 0,
                     discountType: "amount",
-                    useShipping: false, shippingFee: 0,
+                    useShipping: false, shippingFee: 0, designFee: 0,
                     ...invoiceDefaults(),
                     customDetails,
                   });

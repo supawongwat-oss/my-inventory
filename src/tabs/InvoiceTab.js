@@ -44,6 +44,7 @@ export default function InvoiceTab({
   collapsedInvoiceDates, setCollapsedInvoiceDates,
   setInvoiceForm, setInvoiceDocType, setInvoiceVat, setShowNewInvoice,
   handleMergeInvoices,
+  docBusy = false,        // 🔒 กำลังสร้างเอกสารอยู่ — ปิดปุ่มไว้ก่อน กันกดซ้ำได้บิลซ้ำ
   setShowPrintInvoice,
   openPaymentModal,
   handleUpdateInvoiceStatus,
@@ -97,7 +98,7 @@ export default function InvoiceTab({
           })}
         </div>
         {role.canIssueInvoice
-          ? <button onClick={() => { setInvoiceForm({ customerId: "", customerName: "", customerPhone: "", customerAddress: "", customerTaxId: "", items: [], note: "", dueDate: "", vatRate: 7, discount: 0, discountType: "amount", useShipping: false, shippingFee: 0 }); setInvoiceDocType("receipt"); setInvoiceVat(false); setShowNewInvoice(true); }}
+          ? <button onClick={() => { setInvoiceForm({ customerId: "", customerName: "", customerPhone: "", customerAddress: "", customerTaxId: "", items: [], note: "", dueDate: "", vatRate: 7, discount: 0, discountType: "amount", useShipping: false, shippingFee: 0, designFee: 0 }); setInvoiceDocType("receipt"); setInvoiceVat(false); setShowNewInvoice(true); }}
             style={{ padding: "8px 18px", borderRadius: 9, border: "none", cursor: "pointer", background: "linear-gradient(135deg,#3b5b8b,#3b5b8b)", color: "white", fontSize: 12, fontWeight: 600, fontFamily: "'Sarabun',sans-serif", boxShadow: "0 4px 14px rgba(59,91,139,0.3)" }}>＋ ออกบิลใหม่</button>
           : <span style={{ fontSize: 11, color: T.muted, padding: "6px 12px", background: "rgba(241,243,246,0.4)", border: `1px solid ${T.border}`, borderRadius: 8 }}>👁️ โหมดดูเท่านั้น</span>}
       </div>
@@ -128,7 +129,7 @@ export default function InvoiceTab({
               เลือก <b style={{ color: T.amber }}>{sel.length}</b> บิล
               {sameCustomer ? <> · <b>{cname}</b> · รวม ฿{total.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</> : <span style={{ color: T.red, marginLeft: 6 }}>⚠️ คนละลูกค้า</span>}
             </div>
-            <button onClick={handleMergeInvoices} disabled={sel.length < 2 || !sameCustomer}
+            <button onClick={handleMergeInvoices} disabled={docBusy || sel.length < 2 || !sameCustomer}
               style={{ padding: "8px 16px", borderRadius: 9, border: "none", cursor: sel.length < 2 || !sameCustomer ? "not-allowed" : "pointer", background: sel.length < 2 || !sameCustomer ? "rgba(184,134,0,0.3)" : T.amber, color: "white", fontSize: 13, fontWeight: 700, fontFamily: "'Sarabun',sans-serif" }}>🔗 รวมเป็นบิลเดียว</button>
             {/* 🚫 / 🗑 ย้ายมาไว้ตรงนี้ — เดิมกองอยู่ท้ายทุกแถว 5 ปุ่ม จิ้มผิดง่ายและอ่านตารางยาก */}
             <button onClick={() => handleBulkCancelInvoices?.(sel)}
@@ -290,7 +291,7 @@ export default function InvoiceTab({
                                       <button onClick={() => openPaymentModal(inv)} title="จัดการการชำระเงิน" style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.08)", color: T.green, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>💵</button>
                                       <button onClick={() => setShowPrintInvoice(inv)} title="พิมพ์" style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(59,91,139,0.25)", background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>🖨️</button>
                                       {role.canIssueInvoice !== false && inv.docType === "quotation" && !inv.convertedTo && (
-                                        <button onClick={() => handleConvertQuotation(inv, "receipt")} title="แปลงเป็นใบเสร็จ" style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(58,122,82,0.3)", background: "rgba(58,122,82,0.08)", color: T.green, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>🔄</button>
+                                        <button onClick={() => handleConvertQuotation(inv, "receipt")} disabled={docBusy} title="แปลงเป็นใบเสร็จ" style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(58,122,82,0.3)", background: "rgba(58,122,82,0.08)", color: T.green, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>🔄</button>
                                       )}
                                       {inv.convertedTo && (
                                         <span title={`แปลงเป็น ${inv.convertedTo.invoiceNo} แล้ว`} style={{ padding: "4px 6px", borderRadius: 7, background: "rgba(58,122,82,0.06)", color: T.green, fontSize: 10, fontFamily: "'Sarabun',sans-serif" }}>✓ แปลงแล้ว</span>

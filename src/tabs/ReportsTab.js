@@ -945,7 +945,7 @@ function VATTab({ invoices }) {
       if (!m.has(k)) m.set(k, { key: k, label: monthLabel(k), count: 0, subtotal: 0, vat: 0, total: 0 });
       const r = m.get(k);
       r.count++;
-      r.subtotal += Number(inv.subtotal) || 0;
+      r.subtotal += Number(inv.vatBase ?? inv.subtotal) || 0;   // ฐานที่คิด VAT จริง (รวมค่าออกแบบ)
       r.vat      += Number(inv.vat) || 0;
       r.total    += Number(inv.total) || 0;
     });
@@ -962,7 +962,7 @@ function VATTab({ invoices }) {
       })));
     } else {
       exportCSV(`vat-${customerFilter}-${new Date().toISOString().slice(0,10)}.csv`, vatInvoices.map(inv => ({
-        "เลขที่บิล": inv.invoiceNo, "วันที่": (inv.date||"").split(" ")[0], "ลูกค้า": inv.customerName, "ยอดก่อนภาษี": Number(inv.subtotal||0).toFixed(2), "VAT": Number(inv.vat||0).toFixed(2), "ยอดรวม": Number(inv.total||0).toFixed(2), "สถานะ": inv.status || "ออกแล้ว",
+        "เลขที่บิล": inv.invoiceNo, "วันที่": (inv.date||"").split(" ")[0], "ลูกค้า": inv.customerName, "ยอดก่อนภาษี": Number(inv.vatBase ?? inv.subtotal ?? 0).toFixed(2), "VAT": Number(inv.vat||0).toFixed(2), "ยอดรวม": Number(inv.total||0).toFixed(2), "สถานะ": inv.status || "ออกแล้ว",
       })));
     }
   };
@@ -1092,7 +1092,7 @@ function VATTab({ invoices }) {
                   <div style={{ fontFamily: "monospace", color: T.accent, fontWeight: 700 }}>{inv.invoiceNo}</div>
                   <div style={{ fontSize: 11, color: T.sub }}>{(inv.date||"").split(" ")[0]}</div>
                   <div style={{ color: T.text }}>{inv.docType === "tax" ? "ใบกำกับภาษี" : inv.docType === "quotation" ? "ใบวางบิล" : "ใบเสร็จ"}<span style={{ marginLeft: 8, fontSize: 10, color: T.muted }}>{inv.status || "ออกแล้ว"}</span></div>
-                  <div style={{ textAlign: "right", fontFamily: "monospace", color: T.text }}>{fmtBaht(inv.subtotal)}</div>
+                  <div style={{ textAlign: "right", fontFamily: "monospace", color: T.text }}>{fmtBaht(inv.vatBase ?? inv.subtotal)}</div>
                   <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.amber }}>{fmtBaht(inv.vat)}</div>
                   <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.green }}>{fmtBaht(inv.total)}</div>
                 </div>

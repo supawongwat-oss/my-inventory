@@ -322,9 +322,16 @@ export default function PrintInvoiceModal({
                           <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#000",border:"1px solid #000",fontSize:12,whiteSpace:"nowrap"}}>-{(invoice.billDiscount||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                         </tr>
                       )}
+                      {invoice.design>0&&(
+                        <tr style={{background:"#f5f3ff"}}>
+                          <td colSpan={TOTAL_COLS-1} style={{padding:"6px 10px",textAlign:"right",fontSize:12,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>ค่าออกแบบ</td>
+                          <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:600,color:"#000",border:"1px solid #000",fontSize:12,whiteSpace:"nowrap"}}>{(invoice.design||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                        </tr>
+                      )}
                       <tr style={{background:"#f1f5f9"}}>
                         <td colSpan={TOTAL_COLS-1} style={{padding:"7px 10px",textAlign:"right",fontWeight:600,fontSize:12,color:"#000",border:"1px solid #000",whiteSpace:"nowrap"}}>ยอดรวมก่อนภาษี</td>
-                        <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#000",fontSize:13,border:"1px solid #000",whiteSpace:"nowrap"}}>{(invoice.subtotal||0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
+                        {/* บิลเก่าไม่มี vatBase → ใช้ subtotal เหมือนเดิม ยอดที่พิมพ์ออกมาจึงไม่เปลี่ยน */}
+                        <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#000",fontSize:13,border:"1px solid #000",whiteSpace:"nowrap"}}>{(invoice.vatBase??invoice.subtotal??0).toLocaleString("th-TH",{minimumFractionDigits:2})}</td>
                       </tr>
                       {invoice.useVat&&(
                         <tr style={{background:"#f1f5f9"}}>

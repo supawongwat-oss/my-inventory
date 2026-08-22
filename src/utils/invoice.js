@@ -25,7 +25,7 @@ export const itemLineTotal = (item) => {
 };
 
 // คำนวณยอดรวมใบบิล (subtotal, discount, VAT, shipping, total)
-export const calcInvoice = (items, vatRate, useVat, discount = 0, discountType = "amount", useShipping = false, shippingFee = 0) => {
+export const calcInvoice = (items, vatRate, useVat, discount = 0, discountType = "amount", useShipping = false, shippingFee = 0, designFee = 0) => {
   // 1) รวมราคาทุกบรรทัด (หลังหักส่วนลดต่อบรรทัด)
   const grossSubtotal = items.reduce((s, i) => s + (Number(i.qty) || 0) * (Number(i.unitPrice) || 0), 0);
   const itemsAfterDiscount = items.reduce((s, i) => s + itemLineTotal(i), 0);
@@ -35,11 +35,16 @@ export const calcInvoice = (items, vatRate, useVat, discount = 0, discountType =
     ? itemsAfterDiscount * (Math.min(Math.max(Number(discount) || 0, 0), 100) / 100)
     : Math.max(0, Number(discount) || 0);
   const subtotal = Math.max(0, itemsAfterDiscount - billDiscount);
-  // 3) VAT คำนวณจาก subtotal หลังส่วนลด (ไม่รวมค่าจัดส่ง)
-  const vat = useVat ? subtotal * (vatRate / 100) : 0;
-  // 4) ค่าจัดส่ง (บวกท้ายสุด ไม่อยู่ในฐาน VAT)
+  // 3) 🎨 ค่าออกแบบ — เป็นค่าบริการของร้าน จึงอยู่ใน "ฐาน VAT" (ต่างจากค่าจัดส่งที่บวกท้ายสุด)
+  //    และตั้งใจไม่เอาเข้าฐานส่วนลดท้ายบิล เพื่อไม่ให้ส่วนลด % ไปกินค่าออกแบบโดยไม่ตั้งใจ
+  //    บิลเก่าไม่มีฟิลด์นี้ → design = 0 → vatBase = subtotal → ยอดเท่าเดิมเป๊ะ
+  const design = Math.max(0, Number(designFee) || 0);
+  const vatBase = subtotal + design;
+  // 4) VAT คำนวณจากฐานหลังส่วนลด + ค่าออกแบบ (ไม่รวมค่าจัดส่ง)
+  const vat = useVat ? vatBase * (vatRate / 100) : 0;
+  // 5) ค่าจัดส่ง (บวกท้ายสุด ไม่อยู่ในฐาน VAT)
   const shipping = useShipping ? Math.max(0, Number(shippingFee) || 0) : 0;
-  return { grossSubtotal, itemDiscountTotal, itemsAfterDiscount, billDiscount, subtotal, vat, shipping, total: subtotal + vat + shipping };
+  return { grossSubtotal, itemDiscountTotal, itemsAfterDiscount, billDiscount, subtotal, design, vatBase, vat, shipping, total: vatBase + vat + shipping };
 };
 
 // 🖼️ path ของรูปที่ "บิลใบนี้เป็นเจ้าของ" — ใช้ตอนลบบิล ไม่ให้ไฟล์ค้างกินพื้นที่ Storage
