@@ -5611,6 +5611,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           calcInvoice={calcInvoice}
           apparelSizes={apparelSizes}
           shoeSizes={shoeSizes}
+          customers={customers}
         />
       )}
 

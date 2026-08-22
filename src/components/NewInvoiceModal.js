@@ -3,6 +3,8 @@ import { T, SIZE_GROUPS, PRESET_COLORS, splitSizesIntoRows, sizeRank, getPriceFo
 import { Modal, MHead, BtnPrimary, BtnGhost, BtnDanger } from "./ui";
 import { compressImage } from "../utils/imageCompress";
 import { uploadImage, deleteFile } from "../utils/upload";
+import { matchTokens } from "../utils/search";
+import { custKey } from "../utils/statement";
 
 const MAX_JOB_IMAGES = 8;
 
@@ -340,6 +342,157 @@ function BulkPricePanel({ items, setInvoiceForm, clothingItems = [] }) {
   );
 }
 
+// 👤 ช่องลูกค้าของบิล — ค้นจากทะเบียนได้ ไม่ใช่พิมพ์ลอย ๆ
+//
+// ทำไมต้องมี: เดิมช่องนี้เป็น input เปล่า พนักงานพิมพ์ชื่อเองทุกใบ
+// คนเดียวกันจึงถูกพิมพ์หลายแบบ ("ร้านสมชาย" / "สมชาย" / เว้นวรรคต่างกัน)
+// พอไปทำใบวางบิลจึงมาบ้างหายบ้าง — เลือกจากทะเบียนแล้วบิลจะติด customerId
+// ซึ่งเป็นชั้นจับคู่ที่แน่นที่สุดใน utils/statement.js (สะกดยังไงก็ไม่หลุด)
+//
+// ยังพิมพ์ชื่อใหม่เองได้เหมือนเดิม (ลูกค้าขาจร) แค่จะมีคำเตือนถ้าชื่อใกล้เคียงของที่มีอยู่
+function CustomerPicker({ customers = [], invoiceForm, setInvoiceForm }) {
+  const [q, setQ] = React.useState("");
+  const [open, setOpen] = React.useState(false);
+  const boxRef = React.useRef(null);
+  const linked = !!invoiceForm.customerId;
+  const name = invoiceForm.customerName || "";
+
+  // ปิดรายการเมื่อคลิกที่อื่น — ไม่ใช้ onBlur เพราะมันปิดก่อนที่คลิกจะโดนรายการ
+  React.useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const pick = (c) => {
+    // เบอร์/ที่อยู่/เลขภาษี ทับด้วยของในทะเบียนเฉพาะที่มีค่า — ที่พิมพ์ไว้แล้วจะไม่ถูกล้างทิ้ง
+    setInvoiceForm(p => ({ ...p,
+      customerId: c.id || "",
+      customerName: c.name || "",
+      customerPhone: c.phone || p.customerPhone || "",
+      customerAddress: c.address || p.customerAddress || "",
+      customerTaxId: c.taxId || p.customerTaxId || "",
+    }));
+    setQ(""); setOpen(false);
+  };
+
+  const typed = (v) => {
+    // พิมพ์เอง = หลุดจากทะเบียนแล้ว ต้องล้าง customerId
+    // ไม่งั้นบิลจะผูกกับรหัสลูกค้าคนหนึ่งแต่โชว์ชื่ออีกคน
+    setQ(v);
+    setInvoiceForm(p => ({ ...p, customerId: "", customerName: v }));
+    setOpen(true);
+  };
+
+  const term = q || (linked ? "" : name);
+  const matches = React.useMemo(() => {
+    const t = String(term).trim();
+    if (!t) return customers.slice(0, 30);
+    return customers.filter(c => matchTokens(t, c.name, c.phone, c.address, c.taxId));
+  }, [term, customers]);
+
+  // 🔎 พิมพ์เองแล้วชื่อดัน "ใกล้เคียง" กับที่มีในทะเบียน
+  //    เคสนี้แหละที่ทำให้บิลกระจายคนละชื่อจนหายตอนวางบิล — ต้องทักตั้งแต่ตอนออกบิล
+  const nearby = React.useMemo(() => {
+    if (linked) return [];
+    const k = custKey(name);
+    if (k.length < 3) return [];
+    return customers.filter(c => {
+      const ck = custKey(c.name);
+      return ck && (ck.includes(k) || k.includes(ck));
+    }).slice(0, 3);
+  }, [linked, name, customers]);
+
+  const inputStyle = () => ({ width:"100%", background:T.input, border:`1px solid ${T.inputBorder}`,
+    color:T.text, borderRadius:9, padding:"8px 12px", fontFamily:"'Sarabun',sans-serif", fontSize:13, outline:"none" });
+  const lbl = { fontSize:11, color:T.muted, display:"block", marginBottom:4, fontWeight:600 };
+
+  return (
+    <div style={{marginBottom:16}}>
+      <div ref={boxRef} style={{position:"relative", marginBottom:10}}>
+        <label style={lbl}>ชื่อลูกค้า *</label>
+        {linked ? (
+          <div style={{display:"flex", alignItems:"center", gap:8, background:"rgba(52,211,153,0.10)",
+            border:"1px solid #34d399", borderRadius:9, padding:"8px 12px"}}>
+            <span style={{fontSize:13, color:T.text, fontWeight:600, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>
+              ✓ {name}
+            </span>
+            <span style={{fontSize:10, color:T.green, fontWeight:700, whiteSpace:"nowrap"}}>จากทะเบียนลูกค้า</span>
+            <button type="button" onClick={()=>{ setQ(""); setInvoiceForm(p=>({...p,customerId:""})); setOpen(true); }}
+              style={{background:"none", border:`1px solid ${T.border}`, color:T.sub, borderRadius:7, padding:"3px 10px",
+                cursor:"pointer", fontSize:11, fontFamily:"inherit", whiteSpace:"nowrap"}}>
+              เปลี่ยน
+            </button>
+          </div>
+        ) : (
+          <input value={name} onChange={e=>typed(e.target.value)} onFocus={()=>setOpen(true)}
+            placeholder="🔍 ค้นหาลูกค้าเดิม หรือพิมพ์ชื่อใหม่..." style={inputStyle()}/>
+        )}
+
+        {open && !linked && (
+          <div style={{position:"absolute", top:"100%", left:0, right:0, background:"#ffffff",
+            border:`1px solid ${T.border}`, borderRadius:10, zIndex:60, maxHeight:280, overflowY:"auto",
+            boxShadow:"0 8px 24px rgba(0,0,0,0.25)", marginTop:2}}>
+            {matches.length > 0 && (
+              <div style={{padding:"6px 14px", background:"#eff6ff", fontSize:10, color:T.blue, fontWeight:700,
+                borderBottom:`1px solid ${T.border}`, position:"sticky", top:0}}>
+                เจอ {matches.length} ราย {matches.length > 30 && "(แสดง 30 รายแรก — พิมพ์เพิ่มเพื่อกรอง)"}
+              </div>
+            )}
+            {matches.slice(0,30).map(c=>(
+              <div key={c.id} onClick={()=>pick(c)}
+                style={{padding:"10px 14px", cursor:"pointer", borderBottom:`1px solid ${T.border}`}}
+                onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.1)"}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                <div style={{fontSize:13, fontWeight:600, color:T.text}}>{c.name}</div>
+                <div style={{fontSize:11, color:T.muted}}>📞 {c.phone||"-"} · 📍 {c.address||"-"}</div>
+              </div>
+            ))}
+            {matches.length===0 && (
+              <div style={{padding:"10px 14px", fontSize:12, color:T.muted}}>
+                ไม่พบในทะเบียน — ใช้ชื่อที่พิมพ์ไว้ได้เลย (บิลจะไม่ผูกกับทะเบียน)
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {nearby.length > 0 && (
+        <div style={{marginBottom:10, padding:"8px 12px", background:"rgba(184,134,0,0.08)",
+          border:"1px solid rgba(184,134,0,0.35)", borderRadius:9}}>
+          <div style={{fontSize:11, color:T.amber, fontWeight:700, marginBottom:6}}>
+            ⚠️ ชื่อนี้ใกล้เคียงกับลูกค้าในทะเบียน — ถ้าเป็นคนเดียวกันให้กดผูก ไม่งั้นบิลใบนี้อาจไม่ขึ้นตอนวางบิล
+          </div>
+          <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
+            {nearby.map(c=>(
+              <button key={c.id} type="button" onClick={()=>pick(c)}
+                style={{background:"#ffffff", border:`1px solid ${T.amber}`, color:T.text, borderRadius:7,
+                  padding:"5px 12px", cursor:"pointer", fontSize:12, fontFamily:"inherit"}}>
+                🔗 {c.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10}}>
+        {[
+          {k:"customerPhone", l:"เบอร์โทร", ph:"0812345678"},
+          {k:"customerTaxId", l:"เลขผู้เสียภาษี", ph:"(ถ้ามี)"},
+          {k:"customerAddress", l:"ที่อยู่", ph:"บ้านเลขที่ ซอย ถนน...", full:true},
+        ].map(f=>(
+          <div key={f.k} style={f.full ? {gridColumn:"1/-1"} : undefined}>
+            <label style={lbl}>{f.l}</label>
+            <input value={invoiceForm[f.k]||""} onChange={e=>setInvoiceForm(p=>({...p,[f.k]:e.target.value}))}
+              placeholder={f.ph} style={inputStyle()}/>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function NewInvoiceModal({
   onClose,
   editingInvoiceId,
@@ -361,6 +514,7 @@ export default function NewInvoiceModal({
   calcInvoice,
   apparelSizes = [],
   shoeSizes = [],
+  customers = [],
 }) {
   // 📋 ปกติจะออกบิลจากใบที่ "ยังไม่ออกบิล" เท่านั้น
   //    ใบที่ออกบิลไปแล้วจึงพับไว้ ต้องกดเปิดเอง — ลดโอกาสเผลอเลือกใบเก่าแล้วออกบิลซ้ำ
@@ -517,20 +671,7 @@ export default function NewInvoiceModal({
 
           {/* Customer info */}
           <div style={{fontSize:11,color:T.muted,marginBottom:8,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em"}}>ข้อมูลลูกค้า / ผู้รับ</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-            {[
-              {k:"customerName",l:"ชื่อลูกค้า *",ph:"ชื่อ-นามสกุล / ชื่อบริษัท"},
-              {k:"customerPhone",l:"เบอร์โทร",ph:"0812345678"},
-              {k:"customerAddress",l:"ที่อยู่",ph:"บ้านเลขที่ ซอย ถนน..."},
-              {k:"customerTaxId",l:"เลขผู้เสียภาษี",ph:"(ถ้ามี)"},
-            ].map(f=>(
-              <div key={f.k}>
-                <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:4,fontWeight:600}}>{f.l}</label>
-                <input value={invoiceForm[f.k]} onChange={e=>setInvoiceForm(p=>({...p,[f.k]:e.target.value}))} placeholder={f.ph}
-                  style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"8px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
-              </div>
-            ))}
-          </div>
+          <CustomerPicker customers={customers} invoiceForm={invoiceForm} setInvoiceForm={setInvoiceForm}/>
 
           {/* Items */}
           <div style={{fontSize:11,color:T.muted,marginBottom:8,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em"}}>รายการสินค้า / บริการ</div>
