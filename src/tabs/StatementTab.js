@@ -5,6 +5,7 @@ import { T } from "../theme";
 import { Modal, MHead, Input, BtnPrimary, BtnGhost, CardBox } from "../components/ui";
 import { matchTokens } from "../utils/search";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
+import { reserveDocNo } from "../utils/docNumber";
 import BulkStatementModal from "../components/BulkStatementModal";
 import { filterInvoicesForStatement, creditsForStatement, sumCredits, nearMissInvoices } from "../utils/statement";
 
@@ -208,8 +209,13 @@ export default function StatementTab({ statements, invoices, returns = [], custo
 
     const startD = parseISODate(form.periodStart);
     const endD = parseISODate(form.periodEnd);
+    // 🔢 เลขรันแบบเดียวกับบิล — STM6908-0001 คือใบที่ 1 ของเดือน ส.ค. 2569
+    //    ของเดิมเป็น "STM-" + Date.now() (เวลาที่กดสร้างเป็นมิลลิวินาที) อ่านไม่ออก
+    //    บอกทางโทรศัพท์ไม่ได้ และดูไม่ออกว่าเป็นใบที่เท่าไหร่ของเดือน บัญชีจึงตรวจไม่ได้ว่าครบไหม
+    //    reserveDocNo จองเลขใน transaction → หลายเครื่องกดพร้อมกันก็ไม่ได้เลขซ้ำ
+    const statementNo = await reserveDocNo(db, "STM", statements, "statementNo");
     const data = {
-      statementNo: "STM-" + Date.now(),
+      statementNo,
       customerId: form.customerId || "",
       customerName: form.customerName,
       customerPhone: form.customerPhone,

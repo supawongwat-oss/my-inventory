@@ -7,9 +7,25 @@ import { db } from "../firebase";
 import { Modal, MHead, BtnPrimary, BtnGhost } from "./ui";
 import { T } from "../theme";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
+import { reserveDocNo } from "../utils/docNumber";
 import { filterInvoicesForStatement, creditsForStatement, sumCredits, matchCustomer, custKey, fmtISO, fmtDDMMYYYY, parseISODate as parseISO } from "../utils/statement";
 
 const fmtB = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// 🔢 กันเลขซ้ำภายในรอบเดียวกัน
+//    ปกติ reserveDocNo จองเลขผ่าน counter ใน transaction จึงไม่มีทางซ้ำ
+//    แต่ถ้าเขียน counters ไม่ได้ มันจะ fallback เป็น "เลขสูงสุดที่โหลดมา + 1" ซึ่งในลูป 70-80 ใบ
+//    จะได้เลขเดิมทุกใบ — ตรงนี้เลื่อนเลขต่อเองถ้าชนกับที่เพิ่งออกไปในรอบนี้
+const nextUnused = (no, used) => {
+  let out = no;
+  while (used.has(out)) {
+    const m = out.match(/^(.*-)(\d+)$/);
+    if (!m) { out = `${out}-2`; break; }
+    out = m[1] + String(Number(m[2]) + 1).padStart(m[2].length, "0");
+  }
+  used.add(out);
+  return out;
+};
 const now = () => { const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
 
 export default function BulkStatementModal({ invoices = [], customers = [], statements = [], returns = [], companyInfo = {}, user, onClose, onDone }) {
@@ -154,10 +170,12 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
     //    ไม่งั้นต้องไล่ลบทีละใบ (ปุ่ม "↩️ ถอยทั้งรอบ" ที่หน้าวางบิลใช้ค่านี้)
     const runId = "run-" + Date.now();
     const runAt = now();
+    const usedNos = new Set(statements.map(s => s.statementNo).filter(Boolean));
     for (let i = 0; i < selected.length; i++) {
       const g = selected[i];
       try {
-        const stmtNo = "STM-" + Date.now() + "-" + i;
+        // เลขรันเรียงต่อกันทั้งเดือนแบบเดียวกับบิล (STM6908-0001, -0002, …)
+        const stmtNo = nextUnused(await reserveDocNo(db, "STM", statements, "statementNo"), usedNos);
         const ref = await addDoc(collection(db, "statements"), {
           statementNo: stmtNo,
           customerId: g.customerId || "",
