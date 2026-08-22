@@ -29,6 +29,21 @@
 //    ต้องต่อทุกแถวของระเบียนเดียวกัน "แยกตามคอลัมน์"
 //
 // 4) วรรณยุกต์บางตัวหายหรืออยู่ในย่านอักขระพิเศษ — ตัวจับคู่ใน packImport.js จัดการให้แล้ว
+//
+// 5) 🔑 ตัวแบ่งสองชุดที่ใช้ได้จริงคือ "ขนาดตัวอักษร" ไม่ใช่พิกัด
+//    ชุดป้ายติดกล่องใช้ 10pt ชุดใบแนบใช้ 6.89pt — ไม่ปนกันสักชิ้นในไฟล์จริง 307 ใบ
+//    ส่วนพิกัดแยกไม่ออก เพราะคอลัมน์ของสองชุดห่างกันแค่ ~4 หน่วย (125.3 กับ 121.4)
+//    ซึ่งน้อยกว่าความคลาดเคลื่อนที่ต้องเผื่อไว้ ทำให้แถวของชุดหนึ่งไปเข้าอีกชุดได้
+//
+// 6) ใบหนึ่งมีสินค้าได้หลายรายการ (สั่งหลายตัวในออเดอร์เดียว)
+//    แยกรายการด้วย "เลขลำดับ" ในคอลัมน์แรก โดยจับแถวเข้าเลขที่ใกล้ที่สุดตามแนวตั้ง
+//    (เลขลำดับพิมพ์อยู่กึ่งกลางของรายการ ไม่ใช่บรรทัดแรก จึงตัดที่บรรทัดเลขไม่ได้)
+//
+// 7) ออเดอร์ที่ของเยอะจะล้นไปหน้าถัดไป "โดยไม่มีหัวตาราง"
+//    หน้าพวกนี้ต้องยืมหัวตารางของหน้าก่อน ไม่งั้นของจะหายทั้งหน้า
+//
+// ✅ วัดกับไฟล์จริง: Shopee 9/9 ใบ · TikTok 306/307 ใบ (ใบที่เหลือเป็นหน้าท้ายที่ไม่มีรายการ)
+//    และยอดที่อ่านได้ตรงกับ "Total" ที่พิมพ์อยู่บนใบครบทั้ง 309 ออเดอร์
 
 let pdfjsPromise = null;
 async function getPdfjs() {
@@ -58,7 +73,13 @@ const COL_TOL = 5;      // ความคลาดเคลื่อนขอ�
 
 const pieces = (items) => items
   .filter(i => i && typeof i.str === "string" && i.str.trim() !== "")
-  .map(i => ({ s: i.str, x: i.transform ? i.transform[4] : 0, y: i.transform ? i.transform[5] : 0 }));
+  .map(i => ({
+    s: i.str,
+    x: i.transform ? i.transform[4] : 0,
+    y: i.transform ? i.transform[5] : 0,
+    // ขนาดตัวอักษร — ตัวแบ่ง "ชุดป้าย" ออกจาก "ชุดใบแนบ" (ดูหมายเหตุข้อ 5)
+    h: i.height || (i.transform ? Math.abs(i.transform[3]) : 0),
+  }));
 
 // จับชิ้นข้อความเป็นแถวตามพิกัด y
 function toRows(ps) {
@@ -93,53 +114,73 @@ function findHeaders(ps) {
   return out.sort((a, b) => b.y - a.y);
 }
 
-// แถวนี้ชิดคอลัมน์ของหัวตารางชุดไหนมากกว่ากัน
-const alignScore = (row, hdr) =>
-  row.cells.reduce((n, c) => n + (hdr.cols.some(k => Math.abs(c.x - k.x) <= COL_TOL) ? 1 : 0), 0);
+// ชุดแถวนี้ชิดคอลัมน์ของหัวตารางชุดไหนมากกว่ากัน
+const alignScore = (rows, hdr) => rows.reduce((n, r) =>
+  n + r.cells.reduce((m, c) => m + (hdr.cols.some(k => Math.abs(c.x - k.x) <= COL_TOL) ? 1 : 0), 0), 0);
 
-// อ่านตารางหนึ่งชุด → ระเบียนเดียว
-// ตั้งใจอ่านใบละ 1 รายการ เพราะ 1 ออเดอร์บนแพลตฟอร์ม = 1 ชิ้นแทบทุกครั้ง
-// ใบที่มีหลายรายการจะถูก quality() ตีเป็น "อ่านไม่ออก" แล้วให้คนนับเอง
-// ปลอดภัยกว่าเดาแล้วยุบจำนวนผิด
+const isQtyKey = (k) => /^(qty|quantity|จ[\u0e4d\u0e32\u0e33]นวน)$/.test(k);
+const isNoKey = (k) => /^(#|no\.?)$/.test(k);
+const sizeKey = (p) => Math.round((p.h || 0) * 2) / 2;
+
+// อ่านตารางหนึ่งชุด -> รายการสินค้า (ใบหนึ่งมีได้หลายรายการ)
 function readTable(rows, hdr) {
   const cols = hdr.cols.map((c, i) => ({
     key: c.name.toLowerCase(),
     x0: c.x - COL_TOL,
     x1: i + 1 < hdr.cols.length ? hdr.cols[i + 1].x - COL_TOL : Infinity,
-    parts: [],
   }));
-  rows.forEach(r => r.cells.forEach(c => {
-    const col = cols.find(k => c.x >= k.x0 && c.x < k.x1);
-    if (col) col.parts.push({ s: c.s, x: c.x, rowY: r.y });
+
+  // จุดยึดของแต่ละรายการ = เลขลำดับในคอลัมน์แรก (ดูหมายเหตุข้อ 6)
+  const noCol = cols.find(k => isNoKey(k.key));
+  const anchors = [];
+  if (noCol) rows.forEach(r => r.cells.forEach(c => {
+    if (c.x >= noCol.x0 && c.x < noCol.x1 && /^\d{1,2}$/.test(c.s.trim())) anchors.push(r.y);
   }));
-  const colOf = (pred) => cols.find(k => pred(k.key));
-  const textOf = (pred) => {
-    const col = colOf(pred);
-    if (!col) return "";
-    return col.parts.sort((a, b) => (b.rowY - a.rowY) || (a.x - b.x))
-      .map(q => q.s).join("").replace(/\s+/g, " ").trim();
+  anchors.sort((a, b) => b - a);
+  const groupOf = (y) => {
+    if (anchors.length <= 1) return 0;
+    let bi = 0, bd = Infinity;
+    anchors.forEach((ay, i) => { const d = Math.abs(ay - y); if (d < bd) { bd = d; bi = i; } });
+    return bi;
   };
-  const isQty = (k) => /^(qty|quantity|จ[ําำ]นวน)$/.test(k);
-  const qtyCol = colOf(isQty);
-  const qtyParts = qtyCol ? qtyCol.parts.length : 0;
-  const digits = String(textOf(isQty)).replace(/\D/g, "");
-  return {
-    name: textOf(k => /(item|^name|product\s*name|ชื่อสินค)/.test(k) && !/seller/.test(k)),
-    variation: textOf(k => /(v\s*name|ตัวเลือก)/.test(k)) || textOf(k => k === "sku"),
-    sku: textOf(k => /seller\s*sku/.test(k)) || textOf(k => k === "sku"),
-    // 🔒 ช่องจำนวนต้องมีข้อความ "ชิ้นเดียว" เท่านั้น
-    //    ถ้ามีหลายชิ้น = ตารางสองชุดปนกัน หรือใบนี้มีสินค้าหลายรายการ
-    //    ทั้งสองกรณีทำให้เลขต่อกันเป็นจำนวนปลอม ("1"+"1" → 11, "1"+"1"+"1" → 111)
-    //    เคยหลุดมาแล้วตอนทดสอบ เกือบตัดสต๊อก 111 ชิ้นจากใบที่สั่งจริง 1 ชิ้น
-    //    ช่องจำนวนไม่มีวันตัดบรรทัด จึงใช้ "ต้องมีชิ้นเดียว" เป็นเกณฑ์ได้เต็มปาก
-    qty: (qtyParts === 1 && digits && digits.length <= 2) ? parseInt(digits, 10) : null,
-  };
+
+  const recs = (anchors.length || 1) > 0 ? Array.from({ length: Math.max(1, anchors.length) }, () => cols.map(() => [])) : [];
+  rows.forEach(r => {
+    const g = groupOf(r.y);
+    r.cells.forEach(c => {
+      const ci = cols.findIndex(k => c.x >= k.x0 && c.x < k.x1);
+      if (ci >= 0) recs[g][ci].push({ s: c.s, x: c.x, rowY: r.y });
+    });
+  });
+
+  return recs.map(cells => {
+    const textOf = (pred) => {
+      const ci = cols.findIndex(k => pred(k.key));
+      if (ci < 0) return "";
+      return cells[ci].sort((a, b) => (b.rowY - a.rowY) || (a.x - b.x))
+        .map(q => q.s).join("").replace(/\s+/g, " ").trim();
+    };
+    const qi = cols.findIndex(k => isQtyKey(k.key));
+    const qtyParts = qi >= 0 ? cells[qi].length : 0;
+    const digits = String(textOf(isQtyKey)).replace(/\D/g, "");
+    return {
+      name: textOf(k => /(item|^name|product\s*name|ชื่อสินค)/.test(k) && !/seller/.test(k)),
+      variation: textOf(k => /(v\s*name|ตัวเลือก)/.test(k)) || textOf(k => k === "sku"),
+      sku: textOf(k => /seller\s*sku/.test(k)) || textOf(k => k === "sku"),
+      // 🔒 ช่องจำนวนต้องมีข้อความ "ชิ้นเดียว" เท่านั้น
+      //    ถ้ามีหลายชิ้น = แบ่งรายการหรือแบ่งคอลัมน์ยังไม่ถูก เลขจะต่อกันเป็นจำนวนปลอม
+      //    ("1"+"1" -> 11, "1"+"1"+"1" -> 111) เคยหลุดมาแล้วตอนทดสอบ
+      //    เกือบตัดสต๊อก 111 ชิ้นจากใบที่สั่งจริง 1 ชิ้น
+      //    อ่านไม่ชัวร์ให้เป็น null แล้วบังคับให้คนกรอกเอง ห้ามเดาเด็ดขาด
+      qty: (qtyParts === 1 && digits && digits.length <= 2) ? parseInt(digits, 10) : null,
+    };
+  }).filter(r => r.name || r.sku || r.variation);
 }
 
 // คุณภาพของสิ่งที่อ่านได้ — ใช้ 2 อย่าง: เลือกตารางที่ดีกว่า และตัดสินว่าเชื่อได้ไหม
 // หักคะแนนแรงถ้าคำที่เป็น "หัวตาราง" โผล่ในเนื้อหา = แบ่งเขตคอลัมน์ผิด ข้อมูลปนกันแล้ว
 const LEAK_RE = /(Item|V\s*Name|SKU|Qty|Product Name|Seller SKU|Package ID|NickName|Order ID|Store Name)/i;
-const quality = (r) =>
+const quality1 = (r) =>
   (r.name && r.name.length > 8 ? 2 : 0) +
   (/_/.test(r.sku || "") ? 2 : 0) +
   (/,/.test(r.variation || "") ? 1 : 0) +
@@ -147,39 +188,41 @@ const quality = (r) =>
   (LEAK_RE.test(r.name || "") ? -5 : 0) +
   (LEAK_RE.test(r.sku || "") ? -5 : 0) +
   (LEAK_RE.test(r.variation || "") ? -4 : 0);
+// เฉลี่ยต่อรายการ — ตารางที่มี 2 รายการต้องไม่ได้เปรียบเพราะคะแนนรวมสูงกว่า
+const quality = (recs) => (recs.length ? recs.reduce((a, r) => a + quality1(r), 0) / recs.length : -99);
 
-function parsePage(ps) {
-  const headers = findHeaders(ps);
+function parsePage(ps, prevHeaders) {
+  let headers = findHeaders(ps);
+  let top = Infinity;                       // ขอบบนของเนื้อตาราง
+  if (headers.length) top = headers[headers.length - 1].y - 1;
+  else if (prevHeaders && prevHeaders.length) headers = prevHeaders;   // หน้าต่อของออเดอร์เดิม
   if (!headers.length) return null;
-  const rows = toRows(ps);
+
   const footY = ps.filter(p => /Store Name|Total\s*:/i.test(p.s)).map(p => p.y).sort((a, b) => b - a)[0];
-  const body = rows.filter(r => r.y < headers[headers.length - 1].y - 1 && (footY == null || r.y > footY + 1));
+  const body = ps.filter(p => p.y < top && (footY == null || p.y > footY + 1));
 
-  // แจกแถวให้หัวตารางที่มันชิดที่สุด — แถวเดียวกันต้องเป็นของตารางเดียวกันเสมอ
-  const buckets = headers.map(() => []);
-  body.forEach(r => {
-    let best = -1, bestScore = 0;
-    headers.forEach((h, i) => {
-      const sc = alignScore(r, h);
-      if (sc > bestScore) { bestScore = sc; best = i; }
-    });
-    if (best >= 0) buckets[best].push(r);
-  });
+  // แยกชิ้นข้อความตามขนาดตัวอักษร = แยกชุดป้ายออกจากชุดใบแนบ
+  const bySize = new Map();
+  body.forEach(p => { const k = sizeKey(p); if (!bySize.has(k)) bySize.set(k, []); bySize.get(k).push(p); });
+  const cands = [...bySize.values()].filter(g => g.length >= 2).map(toRows);
+  cands.push(toRows(body));                 // เผื่อหน้าที่มีตารางเดียว/ขนาดเดียว
 
-  // อ่านทุกชุดแล้วเอาชุดที่อ่านออกดีที่สุด
+  // ลองทุกคู่ (ชุดข้อความ x หัวตาราง) แล้วเอาคู่ที่อ่านออกดีที่สุด
   let best = null;
-  headers.forEach((h, i) => {
-    if (!buckets[i].length) return;
-    const r = readTable(buckets[i], h);
-    const q = quality(r);
-    if (!best || q > best.q) best = { ...r, q };
-  });
+  cands.forEach(rows => headers.forEach(h => {
+    if (!rows.length) return;
+    const recs = readTable(rows, h);
+    if (!recs.length) return;
+    const q = quality(recs) + Math.min(2, alignScore(rows, h) / 8);
+    if (!best || q > best.q) best = { recs, q };
+  }));
   // คุณภาพไม่ถึงเกณฑ์ = บอกว่าอ่านไม่ออก ดีกว่าเดาแล้วไปตัดสต๊อกและออกบิลผิด
-  return best && best.q >= 4 ? best : null;
+  return best && best.q >= 4 ? best.recs : null;
 }
 
 /**
- * อ่านไฟล์ใบปะหน้า PDF → RawRow[] ชุดเดียวกับที่ตัววางข้อความ/Excel คืน
+ * อ่านไฟล์ใบปะหน้า PDF -> RawRow[] ชุดเดียวกับที่ตัววางข้อความ/Excel คืน
+ * แถวที่จำนวนอ่านไม่ชัวร์จะได้ qty = null + needsQty: true (คนต้องกรอกเอง ระบบไม่เดาให้)
  * @param {File|ArrayBuffer} file
  * @param {(done:number,total:number)=>void} [onProgress]
  */
@@ -190,28 +233,66 @@ export async function readLabelPdf(file, onProgress) {
   const rows = [];
   let skipped = 0;
   const total = doc.numPages;
+  let prevHeaders = null;
+  // 🧾 ออเดอร์หนึ่งอาจกินหลายหน้า — เก็บเป็นก้อนไว้เทียบกับยอด "Total" ที่พิมพ์บนใบ
+  let group = null;
+  const groups = [];
+
   for (let p = 1; p <= total; p++) {
-    let rec = null;
+    let recs = null, ps = [];
     try {
       const page = await doc.getPage(p);
-      rec = parsePage(pieces((await page.getTextContent()).items || []));
+      ps = pieces((await page.getTextContent()).items || []);
+      const hdr = findHeaders(ps);
+      if (hdr.length) { prevHeaders = hdr; group = { rows: [], total: null }; groups.push(group); }
+      // ยึดก้อนของรอบนี้ไว้เป็นค่าคงที่ ไม่งั้น closure ข้างล่างจะอ้างถึงก้อนของหน้าถัดไป
+      recs = parsePage(ps, prevHeaders);
       page.cleanup?.();
-    } catch (e) { rec = null; }
-    if (rec) {
-      rows.push({
-        productText: rec.name,
-        optionText: rec.variation,
-        skuText: rec.sku,
-        colorText: "", sizeText: "",
-        qty: rec.qty,
-        raw: `${rec.name} | ${rec.variation} | ${rec.sku}`,
-        page: p,
+    } catch (e) { recs = null; }
+    const g = group;
+
+    if (recs && recs.length) {
+      recs.forEach(rec => {
+        const row = {
+          productText: rec.name,
+          optionText: rec.variation,
+          skuText: rec.sku,
+          colorText: "", sizeText: "",
+          qty: rec.qty,
+          needsQty: rec.qty == null,
+          raw: `${rec.name} | ${rec.variation} | ${rec.sku}`,
+          page: p,
+        };
+        rows.push(row);
+        if (g) g.rows.push(row);
       });
     } else skipped++;              // อ่านใบนี้ไม่ออก — นับไว้ ไม่ทิ้งเงียบ
+
+    // ยอดรวมที่แพลตฟอร์มพิมพ์ไว้บนใบ ("Total: 3") — ของจริงที่เอาไว้ตรวจตัวเอง
+    if (g) {
+      toRows(ps).forEach(r => {
+        const m = r.cells.map(c => c.s).join(" ").match(/(?:Qty\s*)?Total\s*:?\s*(\d{1,3})/i);
+        if (m) g.total = Math.max(g.total ?? 0, Number(m[1]));
+      });
+    }
     if (onProgress && (p % 5 === 0 || p === total)) onProgress(p, total);
   }
   try { await doc.destroy(); } catch (e) { /* ไม่สำคัญ */ }
-  return { rows, pages: total, skipped };
+
+  // 🔍 ตรวจตัวเองกับยอดบนใบ — ถ้าไม่ตรงแปลว่าอ่านจำนวนเพี้ยน
+  //    ไม่รู้ว่าแถวไหนผิด จึงล้างจำนวนทั้งออเดอร์นั้นให้คนกรอกเอง
+  //    ด่านนี้แหละที่กันเคส "1 กลายเป็น 111" ไม่ให้หลุดไปตัดสต๊อก
+  let mismatched = 0;
+  groups.forEach(g => {
+    if (g.total == null || !g.rows.length) return;
+    if (g.rows.some(r => r.qty == null)) return;              // มีที่ต้องกรอกอยู่แล้ว
+    const sum = g.rows.reduce((a, r) => a + (Number(r.qty) || 0), 0);
+    if (sum === g.total) return;
+    mismatched++;
+    g.rows.forEach(r => { r.qty = null; r.needsQty = true; r.qtyWhy = `ยอดบนใบบอก ${g.total} แต่อ่านได้ ${sum}`; });
+  });
+
+  return { rows, pages: total, skipped, needQty: rows.filter(r => r.needsQty).length, mismatched };
 }
 
 export const isPdf = (f) => !!f && (/\.pdf$/i.test(f.name || "") || f.type === "application/pdf");

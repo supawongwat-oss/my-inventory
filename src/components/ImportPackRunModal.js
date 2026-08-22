@@ -27,6 +27,7 @@ const STATUS_STYLE = {
   "ต้องเลือกสี":  { bg: "rgba(239,68,68,0.08)",  color: "#b91c1c", icon: "🔴" },
   "ต้องเลือกไซส์": { bg: "rgba(239,68,68,0.08)", color: "#b91c1c", icon: "🔴" },
   "ไม่พบ":        { bg: "rgba(239,68,68,0.08)",  color: "#b91c1c", icon: "❌" },
+  "ต้องกรอกจำนวน": { bg: "rgba(239,68,68,0.10)", color: "#b91c1c", icon: "🔢" },
   "ข้าม":         { bg: "rgba(100,116,139,0.10)", color: T.sub,    icon: "⏭️" },
 };
 const READY = ["พร้อมลง", "ให้ยืนยัน"];
@@ -35,6 +36,14 @@ const READY = ["พร้อมลง", "ให้ยืนยัน"];
 // ถ้าตัวที่ระบบเลือกถูกอยู่แล้วจะไม่มีอะไรให้แก้ → กดต่อไม่ได้ ติดตาย
 const NEEDS_OK = ["ให้ยืนยัน", "กำกวม"];
 const MAX_QTY_PER_ROW = 200;   // 1 ออเดอร์แพลตฟอร์ม = 1 ชิ้น เกินนี้คือแมปคอลัมน์ผิด
+
+// 🔒 ด่านจำนวน — ระบบจะไม่เดาจำนวนให้เด็ดขาด
+//
+// ที่ต้องมีด่านนี้เพราะเคสจริงตอนทดสอบ: เลข "1" ของสามรายการถูกอ่านต่อกันเป็น "111"
+// ถ้าปล่อยผ่านจะไปตัดสต๊อกเกิน 110 ชิ้นและออกบิลเกิน โดยไม่มีใครทันเห็น
+// ตัวอ่าน PDF จึงคืน qty = null เมื่อไม่ชัวร์ แล้วบังคับให้คนกรอกเองตรงนี้
+// คิดสถานะจาก qty ตอนใช้งาน ไม่เก็บลง state — จะได้ไม่มีทางหลุดจากการแก้แถว
+const effStatus = (r) => r.status === "ข้าม" ? "ข้าม" : (Number(r.qty) > 0 ? r.status : "ต้องกรอกจำนวน");
 
 const inputStyle = {
   width: "100%", boxSizing: "border-box", background: T.input, border: `1px solid ${T.inputBorder}`,
@@ -49,6 +58,7 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
   const [sheet, setSheet] = React.useState(null);       // { headers, aoa, mapping }
   const [rows, setRows] = React.useState(null);         // MatchedRow[]
   const [skipped, setSkipped] = React.useState(0);
+  const [mismatched, setMismatched] = React.useState(0);   // ออเดอร์ที่ยอดอ่านได้ไม่ตรงกับที่พิมพ์บนใบ
   const [source, setSource] = React.useState("");
   const [aliases, setAliases] = React.useState({});      // ของลูกค้ารายนี้ — ปล่อยผ่านอัตโนมัติ
   const [gAliases, setGAliases] = React.useState({});     // ของรายอื่น — เติมให้ แต่ต้องกดยืนยัน
@@ -86,6 +96,7 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
   }, [run?.customerId]);
 
   const runMatch = (raw, skip, src) => {
+    setMismatched(m => (src && src.startsWith("ใบปะหน้า")) ? m : 0);
     const collapsed = collapseRows(raw);
     setRows(collapsed.map(r => matchRow(r, index, aliases, gAliases)));
     setSkipped(skip);
@@ -100,6 +111,7 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
       if (isPdf(file)) {
         const res = await readLabelPdf(file, (d, t) => setBusy(`กำลังอ่านใบปะหน้า ${d}/${t}...`));
         if (!res.rows.length) throw new Error("อ่านใบปะหน้าไม่ออกสักใบ — ไฟล์อาจเป็นรูปสแกน ไม่ใช่ข้อความ");
+        setMismatched(res.mismatched || 0);
         runMatch(res.rows, res.skipped, `ใบปะหน้า ${file.name} · ${res.pages} ใบ`);
       } else {
         const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
@@ -149,12 +161,23 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
   }));
   };
 
+  // ✏️ แก้จำนวนได้ทุกแถว — อ่านมาผิดก็แก้ตรงนี้ ไม่ต้องยกเลิกทั้งไฟล์
+  //    ว่าง = ยังไม่กรอก → แถวนั้นจะล็อกไม่ให้ลงจนกว่าจะใส่
+  const setQty = (i, rawVal) => setRows(rs => rs.map((r, j) => {
+    if (j !== i) return r;
+    const t = String(rawVal).replace(/[^0-9]/g, "").slice(0, 4);
+    return { ...r, qty: t === "" ? null : parseInt(t, 10) };
+  }));
+
   const toggleSkip = (i) => setRows(rs => rs.map((r, j) => j === i ? { ...r, status: r.status === "ข้าม" ? (r.pick ? "ให้ยืนยัน" : "ไม่พบ") : "ข้าม" } : r));
 
-  const entries = React.useMemo(() => (rows ? toCountEntries(rows.filter(r => r.status !== "ข้าม")) : []), [rows]);
-  const blocked = React.useMemo(() => (rows || []).filter(r => r.status !== "ข้าม" && !READY.includes(r.status)), [rows]);
+  // มุมมองที่คิดสถานะจริงแล้ว — ทุกอย่างที่ตัดสินใจต้องอ่านจากตัวนี้ ไม่ใช่ rows ดิบ
+  const view = React.useMemo(() => (rows || []).map(r => ({ ...r, status: effStatus(r) })), [rows]);
+  const entries = React.useMemo(() => toCountEntries(view.filter(r => r.status !== "ข้าม")), [view]);
+  const blocked = React.useMemo(() => view.filter(r => r.status !== "ข้าม" && !READY.includes(r.status)), [view]);
+  const needQty = React.useMemo(() => view.filter(r => r.status === "ต้องกรอกจำนวน").length, [view]);
   const totalQty = entries.reduce((s, e) => s + e.qty, 0);
-  const overQty = (rows || []).some(r => r.status !== "ข้าม" && Number(r.qty) > MAX_QTY_PER_ROW);
+  const overQty = view.some(r => r.status !== "ข้าม" && Number(r.qty) > MAX_QTY_PER_ROW);
   const dupFingerprint = React.useMemo(() => {
     const fp = fingerprintOf(entries);
     return Object.values(run?.imports || {}).some(x => x && x.fp === fp) ? fp : "";
@@ -163,8 +186,8 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
   // แถวที่ระบบเติมครบแล้วรอแค่คนพยักหน้า — กดทีเดียวจบ ไม่ต้องไล่ทีละแถว
   //   ช่วยมากตอนของกลางเติมมาให้ (ลูกค้าเจ้าที่ 2-10 ที่ขายสินค้าตัวเดียวกัน)
   const confirmable = React.useMemo(
-    () => (rows || []).filter(r => NEEDS_OK.includes(r.status) && r.pick?.clothingId && r.pick?.colorIdx != null && r.pick?.size).length,
-    [rows]
+    () => view.filter(r => NEEDS_OK.includes(r.status) && r.pick?.clothingId && r.pick?.colorIdx != null && r.pick?.size).length,
+    [view]
   );
   const acceptAllSuggested = () => setRows(rs => rs.map(r =>
     (NEEDS_OK.includes(r.status) && r.pick?.clothingId && r.pick?.colorIdx != null && r.pick?.size)
@@ -184,7 +207,7 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
       await onCommit(run, entries, { importId, source, rows: rows.length, qty: totalQty, fp: fingerprintOf(entries) });
       // จำการจับคู่ที่คนแก้ไว้ — แยกชั้นรุ่นกับสี ครั้งหน้าแก้ 1 ครั้งได้ทุกสีใต้ชื่อนั้น
       const next = { ...aliases };
-      rows.forEach((r, i) => {
+      view.forEach((r, i) => {
         if (!willLearn(i, r) || !r.pick || r.status === "ข้าม") return;
         next[`p:${looseKey(r.productText)}`] = { clothingId: r.pick.clothingId, text: r.productText || "", by: user?.name || "", at: new Date().toISOString() };
         if (r.pick.colorIdx != null) {
@@ -307,12 +330,20 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
             </div>
           </div>
 
+          {needQty > 0 && (
+            <div style={{ padding: "8px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 9, fontSize: 12, color: T.red, marginBottom: 10 }}>
+              🔢 มี <b>{needQty}</b> แถวที่อ่านจำนวนไม่ชัวร์ — <b>กรอกจำนวนเองในช่องสีแดง</b> ก่อนถึงจะลงได้
+              <div style={{ fontSize: 11, marginTop: 3, color: "#92400e" }}>
+                ระบบไม่เดาจำนวนให้ เพราะเดาผิดครั้งเดียวจะไปตัดสต๊อกและออกบิลเกินโดยไม่มีใครเห็น
+                {mismatched > 0 && <> · มี <b>{mismatched}</b> ออเดอร์ที่ยอดอ่านได้ไม่ตรงกับ &quot;Total&quot; ที่พิมพ์บนใบ</>}
+              </div>
+            </div>
+          )}
           {skipped > 0 && (
             <div style={{ padding: "8px 12px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.35)", borderRadius: 9, fontSize: 12, color: "#92400e", marginBottom: 10 }}>
-              📄 มี <b>{skipped}</b> ใบที่อ่านไม่ออก — ต้องแยกใบพวกนี้ออกมานับเองในหน้ารอบแพ็ค
+              📄 มี <b>{skipped}</b> ใบที่ไม่มีตารางสินค้าให้อ่าน — ถ้าเป็นใบเปล่า/หน้าท้ายก็ไม่ต้องทำอะไร
               <div style={{ fontSize: 11, marginTop: 3 }}>
-                เกิดจากใบที่มีสินค้าหลายรายการ หรือหน้าที่จัดวางต่างจากปกติ
-                — ระบบเลือกที่จะไม่เดา เพราะเดาผิดแล้วไปตัดสต๊อกและออกบิลผิดตาม
+                แต่ถ้าเป็นใบที่มีของจริง ต้องแยกออกมานับเองในหน้ารอบแพ็ค — ระบบเลือกที่จะไม่เดา
               </div>
             </div>
           )}
@@ -328,7 +359,7 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
           )}
 
           <div style={{ maxHeight: "44vh", overflowY: "auto", border: `1px solid ${T.border}`, borderRadius: 10 }}>
-            {rows.map((r, i) => {
+            {view.map((r, i) => {
               const st = STATUS_STYLE[r.status] || STATUS_STYLE["ไม่พบ"];
               const entry = r.pick ? index.find(e => e.id === r.pick.clothingId) : null;
               return (
@@ -343,7 +374,13 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
                       whiteSpace: "normal", wordBreak: "break-word", lineHeight: 1.45 }} title={r.raw || r.productText}>
                       {displayText(r.productText)}{r.optionText ? ` ${displayText(r.optionText)}` : ""}
                     </span>
-                    <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 700, color: T.text }}>×{r.qty}</span>
+                    <span style={{ fontSize: 12, color: T.muted }}>×</span>
+                    <input value={r.qty ?? ""} onChange={e => setQty(i, e.target.value)} inputMode="numeric"
+                      placeholder="?" title={r.qtyWhy || (r.page ? `จากใบที่ ${r.page}` : "จำนวนชิ้น")}
+                      style={{ width: 46, textAlign: "center", fontFamily: "monospace", fontWeight: 700, fontSize: 13,
+                        padding: "3px 4px", borderRadius: 7, outline: "none", boxSizing: "border-box",
+                        border: `1px solid ${r.qty == null ? T.red : T.inputBorder}`,
+                        background: r.qty == null ? "#fff1f2" : T.input, color: T.text }}/>
                     {NEEDS_OK.includes(r.status) && r.pick?.clothingId && r.pick?.colorIdx != null && r.pick?.size && (
                       <button onClick={() => acceptRow(i)} title="ใช่ ที่เลือกไว้ถูกแล้ว"
                         style={{ border: "1px solid rgba(16,185,129,0.45)", background: "rgba(16,185,129,0.12)", color: "#047857", cursor: "pointer", fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 7, fontFamily: "inherit" }}>
@@ -390,7 +427,7 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
           </div>
 
           <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-            <BtnGhost onClick={() => { setRows(null); setSheet(null); setPaste(""); setSource(""); setLearn({}); }}>เริ่มใหม่</BtnGhost>
+            <BtnGhost onClick={() => { setRows(null); setSheet(null); setPaste(""); setSource(""); setLearn({}); setSkipped(0); setMismatched(0); }}>เริ่มใหม่</BtnGhost>
             {confirmable > 0 && (
               <BtnGhost onClick={acceptAllSuggested} title="แถวที่ระบบเติมรุ่น/สี/ไซส์ครบแล้ว กดยอมรับทีเดียว">
                 ✅ ยอมรับที่เดาไว้ทั้งหมด ({confirmable})
@@ -404,7 +441,7 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
           <div style={{ fontSize: 10, color: T.muted, marginTop: 8, lineHeight: 1.6 }}>
             ยังไม่ตัดสต๊อกตอนนี้ — ตัดตอนปิดรอบเหมือนเดิม · ลงผิดกดถอนได้ที่ประวัติการนำเข้าในหน้ารอบแพ็ค
             {(() => {
-              const n = (rows || []).filter((r, i) => willLearn(i, r) && r.pick && r.status !== "ข้าม").length;
+              const n = view.filter((r, i) => willLearn(i, r) && r.pick && r.status !== "ข้าม").length;
               if (!n) return null;
               return (
                 <div style={{ marginTop: 3, color: "#047857" }}>

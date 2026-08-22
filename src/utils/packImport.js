@@ -317,11 +317,16 @@ export function matchRow(row, index, aliases = {}, globalAliases = {}) {
 // นี่คือความต่างระหว่างฟีเจอร์ที่พนักงานใช้จริงกับที่เลิกใช้
 export function collapseRows(rows = []) {
   const by = new Map();
-  rows.forEach(r => {
-    const k = `${looseKey(r.productText)}|${looseKey(r.optionText)}|${looseKey(r.colorText)}|${looseKey(r.sizeText)}`;
-    if (!by.has(k)) by.set(k, { ...r, qty: 0, sources: [] });
+  rows.forEach((r, i) => {
+    // ⚠️ แถวที่จำนวนอ่านไม่ชัวร์ (qty = null) ต้องอยู่แถวของตัวเอง ห้ามยุบรวมกับใคร
+    //    ถ้ายุบ ค่าว่างจะถูกนับเป็น 0 แล้วกลืนหายไปในยอดของแถวที่มีจำนวนจริง
+    //    คนตรวจจะไม่มีทางรู้เลยว่าตกไปกี่ชิ้น — ต้องเห็นเป็นแถวแยกเพื่อกรอกเอง
+    const k = r.qty == null
+      ? `?${i}`
+      : `${looseKey(r.productText)}|${looseKey(r.optionText)}|${looseKey(r.colorText)}|${looseKey(r.sizeText)}`;
+    if (!by.has(k)) by.set(k, { ...r, qty: r.qty == null ? null : 0, sources: [] });
     const g = by.get(k);
-    g.qty += Number(r.qty) || 0;
+    if (r.qty != null) g.qty += Number(r.qty) || 0;
     g.sources.push(r);
   });
   return [...by.values()];
@@ -333,6 +338,7 @@ export function toCountEntries(rows = []) {
   rows.forEach(r => {
     const p = r.pick;
     if (!p || p.colorIdx == null || !p.size || r.status === "ข้าม") return;
+    if (!(Number(r.qty) > 0)) return;      // จำนวนยังไม่ได้กรอก — ไม่นับ (ปุ่มลงถูกล็อกอยู่แล้ว นี่เป็นด่านสำรอง)
     const k = `${p.clothingId}|${p.colorIdx}|${p.size}`;
     if (!by.has(k)) by.set(k, { clothingId: p.clothingId, clothingName: p.clothingName, colorIdx: p.colorIdx, colorName: p.colorName, size: p.size, qty: 0 });
     by.get(k).qty += Number(r.qty) || 0;
