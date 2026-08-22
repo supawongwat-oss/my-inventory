@@ -236,6 +236,18 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
     }
   };
 
+  // แถวหนึ่งอาจมาจากหลายใบ (ยุบรวมของเหมือนกันแล้ว) — บอกให้ครบจะได้ตามไปดูใบจริงถูก
+  const pagesOf = (r) => [...new Set((r.sources || [r]).map(x => x.page).filter(Boolean))];
+  const pageLabel = (r) => {
+    const ps = pagesOf(r);
+    if (!ps.length) return "";
+    return ps.length === 1 ? `ใบ ${ps[0]}` : `${ps.length} ใบ`;
+  };
+  const pageTitle = (r) => {
+    const ps = pagesOf(r);
+    return ps.length ? `มาจากใบที่ ${ps.join(", ")}` : "";
+  };
+
   const Tab = ({ id, children }) => (
     <button onClick={() => { setTab(id); setErr(""); }}
       style={{ padding: "8px 16px", borderRadius: 9, cursor: "pointer", fontSize: 13, fontFamily: "'Sarabun',sans-serif",
@@ -366,6 +378,13 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
                 <div key={i} style={{ padding: "9px 12px", borderBottom: `1px solid ${T.border}`, background: st.bg, opacity: r.status === "ข้าม" ? 0.5 : 1 }}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}>
                     <span style={{ fontSize: 11, fontWeight: 700, color: st.color, whiteSpace: "nowrap" }}>{st.icon} {r.status}</span>
+                    {/* 🔖 มาจากใบไหน — ให้ตรวจย้อนกับใบจริงได้เวลาเจอแถวที่ไม่น่าจะมี */}
+                    {pageLabel(r) && (
+                      <span title={pageTitle(r)}
+                        style={{ fontSize: 10, color: T.sub, background: "rgba(100,116,139,0.12)", borderRadius: 6, padding: "1px 6px", whiteSpace: "nowrap" }}>
+                        {pageLabel(r)}
+                      </span>
+                    )}
                     {/* ⚠️ ห้ามตัดท้ายทิ้ง — ไซส์อยู่ท้ายสุดของข้อความเสมอ ("...,EUR: 38 (25 CM.)")
                         เดิมตั้ง nowrap+ellipsis ชื่อสินค้ายาว ๆ เลยกินที่จนไซส์ถูกตัดหาย
                         คนตรวจอ่านไม่เห็นไซส์ = ตรวจไม่ได้จริง · ให้ตัดบรรทัดได้ จำกัดไว้ 2 บรรทัด */}

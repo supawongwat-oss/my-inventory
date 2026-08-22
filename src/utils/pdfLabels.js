@@ -118,6 +118,11 @@ function findHeaders(ps) {
 const alignScore = (rows, hdr) => rows.reduce((n, r) =>
   n + r.cells.reduce((m, c) => m + (hdr.cols.some(k => Math.abs(c.x - k.x) <= COL_TOL) ? 1 : 0), 0), 0);
 
+// 🏷️ เครื่องหมายว่าหน้านี้เป็น "ใบปะหน้าใบใหม่" ไม่ใช่หน้าต่อของออเดอร์เดิม
+//    หน้าต่อจริง ๆ มีแต่ตารางสินค้ากับยอดรวม ไม่มีเลขออเดอร์/เลขพัสดุ/วันส่ง
+//    (ตรวจจากไฟล์จริง: หน้าต่อทั้ง 7 หน้าไม่มีเครื่องหมายพวกนี้เลยสักตัว)
+const LABEL_MARK_RE = /(Order\s*ID|Package\s*ID|Shipping\s*Date|Estimated\s*Date|In\s*transit|PICK-?UP|NickName|Tracking)/i;
+
 const isQtyKey = (k) => /^(qty|quantity|จ[\u0e4d\u0e32\u0e33]นวน)$/.test(k);
 const isNoKey = (k) => /^(#|no\.?)$/.test(k);
 const sizeKey = (p) => Math.round((p.h || 0) * 2) / 2;
@@ -194,8 +199,19 @@ const quality = (recs) => (recs.length ? recs.reduce((a, r) => a + quality1(r), 
 function parsePage(ps, prevHeaders) {
   let headers = findHeaders(ps);
   let top = Infinity;                       // ขอบบนของเนื้อตาราง
-  if (headers.length) top = headers[headers.length - 1].y - 1;
-  else if (prevHeaders && prevHeaders.length) headers = prevHeaders;   // หน้าต่อของออเดอร์เดิม
+  if (headers.length) {
+    top = headers[headers.length - 1].y - 1;
+  } else if (prevHeaders && prevHeaders.length && !ps.some(p => LABEL_MARK_RE.test(p.s))) {
+    // 📄 หน้าต่อของออเดอร์เดิม — ยืมหัวตารางของหน้าก่อนมาใช้ และอ่านทั้งหน้าเป็นเนื้อตาราง
+    //
+    // ⚠️ ต้องเช็คว่าไม่มีเครื่องหมายใบปะหน้าก่อนเสมอ
+    //    เพราะทางนี้ทำให้ "ทั้งหน้า" กลายเป็นเนื้อตาราง ถ้าเผลอใช้กับใบปะหน้าใบใหม่
+    //    ที่หาหัวตารางไม่เจอ (เช่นแพลตฟอร์มอื่นที่วางหน้าไม่เหมือนกัน)
+    //    ชื่อ-ที่อยู่ผู้รับจะถูกหั่นลงช่องรุ่น/สี/จำนวน กลายเป็นสินค้าที่ไม่มีอยู่จริง
+    //    แล้วไปตัดสต๊อกและออกบิลของที่ลูกค้าไม่ได้สั่ง
+    //    ใบปะหน้าที่อ่านหัวตารางไม่เจอต้องจบที่ "อ่านไม่ออก" ไม่ใช่เดาเนื้อหาขึ้นมา
+    headers = prevHeaders;
+  }
   if (!headers.length) return null;
 
   const footY = ps.filter(p => /Store Name|Total\s*:/i.test(p.s)).map(p => p.y).sort((a, b) => b - a)[0];
