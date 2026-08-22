@@ -25,6 +25,13 @@ const docTypeLabel = (type) => ({
   receipt:"ใบเสร็จรับเงิน", tax:"ใบกำกับภาษี", quotation:"ใบเสนอราคา/ใบวางบิล"
 }[type] || "ใบเสร็จรับเงิน");
 
+// 💸 ใบที่ยัง "มีผลกับเงิน" — ยอดรวมรายวัน/รายเดือนต้องนับเฉพาะพวกนี้
+//    ยกเลิกแล้ว = ไม่ได้เก็บเงิน · ถูกรวมเข้าบิลใหม่ / แปลงเป็นเอกสารอื่น = ยอดจริงอยู่ที่ใบปลายทาง
+//    เกณฑ์เดียวกับตอนวางบิล (utils/statement.js) ไม่งั้นสองหน้าบอกยอดไม่ตรงกัน
+//    ยังแสดงใบพวกนี้ในรายการอยู่ — ยกเลิกดีกว่าลบ เลขที่จะได้ไม่ขาดช่วง แค่ไม่เอามาบวก
+const countsToTotal = (inv) => !inv.mergedInto && !inv.convertedTo && (inv.status || "") !== "ยกเลิก";
+const sumInvoices = (list) => list.reduce((s, inv) => s + (countsToTotal(inv) ? (Number(inv.total) || 0) : 0), 0);
+
 const getPaidTotal = (inv) => (inv?.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
 const getPaidPct = (inv) => {
   const t = Number(inv?.total) || 0;
@@ -206,7 +213,8 @@ export default function InvoiceTab({
             {sortedMonths.map(mk => {
               const daysInMonth = monthGroups[mk];
               const monthInvs = daysInMonth.flatMap(d => groups[d]);
-              const monthTotal = monthInvs.reduce((s, inv) => s + (inv.mergedInto ? 0 : (inv.total || 0)), 0);
+              const monthTotal = sumInvoices(monthInvs);
+              const monthSkipped = monthInvs.length - monthInvs.filter(countsToTotal).length;
               const monthCollapsed = collapsedInvoiceMonths[mk];
               const [mm, yyyy] = mk.split("/");
               const monthLabel = `${THAI_MONTHS[Number(mm)] || mm} ${yyyy}`;
@@ -215,14 +223,19 @@ export default function InvoiceTab({
                   <div onClick={() => setCollapsedInvoiceMonths(p => ({ ...p, [mk]: !p[mk] }))} style={{ padding: "8px 14px", background: "linear-gradient(90deg,#3b5b8b,#5b7ba8)", borderRadius: 10, display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none", marginBottom: monthCollapsed ? 0 : 10 }}>
                     <div style={{ width: 20, height: 20, color: "white", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", transition: "transform 0.2s", transform: monthCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}>▼</div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: "white", letterSpacing: 0.3 }}>📅 {monthLabel}</div>
-                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.85)" }}>{monthInvs.length} ใบ · {daysInMonth.length} วัน</div>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.85)" }}>
+                      {monthInvs.length} ใบ · {daysInMonth.length} วัน
+                      {/* บอกให้ชัดว่ายอดไม่ได้มาจากทุกใบที่เห็น ไม่งั้นเอาไปบวกเองแล้วไม่ตรง นึกว่าระบบเพี้ยน */}
+                      {monthSkipped > 0 && <span title="ใบที่ยกเลิก / ถูกรวมเข้าบิลใหม่ / แปลงเป็นเอกสารอื่น — ไม่เอามาบวกในยอดรวม"> · ไม่นับยอด {monthSkipped} ใบ</span>}
+                    </div>
                     <div style={{ marginLeft: "auto", fontSize: 12, color: "white", fontFamily: "monospace", fontWeight: 700 }}>฿{monthTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
                   </div>
                   {!monthCollapsed && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 10, marginLeft: 8 }}>
                       {daysInMonth.map(date => {
                         const list = groups[date];
-                        const totalAmount = list.reduce((s, inv) => s + (inv.mergedInto ? 0 : (inv.total || 0)), 0);
+                        const totalAmount = sumInvoices(list);
+                        const daySkipped = list.length - list.filter(countsToTotal).length;
                         const collapsed = collapsedInvoiceDates[date];
                         return (
                           <div key={date} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 16, overflow: "hidden" }}>
@@ -231,7 +244,10 @@ export default function InvoiceTab({
                               onMouseLeave={e => e.currentTarget.style.background = "linear-gradient(90deg,rgba(59,91,139,0.12),transparent)"}>
                               <div style={{ width: 22, height: 22, borderRadius: 6, background: "rgba(59,91,139,0.15)", border: "1px solid rgba(59,91,139,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: T.accent, transition: "transform 0.2s", transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)" }}>▼</div>
                               <div style={{ fontSize: 13, fontWeight: 700, color: T.accent }}>📅 {date}</div>
-                              <div style={{ fontSize: 11, color: T.muted }}>{list.length} ใบ</div>
+                              <div style={{ fontSize: 11, color: T.muted }}>
+                                {list.length} ใบ
+                                {daySkipped > 0 && <span title="ใบที่ยกเลิก / ถูกรวมเข้าบิลใหม่ / แปลงเป็นเอกสารอื่น — ไม่เอามาบวกในยอดรวม"> · ไม่นับยอด {daySkipped} ใบ</span>}
+                              </div>
                               <div style={{ marginLeft: "auto", fontSize: 12, color: "#34d399", fontFamily: "monospace", fontWeight: 700 }}>฿{totalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
                             </div>
                             {!collapsed && <>

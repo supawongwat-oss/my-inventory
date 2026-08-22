@@ -135,7 +135,9 @@ function OverviewTab({ products, transactions, invoices, orders, totalStockValue
   const topProducts = Object.entries(txCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
   // ยอดบิล — 🚫 ตัดบิลที่ถูกรวมเข้าบิลใหม่ / แปลงเป็นเอกสารอื่นแล้ว (ยอดจริงอยู่ที่ใบใหม่)
-  const liveInvoices = invoices.filter(inv => !inv.mergedInto && !inv.convertedTo);
+  //    และตัดใบที่ยกเลิกด้วย — ออกซ้ำแล้วยกเลิกใบเกินคือเรื่องปกติที่นี่ ถ้ายังบวกอยู่
+  //    "ยอดบิลทั้งหมด" จะพองกว่าความจริงตลอด
+  const liveInvoices = invoices.filter(inv => !inv.mergedInto && !inv.convertedTo && (inv.status || "") !== "ยกเลิก");
   const invoiceTotal = liveInvoices.reduce((s, inv) => s + (Number(inv.total) || 0), 0);
   const paidTotal = liveInvoices.filter(inv => inv.status === "ชำระแล้ว").reduce((s, inv) => s + (Number(inv.total) || 0), 0);
   const pendingTotal = liveInvoices.filter(inv => inv.status === "รอชำระ" || inv.status === "ออกแล้ว").reduce((s, inv) => s + (Number(inv.total) || 0), 0);
