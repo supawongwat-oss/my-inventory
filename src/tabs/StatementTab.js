@@ -9,7 +9,7 @@ import { reserveDocNo } from "../utils/docNumber";
 import BulkStatementModal from "../components/BulkStatementModal";
 import LoadRangeBar from "../components/LoadRangeBar";
 import LinkInvoiceCustomers from "../components/LinkInvoiceCustomers";
-import { filterInvoicesForStatement, creditsForStatement, sumCredits, nearMissInvoices } from "../utils/statement";
+import { filterInvoicesForStatement, creditsForStatement, sumCredits, nearMissInvoices, paidOf, dueOf } from "../utils/statement";
 
 // ── helpers ────────────────────────────────────────────────
 const pad2 = n => String(n).padStart(2, "0");
@@ -136,7 +136,10 @@ export default function StatementTab({ statements, invoices, returns = [], custo
     const extra = invoices.filter(inv => includedNearIds.has(inv.id));
     return [...previewInvoices, ...extra].filter(inv => !excludedIds.has(inv.id));
   }, [previewInvoices, excludedIds, invoices, includedNearIds]);
-  const previewTotal = pickedInvoices.reduce((s, inv) => s + (Number(inv.total) || 0), 0);
+  // 💰 เก็บเฉพาะส่วนที่ยังค้าง — บิลที่รับมัดจำมาแล้วต้องไม่ถูกทวงเต็มจำนวน
+  const previewGross = pickedInvoices.reduce((s, inv) => s + (Number(inv.total) || 0), 0);
+  const previewPaid = pickedInvoices.reduce((s, inv) => s + paidOf(inv), 0);
+  const previewTotal = pickedInvoices.reduce((s, inv) => s + dueOf(inv), 0);
 
   // ↩️ ของที่ลูกค้ารายนี้คืนมาและยังไม่เคยถูกหักในใบวางบิลใบไหน
   //    เก็บเป็น "ใบที่ตัดออก" เหมือนฝั่งบิล — ใบลดหนี้ที่โผล่มาใหม่จะถูกเลือกให้เองเสมอ
@@ -232,8 +235,11 @@ export default function StatementTab({ statements, invoices, returns = [], custo
         id: i.id, invoiceNo: i.invoiceNo, date: i.date,
         total: Number(i.total) || 0, status: i.status || "ออกแล้ว",
         docType: i.docType || "receipt",
+        paid: paidOf(i), due: dueOf(i),
       })),
       totalAmount: previewTotal,
+      grossTotal: previewGross,
+      paidTotal: previewPaid,
       // ↩️ ของที่คืนในงวดนี้ (หรือค้างมาจากงวดก่อน) — netAmount คือยอดที่ต้องเก็บจริง
       creditTotal,
       netAmount: netTotal,
@@ -824,7 +830,11 @@ export default function StatementTab({ statements, invoices, returns = [], custo
                           <div>
                             <span style={{ padding: "2px 10px", borderRadius: 10, fontSize: 10, fontWeight: 600, background: isPaid ? "rgba(58,122,82,0.12)" : isCancel ? "rgba(185,74,72,0.12)" : "rgba(184,134,0,0.12)", color: isPaid ? T.green : isCancel ? T.red : T.amber, border: `1px solid ${isPaid ? "rgba(58,122,82,0.3)" : isCancel ? "rgba(185,74,72,0.3)" : "rgba(184,134,0,0.3)"}` }}>{inv.status}</span>
                           </div>
-                          <div style={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: T.text, fontSize: 13 }}>{Number(inv.total).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontFamily: "monospace", fontWeight: 700, color: T.text, fontSize: 13 }}>{Number(inv.due != null ? inv.due : inv.total).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
+                            {/* บิลที่รับมัดจำมาแล้ว ต้องบอกว่ายอดที่เห็นไม่ใช่ยอดหน้าบิล */}
+                            {Number(inv.paid) > 0 && <div style={{ fontSize: 10, color: "#047857" }}>บิล ฿{Number(inv.total).toLocaleString("th-TH", { minimumFractionDigits: 2 })} · รับแล้ว -฿{Number(inv.paid).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>}
+                          </div>
                         </div>
                       );
                     })}
@@ -921,8 +931,14 @@ function StatementPrintLayout({ statement, companyInfo }) {
               <td style={{ padding: "4px 6px", color: "#000", border: "1px solid #cbd5e1", fontSize: 9 }}>
                 {inv.docType === "tax" ? "ใบกำกับภาษี" : inv.docType === "quotation" ? "ใบวางบิล" : "ใบเสร็จ"}
                 <span style={{ marginLeft: 4, fontSize: 8, padding: "0px 4px", borderRadius: 4, background: inv.status === "ชำระแล้ว" ? "#dcfce7" : "#fef3c7", color: "#000", border: "1px solid #000" }}>{inv.status}</span>
+                {/* บอกบนกระดาษว่าหักมัดจำไปแล้วเท่าไหร่ ไม่งั้นลูกค้าเทียบยอดกับบิลแล้วไม่ตรง */}
+                {Number(inv.paid) > 0 && (
+                  <div style={{ fontSize: 8, color: "#000" }}>
+                    ยอดบิล {Number(inv.total).toLocaleString("th-TH", { minimumFractionDigits: 2 })} · รับชำระแล้ว -{Number(inv.paid).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                  </div>
+                )}
               </td>
-              <td style={{ padding: "4px 6px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#000", border: "1px solid #cbd5e1", fontSize: 10, whiteSpace: "nowrap" }}>{Number(inv.total).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
+              <td style={{ padding: "4px 6px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#000", border: "1px solid #cbd5e1", fontSize: 10, whiteSpace: "nowrap" }}>{Number(inv.due != null ? inv.due : inv.total).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
             </tr>
           ))}
         </tbody>

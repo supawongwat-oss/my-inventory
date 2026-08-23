@@ -8,7 +8,7 @@ import { Modal, MHead, BtnPrimary, BtnGhost } from "./ui";
 import { T } from "../theme";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { reserveDocNo } from "../utils/docNumber";
-import { buildStatementGroups, fmtISO, fmtDDMMYYYY, parseISODate as parseISO } from "../utils/statement";
+import { buildStatementGroups, paidOf, dueOf, fmtISO, fmtDDMMYYYY, parseISODate as parseISO } from "../utils/statement";
 
 const fmtB = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -148,8 +148,11 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
             id: x.id, invoiceNo: x.invoiceNo, date: x.date,
             total: Number(x.total) || 0, status: x.status || "ออกแล้ว",
             docType: x.docType || "receipt",
+            paid: paidOf(x), due: dueOf(x),
           })),
           totalAmount: g.total,
+          grossTotal: g.grossTotal,
+          paidTotal: g.paidTotal,
           creditTotal: g.creditTotal || 0,
           netAmount: g.net != null ? g.net : g.total,
           returnIds: (g.credits || []).map(r => r.id),
@@ -301,6 +304,9 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
                     </div>
                     <div style={{ fontSize: 11, color: T.muted }}>
                       {g.invoices.length} บิล{g.phone ? ` · ${g.phone}` : ""}
+                      {/* ยอดในใบวางบิลต่างจากหน้าบิลเพราะสองอย่างนี้ — ต้องบอก ไม่งั้นดูเหมือนเงินหาย */}
+                      {g.paidTotal > 0 && <span style={{ marginLeft: 6, color: "#047857" }}>· หักรับชำระแล้ว -฿{fmtB(g.paidTotal)}</span>}
+                      {g.excluded.length > 0 && <span style={{ marginLeft: 6, color: T.muted }}>· ไม่นับ {g.excluded.length} ใบ (฿{fmtB(g.excludedTotal)})</span>}
                       {/* บิลที่ชื่อในตัวบิลต่างจากชื่อแถวนี้ — ต้องเห็นก่อนกด ไม่งั้นวางบิลผิดเจ้าโดยไม่รู้ตัว */}
                       {g.oddNames?.length > 0 && (
                         <span style={{ marginLeft: 6, color: "#b45309" }}>
@@ -334,11 +340,29 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
                   <div className="scroll-col" style={{ maxHeight: 200, overflowY: "auto", margin: "0 12px 10px 38px", padding: 8, background: "#f8fafc", border: `1px solid ${T.border}`, borderRadius: 8 }}>
                     {g.invoices.map(x => {
                       const odd = g.oddNames.some(o => o.id === x.id);
+                      const paid = paidOf(x);
                       return (
                         <div key={x.id} style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", padding: "3px 0", fontSize: 11, color: odd ? "#b45309" : T.sub }}>
                           <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{x.invoiceNo}</span>
                           <span style={{ color: T.muted }}>{(x.date || "").split(" ")[0]}</span>
                           {odd && <span style={{ fontWeight: 700 }}>⚠️ ชื่อในบิล: {x.customerName || "(ไม่ระบุ)"}</span>}
+                          {paid > 0 && <span style={{ color: "#047857" }}>รับมาแล้ว ฿{fmtB(paid)}</span>}
+                          <span style={{ marginLeft: "auto", fontFamily: "monospace" }}>
+                            ฿{fmtB(dueOf(x))}
+                            {paid > 0 && <span style={{ color: T.muted, fontWeight: 400 }}> (บิล ฿{fmtB(x.total)})</span>}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {/* ใบที่ไม่ถูกนับ — ต้องเห็น ไม่งั้นบิลยอด 0 หรือบิลที่ปิดไปแล้วจะหายเงียบ */}
+                    {g.excluded.map(x => {
+                      const st = x.status || "ออกแล้ว";
+                      const why = st === "ชำระแล้ว" ? "ชำระแล้ว" : st === "ยกเลิก" ? "ยกเลิก" : "ยอด 0 — ยังไม่ได้ใส่ราคา?";
+                      return (
+                        <div key={x.id} style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", padding: "3px 0", fontSize: 11, color: T.muted, textDecoration: "line-through", textDecorationColor: "rgba(0,0,0,0.25)" }}>
+                          <span style={{ fontFamily: "monospace" }}>{x.invoiceNo}</span>
+                          <span>{(x.date || "").split(" ")[0]}</span>
+                          <span style={{ textDecoration: "none" }}>· ไม่นับ: {why}</span>
                           <span style={{ marginLeft: "auto", fontFamily: "monospace" }}>฿{fmtB(x.total)}</span>
                         </div>
                       );

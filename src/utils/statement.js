@@ -70,6 +70,19 @@ export const parseISODate = (s) => {
   return (y && m && d) ? new Date(y, m - 1, d) : null;
 };
 
+// 💰 เงินที่ลูกค้าจ่ายมาแล้วกับบิลใบนี้ (มัดจำ หรือจ่ายบางส่วน)
+//    ใบวางบิลต้องเก็บเฉพาะส่วนที่ยังค้าง ไม่ใช่ยอดหน้าบิล
+//    ของเดิมคิดยอดหน้าบิลเต็ม ๆ — บิลที่รับมัดจำมาแล้วจึงถูกทวงซ้ำในส่วนที่จ่ายไปแล้ว
+export const paidOf = (inv) => (inv?.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+export const dueOf = (inv) => Math.max(0, (Number(inv?.total) || 0) - paidOf(inv));
+
+// บิลใบนี้ยังต้องเก็บเงินอยู่ไหม (ใช้ตัดสินว่าจะเข้าใบวางบิลรอบนี้หรือไม่)
+export const isOutstanding = (inv) => {
+  const st = inv?.status || "ออกแล้ว";
+  if (st === "ชำระแล้ว" || st === "ยกเลิก") return false;
+  return dueOf(inv) > 0;   // จ่ายครบแล้วแต่ลืมเปลี่ยนสถานะ ก็ไม่ต้องทวงอีก
+};
+
 // คัดบิลที่จะเข้าใบวางบิลของลูกค้ารายหนึ่ง
 //   mode "unpaid" = เอาเฉพาะที่ยังไม่ชำระ (ตัดที่ชำระแล้ว/ยกเลิกออก)
 //   mode "all"    = เอาทุกใบในช่วง
@@ -96,8 +109,7 @@ export const filterInvoicesForStatement = (invoices, customerId, customerName, s
     const t = d.getTime();
     if (t < startMs || t > endMs) return false;
 
-    const status = inv.status || "ออกแล้ว";
-    if (mode === "unpaid" && (status === "ชำระแล้ว" || status === "ยกเลิก")) return false;
+    if (mode === "unpaid" && !isOutstanding(inv)) return false;
 
     return true;
   });
@@ -195,7 +207,9 @@ export function buildStatementGroups({
   const invOwner = new Map(), credOwner = new Map();
   const cand = new Map(); // key → { invs, credits } ที่ "เข้าเงื่อนไข" (ยังไม่ตัดสินเจ้าของ)
   refs.forEach(r => {
-    const invs = filterInvoicesForStatement(invoices, r.customerId, r.customerName, startDate, endDate, filterMode, r.phone);
+    // ดึงมาทั้งหมดก่อนเสมอ (ไม่กรองสถานะ) — ต้องรู้ว่ามีบิลอะไรถูกตัดออกบ้าง
+    // ไม่งั้นยอดในใบวางบิลต่างจากหน้าบิลลิบลับโดยไม่มีอะไรอธิบาย คนดูก็นึกว่าเงินหาย
+    const invs = filterInvoicesForStatement(invoices, r.customerId, r.customerName, startDate, endDate, "all", r.phone);
     const credits = creditsForStatement(returns, r.customerId, r.customerName, endDate, r.phone);
     cand.set(r.key, { invs, credits });
     invs.forEach(inv => claim(invOwner, inv, r));
@@ -207,7 +221,11 @@ export function buildStatementGroups({
     // 💵 เงินสด — ไม่ต้องวางบิล (ตัดหลังตัดสินเจ้าของแล้ว บิลของรายนี้จึงไม่ไหลไปโผล่ที่แถวชื่อคล้ายกัน)
     if (onlyCredit && r.billingType === "cash") return;
     const c = cand.get(r.key);
-    const invs = c.invs.filter(i => invOwner.get(i.id)?.key === r.key);
+    const owned = c.invs.filter(i => invOwner.get(i.id)?.key === r.key);
+    // แยกใบที่ยังต้องเก็บเงินจริง ออกจากใบที่ชำระ/ยกเลิกไปแล้ว — เก็บทั้งสองฝั่งไว้
+    const invs = filterMode === "unpaid" ? owned.filter(isOutstanding) : owned;
+    const excluded = owned.filter(i => !invs.includes(i));
+    const excludedTotal = excluded.reduce((s, i) => s + (Number(i.total) || 0), 0);
     if (invs.length === 0) return;
     // ⚠️ เตือนถ้าเคยออกใบวางบิลช่วงเดียวกันไปแล้ว — กันออกซ้ำ
     const dupe = statements.some(s =>
@@ -217,7 +235,10 @@ export function buildStatementGroups({
     // ↩️ ของที่ลูกค้ารายนี้คืนและยังไม่เคยถูกหัก → หักในใบวางบิลรอบนี้
     const credits = c.credits.filter(x => credOwner.get(x.id)?.key === r.key);
     const creditTotal = sumCredits(credits);
-    const total = invs.reduce((s,i)=>s+(Number(i.total)||0),0);
+    // 💰 ยอดที่เก็บจริง = ยอดหน้าบิล ลบเงินที่รับมาแล้ว (มัดจำ/จ่ายบางส่วน)
+    const grossTotal = invs.reduce((s,i)=>s+(Number(i.total)||0),0);
+    const paidTotal = invs.reduce((s,i)=>s+paidOf(i),0);
+    const total = invs.reduce((s,i)=>s+dueOf(i),0);
     // ⚠️ บิลที่ชื่อในตัวบิลไม่ตรงกับชื่อแถวนี้ (เข้ามาเพราะผูกรหัสลูกค้าไว้)
     //    ชื่อคล้ายกันไม่ได้แปลว่าเจ้าเดียวกัน — เช่น FBT มี 3 บริษัทแยกกัน
     //    วางบิลผิดเจ้า = ทวงเงินผิดคน จึงต้องให้คนดูก่อน ห้ามกลืนเงียบ ๆ
@@ -228,7 +249,8 @@ export function buildStatementGroups({
     const oddCount = new Map();
     oddNames.forEach(i => { const nm = (i.customerName || "").trim(); oddCount.set(nm, (oddCount.get(nm) || 0) + 1); });
     const oddSummary = [...oddCount.entries()].map(([nm, n]) => `${nm} (${n} ใบ)`);
-    rows.push({ ...r, invoices: invs, total, credits, creditTotal, net: Math.max(0, total - creditTotal), dupe, oddNames, oddSummary });
+    rows.push({ ...r, invoices: invs, total, grossTotal, paidTotal, excluded, excludedTotal,
+      credits, creditTotal, net: Math.max(0, total - creditTotal), dupe, oddNames, oddSummary });
   });
   return rows.sort((a,b) => b.total - a.total);
 }
