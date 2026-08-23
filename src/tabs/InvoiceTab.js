@@ -2,6 +2,7 @@ import React from "react";
 import LoadRangeBar from "../components/LoadRangeBar";
 import { invoiceItemsText, matchesTokens, returnSummaryOf } from "../utils/returns";
 import { duplicateGroups } from "../utils/dupInvoice";
+import { BillingBadge } from "../components/ui";
 
 // 📜 วาดทีละกี่ใบ — กันหน้าค้างตอนมีบิลเป็นพันใบในช่วงที่เลือก
 const PAGE_SIZE = 60;
@@ -61,6 +62,7 @@ export default function InvoiceTab({
   handleDeleteInvoice, handleCancelInvoice, handleRejectCancel, user,
   handleBulkCancelInvoices, handleBulkDeleteInvoices,
   returns = [],
+  customers = [],
 }) {
   // 📜 วาดทีละหน้า — รีเซ็ตเมื่อเปลี่ยนคำค้น/สถานะ/ชุดข้อมูล
   const [shown, setShown] = React.useState(PAGE_SIZE);
@@ -76,6 +78,9 @@ export default function InvoiceTab({
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typed]);
+
+  // 🔎 ทะเบียนลูกค้าแบบค้นด้วยรหัสได้ — ใช้อ่านประเภทการเก็บเงินมาโชว์ในแถวบิล
+  const custById = React.useMemo(() => new Map(customers.map(c => [c.id, c])), [customers]);
 
   // 🧮 นับจำนวนตามสถานะ — ทำครั้งเดียวต่อชุดข้อมูล
   // เดิมวนทั้งกองบิล 4 รอบ (ปุ่มละรอบ) ทุกครั้งที่ re-render
@@ -270,6 +275,10 @@ export default function InvoiceTab({
                                     <div><span style={{ padding: "2px 8px", borderRadius: 12, fontSize: 10, fontWeight: 600, background: "rgba(59,91,139,0.1)", color: T.accent, border: "1px solid rgba(59,91,139,0.2)" }}>{docTypeLabel(inv.docType)?.slice(0, 4)}</span></div>
                                     <div>
                                       <div style={{ fontWeight: 600, color: T.text, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>{inv.customerName}
+                                        {/* 💵/📄 ประเภทการเก็บเงิน — โชว์บนจอให้คนเก็บเงินเห็นว่าใบนี้ต้องเก็บสดหรือรอวางบิล
+                                            ⚠️ ห้ามเอาไปใส่ในใบที่พิมพ์ (PrintInvoiceModal) เด็ดขาด
+                                            เป็นข้อมูลภายในของร้าน ลูกค้าไม่ต้องเห็นว่าเราจัดเขาเป็นประเภทไหน */}
+                                        {inv.customerId && <BillingBadge type={custById.get(inv.customerId)?.billingType}/>}
                                         {inv.mergedInto && <span title={`รวมเข้า ${inv.mergedInto.invoiceNo}`} style={{ padding: "1px 6px", fontSize: 9, background: "rgba(184,134,0,0.15)", color: T.amber, borderRadius: 5, fontWeight: 700 }}>🔗 รวมแล้ว</span>}
                                         {inv.mergedFrom?.length > 0 && <span title={`รวมจาก ${inv.mergedFrom.length} บิล`} style={{ padding: "1px 6px", fontSize: 9, background: "rgba(58,122,82,0.15)", color: T.green, borderRadius: 5, fontWeight: 700 }}>🔗 บิลรวม ×{inv.mergedFrom.length}</span>}
                                         {dupMap.has(inv.id) && (

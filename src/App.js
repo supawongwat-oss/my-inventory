@@ -4234,7 +4234,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           {/* ── INVOICE ── */}
           {activeTab==="invoice"&&(
             <InvoiceTab
-              invoices={invoices} role={role}
+              invoices={invoices} role={role} customers={customers}
               invoicesRange={invoicesRange} setInvoicesRange={setInvoicesRange} invoicesCapped={invoicesCapped}
               invoiceStatusFilter={invoiceStatusFilter} setInvoiceStatusFilter={setInvoiceStatusFilter}
               invoiceSearch={invoiceSearch} setInvoiceSearch={setInvoiceSearch}
