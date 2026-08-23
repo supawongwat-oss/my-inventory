@@ -126,12 +126,17 @@ export default function CustomerPicker({
       <div ref={boxRef} style={{ position: "relative", marginBottom: 10 }}>
         {label && <label style={lbl}>{label}</label>}
         {linked ? (
+          {/* ⚠️ ห้ามใช้ ✓ (U+2713) ตรงนี้ — ฟอนต์ Sarabun ไม่มีอักขระนี้ Windows จะดึง
+              Segoe UI Emoji มาแทน กลายเป็นกล่องฟ้าหน้าตาเหมือน checkbox ที่กดได้
+              ทั้งที่เป็นข้อความเฉย ๆ วางข้างช่องกรอกฟอร์มยิ่งชวนให้เข้าใจผิด
+              ใช้ป้ายข้อความแทน อ่านออกแน่นอนทุกเครื่อง */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(52,211,153,0.10)",
             border: "1px solid #34d399", borderRadius: 9, padding: "8px 12px" }}>
-            <span style={{ fontSize: 13, color: T.text, fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              ✓ {name}
+            <span style={{ fontSize: 10, fontWeight: 700, color: "white", background: T.green, borderRadius: 5,
+              padding: "2px 7px", whiteSpace: "nowrap", flexShrink: 0 }}>ผูกแล้ว</span>
+            <span style={{ fontSize: 13, color: T.text, fontWeight: 600, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {name}
             </span>
-            <span style={{ fontSize: 10, color: T.green, fontWeight: 700, whiteSpace: "nowrap" }}>จากทะเบียนลูกค้า</span>
             <button type="button" onClick={() => { setQ(""); onChange({ customerId: "" }); setOpen(true); }}
               style={{ background: "none", border: `1px solid ${T.border}`, color: T.sub, borderRadius: 7, padding: "3px 10px",
                 cursor: "pointer", fontSize: 11, fontFamily: "inherit", whiteSpace: "nowrap" }}>
