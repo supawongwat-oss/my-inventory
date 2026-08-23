@@ -4,7 +4,7 @@
 import { useState, useMemo } from "react";
 import { collection, addDoc, serverTimestamp, doc, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
-import { Modal, MHead, BtnPrimary, BtnGhost } from "./ui";
+import { Modal, MHead, BtnPrimary, BtnGhost, BillingBadge } from "./ui";
 import { T } from "../theme";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { reserveDocNo } from "../utils/docNumber";
@@ -299,6 +299,7 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {g.customerName || "(ไม่ระบุชื่อ)"}
+                      {g.customerId && <span style={{ marginLeft: 6 }}><BillingBadge type={g.billingType}/></span>}
                       {g.dupe && <span style={{ marginLeft: 6, fontSize: 10, padding: "1px 7px", background: "#fef3c7", color: "#b45309", borderRadius: 8, fontWeight: 700 }}>เคยออกแล้ว</span>}
                       {!g.customerId && <span style={{ marginLeft: 6, fontSize: 10, color: T.muted }}>· ไม่ผูกลูกค้า</span>}
                     </div>

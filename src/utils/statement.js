@@ -176,7 +176,10 @@ export function buildStatementGroups({
   const seen = new Map(); // key → { customerId, customerName, ...ข้อมูลติดต่อ }
   customers.forEach(c => seen.set(`id:${c.id}`, {
     customerId: c.id, customerName: c.name || "", phone: c.phone||"", address: c.address||"", taxId: c.taxId||"",
-    billingType: c.billingType || "credit", // ไม่เคยตั้ง = เครดิต (พฤติกรรมเดิม)
+    // เก็บค่าดิบ — "ยังไม่ตั้ง" ต้องแยกจาก "ตั้งเป็นเครดิต" ให้ได้ ไม่งั้นบนหน้าจอจะดูเหมือน
+    // ตั้งค่าครบแล้วทั้งที่ยังไม่มีใครเคยตั้ง (ตอนนี้ตั้งจริงแค่ 2 จาก 248 ราย)
+    // ส่วนการคัดออกยังยึด "เฉพาะที่ตั้งเป็นเงินสด" เหมือนเดิม ยังไม่ตั้ง = ยังวางบิลให้
+    billingType: c.billingType || "",
   }));
   const knownIds = new Set(customers.map(c => c.id));
   invoices.forEach(inv => {
@@ -187,7 +190,7 @@ export function buildStatementGroups({
     if (!nm) return;
     const k = `name:${nm}`;
     // บิลที่ไม่ผูกลูกค้า → ไม่รู้ประเภท ถือว่าเครดิตไว้ก่อน (จะได้ไม่ตกหล่น)
-    if (!seen.has(k)) seen.set(k, { customerId: "", customerName: nm, phone: inv.customerPhone||"", address: inv.customerAddress||"", taxId: inv.customerTaxId||"", billingType: "credit", unlinked: true });
+    if (!seen.has(k)) seen.set(k, { customerId: "", customerName: nm, phone: inv.customerPhone||"", address: inv.customerAddress||"", taxId: inv.customerTaxId||"", billingType: "", unlinked: true });
   });
 
   const refs = [];

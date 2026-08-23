@@ -17,6 +17,7 @@ import React from "react";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { T } from "../theme";
+import { BillingBadge } from "./ui";
 import { matchTokens } from "../utils/search";
 import { custKey } from "../utils/statement";
 import { withCustomerSearchKeys } from "../utils/searchKeys";
@@ -34,6 +35,10 @@ export default function CustomerPicker({
   const boxRef = React.useRef(null);
   const linked = !!value.customerId;
   const name = value.customerName || "";
+  // ตัวลูกค้าในทะเบียนที่ผูกอยู่ — ใช้อ่านประเภทการเก็บเงินมาโชว์
+  const linkedCustomer = React.useMemo(
+    () => (value.customerId ? customers.find(c => c.id === value.customerId) : null),
+    [value.customerId, customers]);
 
   // ปิดรายการเมื่อคลิกที่อื่น — ไม่ใช้ onBlur เพราะมันปิดก่อนที่คลิกจะโดนรายการ
   React.useEffect(() => {
@@ -137,6 +142,8 @@ export default function CustomerPicker({
             <span style={{ fontSize: 13, color: T.text, fontWeight: 600, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {name}
             </span>
+            {/* เห็นตั้งแต่ตอนออกบิลว่าเจ้านี้เก็บเงินยังไง — คนที่รับเงินคือคนที่รู้คำตอบ */}
+            <BillingBadge type={linkedCustomer?.billingType}/>
             <button type="button" onClick={() => { setQ(""); onChange({ customerId: "" }); setOpen(true); }}
               style={{ background: "none", border: `1px solid ${T.border}`, color: T.sub, borderRadius: 7, padding: "3px 10px",
                 cursor: "pointer", fontSize: 11, fontFamily: "inherit", whiteSpace: "nowrap" }}>
@@ -163,7 +170,9 @@ export default function CustomerPicker({
                 style={{ padding: "10px 14px", cursor: "pointer", borderBottom: `1px solid ${T.border}` }}
                 onMouseEnter={e => e.currentTarget.style.background = "rgba(59,91,139,0.1)"}
                 onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{c.name}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: T.text, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  {c.name}<BillingBadge type={c.billingType}/>
+                </div>
                 <div style={{ fontSize: 11, color: T.muted }}>📞 {c.phone || "-"} · 📍 {c.address || "-"}</div>
               </div>
             ))}

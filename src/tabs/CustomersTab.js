@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "../utils/thaiRegion";
 import { countOrdersByCustomers } from "../utils/orderStats";
-import { deleteDoc, doc } from "firebase/firestore";
+import { deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
-import { CardBox } from "../components/ui";
+import { CardBox, BillingBadge, BILLING_TYPES } from "../components/ui";
 import { matchTokens } from "../utils/search";
 
 const T = {
@@ -55,6 +55,18 @@ export default function CustomersTab({
   // (orders ในหน่วยความจำมีแค่ช่วง 7 วัน → ถ้านับจากตรงนั้นจะได้เลขผิดมาก)
   // 🔗 ลิงก์สั่งของส่วนตัว — id สุ่มของ Firestore เดาไม่ได้ (ต่างจากใช้เบอร์โทร)
   const [copiedLinkId, setCopiedLinkId] = useState("");
+  // ตั้งประเภทการเก็บเงินจากรายการเลย — ต้องตั้ง 246 รายที่ยังไม่ระบุ
+  // ถ้าต้องเปิดหน้าแก้ไขทีละรายคงไม่มีใครทำจนครบ
+  const setBillingType = async (c, v) => {
+    const before = c.billingType || "(ยังไม่ระบุ)";
+    try {
+      await updateDoc(doc(db, "customers", c.id), { billingType: v });
+      logAudit(user, {
+        action: AUDIT_ACTIONS.UPDATE, collection: "customers", targetId: c.id, targetLabel: c.name,
+        note: `ประเภทการเก็บเงิน: ${before} → ${v || "(ยังไม่ระบุ)"}`,
+      });
+    } catch (e) { alert("บันทึกไม่สำเร็จ: " + (e?.message || e)); }
+  };
   const copyOrderLink = async (c) => {
     const url = `${window.location.origin}/c?id=${c.id}`;
     try {
@@ -147,6 +159,22 @@ export default function CustomersTab({
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2, flexWrap: "wrap" }}>
                     <span style={{ fontWeight: 600, color: T.text, fontSize: 13 }}>{c.name}</span>
+                    {/* เปลี่ยนได้ตรงนี้เลย ไม่ต้องเปิดหน้าแก้ไข — ต้องตั้ง 246 รายที่ยังไม่ระบุ
+                        ถ้าต้องเปิดปิดหน้าต่างทีละรายคงไม่มีใครทำจนครบ */}
+                    {role.canAdd ? (
+                      <select value={c.billingType || ""} onClick={e => e.stopPropagation()}
+                        onChange={e => { e.stopPropagation(); setBillingType(c, e.target.value); }}
+                        title="ประเภทการเก็บเงิน — เงินสดจะไม่ถูกดึงเข้าใบวางบิลสิ้นเดือน"
+                        style={{ fontSize: 9, fontWeight: 700, fontFamily: "inherit", cursor: "pointer", outline: "none",
+                          padding: "1px 6px", borderRadius: 10,
+                          background: c.billingType ? `${BILLING_TYPES[c.billingType]?.color}15` : "#f1f3f6",
+                          color: c.billingType ? BILLING_TYPES[c.billingType]?.color : "#8a9bb3",
+                          border: c.billingType ? `1px solid ${BILLING_TYPES[c.billingType]?.color}40` : "1px dashed #c7d0dd" }}>
+                        <option value="">ยังไม่ระบุ</option>
+                        <option value="credit">📄 เครดิต</option>
+                        <option value="cash">💵 เงินสด</option>
+                      </select>
+                    ) : <BillingBadge type={c.billingType}/>}
                     <span style={{ padding: "1px 8px", borderRadius: 10, fontSize: 9, fontWeight: 700, background: `${rm.color}15`, color: rm.color, border: `1px solid ${rm.color}30` }}>{rm.label}</span>
                     {c._province && <span style={{ fontSize: 10, color: T.muted }}>{c._province}</span>}
                   </div>

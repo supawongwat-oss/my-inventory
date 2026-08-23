@@ -144,3 +144,37 @@ export function CardBox({children, style={}}) {
     <div style={{background:"#ffffff",border:`1px solid ${T.border}`,borderRadius:14,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,0.04)",...style}}>{children}</div>
   );
 }
+
+// 💵/📄 ป้ายประเภทการเก็บเงินของลูกค้า — เงินสด หรือ เครดิต (วางบิลสิ้นเดือน)
+//
+// ทำไมต้องโชว์ทุกที่ที่มีชื่อลูกค้า: ตอนนี้ตั้งไว้แค่ 2 จาก 248 ราย ที่เหลือระบบ
+// ถือว่าเป็นเครดิตหมด แล้วก็เลยยัดเข้าใบวางบิลหมด รวมถึงเจ้าที่จ่ายสดไปแล้ว
+// ถ้าป้ายนี้โผล่ตอนออกบิลด้วย คนที่รู้คำตอบ (พนักงานที่รับเงิน) จะเห็นว่ามันยังไม่ถูก
+// แล้วแก้ได้ตอนนั้นเลย — ข้อมูลจะค่อย ๆ ถูกต้องเองโดยไม่ต้องนั่งไล่ตั้งทีเดียว 248 ราย
+//
+// ⚠️ "ยังไม่ระบุ" ต้องแยกจาก "เครดิต" ให้ชัด — ของเดิมกลืนเป็นเครดิตเงียบ ๆ
+//    ทำให้ดูเหมือนตั้งค่าครบแล้วทั้งที่ยังไม่มีใครเคยตั้ง
+export const BILLING_TYPES = {
+  credit: { label: "เครดิต", icon: "📄", color: "#3b5b8b", hint: "วางบิลสิ้นเดือน" },
+  cash:   { label: "เงินสด", icon: "💵", color: "#3a7a52", hint: "จ่ายทันที ไม่ต้องวางบิล" },
+};
+
+export function BillingBadge({ type, size = "sm" }) {
+  const t = BILLING_TYPES[type];
+  const small = size === "sm";
+  const st = {
+    padding: small ? "1px 7px" : "2px 9px", borderRadius: 10, fontSize: small ? 9 : 10,
+    fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0,
+  };
+  if (!t) return (
+    <span style={{ ...st, background: "#f1f3f6", color: "#8a9bb3", border: "1px dashed #c7d0dd" }}
+      title="ยังไม่ได้ระบุว่าเป็นลูกค้าเงินสดหรือเครดิต — ระบบจะถือว่าเป็นเครดิตไว้ก่อน (จะได้ไม่ตกหล่นตอนวางบิล)">
+      ยังไม่ระบุ
+    </span>
+  );
+  return (
+    <span style={{ ...st, background: `${t.color}15`, color: t.color, border: `1px solid ${t.color}40` }} title={t.hint}>
+      {t.icon} {t.label}
+    </span>
+  );
+}
