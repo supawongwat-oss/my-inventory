@@ -9,7 +9,7 @@ import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
 import { uploadImage } from "../utils/upload";
 import { PRESET_COLORS, getProductionSize, isProductionSizeCapped, SIZES, compareSizes } from "../theme";
 import { ORDER_PALETTE } from "./KanbanBoard";
-import { matchTokens } from "../utils/search";
+import CustomerPicker from "./CustomerPicker";
 
 const T = { border:"#e3e8ef", sub:"#5b6b85", text:"#1f2a44", muted:"#8a9bb3", accent:"#3b5b8b", input:"#f6f8fb", inputBorder:"#d8dee9", red:"#dc2626" };
 const fmt = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -216,7 +216,9 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
   const totalCostPerPiece = matCost + labor;
   const grandTotal = totalCostPerPiece * totalQty;
 
-  const canSubmit = jobName.trim() && validItems.length > 0 && totalQty > 0;
+  // 🔒 ต้องมี customerId เสมอ — ใบนี้จะกลายเป็นบิลและใบวางบิลต่อไป
+  //    ชื่อลอย ๆ ทำให้ร้านเดียวถูกแยกเป็นหลายใบวางบิล และไม่มีที่อยู่ให้พิมพ์
+  const canSubmit = !!customerId && jobName.trim() && validItems.length > 0 && totalQty > 0;
 
   // ขนาดรวมรูป (KB) — แสดงเฉยๆ (รูปอัปขึ้น Storage ตอนบันทึก ไม่ฝังใน doc แล้ว)
   const totalImageKB = images.reduce((s, im) => s + (String(im.dataUrl||"").startsWith("data:") ? dataUrlSizeKB(im.dataUrl) : 0), 0);
@@ -391,39 +393,15 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
       {saved && <Toast msg={isEdit ? "บันทึกการแก้ไขสำเร็จ" : "สร้างใบสั่งผลิต custom สำเร็จ"}/>}
       {isEdit && <div style={{marginBottom:12,padding:"8px 12px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,fontSize:11,color:"#1e40af",lineHeight:1.5}}>ℹ️ แก้ไขได้เพราะใบนี้ยังไม่เริ่มผลิต — เมื่อบันทึก ระบบจะอัปเดตรายการบนบอร์ด Kanban ให้อัตโนมัติ</div>}
 
-      {/* ลูกค้า — search ลูกค้าเดิม หรือพิมพ์ชื่อใหม่ */}
-      <div style={{marginBottom:12,position:"relative"}}>
-        <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:4,fontWeight:600}}>ลูกค้า</label>
-        <input
-          value={customerId ? `✓ ${customerName}` : customerSearch}
-          onChange={e => { setCustomerSearch(e.target.value); setCustomerId(""); setCustomerName(e.target.value); setCustomerPhone(""); }}
-          placeholder="🔍 ค้นหาลูกค้าเดิม หรือพิมพ์ชื่อใหม่"
-          style={{width:"100%",background:T.input,border:`1px solid ${customerId?"#16a34a":T.inputBorder}`,color:T.text,borderRadius:8,padding:"8px 12px",fontFamily:"inherit",fontSize:13,outline:"none"}}/>
-        {customerSearch && !customerId && (() => {
-          const matches = customers.filter(c => matchTokens(customerSearch, c.name, c.phone, c.address));
-          return (
-          <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,zIndex:50,maxHeight:280,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.15)",marginTop:2}}>
-            {matches.length > 0 && (
-              <div style={{padding:"5px 12px",background:"#eff6ff",fontSize:10,color:T.accent,fontWeight:700,borderBottom:`1px solid ${T.border}`,position:"sticky",top:0}}>
-                เจอ {matches.length} ราย {matches.length > 30 && "(แสดง 30 รายแรก — พิมพ์เพิ่มเพื่อกรอง)"}
-              </div>
-            )}
-            {matches.slice(0,30).map(c => (
-              <div key={c.id} onClick={() => { setCustomerId(c.id); setCustomerName(c.name||""); setCustomerPhone(c.phone||""); setCustomerSearch(""); }}
-                style={{padding:"8px 12px",cursor:"pointer",borderBottom:`1px solid ${T.border}`,fontSize:12}}
-                onMouseEnter={e => e.currentTarget.style.background = "rgba(59,91,139,0.08)"}
-                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                <div style={{fontWeight:600,color:T.text}}>{c.name}</div>
-                {c.phone && <div style={{fontSize:11,color:T.muted}}>📞 {c.phone}</div>}
-              </div>
-            ))}
-            {matches.length === 0 && (
-              <div style={{padding:"8px 12px",fontSize:11,color:T.muted}}>ไม่พบในระบบ — จะใช้ชื่อนี้แบบใหม่</div>
-            )}
-          </div>
-          );
-        })()}
-      </div>
+      {/* 🔒 ต้องผูกทะเบียนลูกค้า — ใบ custom กลายเป็นบิลทีหลัง ถ้าไม่ผูกตรงนี้
+          บิลก็ไม่ผูก แล้วไปโผล่เป็นใบวางบิลแยกร้านตอนสิ้นเดือน */}
+      <CustomerPicker customers={customers} label="ลูกค้า *"
+        value={{ customerId, customerName, customerPhone }}
+        onChange={patch => {
+          if ("customerId" in patch) setCustomerId(patch.customerId);
+          if ("customerName" in patch) setCustomerName(patch.customerName);
+          if ("customerPhone" in patch) setCustomerPhone(patch.customerPhone);
+        }}/>
       <Input label="เบอร์โทร" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} style={{marginBottom:10}}/>
 
       {/* ชื่องาน */}
@@ -791,7 +769,7 @@ export default function NewCustomOrderModal({ customOrders = [], customers = [],
 
       <div style={{display:"flex",gap:10}}>
         <BtnGhost onClick={closeAndDrop} style={{flex:1}}>ยกเลิก</BtnGhost>
-        <BtnPrimary onClick={isEdit ? handleUpdate : handleSubmit} disabled={!canSubmit || saving} style={{flex:1}}>{saving ? "⏳ กำลังอัปรูป/บันทึก..." : isEdit ? "💾 บันทึกการแก้ไข" : "🎨 ยืนยันสั่งผลิต Custom"}</BtnPrimary>
+        <BtnPrimary onClick={isEdit ? handleUpdate : handleSubmit} disabled={!canSubmit || saving} style={{flex:1}}>{saving ? "⏳ กำลังอัปรูป/บันทึก..." : !customerId ? "🔒 ต้องเลือกลูกค้าจากทะเบียนก่อน" : isEdit ? "💾 บันทึกการแก้ไข" : "🎨 ยืนยันสั่งผลิต Custom"}</BtnPrimary>
       </div>
     </Modal>
   );

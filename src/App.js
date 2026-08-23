@@ -1677,10 +1677,6 @@ export default function App() {
     setCustomerSearch("");
   };
 
-  const handleSelectCustomer = (cust) => {
-    setOrderForm(f => ({ ...f, customerId: cust.id, customerName: cust.name, customerPhone: cust.phone, customerAddress: cust.address }));
-    setCustomerSearch("");
-  };
 
   // 🧺 เพิ่มรายการคละใน order (ยังไม่ระบุสี/ไซส์ → รอกรอกทีหลัง)
   const addOrderMixItem = () => {
@@ -5578,11 +5574,9 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           setFreeItemForm={setFreeItemForm}
           freeItemCutStock={freeItemCutStock}
           setFreeItemCutStock={setFreeItemCutStock}
-          customerSearch={customerSearch}
           setCustomerSearch={setCustomerSearch}
           customers={customers}
           clothingItems={clothingItems}
-          handleSelectCustomer={handleSelectCustomer}
           handleConfirmOrder={handleConfirmOrder}
           addOrderMixItem={addOrderMixItem}
         />
