@@ -4739,6 +4739,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               statements={statements}
               returns={returns}
               invoices={invoices}
+              invoicesRange={invoicesRange} setInvoicesRange={setInvoicesRange} invoicesCapped={invoicesCapped}
               customers={customers}
               companyInfo={companyInfo}
               user={user}

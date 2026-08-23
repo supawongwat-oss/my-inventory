@@ -28,7 +28,8 @@ const nextUnused = (no, used) => {
 };
 const now = () => { const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
 
-export default function BulkStatementModal({ invoices = [], customers = [], statements = [], returns = [], companyInfo = {}, user, onClose, onDone }) {
+export default function BulkStatementModal({ invoices = [], customers = [], statements = [], returns = [], companyInfo = {}, user, onClose, onDone,
+  invoicesRange, setInvoicesRange, invoicesCapped = false }) {
   const t = new Date();
   const [periodStart, setPeriodStart] = useState(fmtISO(new Date(t.getFullYear(), t.getMonth(), 1)));
   const [periodEnd, setPeriodEnd] = useState(fmtISO(new Date(t.getFullYear(), t.getMonth()+1, 0)));
@@ -43,6 +44,14 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
   const [openKey, setOpenKey] = useState(null); // แถวที่กางรายการบิลอยู่
 
   const startD = parseISO(periodStart), endD = parseISO(periodEnd);
+
+  // 🚨 บิลที่ยังไม่ได้โหลด = บิลที่จะหายจากใบวางบิลแบบไม่มีอะไรฟ้อง
+  //    ระบบโหลดบิลมาเป็นช่วงวันที่ (ค่าเริ่มต้น 30 วันล่าสุด) แต่หน้านี้คิดยอดจากบิล
+  //    ที่อยู่ในหน้าจอเท่านั้น — วางบิลเดือน ส.ค. ตอนต้นเดือน ก.ย. บิลต้นเดือน ส.ค.
+  //    จะไม่ถูกนับ ลูกค้าได้ใบที่ยอดขาด แล้วไม่มีใครรู้จนกว่าจะมีคนทัก
+  const loadedFrom = invoicesRange?.from instanceof Date ? invoicesRange.from : null;
+  const notLoadedBefore = loadedFrom && startD && startD.getTime() < new Date(
+    loadedFrom.getFullYear(), loadedFrom.getMonth(), loadedFrom.getDate()).getTime() ? loadedFrom : null;
 
   // 🔍 จัดกลุ่มบิลตามลูกค้า — ใช้ helper ตัวเดียวกับหน้าสร้างทีละใบ (ผลลัพธ์ตรงกันแน่นอน)
   //
@@ -307,6 +316,32 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
           style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>ล้าง</button>
       </div>
 
+      {/* 🚨 กันใบวางบิลยอดขาด — ห้ามสร้างจนกว่าจะโหลดบิลครบช่วง */}
+      {notLoadedBefore && (
+        <div style={{ padding: "10px 14px", marginBottom: 10, background: "rgba(185,74,72,0.08)", border: "1px solid rgba(185,74,72,0.4)", borderRadius: 9 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: T.red, marginBottom: 4 }}>
+            🚨 บิลยังโหลดมาไม่ครบช่วง — ยอดจะขาด
+          </div>
+          <div style={{ fontSize: 11, color: T.sub, lineHeight: 1.7 }}>
+            ระบบโหลดบิลมาตั้งแต่ <b>{fmtDDMMYYYY(notLoadedBefore)}</b> แต่คุณกำลังวางบิลตั้งแต่ <b>{fmtDDMMYYYY(startD)}</b>
+            <br/>บิลก่อนวันที่โหลดจะไม่ถูกนับ ลูกค้าจะได้ใบวางบิลที่ยอดน้อยกว่าความจริง
+          </div>
+          {setInvoicesRange && (
+            <button onClick={() => setInvoicesRange({ from: new Date(startD.getFullYear(), startD.getMonth(), startD.getDate()), to: null })}
+              style={{ marginTop: 8, padding: "6px 13px", borderRadius: 8, border: "none", background: T.red, color: "white", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>
+              📥 โหลดบิลตั้งแต่ {fmtDDMMYYYY(startD)}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ชนเพดานโหลด = ข้อมูลถูกตัดทิ้งบางส่วน ยอดเชื่อไม่ได้ */}
+      {invoicesCapped && (
+        <div style={{ padding: "9px 13px", marginBottom: 10, background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.35)", borderRadius: 9, fontSize: 11, color: "#b45309", lineHeight: 1.7 }}>
+          ⚠️ บิลที่โหลดมาชนเพดาน 3,000 ใบ — อาจมีบิลตกหล่น ให้แคบช่วงวันที่ลงแล้วออกทีละงวด แล้วเทียบยอดก่อนส่งลูกค้า
+        </div>
+      )}
+
       {dupeCount > 0 && (
         <div style={{ padding: "8px 12px", marginBottom: 10, background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.3)", borderRadius: 8, fontSize: 12, color: "#b45309" }}>
           ⚠️ มี {dupeCount} รายที่เคยออกใบวางบิลช่วงนี้ไปแล้ว — ระบบไม่ติ๊กให้ (ติ๊กเองได้ถ้าตั้งใจออกซ้ำ)
@@ -415,8 +450,9 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
       ) : (
         <div style={{ display: "flex", gap: 10 }}>
           <BtnGhost onClick={onClose} style={{ flex: 1 }}>ยกเลิก</BtnGhost>
-          <BtnPrimary onClick={createAll} disabled={selected.length === 0} style={{ flex: 2 }}>
-            📄 สร้างใบวางบิล {selected.length > 0 ? `${selected.length} ใบ` : ""}
+          {/* ล็อกปุ่มไว้ถ้าบิลยังโหลดไม่ครบช่วง — ออกไปแล้วยอดขาด ต้องตามออกใบใหม่ให้ลูกค้าทีละราย */}
+          <BtnPrimary onClick={createAll} disabled={selected.length === 0 || !!notLoadedBefore} style={{ flex: 2 }}>
+            {notLoadedBefore ? "🚨 โหลดบิลให้ครบช่วงก่อน" : `📄 สร้างใบวางบิล ${selected.length > 0 ? `${selected.length} ใบ` : ""}`}
           </BtnPrimary>
         </div>
       )}

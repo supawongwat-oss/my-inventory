@@ -7,6 +7,7 @@ import { matchTokens } from "../utils/search";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { reserveDocNo } from "../utils/docNumber";
 import BulkStatementModal from "../components/BulkStatementModal";
+import LoadRangeBar from "../components/LoadRangeBar";
 import { filterInvoicesForStatement, creditsForStatement, sumCredits, nearMissInvoices } from "../utils/statement";
 
 // ── helpers ────────────────────────────────────────────────
@@ -48,7 +49,8 @@ const statusStyle = (s) => ({
 //    และไม่กันบิลที่ถูกรวมเข้าบิลใหม่แล้ว ยอดเลยซ้ำ)
 
 // === Main Component ===
-export default function StatementTab({ statements, invoices, returns = [], customers, companyInfo, user, role, printElementById }) {
+export default function StatementTab({ statements, invoices, returns = [], customers, companyInfo, user, role, printElementById,
+  invoicesRange, setInvoicesRange, invoicesCapped }) {
   const [showCreate, setShowCreate] = useState(false);
   const [showBulk, setShowBulk] = useState(false); // 📅 ออกใบวางบิลทั้งเดือนทีเดียว
   const [statusFilter, setStatusFilter] = useState("ทั้งหมด");
@@ -427,6 +429,13 @@ export default function StatementTab({ statements, invoices, returns = [], custo
         )}
       </div>
 
+      {/* 📅 หน้านี้คิดยอดจากบิลที่โหลดมาเท่านั้น — ต้องเห็นตลอดว่ากำลังเห็นบิลช่วงไหน
+          ไม่งั้นวางบิลย้อนเดือนแล้วยอดขาดโดยไม่รู้ตัว */}
+      {setInvoicesRange && (
+        <LoadRangeBar label="คิดยอดจากบิล" range={invoicesRange} setRange={setInvoicesRange}
+          capped={invoicesCapped} count={invoices.length} />
+      )}
+
       <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 ค้นหาเลขที่ใบวางบิล หรือชื่อลูกค้า..."
         style={{ width: 320, background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 8, padding: "8px 12px", fontFamily: "'Sarabun',sans-serif", fontSize: 13, outline: "none", marginBottom: 14 }} />
 
@@ -508,6 +517,7 @@ export default function StatementTab({ statements, invoices, returns = [], custo
         <BulkStatementModal
           invoices={invoices} customers={customers} statements={statements}
           returns={returns}
+          invoicesRange={invoicesRange} setInvoicesRange={setInvoicesRange} invoicesCapped={invoicesCapped}
           companyInfo={companyInfo} user={user}
           onClose={() => setShowBulk(false)}
         />
