@@ -8,6 +8,7 @@ import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { reserveDocNo } from "../utils/docNumber";
 import BulkStatementModal from "../components/BulkStatementModal";
 import LoadRangeBar from "../components/LoadRangeBar";
+import LinkInvoiceCustomers from "../components/LinkInvoiceCustomers";
 import { filterInvoicesForStatement, creditsForStatement, sumCredits, nearMissInvoices } from "../utils/statement";
 
 // ── helpers ────────────────────────────────────────────────
@@ -53,6 +54,7 @@ export default function StatementTab({ statements, invoices, returns = [], custo
   invoicesRange, setInvoicesRange, invoicesCapped }) {
   const [showCreate, setShowCreate] = useState(false);
   const [showBulk, setShowBulk] = useState(false); // 📅 ออกใบวางบิลทั้งเดือนทีเดียว
+  const [showLink, setShowLink] = useState(false); // 🔗 ซ่อมบิลที่ไม่ผูกทะเบียนลูกค้า
   const [statusFilter, setStatusFilter] = useState("ทั้งหมด");
   const [search, setSearch] = useState("");
   const [printPreview, setPrintPreview] = useState(null); // statement object ที่กำลังพิมพ์
@@ -338,6 +340,10 @@ export default function StatementTab({ statements, invoices, returns = [], custo
 
   const [undoBusy, setUndoBusy] = useState(null); // { run, done, total }
 
+  // นับบิลที่ยังไม่ผูกทะเบียนในช่วงที่โหลดมา — ตัวเลขนี้คือจำนวนใบวางบิลที่จะออกมาผิดร้าน
+  const unlinkedCount = useMemo(() => invoices.filter(inv =>
+    !inv.customerId && !inv.mergedInto && !inv.convertedTo && (inv.customerName || "").trim()).length, [invoices]);
+
   const undoBulkRun = async (run) => {
     if (undoBusy) return;
     // 💰 ใบที่เก็บเงินแล้วห้ามลบยกชุด — เงินเข้าบัญชีไปแล้ว ต้องไปสะสางทีละใบเอง
@@ -439,6 +445,22 @@ export default function StatementTab({ statements, invoices, returns = [], custo
       <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 ค้นหาเลขที่ใบวางบิล หรือชื่อลูกค้า..."
         style={{ width: 320, background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 8, padding: "8px 12px", fontFamily: "'Sarabun',sans-serif", fontSize: 13, outline: "none", marginBottom: 14 }} />
 
+      {/* 🔗 บิลที่ยังไม่ผูกทะเบียน — ต้องซ่อมก่อนวางบิล ไม่งั้นร้านเดียวได้ใบวางบิล 2 ใบ
+          และใบที่ไม่ผูกจะไม่มีที่อยู่ให้พิมพ์ */}
+      {unlinkedCount > 0 && role.canAdd !== false && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "9px 14px", marginBottom: 8,
+          background: "rgba(184,134,0,0.08)", border: "1px solid rgba(184,134,0,0.35)", borderRadius: 10 }}>
+          <span style={{ fontSize: 12, color: "#b45309" }}>
+            🔗 มีบิล <b>{unlinkedCount}</b> ใบในช่วงนี้ที่ไม่ได้ผูกทะเบียนลูกค้า — ใบวางบิลจะแยกร้านผิดและไม่มีที่อยู่
+          </span>
+          <button onClick={() => setShowLink(true)}
+            style={{ marginLeft: "auto", padding: "6px 13px", borderRadius: 8, border: "1px solid rgba(184,134,0,0.5)",
+              background: "white", color: "#b45309", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "'Sarabun',sans-serif" }}>
+            ซ่อมเลย
+          </button>
+        </div>
+      )}
+
       {/* 📅 รอบที่ออกทั้งเดือน — ถอยกลับได้ทั้งรอบถ้ากดผิดช่วง/ผิดเงื่อนไข */}
       {role.canDelete && bulkRuns.slice(0, 3).map(run => {
         const amt = run.items.reduce((a, s) => a + Number(s.netAmount != null ? s.netAmount : s.totalAmount || 0), 0);
@@ -511,6 +533,11 @@ export default function StatementTab({ statements, invoices, returns = [], custo
             );
           })}
         </CardBox>
+      )}
+
+      {showLink && (
+        <LinkInvoiceCustomers invoices={invoices} customers={customers} user={user}
+          onClose={() => setShowLink(false)}/>
       )}
 
       {showBulk && (

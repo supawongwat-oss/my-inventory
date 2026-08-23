@@ -5,6 +5,9 @@ import { compressImage } from "../utils/imageCompress";
 import { uploadImage, deleteFile } from "../utils/upload";
 import { matchTokens } from "../utils/search";
 import { custKey } from "../utils/statement";
+import { withCustomerSearchKeys } from "../utils/searchKeys";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../firebase";
 
 const MAX_JOB_IMAGES = 8;
 
@@ -349,10 +352,16 @@ function BulkPricePanel({ items, setInvoiceForm, clothingItems = [] }) {
 // พอไปทำใบวางบิลจึงมาบ้างหายบ้าง — เลือกจากทะเบียนแล้วบิลจะติด customerId
 // ซึ่งเป็นชั้นจับคู่ที่แน่นที่สุดใน utils/statement.js (สะกดยังไงก็ไม่หลุด)
 //
-// ยังพิมพ์ชื่อใหม่เองได้เหมือนเดิม (ลูกค้าขาจร) แค่จะมีคำเตือนถ้าชื่อใกล้เคียงของที่มีอยู่
+// 🔒 ตั้งแต่ 23 ส.ค. 2026 บิลต้องผูกทะเบียนเสมอ ห้ามพิมพ์ชื่อลอย ๆ แล้วบันทึก
+//    ของเดิมพิมพ์ผ่านได้ ผลคือเดือน ส.ค. เดือนเดียวมีบิล 25 ใบ (฿458,060) ที่ไม่ผูกทะเบียน
+//    24 ใบไม่มีที่อยู่ → ใบวางบิลพิมพ์ออกมาไม่มีที่อยู่ · และร้านเดียวถูกแยกเป็น 2 ใบเพราะ
+//    พิมพ์ชื่อคนละแบบ ("สุขสันต์เซลล์" กับ "สุขสันต์เซล์")
+//    ลูกค้าใหม่ไม่ติดขัด — กด "＋ เพิ่มเข้าทะเบียน" ครั้งเดียวได้ทั้งสร้างและผูก
+//    (คนที่ออกบิลได้คือ admin/manager ซึ่งมีสิทธิ์เพิ่มลูกค้าอยู่แล้ว)
 function CustomerPicker({ customers = [], invoiceForm, setInvoiceForm }) {
   const [q, setQ] = React.useState("");
   const [open, setOpen] = React.useState(false);
+  const [adding, setAdding] = React.useState(false);
   const boxRef = React.useRef(null);
   const linked = !!invoiceForm.customerId;
   const name = invoiceForm.customerName || "";
@@ -383,6 +392,34 @@ function CustomerPicker({ customers = [], invoiceForm, setInvoiceForm }) {
     setQ(v);
     setInvoiceForm(p => ({ ...p, customerId: "", customerName: v }));
     setOpen(true);
+  };
+
+  // สร้างลูกค้าใหม่จากชื่อที่พิมพ์ + ข้อมูลติดต่อที่กรอกไว้แล้วในบิล แล้วผูกทันที
+  // เตือนก่อนถ้าชื่อใกล้เคียงของเดิม — ปล่อยให้สร้างซ้ำได้ง่าย ๆ ทะเบียนจะรกจนวางบิลแยกใบอีก
+  const addToRegistry = async () => {
+    const nm = (invoiceForm.customerName || "").trim();
+    if (!nm || adding) return;
+    if (nearby.length > 0 && !window.confirm(
+      `มีลูกค้าชื่อใกล้เคียงอยู่แล้ว:${String.fromCharCode(10)}` +
+      nearby.map(c => `• ${c.name}`).join(String.fromCharCode(10)) +
+      `${String.fromCharCode(10,10)}ถ้าเป็นร้านเดียวกัน ให้กดปุ่ม 🔗 ด้านล่างเพื่อผูกกับรายเดิมแทน` +
+      `${String.fromCharCode(10)}จะสร้าง "${nm}" เป็นลูกค้ารายใหม่จริงไหม?`
+    )) return;
+    setAdding(true);
+    try {
+      const ref = await addDoc(collection(db, "customers"), withCustomerSearchKeys({
+        name: nm,
+        phone: invoiceForm.customerPhone || "",
+        address: invoiceForm.customerAddress || "",
+        taxId: invoiceForm.customerTaxId || "",
+        createdAt: serverTimestamp(),
+      }));
+      setInvoiceForm(p => ({ ...p, customerId: ref.id, customerName: nm }));
+      setQ(""); setOpen(false);
+    } catch (e) {
+      alert("เพิ่มลูกค้าไม่สำเร็จ: " + (e?.message || e));
+    }
+    setAdding(false);
   };
 
   const term = q || (linked ? "" : name);
@@ -449,14 +486,28 @@ function CustomerPicker({ customers = [], invoiceForm, setInvoiceForm }) {
                 <div style={{fontSize:11, color:T.muted}}>📞 {c.phone||"-"} · 📍 {c.address||"-"}</div>
               </div>
             ))}
-            {matches.length===0 && (
-              <div style={{padding:"10px 14px", fontSize:12, color:T.muted}}>
-                ไม่พบในทะเบียน — ใช้ชื่อที่พิมพ์ไว้ได้เลย (บิลจะไม่ผูกกับทะเบียน)
+            {/* ทางออกสำหรับลูกค้าใหม่ — ต้องอยู่ตรงนี้ ไม่งั้นพนักงานติดตายตอนลูกค้ายืนรอ */}
+            {name.trim() && (
+              <div style={{padding:"10px 14px", borderTop:matches.length?`1px solid ${T.border}`:"none", background:"#f8fafc"}}>
+                {matches.length===0 && <div style={{fontSize:12, color:T.muted, marginBottom:8}}>ไม่พบ "{name}" ในทะเบียน</div>}
+                <button type="button" disabled={adding} onClick={()=>addToRegistry()}
+                  style={{width:"100%", padding:"8px 12px", borderRadius:8, border:"none", background:adding?"#94a3b8":T.green,
+                    color:"white", cursor:adding?"wait":"pointer", fontSize:12, fontWeight:700, fontFamily:"inherit"}}>
+                  {adding ? "กำลังเพิ่ม…" : `＋ เพิ่ม "${name}" เข้าทะเบียนลูกค้า แล้วผูกกับบิลนี้`}
+                </button>
               </div>
             )}
           </div>
         )}
       </div>
+
+      {!linked && (invoiceForm.customerName || "").trim() && nearby.length === 0 && (
+        <div style={{marginBottom:10, padding:"8px 12px", background:"rgba(185,74,72,0.08)",
+          border:"1px solid rgba(185,74,72,0.35)", borderRadius:9, fontSize:11, color:T.red, lineHeight:1.7}}>
+          🔒 ยังไม่ได้ผูกกับทะเบียนลูกค้า — บันทึกบิลไม่ได้<br/>
+          เลือกจากรายการด้านบน หรือกด "＋ เพิ่มเข้าทะเบียนลูกค้า" ถ้าเป็นลูกค้าใหม่
+        </div>
+      )}
 
       {nearby.length > 0 && (
         <div style={{marginBottom:10, padding:"8px 12px", background:"rgba(184,134,0,0.08)",
@@ -1034,12 +1085,16 @@ export default function NewInvoiceModal({
             <BtnGhost onClick={()=>{onClose();}} disabled={savingInvoice} style={{flex:1,opacity:savingInvoice?0.5:1}}>ยกเลิก</BtnGhost>
             {/* ⏳ ระหว่างบันทึก ปุ่มต้องเปลี่ยนสภาพให้เห็นชัด
                 ไม่งั้นพนักงานนึกว่ากดไม่ติดแล้วกดซ้ำ → ได้บิลคนละเลขแต่ยอดเดียวกัน */}
+            {/* 🔒 ไม่ผูกทะเบียน = บันทึกไม่ได้ — บิลชื่อลอย ๆ ทำให้ใบวางบิลแยกร้านเดียวเป็นสองใบ
+                และไม่มีที่อยู่ให้พิมพ์ · ลูกค้าใหม่กด "＋ เพิ่มเข้าทะเบียน" ในช่องชื่อได้เลย */}
             <BtnPrimary onClick={handleConfirmInvoice}
-              disabled={savingInvoice||!invoiceForm.customerName||invoiceForm.items.length===0}
-              style={{flex:2,opacity:(savingInvoice||!invoiceForm.customerName||invoiceForm.items.length===0)?0.55:1,cursor:savingInvoice?"wait":undefined}}>
+              disabled={savingInvoice||!invoiceForm.customerId||invoiceForm.items.length===0}
+              style={{flex:2,opacity:(savingInvoice||!invoiceForm.customerId||invoiceForm.items.length===0)?0.55:1,cursor:savingInvoice?"wait":undefined}}>
               {savingInvoice
                 ? "⏳ กำลังบันทึก... อย่าเพิ่งกดซ้ำ"
-                : (editingInvoiceId ? `💾 บันทึกการแก้ไข ${docTypeLabel(invoiceDocType)}` : `✅ ออก${docTypeLabel(invoiceDocType)} + บันทึก`)}
+                : !invoiceForm.customerId
+                  ? "🔒 ต้องเลือกลูกค้าจากทะเบียนก่อน"
+                  : (editingInvoiceId ? `💾 บันทึกการแก้ไข ${docTypeLabel(invoiceDocType)}` : `✅ ออก${docTypeLabel(invoiceDocType)} + บันทึก`)}
             </BtnPrimary>
           </div>
         </Modal>
