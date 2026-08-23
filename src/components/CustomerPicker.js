@@ -70,6 +70,12 @@ export default function CustomerPicker({
     return customers.filter(c => matchTokens(t, c.name, c.phone, c.address, c.taxId));
   }, [term, customers]);
 
+  // ชื่อที่พิมพ์ตรงกับรายในทะเบียนเป๊ะ ๆ (ไม่สนวรรค/วรรณยุกต์) → ห้ามเสนอให้สร้างใหม่
+  const exactMatch = React.useMemo(() => {
+    const k = custKey(name);
+    return !!k && matches.some(c => custKey(c.name) === k);
+  }, [name, matches]);
+
   // 🔎 พิมพ์เองแล้วชื่อดัน "ใกล้เคียง" กับที่มีในทะเบียน
   //    เคสนี้แหละที่ทำให้เอกสารกระจายคนละชื่อจนแยกใบตอนวางบิล — ต้องทักตั้งแต่ตอนกรอก
   const nearby = React.useMemo(() => {
@@ -156,15 +162,30 @@ export default function CustomerPicker({
                 <div style={{ fontSize: 11, color: T.muted }}>📞 {c.phone || "-"} · 📍 {c.address || "-"}</div>
               </div>
             ))}
-            {/* ทางออกสำหรับลูกค้าใหม่ — ต้องอยู่ตรงนี้ ไม่งั้นพนักงานติดตายตอนลูกค้ายืนรอ */}
-            {name.trim() && (
+            {/* ทางออกสำหรับลูกค้าใหม่ — ต้องอยู่ตรงนี้ ไม่งั้นพนักงานติดตายตอนลูกค้ายืนรอ
+                แต่ต้องไม่เด่นกว่ารายชื่อที่มีอยู่แล้ว ไม่งั้นกลายเป็นเชิญให้สร้างซ้ำ
+                ซึ่งเป็นต้นเหตุของปัญหาที่กำลังแก้อยู่พอดี (ทะเบียนรก → วางบิลแยกใบ)
+                · ชื่อตรงกับที่มีอยู่แล้ว = ไม่ต้องมีปุ่มเลย ให้กดรายชื่อข้างบน
+                · มีชื่อคล้าย ๆ = มีปุ่มแต่ทำให้จืด ต้องตั้งใจกดถึงจะโดน
+                · ไม่เจออะไรเลย = ปุ่มเด่นได้ เพราะเป็นทางเดียวที่เหลือ */}
+            {name.trim() && !exactMatch && (
               <div style={{ padding: "10px 14px", borderTop: matches.length ? `1px solid ${T.border}` : "none", background: "#f8fafc" }}>
-                {matches.length === 0 && <div style={{ fontSize: 12, color: T.muted, marginBottom: 8 }}>ไม่พบ "{name}" ในทะเบียน</div>}
+                {matches.length === 0
+                  ? <div style={{ fontSize: 12, color: T.muted, marginBottom: 8 }}>ไม่พบ "{name}" ในทะเบียน</div>
+                  : <div style={{ fontSize: 11, color: T.muted, marginBottom: 8 }}>ถ้าไม่ใช่รายข้างบน ถึงค่อยเพิ่มใหม่</div>}
                 <button type="button" disabled={adding} onClick={addToRegistry}
-                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "none", background: adding ? "#94a3b8" : T.green,
-                    color: "white", cursor: adding ? "wait" : "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>
-                  {adding ? "กำลังเพิ่ม…" : `＋ เพิ่ม "${name}" เข้าทะเบียนลูกค้า แล้วผูกกับเอกสารนี้`}
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8,
+                    border: matches.length ? `1px solid ${T.border}` : "none",
+                    background: adding ? "#94a3b8" : matches.length ? "white" : T.green,
+                    color: adding ? "white" : matches.length ? T.sub : "white",
+                    cursor: adding ? "wait" : "pointer", fontSize: 12, fontWeight: matches.length ? 500 : 700, fontFamily: "inherit" }}>
+                  {adding ? "กำลังเพิ่ม…" : `＋ เพิ่ม "${name}" เป็นลูกค้ารายใหม่`}
                 </button>
+              </div>
+            )}
+            {name.trim() && exactMatch && (
+              <div style={{ padding: "8px 14px", borderTop: `1px solid ${T.border}`, background: "#f0fdf4", fontSize: 11, color: T.green, fontWeight: 600 }}>
+                ✓ ชื่อนี้มีในทะเบียนแล้ว — กดที่รายชื่อด้านบนเพื่อผูก
               </div>
             )}
           </div>
