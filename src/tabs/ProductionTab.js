@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 import { deleteDoc, doc, collection, getDocs, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
+import { BillingBadge } from "../components/ui";
 import BOMEditor from "../components/BOMEditor";
 import NewProductionOrderModal from "../components/NewProductionOrderModal";
 import NewCustomOrderModal from "../components/NewCustomOrderModal";
@@ -38,6 +39,8 @@ function parseThaiDate(s) {
 
 export default function ProductionTab({ productionOrders=[], customOrders=[], boms=[], products=[], clothingItems=[], customers=[], employees=[], companyInfo={}, user, role, printElementById, onCreateInvoiceFromCustom, openingInvoice = false }) {
   const [subTab, setSubTab] = useState("kanban"); // kanban | orders | custom | bom
+  // ทะเบียนลูกค้าแบบค้นด้วยรหัส — ใช้อ่านประเภทการเก็บเงินมาโชว์บนการ์ด
+  const custById = useMemo(() => new Map(customers.map(c => [c.id, c])), [customers]);
   const [showNew, setShowNew] = useState(false);
   const [editProdOrder, setEditProdOrder] = useState(null); // ✏️ ใบสั่งผลิตที่กำลังแก้ไข
   const [editCustomOrder, setEditCustomOrder] = useState(null); // ✏️ Custom order ที่กำลังแก้ไข
@@ -439,7 +442,12 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
                         {o.outsourced && <span style={{background:"rgba(139,92,246,0.12)",color:"#7c3aed",border:"1px solid #c4b5fd",padding:"1px 7px",borderRadius:10,fontSize:9,fontWeight:800}}>🏭 จ้างข้างนอก</span>}
                         {o.invoiceNo && <span title={`ออกบิลแล้ว: ${o.invoiceNo}`} style={{background:"rgba(8,145,178,0.12)",color:"#0891b2",border:"1px solid #a5f3fc",padding:"1px 7px",borderRadius:10,fontSize:9,fontWeight:800}}>🧾 {o.invoiceNo}</span>}
                       </div>
-                      <div style={{fontSize:11,color:T.muted,marginTop:2}}>{o.customerName ? `👤 ${o.customerName}` : ""} {o.customerPhone ? `· ${o.customerPhone}` : ""}</div>
+                      <div style={{fontSize:11,color:T.muted,marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                        <span>{o.customerName ? `👤 ${o.customerName}` : ""} {o.customerPhone ? `· ${o.customerPhone}` : ""}</span>
+                        {/* ใบ custom กลายเป็นบิลต่อ — เห็นตั้งแต่ตอนนี้ว่าเจ้านี้เก็บสดหรือรอวางบิล
+                            (บนจอเท่านั้น ห้ามใส่ในใบสั่งผลิตที่พิมพ์ให้ลูกค้า) */}
+                        {o.customerId && <BillingBadge type={custById.get(o.customerId)?.billingType}/>}
+                      </div>
                     </div>
                     <div style={{textAlign:"center"}}>
                       <div style={{fontSize:11,color:T.muted}}>จำนวน</div>
