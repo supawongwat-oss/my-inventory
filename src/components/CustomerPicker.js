@@ -125,11 +125,11 @@ export default function CustomerPicker({
     <div style={{ marginBottom: 16 }}>
       <div ref={boxRef} style={{ position: "relative", marginBottom: 10 }}>
         {label && <label style={lbl}>{label}</label>}
+        {/* ⚠️ ห้ามใช้ ✓ (U+2713) ในกล่องนี้ — ฟอนต์ Sarabun ไม่มีอักขระนี้ Windows จะดึง
+            Segoe UI Emoji มาแทน กลายเป็นกล่องฟ้าหน้าตาเหมือน checkbox ที่กดได้
+            ทั้งที่เป็นข้อความเฉย ๆ วางข้างช่องกรอกฟอร์มยิ่งชวนให้เข้าใจผิด
+            ใช้ป้ายข้อความแทน อ่านออกแน่นอนทุกเครื่อง */}
         {linked ? (
-          {/* ⚠️ ห้ามใช้ ✓ (U+2713) ตรงนี้ — ฟอนต์ Sarabun ไม่มีอักขระนี้ Windows จะดึง
-              Segoe UI Emoji มาแทน กลายเป็นกล่องฟ้าหน้าตาเหมือน checkbox ที่กดได้
-              ทั้งที่เป็นข้อความเฉย ๆ วางข้างช่องกรอกฟอร์มยิ่งชวนให้เข้าใจผิด
-              ใช้ป้ายข้อความแทน อ่านออกแน่นอนทุกเครื่อง */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(52,211,153,0.10)",
             border: "1px solid #34d399", borderRadius: 9, padding: "8px 12px" }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: "white", background: T.green, borderRadius: 5,
