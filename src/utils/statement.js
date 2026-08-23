@@ -151,3 +151,84 @@ export const nearMissInvoices = (invoices = [], customerId, customerName, startD
     return true;
   });
 };
+
+// 🧾 จัดกลุ่มบิลเป็น "ใบวางบิลรายลูกค้า" — ใช้โดยหน้าออกทั้งเดือน
+//    แยกออกมาเป็นฟังก์ชันล้วน (ไม่พึ่ง React) เพราะเป็นตัวที่ตัดสินว่าใครจะโดนเก็บเงินเท่าไหร่
+//    ต้องเอาไปรันทดสอบกับข้อมูลจริงนอกเบราว์เซอร์ได้ ก่อนออกใบจริงส่งลูกค้า
+export function buildStatementGroups({
+  invoices = [], customers = [], statements = [], returns = [],
+  startDate, endDate, filterMode = "unpaid", onlyCredit = true,
+}) {
+  if (!startDate || !endDate) return [];
+  // รวมรายชื่อจากทั้งลูกค้าในระบบ + ชื่อที่โผล่ในบิล (เผื่อบิลที่ไม่ได้ผูกลูกค้า)
+  const seen = new Map(); // key → { customerId, customerName, ...ข้อมูลติดต่อ }
+  customers.forEach(c => seen.set(`id:${c.id}`, {
+    customerId: c.id, customerName: c.name || "", phone: c.phone||"", address: c.address||"", taxId: c.taxId||"",
+    billingType: c.billingType || "credit", // ไม่เคยตั้ง = เครดิต (พฤติกรรมเดิม)
+  }));
+  const knownIds = new Set(customers.map(c => c.id));
+  invoices.forEach(inv => {
+    // บิลที่ผูกกับลูกค้าที่ยังอยู่ในทะเบียน → ไปรวมที่แถวของลูกค้ารายนั้น
+    // แต่ถ้าผูกกับรหัสที่ถูกลบไปแล้ว ต้องมีแถวรับ ไม่งั้นบิลหายเงียบ ๆ ไม่มีอะไรฟ้อง
+    if (inv.customerId && knownIds.has(inv.customerId)) return;
+    const nm = (inv.customerName || "").trim();
+    if (!nm) return;
+    const k = `name:${nm}`;
+    // บิลที่ไม่ผูกลูกค้า → ไม่รู้ประเภท ถือว่าเครดิตไว้ก่อน (จะได้ไม่ตกหล่น)
+    if (!seen.has(k)) seen.set(k, { customerId: "", customerName: nm, phone: inv.customerPhone||"", address: inv.customerAddress||"", taxId: inv.customerTaxId||"", billingType: "credit", unlinked: true });
+  });
+
+  const refs = [];
+  seen.forEach((c, key) => refs.push({ key, ...c }));
+
+  // 🧮 แจกบิล/ใบลดหนี้ให้เจ้าของรายเดียว
+  const RANK = { id: 3, phone: 2, name: 1 };
+  const refOf = (r) => ({ customerId: r.customerId, customerName: r.customerName, customerPhone: r.phone });
+  const claim = (owners, docLike, r) => {
+    const rank = RANK[matchCustomer(docLike, refOf(r))] || 0;
+    if (!rank) return;
+    const cur = owners.get(docLike.id);
+    if (!cur || rank > cur.rank || (rank === cur.rank && !cur.hasId && r.customerId))
+      owners.set(docLike.id, { key: r.key, rank, hasId: !!r.customerId });
+  };
+
+  const invOwner = new Map(), credOwner = new Map();
+  const cand = new Map(); // key → { invs, credits } ที่ "เข้าเงื่อนไข" (ยังไม่ตัดสินเจ้าของ)
+  refs.forEach(r => {
+    const invs = filterInvoicesForStatement(invoices, r.customerId, r.customerName, startDate, endDate, filterMode, r.phone);
+    const credits = creditsForStatement(returns, r.customerId, r.customerName, endDate, r.phone);
+    cand.set(r.key, { invs, credits });
+    invs.forEach(inv => claim(invOwner, inv, r));
+    credits.forEach(cr => claim(credOwner, cr, r));
+  });
+
+  const rows = [];
+  refs.forEach(r => {
+    // 💵 เงินสด — ไม่ต้องวางบิล (ตัดหลังตัดสินเจ้าของแล้ว บิลของรายนี้จึงไม่ไหลไปโผล่ที่แถวชื่อคล้ายกัน)
+    if (onlyCredit && r.billingType === "cash") return;
+    const c = cand.get(r.key);
+    const invs = c.invs.filter(i => invOwner.get(i.id)?.key === r.key);
+    if (invs.length === 0) return;
+    // ⚠️ เตือนถ้าเคยออกใบวางบิลช่วงเดียวกันไปแล้ว — กันออกซ้ำ
+    const dupe = statements.some(s =>
+      ((s.customerId && s.customerId === r.customerId) || (!s.customerId && s.customerName === r.customerName)) &&
+      s.periodStart === fmtDDMMYYYY(startDate) && s.periodEnd === fmtDDMMYYYY(endDate) && s.status !== "ยกเลิก"
+    );
+    // ↩️ ของที่ลูกค้ารายนี้คืนและยังไม่เคยถูกหัก → หักในใบวางบิลรอบนี้
+    const credits = c.credits.filter(x => credOwner.get(x.id)?.key === r.key);
+    const creditTotal = sumCredits(credits);
+    const total = invs.reduce((s,i)=>s+(Number(i.total)||0),0);
+    // ⚠️ บิลที่ชื่อในตัวบิลไม่ตรงกับชื่อแถวนี้ (เข้ามาเพราะผูกรหัสลูกค้าไว้)
+    //    ชื่อคล้ายกันไม่ได้แปลว่าเจ้าเดียวกัน — เช่น FBT มี 3 บริษัทแยกกัน
+    //    วางบิลผิดเจ้า = ทวงเงินผิดคน จึงต้องให้คนดูก่อน ห้ามกลืนเงียบ ๆ
+    //    บิลไม่มีชื่อไม่นับ — "ไม่ได้กรอกชื่อ" คนละเรื่องกับ "ชื่อคนอื่น"
+    const oddNames = invs.filter(i => { const k = custKey(i.customerName); return k && k !== custKey(r.customerName); });
+    // สรุปเป็น "ชื่อ (n ใบ)" ไว้โชว์ตรง ๆ — ต้องอ่านออกโดยไม่ต้องเอาเมาส์ไปจ่อทีละแถว
+    // ไม่งั้นเห็นแค่ "ต่างกัน 1 ใบ" ก็ตัดสินใจอะไรไม่ได้ ต้องเดาว่าเป็นชื่อของใคร
+    const oddCount = new Map();
+    oddNames.forEach(i => { const nm = (i.customerName || "").trim(); oddCount.set(nm, (oddCount.get(nm) || 0) + 1); });
+    const oddSummary = [...oddCount.entries()].map(([nm, n]) => `${nm} (${n} ใบ)`);
+    rows.push({ ...r, invoices: invs, total, credits, creditTotal, net: Math.max(0, total - creditTotal), dupe, oddNames, oddSummary });
+  });
+  return rows.sort((a,b) => b.total - a.total);
+}
