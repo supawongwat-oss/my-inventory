@@ -264,7 +264,7 @@ export default function OrdersTab({
                           const totalQty = list.reduce((s, o) => s + (o.items || []).reduce((a, i) => a + i.qty, 0), 0);
                           const collapsed = collapsedOrderDates[date];
                           return (
-                            <div key={date} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 16, overflow: "hidden" }}>
+                            <div key={date} className="tbl-x" style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 16, overflow: "hidden", "--tbl-min": "700px" }}>
                               <div onClick={() => setCollapsedOrderDates(p => ({ ...p, [date]: !p[date] }))} style={{ padding: "10px 20px", background: "linear-gradient(90deg,rgba(59,91,139,0.12),transparent)", borderBottom: collapsed ? "none" : `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 12, cursor: "pointer", userSelect: "none" }}
                                 onMouseEnter={e => e.currentTarget.style.background = "linear-gradient(90deg,rgba(59,91,139,0.2),transparent)"}
                                 onMouseLeave={e => e.currentTarget.style.background = "linear-gradient(90deg,rgba(59,91,139,0.12),transparent)"}>

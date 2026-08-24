@@ -302,6 +302,8 @@ export default function App() {
     return typeof window!=="undefined" ? window.innerWidth>900 : true;
   });
   useEffect(() => { try { localStorage.setItem("cpu.sidebarOpen", sidebarOpen ? "1" : "0"); } catch {} }, [sidebarOpen]);
+  // จอแคบ = แท็บเล็ตแนวตั้ง/มือถือ — ต้องรู้แบบ live เพราะหมุนจอแล้วต้องเปลี่ยนพฤติกรรมทันที
+  const [narrow, setNarrow] = useState(() => typeof window!=="undefined" ? window.innerWidth <= 900 : false);
   const [expandedGroups, setExpandedGroups] = useState({ warehouse:true, billing:true, adminhub:true });
   // 📱 จอแคบให้ยุบแถบเมนูให้ — แต่ต้องยุบ "ตอนเพิ่งแคบลง" เท่านั้น
   //    ของเดิมยุบทุกครั้งที่มี resize ซึ่งบนแท็บเล็ตเกิดตลอด (หมุนจอ คีย์บอร์ดเด้ง แถบเบราว์เซอร์ซ่อน)
@@ -309,9 +311,10 @@ export default function App() {
   useEffect(()=>{
     let wasNarrow = window.innerWidth <= 900;
     const onResize=()=>{
-      const narrow = window.innerWidth <= 900;
-      if (narrow && !wasNarrow) setSidebarOpen(false);   // เพิ่งแคบลงเท่านั้น
-      wasNarrow = narrow;
+      const isNarrow = window.innerWidth <= 900;
+      setNarrow(isNarrow);
+      if (isNarrow && !wasNarrow) setSidebarOpen(false);   // เพิ่งแคบลงเท่านั้น
+      wasNarrow = isNarrow;
     };
     window.addEventListener("resize",onResize);
     return ()=>window.removeEventListener("resize",onResize);
@@ -347,6 +350,8 @@ export default function App() {
   // 🔒 เมนูที่ต้องใส่รหัสแอดมินก่อนเข้า (จัดการผู้ใช้)
   const LOCKED_TABS = ["users"];
   const guardedSetActiveTab = (id) => {
+    // จอแคบเมนูลอยทับอยู่ — เลือกแล้วต้องปิดให้เอง ไม่งั้นบังเนื้อหาที่เพิ่งเปิด
+    if (window.innerWidth <= 900) setSidebarOpen(false);
     if (LOCKED_TABS.includes(id) && user.role === "admin" && Date.now() >= pwSessionExp) {
       requireAuth(() => setActiveTab(id), "ใส่รหัสแอดมินเพื่อเข้า “จัดการผู้ใช้”");
       return;
@@ -3812,6 +3817,13 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
             min-width:720px;
           }
         }
+        /* 📱 แท็บเล็ตแนวตั้ง/จอแคบ — ตารางที่กว้างเกินจอให้เลื่อนซ้ายขวาในกล่องตัวเอง
+           ของเดิมคอลัมน์ 1fr (ชื่อลูกค้า) ถูกบีบจนเหลือไม่กี่พิกเซล อ่านไม่ออกทั้งคอลัมน์
+           ความกว้างขั้นต่ำส่งมาทาง --tbl-min ของแต่ละตาราง */
+        @media(max-width:900px){
+          .tbl-x{overflow-x:auto!important;-webkit-overflow-scrolling:touch;}
+          .tbl-x>*{min-width:var(--tbl-min,700px);}
+        }
         @media(max-width:600px){
           .dash-cards{grid-template-columns:1fr!important;}
           .hide-xs{display:none!important;}
@@ -3838,7 +3850,20 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       <input ref={productImageRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleProductImageUpload}/>
 
       {/* SIDEBAR */}
-      <div style={{width:sidebarOpen?224:NAV.rail,background:T.sidebar,borderRight:`1px solid ${T.border}`,transition:"width .28s",display:"flex",flexDirection:"column",flexShrink:0,boxShadow:"2px 0 8px rgba(0,0,0,0.04)"}}>
+      {/* 📱 จอแคบ: เมนูที่กางออกให้ลอยทับเนื้อหา ไม่ใช่ดันให้แคบลง
+          แท็บเล็ตแนวตั้ง 768px ถ้าเมนูกินไป 224px เนื้อหาเหลือ ~504px
+          ซึ่งตารางบิล/วางบิล/ใบสั่งของกว้างกว่านั้นทุกหน้า → คอลัมน์ชื่อลูกค้าถูกบีบจนอ่านไม่ออก
+          พอลอยทับ เนื้อหายังได้ความกว้างเต็มเสมอ ไม่ว่าเมนูจะกางหรือยุบ */}
+      {narrow && sidebarOpen && (
+        <div onClick={() => setSidebarOpen(false)}
+          style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.35)",zIndex:80}}/>
+      )}
+      <div style={{
+        width: narrow && sidebarOpen ? 224 : (sidebarOpen ? 224 : NAV.rail),
+        ...(narrow && sidebarOpen
+          ? { position:"fixed", top:0, bottom:0, left:0, zIndex:81, boxShadow:"4px 0 24px rgba(0,0,0,0.18)" }
+          : { boxShadow:"2px 0 8px rgba(0,0,0,0.04)" }),
+        background:T.sidebar,borderRight:`1px solid ${T.border}`,transition:"width .28s",display:"flex",flexDirection:"column",flexShrink:0}}>
         <div style={{padding:"18px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:36,height:36,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden"}}>
             <img src={`${process.env.PUBLIC_URL}/cpu-logo.png`} alt="CPU" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
