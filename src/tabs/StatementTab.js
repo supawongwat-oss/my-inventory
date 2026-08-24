@@ -501,7 +501,7 @@ export default function StatementTab({ statements, invoices, returns = [], custo
       ) : filteredStatements.length === 0 ? (
         <div style={{ textAlign: "center", padding: 40, color: T.muted, fontSize: 13 }}>ไม่พบใบวางบิลตามเงื่อนไข</div>
       ) : (
-        <div className="tbl-x" style={{ "--tbl-min": "740px" }}>
+        <div className="tbl-x" style={{ "--tbl-min": "900px" }}>
         <CardBox style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 160px 120px 80px 130px 90px", alignItems: "center", padding: "10px 16px", background: "rgba(241,243,246,0.8)", borderBottom: `1px solid ${T.border}`, color: T.muted, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
             <div>เลขที่</div><div>ลูกค้า</div><div>ช่วงเวลา</div><div style={{ textAlign: "right" }}>ยอดรวม</div><div style={{ textAlign: "center" }}>บิล</div><div>สถานะ</div><div style={{ textAlign: "center" }}>จัดการ</div>
