@@ -290,10 +290,29 @@ export default function App() {
   }, [user]);
   const [selectedCat, setSelectedCat] = useState("ทั้งหมด");
   const [search, setSearch] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(typeof window!=="undefined"?window.innerWidth>900:true);
+  // 👆 เครื่องที่จิ้มด้วยนิ้ว (แท็บเล็ต) ต้องการเป้ากดใหญ่กว่าเมาส์
+  //    ของเดิมไอคอน 15px แถวสูง ~38px ซึ่งต่ำกว่ามาตรฐาน 44px — บนแท็บเล็ตกดพลาดบ่อย
+  //    โดยเฉพาะตอนแถบยุบเหลือไอคอนล้วน ไม่มีตัวหนังสือให้เล็งเลย
+  const [touchUI] = useState(() => {
+    try { return !!window.matchMedia?.("(pointer: coarse)")?.matches; } catch { return false; }
+  });
+  // จำไว้ว่าผู้ใช้ยุบหรือกางแถบเมนูไว้ — เดิมรีเฟรชทีก็กางใหม่ทุกครั้ง
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    try { const v = localStorage.getItem("cpu.sidebarOpen"); if (v !== null) return v === "1"; } catch {}
+    return typeof window!=="undefined" ? window.innerWidth>900 : true;
+  });
+  useEffect(() => { try { localStorage.setItem("cpu.sidebarOpen", sidebarOpen ? "1" : "0"); } catch {} }, [sidebarOpen]);
   const [expandedGroups, setExpandedGroups] = useState({ warehouse:true, billing:true, adminhub:true });
+  // 📱 จอแคบให้ยุบแถบเมนูให้ — แต่ต้องยุบ "ตอนเพิ่งแคบลง" เท่านั้น
+  //    ของเดิมยุบทุกครั้งที่มี resize ซึ่งบนแท็บเล็ตเกิดตลอด (หมุนจอ คีย์บอร์ดเด้ง แถบเบราว์เซอร์ซ่อน)
+  //    กางเองแล้วโดนพับกลับทันที = ใช้ได้แต่โหมดไอคอนล้วนซึ่งกดยากอยู่แล้ว
   useEffect(()=>{
-    const onResize=()=>{ if(window.innerWidth<=900) setSidebarOpen(false); };
+    let wasNarrow = window.innerWidth <= 900;
+    const onResize=()=>{
+      const narrow = window.innerWidth <= 900;
+      if (narrow && !wasNarrow) setSidebarOpen(false);   // เพิ่งแคบลงเท่านั้น
+      wasNarrow = narrow;
+    };
     window.addEventListener("resize",onResize);
     return ()=>window.removeEventListener("resize",onResize);
   },[]);
@@ -3665,6 +3684,13 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
   if (!user) return <LoginPage users={users} usersLoaded={usersLoaded} onLogin={(u, rememberMe) => handleLogin(u, rememberMe)} onResetPassword={handleResetPassword} onRegister={handleRegisterUser}/>;
 
+  // 📏 ขนาดเมนู — นิ้วกับเมาส์ต้องการไม่เท่ากัน
+  //    ตอนแถบยุบเหลือไอคอนล้วน ให้ใหญ่ขึ้นเสมอแม้ใช้เมาส์ เพราะไม่มีตัวหนังสือช่วยเล็ง
+  const NAV = touchUI
+    ? { rail: 76, pad: "13px 14px", icon: 21, childPad: "12px 14px 12px 24px", childIcon: 19, font: 14, childFont: 13.5 }
+    : { rail: 60, pad: "9px 14px",  icon: 15, childPad: "8px 14px 8px 26px",   childIcon: 14, font: 13, childFont: 12.5 };
+  const railIcon = Math.max(NAV.icon, 20);   // ไอคอนตอนแถบยุบ
+
   // 🗂 ลำดับเมนู — เรียงตามลำดับงานที่ใช้จริงต่อวัน (ขาย → เก็บเงิน → หลังบ้าน)
   const navStructure = [
     { type:"item",  id:"dashboard", icon:"📊", label:"ภาพรวม" },
@@ -3812,7 +3838,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       <input ref={productImageRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleProductImageUpload}/>
 
       {/* SIDEBAR */}
-      <div style={{width:sidebarOpen?224:60,background:T.sidebar,borderRight:`1px solid ${T.border}`,transition:"width .28s",display:"flex",flexDirection:"column",flexShrink:0,boxShadow:"2px 0 8px rgba(0,0,0,0.04)"}}>
+      <div style={{width:sidebarOpen?224:NAV.rail,background:T.sidebar,borderRight:`1px solid ${T.border}`,transition:"width .28s",display:"flex",flexDirection:"column",flexShrink:0,boxShadow:"2px 0 8px rgba(0,0,0,0.04)"}}>
         <div style={{padding:"18px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:36,height:36,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden"}}>
             <img src={`${process.env.PUBLIC_URL}/cpu-logo.png`} alt="CPU" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
@@ -3828,8 +3854,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               return (
                 <div key={entry.id} onClick={() => guardedSetActiveTab(entry.id)}
                   className={active?"nav-active-bar":""}
-                  style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontWeight:active?600:400,fontSize:13,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,justifyContent:sidebarOpen?"flex-start":"center",position:"relative",boxShadow:active?"0 0 12px rgba(59,91,139,0.08)":"none"}}>
-                  <span style={{fontSize:15,flexShrink:0}}>{entry.icon}</span>
+                  style={{display:"flex",alignItems:"center",gap:10,padding:NAV.pad,borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontWeight:active?600:400,fontSize:NAV.font,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,justifyContent:sidebarOpen?"flex-start":"center",position:"relative",boxShadow:active?"0 0 12px rgba(59,91,139,0.08)":"none"}}>
+                  <span style={{fontSize:sidebarOpen?NAV.icon:railIcon,flexShrink:0}}>{entry.icon}</span>
                   {sidebarOpen&&<span style={{fontFamily:"'DM Sans','Sarabun',sans-serif"}}>{entry.label}</span>}
                   {sidebarOpen&&entry.badge>0&&<span style={{marginLeft:"auto",background:T.red,color:"white",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{entry.badge}</span>}
                 </div>
@@ -3846,8 +3872,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                     const active = activeTab === c.id;
                     return (
                       <div key={c.id} onClick={() => guardedSetActiveTab(c.id)} title={c.badge>0?`${c.label} (${c.badge})`:c.label}
-                        style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontSize:13,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,justifyContent:"center",position:"relative"}}>
-                        <span style={{fontSize:15}}>{c.icon}</span>
+                        style={{display:"flex",alignItems:"center",gap:10,padding:NAV.pad,borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontSize:NAV.font,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,justifyContent:"center",position:"relative"}}>
+                        <span style={{fontSize:railIcon}}>{c.icon}</span>
                         {c.badge>0&&<span style={{position:"absolute",top:5,right:9,width:7,height:7,borderRadius:4,background:T.red}}/>}
                       </div>
                     );
@@ -3859,7 +3885,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
             return (
               <div key={entry.id} style={{marginBottom:4}}>
                 <div onClick={() => setExpandedGroups(p => ({...p, [entry.id]: !isOpen}))}
-                  style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",borderRadius:10,cursor:"pointer",color:hasActiveChild?T.accent:T.muted,fontWeight:600,fontSize:11,letterSpacing:"0.06em",textTransform:"uppercase",transition:"background .15s",background:hasActiveChild?"rgba(59,91,139,0.04)":"transparent",marginTop:6,marginBottom:3}}
+                  style={{display:"flex",alignItems:"center",gap:10,padding:touchUI?"11px 14px":"7px 14px",borderRadius:10,cursor:"pointer",color:hasActiveChild?T.accent:T.muted,fontWeight:600,fontSize:touchUI?12:11,letterSpacing:"0.06em",textTransform:"uppercase",transition:"background .15s",background:hasActiveChild?"rgba(59,91,139,0.04)":"transparent",marginTop:6,marginBottom:3}}
                   onMouseEnter={e=>e.currentTarget.style.background="rgba(59,91,139,0.06)"}
                   onMouseLeave={e=>e.currentTarget.style.background=hasActiveChild?"rgba(59,91,139,0.04)":"transparent"}>
                   <span style={{fontSize:13,flexShrink:0}}>{entry.icon}</span>
@@ -3871,8 +3897,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   return (
                     <div key={c.id} onClick={() => guardedSetActiveTab(c.id)}
                       className={active?"nav-active-bar":""}
-                      style={{display:"flex",alignItems:"center",gap:10,padding:"8px 14px 8px 26px",borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontWeight:active?600:400,fontSize:12.5,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,position:"relative",boxShadow:active?"0 0 12px rgba(59,91,139,0.08)":"none"}}>
-                      <span style={{fontSize:14,flexShrink:0}}>{c.icon}</span>
+                      style={{display:"flex",alignItems:"center",gap:10,padding:NAV.childPad,borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontWeight:active?600:400,fontSize:NAV.childFont,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,position:"relative",boxShadow:active?"0 0 12px rgba(59,91,139,0.08)":"none"}}>
+                      <span style={{fontSize:NAV.childIcon,flexShrink:0}}>{c.icon}</span>
                       <span style={{fontFamily:"'DM Sans','Sarabun',sans-serif"}}>{c.label}</span>
                       {c.badge>0&&<span style={{marginLeft:"auto",background:T.red,color:"white",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{c.badge}</span>}
                     </div>
@@ -3897,7 +3923,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           </div>
         )}
         <div style={{padding:"8px",borderTop:sidebarOpen?"none":`1px solid ${T.border}`}}>
-          <div onClick={() => setSidebarOpen(!sidebarOpen)} style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"8px",borderRadius:8,cursor:"pointer",color:T.muted,fontSize:12}}>
+          <div onClick={() => setSidebarOpen(!sidebarOpen)} style={{display:"flex",alignItems:"center",justifyContent:"center",padding:touchUI?"13px":"8px",borderRadius:8,cursor:"pointer",color:T.muted,fontSize:touchUI?16:12}}>
             {sidebarOpen ? "◀" : "▶"}
           </div>
         </div>
