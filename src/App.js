@@ -3817,13 +3817,16 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
             min-width:720px;
           }
         }
-        /* 📱 แท็บเล็ตแนวตั้ง/จอแคบ — ตารางที่กว้างเกินจอให้เลื่อนซ้ายขวาในกล่องตัวเอง
+        /* 📐 ตารางที่กว้างเกินพื้นที่ — ให้เลื่อนซ้ายขวาในกล่องตัวเอง แทนที่จะบีบคอลัมน์
            ของเดิมคอลัมน์ 1fr (ชื่อลูกค้า) ถูกบีบจนเหลือไม่กี่พิกเซล อ่านไม่ออกทั้งคอลัมน์
-           ความกว้างขั้นต่ำส่งมาทาง --tbl-min ของแต่ละตาราง */
-        @media(max-width:900px){
-          .tbl-x{overflow-x:auto!important;-webkit-overflow-scrolling:touch;}
-          .tbl-x>*{min-width:var(--tbl-min,700px);}
-        }
+           ความกว้างขั้นต่ำส่งมาทาง --tbl-min ของแต่ละตาราง
+
+           ⚠️ ห้ามใส่ media query ครอบ — ตัวตัดสินคือ "ความกว้างของกล่อง" ไม่ใช่ "ความกว้างของจอ"
+           แท็บเล็ตแนวนอน 1024px พอกางเมนู 224px เนื้อหาเหลือ ~760px ซึ่งแคบกว่าตารางวางบิลอยู่ดี
+           แต่จอไม่เข้าเงื่อนไข max-width:900px เลยไม่ได้ช่วยอะไร
+           เขียนแบบนี้ scroll จะโผล่เฉพาะตอนที่แคบจริง ๆ ทุกขนาดจอ ไม่ต้องเดาเบรกพอยต์ */
+        .tbl-x{overflow-x:auto!important;-webkit-overflow-scrolling:touch;}
+        .tbl-x>*{min-width:var(--tbl-min,700px);}
         @media(max-width:600px){
           .dash-cards{grid-template-columns:1fr!important;}
           .hide-xs{display:none!important;}
