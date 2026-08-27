@@ -10,6 +10,7 @@ import ProductionStatusModal from "../components/ProductionStatusModal";
 import PrintProductionOrder from "../components/PrintProductionOrder";
 import KanbanBoard from "../components/KanbanBoard";
 import { getLots } from "../utils/productionLots";
+import { matchTokens } from "../utils/search";
 import { migrateCustomOrderImages } from "../utils/migrateImages";
 
 const T = {
@@ -41,6 +42,24 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
   const [subTab, setSubTab] = useState("kanban"); // kanban | orders | custom | bom
   // ทะเบียนลูกค้าแบบค้นด้วยรหัส — ใช้อ่านประเภทการเก็บเงินมาโชว์บนการ์ด
   const custById = useMemo(() => new Map(customers.map(c => [c.id, c])), [customers]);
+
+  const [customSearch, setCustomSearch] = useState("");
+
+  // 🔍 ค้นหาใบ custom — ใบเยอะจนเลื่อนหาไม่เจอแล้ว
+  //
+  // ค้นก่อนแบ่งแท็บย่อย ตัวเลขบนแท็บจึงเป็นผลของคำค้นไปด้วย
+  // จะได้เห็นทันทีว่าใบที่หาอยู่ในแท็บไหน ไม่ต้องไล่กดทีละแท็บ
+  // ใช้ matchTokens ตัวเดียวกับหน้าอื่น — เว้นวรรคแยกคำ ไม่สนลำดับ
+  // และทนสระ/วรรณยุกต์ผิดตัวเดียว (ชื่อทีมกับชื่อร้านสะกดกันคนละแบบบ่อยมาก)
+  const shownCustom = useMemo(() => {
+    const q = customSearch.trim();
+    if (!q) return customOrders;
+    return customOrders.filter(o => matchTokens(q,
+      o.prodNo, o.customerName, o.customerPhone, o.clothingName, o.invoiceNo,
+      o.note, o.jobDescription, o.fabricType, o.collarType, o.date, o.status,
+      (o.items || []).map(i => `${i.colorName || ""} ${i.size || ""} ${i.variant || ""}`).join(" "),
+    ));
+  }, [customOrders, customSearch]);
   const [showNew, setShowNew] = useState(false);
   const [editProdOrder, setEditProdOrder] = useState(null); // ✏️ ใบสั่งผลิตที่กำลังแก้ไข
   const [editCustomOrder, setEditCustomOrder] = useState(null); // ✏️ Custom order ที่กำลังแก้ไข
@@ -326,18 +345,36 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
         // 🏭 ใบที่จ้างที่อื่นผลิต แยกออกจาก "กำลังผลิต" (ไม่ได้อยู่ในสายงานเรา)
         // 🧾 ออกบิลแล้ว = จบงานฝั่งเอกสาร → ยกออกจาก "กำลังผลิต"/"เสร็จแล้ว" ไม่ให้กอง
         const isBilled = (o) => !!o.invoiceNo;
-        const billedOrders = customOrders.filter(isBilled);
-        const outsourcedOrders = customOrders.filter(o => o.outsourced && !isBilled(o));
-        const inHouse = customOrders.filter(o => !o.outsourced && !isBilled(o));
+        const billedOrders = shownCustom.filter(isBilled);
+        const outsourcedOrders = shownCustom.filter(o => o.outsourced && !isBilled(o));
+        const inHouse = shownCustom.filter(o => !o.outsourced && !isBilled(o));
         const activeOrders = inHouse.filter(o => !isOrderDone(o));
         const doneOrders = inHouse.filter(o => isOrderDone(o));
         const filteredCustom = customSubTab==="active" ? activeOrders
           : customSubTab==="done" ? doneOrders
           : customSubTab==="outsourced" ? outsourcedOrders
           : customSubTab==="billed" ? billedOrders
-          : customOrders;
+          : shownCustom;
         return (
         <>
+          {/* 🔍 ช่องค้นหา — วางเหนือแท็บย่อย เพราะค้นข้ามทุกแท็บ */}
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+            <div style={{position:"relative",flex:1,minWidth:240,maxWidth:460}}>
+              <input value={customSearch} onChange={e=>setCustomSearch(e.target.value)}
+                placeholder="🔍 ค้นหา เลขที่ใบ · ชื่อลูกค้า · เบอร์ · ชื่องาน · เลขบิล · โน้ต · สี/ไซส์"
+                style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${customSearch?"#d97706":T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 34px 9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+              {customSearch && (
+                <button onClick={()=>setCustomSearch("")} title="ล้างคำค้น"
+                  style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",border:"none",background:"none",color:T.muted,cursor:"pointer",fontSize:15,lineHeight:1,padding:"2px 6px"}}>✕</button>
+              )}
+            </div>
+            {customSearch.trim() && (
+              <span style={{fontSize:12,color:shownCustom.length?"#d97706":T.red,fontWeight:600}}>
+                {shownCustom.length ? `เจอ ${shownCustom.length} ใบ` : "ไม่เจอสักใบ — ลองพิมพ์สั้นลง"}
+              </span>
+            )}
+          </div>
+
           {/* sub-tabs: active / done / all */}
           <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
             {[
@@ -345,7 +382,7 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
               {k:"done",l:"✅ เสร็จแล้ว",c:"#16a34a",n:doneOrders.length},
               ...(outsourcedOrders.length ? [{k:"outsourced",l:"🏭 จ้างข้างนอก",c:"#8b5cf6",n:outsourcedOrders.length}] : []),
               ...(billedOrders.length ? [{k:"billed",l:"🧾 ออกบิลแล้ว",c:"#0891b2",n:billedOrders.length}] : []),
-              {k:"all",l:"📋 ทั้งหมด",c:T.accent,n:customOrders.length},
+              {k:"all",l:"📋 ทั้งหมด",c:T.accent,n:shownCustom.length},
             ].map(t => {
               const sel = customSubTab === t.k;
               return (
