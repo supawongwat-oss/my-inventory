@@ -20,7 +20,8 @@ import { displayText } from "../utils/packImport";
 const SHARED = "_shared";
 
 export default function PackAliasesModal({ customer, clothingItems = [], user, onClose }) {
-  const [scope, setScope] = React.useState("mine");     // mine | shared
+  // ไม่ได้เลือกลูกค้ามา (เปิดจากแถบบนตอนยังไม่ได้เลือกเจ้าไหน) → เริ่มที่กองกลางเลย
+  const [scope, setScope] = React.useState(customer?.id ? "mine" : "shared");   // mine | shared
   const [aliases, setAliases] = React.useState({});
   const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState("");
@@ -30,7 +31,8 @@ export default function PackAliasesModal({ customer, clothingItems = [], user, o
   const docId = scope === "mine" ? customer?.id : SHARED;
 
   React.useEffect(() => {
-    if (!docId) return;
+    // ไม่มีเจ้าของให้อ่าน — ต้องเลิกหมุนรอโหลด ไม่งั้นค้างที่ "กำลังโหลด" ตลอด
+    if (!docId) { setAliases({}); setLoading(false); return; }
     let alive = true;
     setLoading(true);
     getDoc(doc(db, "packAliases", docId))
@@ -127,7 +129,8 @@ export default function PackAliasesModal({ customer, clothingItems = [], user, o
 
       <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
         {[
-          { k: "mine", l: `📦 ${customer?.name || "ลูกค้ารายนี้"}`, hint: "ใช้อัตโนมัติกับเจ้านี้" },
+          // ไม่ได้เลือกลูกค้ามา ก็ไม่มีชั้น "ของเจ้านี้" ให้ดู — ซ่อนไปเลย ดีกว่าให้กดแล้วว่าง
+          ...(customer?.id ? [{ k: "mine", l: `📦 ${customer?.name || "ลูกค้ารายนี้"}`, hint: "ใช้อัตโนมัติกับเจ้านี้" }] : []),
           { k: "shared", l: "🌐 กองกลาง", hint: "เจ้าอื่นเอาไปใช้เป็นตัวเติม (ยังต้องกดยืนยัน)" },
         ].map(t => (
           <button key={t.k} onClick={() => { setScope(t.k); setEditKey(null); }} title={t.hint}

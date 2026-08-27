@@ -240,6 +240,15 @@ export default function PackRunTab({
               ➕ เปิดรอบใหม่
             </Btn>
           )}
+          {/* 🧠 สิ่งที่ระบบจำไว้จากตอนนำเข้าใบปะหน้า
+              เดิมปุ่มนี้อยู่ในกรอบของรอบที่เปิดอยู่ — แปลว่าถ้ายังไม่เปิดรอบก็ไม่มีทางเห็น
+              ทั้งที่เวลาที่อยากตรวจที่สุดคือ "หลังถอนรายการทิ้ง" ซึ่งมักไม่มีรอบเปิดค้างอยู่
+              จับคู่ผิดไว้ครั้งเดียวจะผิดเงียบ ๆ ทุกรอบถัดไป ทั้งสต๊อกและบิล จึงต้องเข้าถึงได้ตลอด */}
+          <Btn onClick={() => onManageAliases?.(customers.find(c => c.id === custId) || null)}
+            title="ดู/แก้/ลบ ชื่อบนใบปะหน้าที่ระบบจำว่าตรงกับรุ่นและสีไหน"
+            style={{ padding: "9px 14px", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>
+            🧠 การจับคู่ที่จำไว้
+          </Btn>
           {open.length > 0 && (
             <div style={{ fontSize: 11, color: T.muted, marginLeft: "auto" }}>
               กำลังแพ็คอยู่ {open.length} เจ้า · รวม {open.reduce((s, r) => s + totalOf(r), 0).toLocaleString("th-TH")} ชิ้น
@@ -302,15 +311,6 @@ export default function PackRunTab({
                 <div style={{ fontSize: 11, fontWeight: 400, color: T.muted, marginTop: 3 }}>
                   หรือวางข้อความจากแชท / ไฟล์ Excel — ไม่ต้องนั่งกดทีละใบ
                 </div>
-              </button>
-
-              {/* 🧠 สิ่งที่ระบบจำไว้จากการแก้ครั้งก่อน — ต้องมีทางย้อนกลับมาดู
-                  จับคู่ผิดไว้ครั้งเดียวจะผิดเงียบ ๆ ทุกรอบถัดไป ทั้งสต๊อกและบิล */}
-              <button onClick={() => onManageAliases?.(customers.find(c => c.id === custId))}
-                style={{ width: "100%", padding: "8px 12px", borderRadius: 9, marginBottom: 12, cursor: "pointer",
-                  border: `1px solid ${T.border}`, background: "white", color: T.sub,
-                  fontSize: 12, fontFamily: "'Sarabun',sans-serif" }}>
-                🧠 ดู/แก้การจับคู่ชื่อสินค้าที่ระบบจำไว้
               </button>
 
               {hasAnyBarcode && (

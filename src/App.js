@@ -4311,7 +4311,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               onPrintPickList={setPrintPackRun}
               onBulkImport={setImportPackRun}
               onUndoImport={handleUndoPackImport}
-              onManageAliases={setAliasCustomer}
+              onManageAliases={(c) => setAliasCustomer(c || {})}
             />
           )}
 
