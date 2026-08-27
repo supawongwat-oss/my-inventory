@@ -48,6 +48,34 @@ export default function CustomerPicker({
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
 
+  // 🔗 เอกสารที่ "ผูกลูกค้ามาแล้ว" แต่ช่องเบอร์/ที่อยู่/เลขภาษียังว่าง
+  //
+  // เกิดกับเอกสารที่เปิดมาแก้ และเอกสารที่มาจากใบสั่งของ/ใบ custom/รอบแพ็ค
+  // ฟอร์มมี customerId ติดมาด้วยอยู่แล้ว จึงขึ้นกรอบเขียว "จากทะเบียนลูกค้า"
+  // ทั้งที่ยังไม่เคยไปอ่านทะเบียนเลยสักครั้ง — การอ่านทะเบียนเกิดใน pick() เท่านั้น
+  //
+  // อาการที่พนักงานเจอ: ผูกลูกค้าแล้วเบอร์ไม่ขึ้น ต้องกดเปลี่ยนไปลูกค้าคนอื่น
+  // แล้วเปลี่ยนกลับมา เบอร์ถึงจะโผล่ — เพราะการเปลี่ยนกลับคือการกดเลือกจริง ๆ นั่นเอง
+  // (บิลที่ออกไปแล้วเลยไม่มีเบอร์/ที่อยู่ ทั้งที่ทะเบียนมีข้อมูลอยู่)
+  //
+  // เติมให้เองครั้งเดียวตอนรหัสลูกค้าเปลี่ยน และเติมเฉพาะช่องที่ว่าง
+  // ไม่ทับของที่พิมพ์เอง และถ้าลบเบอร์ทิ้งเองก็ให้ว่างต่อไป ไม่เด้งกลับมา
+  // (จับที่ "รหัสลูกค้าเปลี่ยน" ไม่ใช่ "ช่องว่าง" จึงไม่เติมซ้ำ)
+  const filledFor = React.useRef("");
+  React.useEffect(() => {
+    const id = value.customerId;
+    if (!id || filledFor.current === id) return;
+    filledFor.current = id;
+    const c = customers.find(x => x.id === id);
+    if (!c) return;
+    const patch = {};
+    if (!value.customerName && c.name) patch.customerName = c.name;
+    if (!value.customerPhone && c.phone) patch.customerPhone = c.phone;
+    if (!value.customerAddress && c.address) patch.customerAddress = c.address;
+    if (!value.customerTaxId && c.taxId) patch.customerTaxId = c.taxId;
+    if (Object.keys(patch).length) onChange(patch);
+  }, [value.customerId, value.customerName, value.customerPhone, value.customerAddress, value.customerTaxId, customers, onChange]);
+
   const pick = (c) => {
     // เบอร์/ที่อยู่/เลขภาษี ทับด้วยของในทะเบียนเฉพาะที่มีค่า — ที่พิมพ์ไว้แล้วจะไม่ถูกล้างทิ้ง
     onChange({
@@ -144,7 +172,7 @@ export default function CustomerPicker({
             </span>
             {/* เห็นตั้งแต่ตอนออกบิลว่าเจ้านี้เก็บเงินยังไง — คนที่รับเงินคือคนที่รู้คำตอบ */}
             <BillingBadge type={linkedCustomer?.billingType}/>
-            <button type="button" onClick={() => { setQ(""); onChange({ customerId: "" }); setOpen(true); }}
+            <button type="button" onClick={() => { setQ(""); filledFor.current = ""; onChange({ customerId: "" }); setOpen(true); }}
               style={{ background: "none", border: `1px solid ${T.border}`, color: T.sub, borderRadius: 7, padding: "3px 10px",
                 cursor: "pointer", fontSize: 11, fontFamily: "inherit", whiteSpace: "nowrap" }}>
               เปลี่ยน
