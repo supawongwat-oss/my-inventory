@@ -204,29 +204,48 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
     if (!window.confirm(`ลง ${entries.length} รายการ รวม ${totalQty.toLocaleString("th-TH")} ชิ้น เข้ารอบ ${run.runNo}?`)) return;
     setBusy("กำลังลงรายการ...");
     try {
-      await onCommit(run, entries, { importId, source, rows: rows.length, qty: totalQty, fp: fingerprintOf(entries) });
-      // จำการจับคู่ที่คนแก้ไว้ — แยกชั้นรุ่นกับสี ครั้งหน้าแก้ 1 ครั้งได้ทุกสีใต้ชื่อนั้น
+      // 🧠 คิดการจับคู่ที่จะจำ "ก่อน" เขียนยอด — ต้องเอาไปบันทึกไว้ในบัญชีนำเข้าด้วย
+      //    เผื่อวันหลังถอนชุดนี้เพราะจับคู่ผิด จะได้ตามไปลืมได้ถูกตัว
+      //    (ไม่มีบันทึกนี้ = ถอนยอดได้ แต่ของที่สอนผิดยังอยู่ แล้วผิดเงียบ ๆ ต่อไปทุกรอบ)
       const next = { ...aliases };
+      const touched = [];
       view.forEach((r, i) => {
         if (!willLearn(i, r) || !r.pick || r.status === "ข้าม") return;
-        next[`p:${looseKey(r.productText)}`] = { clothingId: r.pick.clothingId, text: r.productText || "", by: user?.name || "", at: new Date().toISOString() };
+        const kp = `p:${looseKey(r.productText)}`;
+        next[kp] = { clothingId: r.pick.clothingId, text: r.productText || "", by: user?.name || "", at: new Date().toISOString() };
+        touched.push(kp);
         if (r.pick.colorIdx != null) {
           // กุญแจต้องเป็นตัวเดียวกับตอนอ่านใน matchRow — ลายเซ็นของแถว ไม่ใช่ชื่อสีที่แปลได้
-          next[`pc:${looseKey(r.productText)}##${looseKey(r.optionText || "")}`] =
-            { clothingId: r.pick.clothingId, colorIdx: r.pick.colorIdx, colorName: r.pick.colorName,
-              text: r.productText || "", optionText: r.optionText || "", by: user?.name || "", at: new Date().toISOString() };
+          const kc = `pc:${looseKey(r.productText)}##${looseKey(r.optionText || "")}`;
+          next[kc] = { clothingId: r.pick.clothingId, colorIdx: r.pick.colorIdx, colorName: r.pick.colorName,
+            text: r.productText || "", optionText: r.optionText || "", by: user?.name || "", at: new Date().toISOString() };
+          touched.push(kc);
         }
       });
-      if (Object.keys(next).length !== Object.keys(aliases).length) {
+
+      // นับเฉพาะตัวที่ "ชุดนี้ทำให้เปลี่ยนจริง" — ของเดิมที่สอนไว้ก่อนแล้วไม่ใช่ผลงานของชุดนี้
+      // ถ้าเหมาไปลืมด้วยจะไปลบของที่สอนถูกไว้นานแล้ว
+      const differs = (a, b) => !a || a.clothingId !== b.clothingId || (a.colorIdx ?? null) !== (b.colorIdx ?? null);
+      const aliasKeys = [...new Set(touched)].filter(k => differs(aliases[k], next[k]));
+      // ของกลาง: ลืมได้เฉพาะตัวที่ "ชุดนี้เป็นคนใส่เข้าไปใหม่"
+      // ตัวที่มีอยู่ก่อนแล้วเป็นของลูกค้ารายอื่นสอนไว้ ห้ามไปลบของเขา
+      const sharedKeys = aliasKeys.filter(k => !gAliases[k]);
+
+      await onCommit(run, entries, {
+        importId, source, rows: rows.length, qty: totalQty, fp: fingerprintOf(entries),
+        aliasKeys, sharedKeys,
+      });
+
+      if (aliasKeys.length) {
         // เขียน 2 ที่: ของลูกค้ารายนี้ (ใช้อัตโนมัติครั้งหน้า) และของกลาง (ให้รายอื่นได้ใช้เป็นตัวเติม)
         // ลูกค้าทุกเจ้าขายของจากคลังเดียวกัน สอนครั้งเดียวจึงควรช่วยทุกเจ้า
         const learned = {};
-        Object.keys(next).forEach(k => { if (!aliases[k]) learned[k] = next[k]; });
+        sharedKeys.forEach(k => { learned[k] = next[k]; });
         await Promise.all([
           setDoc(doc(db, "packAliases", run.customerId),
             { customerName: run.customerName || "", aliases: next, updatedAt: serverTimestamp() }, { merge: true }),
-          setDoc(doc(db, "packAliases", "_shared"),
-            { aliases: learned, updatedAt: serverTimestamp() }, { merge: true }),
+          ...(Object.keys(learned).length ? [setDoc(doc(db, "packAliases", "_shared"),
+            { aliases: learned, updatedAt: serverTimestamp() }, { merge: true })] : []),
         ]).catch(e => console.warn("[packImport] จำการจับคู่ไม่สำเร็จ:", e?.message || e));
       }
       onClose();

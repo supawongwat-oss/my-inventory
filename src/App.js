@@ -2387,6 +2387,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     args.push(new FieldPath("imports", meta.importId), {
       at: now(), by: user.name, source: meta.source || "",
       rows: meta.rows || entries.length, qty: meta.qty || 0, fp: meta.fp || "", keys,
+      // 🧠 ชุดนี้สอนการจับคู่อะไรไว้บ้าง — ใช้ตอนถอน ถ้าถอนเพราะจับคู่ผิดจะได้ลืมตามได้
+      aliasKeys: meta.aliasKeys || [], sharedKeys: meta.sharedKeys || [],
     });
     await updateDoc(doc(db, "packRuns", run.id), ...args);
     logAudit(user, {
@@ -2414,6 +2416,42 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     args.push(new FieldPath("imports", importId), deleteField());
     if (!args.length) return;
     await updateDoc(doc(db, "packRuns", run.id), ...args);
+
+    // 🧠 ถอนยอดแล้ว แต่ "การจับคู่" ที่ชุดนี้สอนไว้ยังอยู่
+    //
+    // ถอนเพราะนับผิด/ลงผิดรอบ → ควรเก็บไว้ ไม่ต้องสอนใหม่
+    // ถอนเพราะจับคู่ผิด → ต้องลืม ไม่งั้นครั้งหน้าจะปล่อยผ่านอัตโนมัติแบบเงียบ ๆ
+    //                     ตัดสต๊อกผิดรุ่นทุกรอบ กว่าจะรู้ก็ตอนนับสต๊อกสิ้นเดือน
+    // แยกเองไม่ได้ ต้องถามคน — และถามตอนนี้เท่านั้นที่คนยังจำได้ว่าถอนเพราะอะไร
+    const aliasKeys = rec.aliasKeys || [];
+    if (aliasKeys.length && run.customerId) {
+      const NLx = String.fromCharCode(10);
+      const forget = window.confirm(
+        `ถอนยอดเรียบร้อยแล้ว` + NLx + NLx +
+        `ชุดนี้เคยสอนการจับคู่ชื่อสินค้าไว้ ${aliasKeys.length} รายการ` + NLx + NLx +
+        `ถอนเพราะ "จับคู่ผิด" หรือเปล่า?` + NLx +
+        `  • ตกลง = ลืมการจับคู่พวกนั้นด้วย ครั้งหน้าจะถามใหม่` + NLx +
+        `  • ยกเลิก = เก็บไว้ (ถอนเพราะนับผิด/ลงผิดรอบ)`
+      );
+      if (forget) {
+        try {
+          const del = (docId, ks) => {
+            if (!ks.length) return null;
+            const a = [];
+            // ⚠️ ต้องใช้ FieldPath — กุญแจมีจุดได้ (เช่น "No.1") ถ้าใช้ "aliases.xxx" จะแยกชั้นผิด
+            ks.forEach(k => a.push(new FieldPath("aliases", k), deleteField()));
+            return updateDoc(doc(db, "packAliases", docId), ...a);
+          };
+          await Promise.all([
+            del(run.customerId, aliasKeys),
+            del("_shared", rec.sharedKeys || []),
+          ].filter(Boolean));
+        } catch (e) {
+          console.warn("[packAliases] ลืมการจับคู่ไม่สำเร็จ:", e?.message || e);
+          alert("ถอนยอดสำเร็จ แต่ลบการจับคู่ไม่สำเร็จ — ไปลบเองได้ที่ปุ่ม 🧠 ในหน้ารอบแพ็ค");
+        }
+      }
+    }
     logAudit(user, {
       action: AUDIT_ACTIONS.UPDATE, collection: "packRuns", targetId: run.id,
       targetLabel: `${run.runNo} · ${run.customerName}`, note: `ถอนการนำเข้า (${rec.qty || 0} ชิ้น)`,
