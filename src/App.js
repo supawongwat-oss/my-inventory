@@ -3097,16 +3097,36 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     runOnce(`convert:${sourceInv?.id}:${targetDocType}`, () => handleConvertQuotationInner(sourceInv, targetDocType));
   const handleConvertQuotationInner = async (sourceInv, targetDocType) => {
     if (!sourceInv) return;
-    // 🚫 แปลงไปแล้วห้ามแปลงซ้ำ — เดิมไม่ได้เช็ค กดอีกทีก็ได้เอกสารใบใหม่อีกใบ
-    //    แล้ว convertedTo ของต้นทางถูกทับด้วยใบล่าสุด ใบก่อนหน้าจึงลอยอยู่โดยไม่มีอะไรชี้ถึง
-    //    (ใบกำกับภาษี 2 ใบจากการขายครั้งเดียว = ปัญหาทางบัญชี ไม่ใช่แค่รก)
+    // 🔁 แปลงไปแล้ว แล้วจะแปลงอีกครั้ง
+    //
+    // เคยบล็อกตายไว้ ซึ่งแรงเกินไป — การออกซ้ำโดยตั้งใจมีจริงในงานประจำวัน
+    // (ลูกค้าทำเอกสารหาย · ขอเพิ่มอีกใบให้ฝ่ายบัญชี · ใบเดิมพิมพ์เสีย)
+    // ปิดทางทิ้งไปเลยแปลว่าพนักงานติดตายกลางกะ แล้วต้องไปหาทางอ้อมที่ตรวจสอบไม่ได้
+    //
+    // เปิดทางให้ทำได้ แต่ต้อง "รู้ตัว + มีหลักฐานว่าตั้งใจ":
+    //   · ถ้าใบเดิมถูกยกเลิกไปแล้ว = ชัดเจนว่าออกใหม่แทน ไม่ต้องถามอะไร
+    //   · ถ้าใบเดิมยังใช้งานอยู่ = เตือนให้ชัดว่ายอดจะนับ 2 ใบตอนวางบิล แล้วให้กรอกเหตุผล
+    //     เหตุผลถูกเก็บลงเอกสารใบใหม่ ตามย้อนได้ว่าใครออกซ้ำเพราะอะไร
+    let reissueReason = "";
     if (sourceInv.convertedTo) {
-      alert(
-        `บิลนี้แปลงเป็น ${sourceInv.convertedTo.invoiceNo} ไปแล้ว` + String.fromCharCode(10, 10) +
-        `ถ้าออกอีกใบ ลูกค้าจะได้เอกสาร 2 ใบจากการขายครั้งเดียว` + String.fromCharCode(10, 10) +
-        `ถ้าใบเดิมผิดจริง ให้ยกเลิกใบ ${sourceInv.convertedTo.invoiceNo} ก่อน แล้วค่อยแปลงใหม่`
-      );
-      return;
+      const NL2 = String.fromCharCode(10);
+      const prev = invoices.find(i => i.id === sourceInv.convertedTo.id);
+      const prevCancelled = (prev?.status || "") === "ยกเลิก";
+      if (!prevCancelled) {
+        const ok = window.confirm([
+          `บิลนี้แปลงเป็น ${sourceInv.convertedTo.invoiceNo} ไปแล้ว และใบนั้นยังใช้งานอยู่`, "",
+          `ออกอีกใบ = ลูกค้าจะมีเอกสาร 2 ใบจากการขายครั้งเดียว`,
+          `และตอนวางบิล ยอดจะถูกนับทั้ง 2 ใบ`, "",
+          `ถ้าใบเดิมผิด/ไม่ใช้แล้ว ให้กดยกเลิกใบ ${sourceInv.convertedTo.invoiceNo} ก่อน`,
+          `ถ้าตั้งใจออกเพิ่มจริง (ลูกค้าขอเอกสารอีกใบ) กดตกลงเพื่อไปต่อ`,
+        ].join(NL2));
+        if (!ok) return;
+        const why = window.prompt("ออกซ้ำเพราะอะไร? (บันทึกไว้ในเอกสาร ตามย้อนได้)", "ลูกค้าขอเอกสารเพิ่ม");
+        if (why === null) return;                       // กดยกเลิกที่ช่องกรอก = ไม่ทำต่อ
+        reissueReason = String(why).trim() || "ออกซ้ำโดยตั้งใจ";
+      } else {
+        reissueReason = `ออกใหม่แทน ${sourceInv.convertedTo.invoiceNo} ที่ยกเลิกไปแล้ว`;
+      }
     }
     if (!window.confirm(`สร้าง${targetDocType==="tax"?"ใบกำกับภาษี":"ใบเสร็จ"}จาก ${sourceInv.invoiceNo} (${sourceInv.customerName})?`)) return;
     const calc = calcInvoice(sourceInv.items||[], sourceInv.vatRate||7, targetDocType==="tax"||sourceInv.useVat, sourceInv.discount||0, sourceInv.discountType||"amount", !!sourceInv.useShipping, sourceInv.shippingFee||0, sourceInv.designFee||0);
@@ -3136,6 +3156,13 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       createdAt: serverTimestamp(),
       status: "ออกแล้ว",
       convertedFrom: { id: sourceInv.id, invoiceNo: sourceInv.invoiceNo, docType: sourceInv.docType },
+      // 🔁 ใบนี้เป็นการออกซ้ำจากต้นทางที่เคยแปลงไปแล้ว — ติดธงไว้ให้เห็นในรายการบิล
+      //    ไม่ติดธง = ดูยังไงก็เหมือนบิลปกติ แล้วจะไม่มีใครรู้ว่ามีคู่แฝดอยู่อีกใบ
+      ...(sourceInv.convertedTo ? {
+        reissueOf: { id: sourceInv.convertedTo.id, invoiceNo: sourceInv.convertedTo.invoiceNo },
+        reissueReason,
+        reissuedBy: user.name,
+      } : {}),
     };
     // validation for tax invoice
     if (targetDocType === "tax") {
