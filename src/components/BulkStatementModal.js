@@ -308,6 +308,8 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
                       {/* ยอดในใบวางบิลต่างจากหน้าบิลเพราะสองอย่างนี้ — ต้องบอก ไม่งั้นดูเหมือนเงินหาย */}
                       {g.paidTotal > 0 && <span style={{ marginLeft: 6, color: "#047857" }}>· หักรับชำระแล้ว -฿{fmtB(g.paidTotal)}</span>}
                       {g.excluded.length > 0 && <span style={{ marginLeft: 6, color: T.muted }}>· ไม่นับ {g.excluded.length} ใบ (฿{fmtB(g.excludedTotal)})</span>}
+                      {/* วางบิลไปแล้วในใบอื่น — ต้องบอก ไม่งั้นยอดหายไปเฉย ๆ แล้วหาสาเหตุไม่ได้ */}
+                      {g.alreadyBilled > 0 && <span style={{ marginLeft: 6, color: T.amber }}>· วางบิลไปแล้ว {g.alreadyBilled} ใบ (฿{fmtB(g.alreadyBilledTotal)})</span>}
                       {/* บิลที่ชื่อในตัวบิลต่างจากชื่อแถวนี้ — ต้องเห็นก่อนกด ไม่งั้นวางบิลผิดเจ้าโดยไม่รู้ตัว */}
                       {g.oddNames?.length > 0 && (
                         <span style={{ marginLeft: 6, color: "#b45309" }}>

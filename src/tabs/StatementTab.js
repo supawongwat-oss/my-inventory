@@ -9,7 +9,7 @@ import { reserveDocNo } from "../utils/docNumber";
 import BulkStatementModal from "../components/BulkStatementModal";
 import LoadRangeBar from "../components/LoadRangeBar";
 import LinkInvoiceCustomers from "../components/LinkInvoiceCustomers";
-import { filterInvoicesForStatement, creditsForStatement, sumCredits, nearMissInvoices, paidOf, dueOf } from "../utils/statement";
+import { filterInvoicesForStatement, creditsForStatement, sumCredits, nearMissInvoices, paidOf, dueOf, statementedInvoiceIds, statementOfInvoice } from "../utils/statement";
 
 // ── helpers ────────────────────────────────────────────────
 const pad2 = n => String(n).padStart(2, "0");
@@ -97,7 +97,14 @@ export default function StatementTab({ statements, invoices, returns = [], custo
   const [includedNearIds, setIncludedNearIds] = useState(() => new Set());
 
   // === Live preview ใน modal ===
-  const previewInvoices = useMemo(() => {
+  // 🚫 บิลที่อยู่ในใบวางบิลใบอื่นแล้ว — ตัดออกก่อน ไม่ให้ทวงซ้ำ
+  //    เคสจริง: วางบิลไปเมื่อวาน วันนี้ลูกค้าสั่งเพิ่ม แล้วออกใบใหม่ช่วงเดิม
+  //    ถ้าไม่ตัด บิลของเมื่อวานจะโดนดึงกลับมาอีกรอบ ลูกค้าจ่ายซ้ำ
+  const usedIds = useMemo(() => statementedInvoiceIds(statements), [statements]);
+  // ตัวที่ตัดออกเพราะวางบิลไปแล้ว — ต้องเอาไปโชว์ ไม่ให้ยอดหายไปเฉย ๆ โดยไม่มีคำอธิบาย
+  const [includedUsedIds, setIncludedUsedIds] = useState(new Set());
+
+  const previewAll = useMemo(() => {
     if (!form.customerId && !form.customerName) return [];
     return filterInvoicesForStatement(
       invoices, form.customerId, form.customerName,
@@ -105,6 +112,13 @@ export default function StatementTab({ statements, invoices, returns = [], custo
       form.filterMode, form.customerPhone
     );
   }, [invoices, form.customerId, form.customerName, form.customerPhone, form.periodStart, form.periodEnd, form.filterMode]);
+
+  const alreadyBilled = useMemo(
+    () => previewAll.filter(i => usedIds.has(i.id) && !includedUsedIds.has(i.id)),
+    [previewAll, usedIds, includedUsedIds]);
+  const previewInvoices = useMemo(
+    () => previewAll.filter(i => !usedIds.has(i.id) || includedUsedIds.has(i.id)),
+    [previewAll, usedIds, includedUsedIds]);
 
   // ⚠️ บิลที่ "ชื่อใกล้เคียง" แต่ยังไม่มั่นใจพอจะรวมให้เอง
   //    ตัวนี้แหละที่ทำให้ปัญหา "บางบิลหายไป" มองเห็นได้ แทนที่จะหายเงียบ
@@ -124,7 +138,7 @@ export default function StatementTab({ statements, invoices, returns = [], custo
   const [excludedIds, setExcludedIds] = useState(new Set());
   // เปลี่ยนลูกค้า/ช่วงเวลา → เริ่มเลือกใหม่ ไม่ให้ค้างของเดิม
   const pickKey = `${form.customerId}|${form.customerName}|${form.periodStart}|${form.periodEnd}|${form.filterMode}`;
-  useEffect(() => { setExcludedIds(new Set()); setIncludedNearIds(new Set()); }, [pickKey]);
+  useEffect(() => { setExcludedIds(new Set()); setIncludedNearIds(new Set()); setIncludedUsedIds(new Set()); }, [pickKey]);
 
   const toggleInvoice = (id) => setExcludedIds(prev => {
     const n = new Set(prev);
@@ -696,6 +710,31 @@ export default function StatementTab({ statements, invoices, returns = [], custo
                   </div>
                 ))}
                 {nearMiss.length > 12 && <div style={{ fontSize: 10, color: T.muted, marginTop: 3 }}>…และอีก {nearMiss.length - 12} ใบ</div>}
+              </div>
+            )}
+            {alreadyBilled.length > 0 && (
+              <div style={{ padding: "8px 12px", background: "rgba(184,134,0,0.08)", border: "1px solid rgba(184,134,0,0.35)", borderRadius: 9, fontSize: 12, marginBottom: 8 }}>
+                <div style={{ color: T.amber, fontWeight: 700, marginBottom: 5 }}>
+                  ℹ️ ตัดออก {alreadyBilled.length} ใบ เพราะวางบิลไปแล้ว — ใบนี้จะมีเฉพาะบิลที่เพิ่มเข้ามาใหม่
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {alreadyBilled.slice(0, 6).map(inv => {
+                    const st = statementOfInvoice(statements, inv.id);
+                    return (
+                      <div key={inv.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontFamily: "monospace", color: T.sub }}>{inv.invoiceNo}</span>
+                        <span style={{ color: T.muted, fontSize: 11 }}>฿{(Number(inv.total) || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
+                        <span style={{ color: T.muted, fontSize: 11 }}>→ อยู่ใน {st?.statementNo || "ใบวางบิลอื่น"}</span>
+                        <button onClick={() => setIncludedUsedIds(prev => new Set(prev).add(inv.id))}
+                          title="ใบวางบิลเดิมยกเลิก/พิมพ์ผิด จึงต้องเอาบิลนี้มาวางใหม่"
+                          style={{ background: "#ffffff", border: `1px solid ${T.amber}`, color: T.text, borderRadius: 6, padding: "2px 9px", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
+                          + รวมด้วย
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {alreadyBilled.length > 6 && <div style={{ color: T.muted, fontSize: 11 }}>… และอีก {alreadyBilled.length - 6} ใบ</div>}
+                </div>
               </div>
             )}
             {pickedInvoices.length === 0 && previewInvoices.length === 0 ? (

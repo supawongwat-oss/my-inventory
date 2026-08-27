@@ -86,7 +86,27 @@ export const isOutstanding = (inv) => {
 // คัดบิลที่จะเข้าใบวางบิลของลูกค้ารายหนึ่ง
 //   mode "unpaid" = เอาเฉพาะที่ยังไม่ชำระ (ตัดที่ชำระแล้ว/ยกเลิกออก)
 //   mode "all"    = เอาทุกใบในช่วง
-export const filterInvoicesForStatement = (invoices, customerId, customerName, startDate, endDate, mode, customerPhone) => {
+// 🚫 บิลที่อยู่ในใบวางบิลใบอื่นแล้ว — ห้ามเอามาวางซ้ำ
+//
+// ใบวางบิลที่ออกไปแล้วคือเอกสารที่ส่งถึงลูกค้าแล้ว แก้ย้อนหลังไม่ได้
+// เวลาลูกค้าสั่งเพิ่มทีหลัง วิธีที่ถูกคือออกใบใหม่เฉพาะบิลที่เพิ่มเข้ามา
+// ถ้าไม่กันไว้ ช่วงวันที่ที่คาบเกี่ยวกันจะดึงบิลเดิมกลับมาอีกรอบ = ทวงเงินซ้ำ
+// (ใบที่ยกเลิกไปแล้วไม่นับ — บิลในนั้นกลับมาวางใหม่ได้)
+export const statementedInvoiceIds = (statements = [], exceptId = null) => {
+  const out = new Set();
+  (statements || []).forEach(st => {
+    if (!st || (st.status || "") === "ยกเลิก") return;
+    if (exceptId && st.id === exceptId) return;
+    (st.invoiceIds || []).forEach(id => out.add(id));
+  });
+  return out;
+};
+
+// หาว่าบิลใบนี้ไปอยู่ในใบวางบิลไหน — ใช้บอกคนดูว่าทำไมถึงไม่ขึ้น
+export const statementOfInvoice = (statements = [], invoiceId) =>
+  (statements || []).find(st => st && (st.status || "") !== "ยกเลิก" && (st.invoiceIds || []).includes(invoiceId)) || null;
+
+export const filterInvoicesForStatement = (invoices, customerId, customerName, startDate, endDate, mode, customerPhone, usedIds = null) => {
   const ref = { customerId, customerName, customerPhone };
   const startMs = startDate ? startDate.getTime() : -Infinity;
   // รวมทั้งวันสุดท้าย (ถึง 23:59:59)
@@ -103,6 +123,8 @@ export const filterInvoicesForStatement = (invoices, customerId, customerName, s
     if (inv.convertedTo) return false;
 
     if (!isSureMatch(matchCustomer(inv, ref))) return false;
+    // 🚫 วางบิลไปแล้วในใบอื่น — ไม่เอามาซ้ำ
+    if (usedIds && usedIds.has(inv.id)) return false;
 
     const d = parseDDMMYYYY(inv.date);
     if (!d) return false;
@@ -172,6 +194,8 @@ export function buildStatementGroups({
   startDate, endDate, filterMode = "unpaid", onlyCredit = true,
 }) {
   if (!startDate || !endDate) return [];
+  // บิลที่ถูกวางบิลไปแล้ว ตัดออกตั้งแต่ต้นทาง — ออกทั้งเดือนซ้ำจะได้เหลือเฉพาะใบใหม่
+  const usedIds = statementedInvoiceIds(statements);
   // รวมรายชื่อจากทั้งลูกค้าในระบบ + ชื่อที่โผล่ในบิล (เผื่อบิลที่ไม่ได้ผูกลูกค้า)
   const seen = new Map(); // key → { customerId, customerName, ...ข้อมูลติดต่อ }
   customers.forEach(c => seen.set(`id:${c.id}`, {
@@ -212,9 +236,12 @@ export function buildStatementGroups({
   refs.forEach(r => {
     // ดึงมาทั้งหมดก่อนเสมอ (ไม่กรองสถานะ) — ต้องรู้ว่ามีบิลอะไรถูกตัดออกบ้าง
     // ไม่งั้นยอดในใบวางบิลต่างจากหน้าบิลลิบลับโดยไม่มีอะไรอธิบาย คนดูก็นึกว่าเงินหาย
-    const invs = filterInvoicesForStatement(invoices, r.customerId, r.customerName, startDate, endDate, "all", r.phone);
+    const invs = filterInvoicesForStatement(invoices, r.customerId, r.customerName, startDate, endDate, "all", r.phone, usedIds);
+    // ที่ตัดออกเพราะวางบิลไปแล้ว — ต้องนับไว้บอกคนดู ไม่ให้เงียบ
+    const billed = filterInvoicesForStatement(invoices, r.customerId, r.customerName, startDate, endDate, "all", r.phone)
+      .filter(i => usedIds.has(i.id));
     const credits = creditsForStatement(returns, r.customerId, r.customerName, endDate, r.phone);
-    cand.set(r.key, { invs, credits });
+    cand.set(r.key, { invs, credits, billed });
     invs.forEach(inv => claim(invOwner, inv, r));
     credits.forEach(cr => claim(credOwner, cr, r));
   });
@@ -253,6 +280,7 @@ export function buildStatementGroups({
     oddNames.forEach(i => { const nm = (i.customerName || "").trim(); oddCount.set(nm, (oddCount.get(nm) || 0) + 1); });
     const oddSummary = [...oddCount.entries()].map(([nm, n]) => `${nm} (${n} ใบ)`);
     rows.push({ ...r, invoices: invs, total, grossTotal, paidTotal, excluded, excludedTotal,
+      alreadyBilled: c.billed.length, alreadyBilledTotal: c.billed.reduce((s, i) => s + (Number(i.total) || 0), 0),
       credits, creditTotal, net: Math.max(0, total - creditTotal), dupe, oddNames, oddSummary });
   });
   return rows.sort((a,b) => b.total - a.total);
