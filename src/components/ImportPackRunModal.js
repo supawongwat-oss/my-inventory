@@ -209,17 +209,22 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
       //    (ไม่มีบันทึกนี้ = ถอนยอดได้ แต่ของที่สอนผิดยังอยู่ แล้วผิดเงียบ ๆ ต่อไปทุกรอบ)
       const next = { ...aliases };
       const touched = [];
+      // คำอธิบายที่คนอ่านออกของแต่ละกุญแจ — กุญแจจริงถูกตัดวรรณยุกต์/ช่องว่างทิ้งจนอ่านไม่รู้เรื่อง
+      // ถ้าไม่เก็บไว้ ตอนถอนจะบอกได้แค่ "สอนไว้ 12 รายการ" ซึ่งตัดสินใจอะไรไม่ได้เลย
+      const labelOf = {};
       view.forEach((r, i) => {
         if (!willLearn(i, r) || !r.pick || r.status === "ข้าม") return;
         const kp = `p:${looseKey(r.productText)}`;
         next[kp] = { clothingId: r.pick.clothingId, text: r.productText || "", by: user?.name || "", at: new Date().toISOString() };
         touched.push(kp);
+        labelOf[kp] = `${displayText(r.productText)} → ${r.pick.clothingName || ""}`;
         if (r.pick.colorIdx != null) {
           // กุญแจต้องเป็นตัวเดียวกับตอนอ่านใน matchRow — ลายเซ็นของแถว ไม่ใช่ชื่อสีที่แปลได้
           const kc = `pc:${looseKey(r.productText)}##${looseKey(r.optionText || "")}`;
           next[kc] = { clothingId: r.pick.clothingId, colorIdx: r.pick.colorIdx, colorName: r.pick.colorName,
             text: r.productText || "", optionText: r.optionText || "", by: user?.name || "", at: new Date().toISOString() };
           touched.push(kc);
+          labelOf[kc] = `${displayText(r.productText)} ${displayText(r.optionText || "")} → ${r.pick.clothingName || ""} · ${r.pick.colorName || ""}`;
         }
       });
 
@@ -234,6 +239,8 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
       await onCommit(run, entries, {
         importId, source, rows: rows.length, qty: totalQty, fp: fingerprintOf(entries),
         aliasKeys, sharedKeys,
+        // เก็บคู่ กุญแจ+คำอธิบาย ไว้เป็นอาร์เรย์ (ไม่ใช้ map เพราะกุญแจมีจุดได้)
+        aliasLog: aliasKeys.map(k => ({ k, label: (labelOf[k] || "").slice(0, 120) })),
       });
 
       if (aliasKeys.length) {

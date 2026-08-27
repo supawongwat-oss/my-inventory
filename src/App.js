@@ -2388,7 +2388,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       at: now(), by: user.name, source: meta.source || "",
       rows: meta.rows || entries.length, qty: meta.qty || 0, fp: meta.fp || "", keys,
       // 🧠 ชุดนี้สอนการจับคู่อะไรไว้บ้าง — ใช้ตอนถอน ถ้าถอนเพราะจับคู่ผิดจะได้ลืมตามได้
-      aliasKeys: meta.aliasKeys || [], sharedKeys: meta.sharedKeys || [],
+      aliasKeys: meta.aliasKeys || [], sharedKeys: meta.sharedKeys || [], aliasLog: meta.aliasLog || [],
     });
     await updateDoc(doc(db, "packRuns", run.id), ...args);
     logAudit(user, {
@@ -2426,13 +2426,20 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     const aliasKeys = rec.aliasKeys || [];
     if (aliasKeys.length && run.customerId) {
       const NLx = String.fromCharCode(10);
-      const forget = window.confirm(
-        `ถอนยอดเรียบร้อยแล้ว` + NLx + NLx +
-        `ชุดนี้เคยสอนการจับคู่ชื่อสินค้าไว้ ${aliasKeys.length} รายการ` + NLx + NLx +
-        `ถอนเพราะ "จับคู่ผิด" หรือเปล่า?` + NLx +
-        `  • ตกลง = ลืมการจับคู่พวกนั้นด้วย ครั้งหน้าจะถามใหม่` + NLx +
-        `  • ยกเลิก = เก็บไว้ (ถอนเพราะนับผิด/ลงผิดรอบ)`
-      );
+      // ต้องเห็นว่า "สอนอะไรไว้" ถึงจะตอบได้ว่าผิดหรือถูก
+      // บอกแค่จำนวนแล้วให้ตัดสินใจ = เดาสุ่ม ซึ่งแย่กว่าไม่ถามเลย
+      const log = (rec.aliasLog || []).filter(x => x && x.label);
+      const lines = log.slice(0, 8).map(x => `  • ${x.label}`);
+      const more = log.length > 8 ? [`  … และอีก ${log.length - 8} รายการ`] : [];
+      const forget = window.confirm([
+        `ถอนยอดเรียบร้อยแล้ว`, "",
+        `ชุดนี้เคยสอนการจับคู่ชื่อสินค้าไว้ ${aliasKeys.length} รายการ`,
+        ...(lines.length ? ["", ...lines, ...more] : []),
+        "",
+        `ถอนเพราะ "จับคู่ผิด" หรือเปล่า?`,
+        `  • ตกลง = ลืมการจับคู่พวกนี้ด้วย ครั้งหน้าจะถามใหม่`,
+        `  • ยกเลิก = เก็บไว้ (ถอนเพราะนับผิด/ลงผิดรอบ)`,
+      ].join(NLx));
       if (forget) {
         try {
           const del = (docId, ks) => {
