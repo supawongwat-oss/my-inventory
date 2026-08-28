@@ -378,7 +378,6 @@ export default function LotDetailModal({
         qty: Math.max(0, Number(it.qty) || 0),
       }))
       .filter(it => it.qty > 0);
-    console.log("[saveEdit] cleaned items:", cleaned, "lotIdx:", lotIdx, "total:", cleaned.reduce((s,i)=>s+i.qty,0));
     if (cleaned.length === 0) {
       // อนุญาตให้ "ลบทุกรายการในล็อตนี้" → ล็อตจะถูกลบไป
       if (!window.confirm("ทุกรายการในล็อตนี้มีจำนวน 0 — ลบทั้งล็อตเลยไหม?")) return;
@@ -391,7 +390,6 @@ export default function LotDetailModal({
       } else {
         newLots = lots.map((l, i) => i === lotIdx ? { ...l, items: cleaned } : l);
       }
-      console.log("[saveEdit] newLots:", newLots);
       await persistLots(newLots);
       const beforeTotal = (lot.items || []).reduce((s,i)=>s+(Number(i.qty)||0), 0);
       const afterTotal = cleaned.reduce((s,i)=>s+i.qty, 0);
@@ -416,9 +414,36 @@ export default function LotDetailModal({
     }
   };
   // ── แก้เครื่องพิมพ์ + ม้วน ──
+  //
+  // ⚠️ หน้านี้มีปุ่ม "บันทึก" 2 ปุ่มที่ทำคนละอย่าง และเปิดพร้อมกันได้
+  //    ปุ่มบนแถบฟ้า = เครื่อง/ม้วน/รุ่นงาน · ปุ่มในกล่องรายการ = สี/ไซส์/จำนวน
+  //    พนักงานแก้จำนวนแล้วกดปุ่มที่เห็นก่อน (ปุ่มบน) ของที่แก้จึงไม่ถูกบันทึก
+  //    แต่ตัวเลขยังค้างอยู่บนจอ เลยดูเหมือน "กดบันทึกแล้วไม่เปลี่ยน"
+  //    ตัวเทียบนี้ใช้ดักจังหวะนั้นแล้วบอกให้ชัดว่าต้องกดปุ่มไหน
+  const sigOf = (it) => [
+    (it.colorName || "").trim(), (it.variant || "").trim(),
+    (it.size || "").trim(), (it.productionSize || "").trim(),
+    String(Number(it.qty) || 0),
+  ].join("|");
+  const itemsDirty = () => {
+    if (!editMode) return false;
+    const before = (lot?.items || []).map(sigOf);
+    const after = editItems.map(sigOf);
+    return before.length !== after.length || before.some((v, i) => v !== after[i]);
+  };
+
   const startEditMachine = () => { setMachineVal(lot.machine || ""); setRollVal(lot.rollNo || ""); setJobVal(lot.jobLabel || ""); setEditMachine(true); };
   const saveMachine = async () => {
     if (busy) return;
+    if (itemsDirty()) {
+      const NL = String.fromCharCode(10);
+      if (!window.confirm([
+        "ปุ่มนี้บันทึกเฉพาะ เครื่อง / ม้วน / รุ่นงาน", "",
+        "รายการที่แก้ไว้ด้านล่าง (สี · ไซส์ · จำนวน) ยังไม่ถูกบันทึก",
+        "ต้องกดปุ่ม \"💾 บันทึกรายการ\" ในกล่อง 📦 รายการในล็อตนี้ อีกที", "",
+        "บันทึกเครื่อง/ม้วนต่อไหม? (ที่แก้ไว้จะยังอยู่ ไม่หาย)",
+      ].join(NL))) return;
+    }
     setBusy(true);
     try {
       const newLots = lots.map((l, i) => i === lotIdx ? { ...l, machine: machineVal.trim(), rollNo: rollVal.trim(), jobLabel: jobVal.trim() } : l);
@@ -769,7 +794,7 @@ export default function LotDetailModal({
               <input value={jobVal} onChange={e=>setJobVal(e.target.value)} placeholder="เช่น K12, เสื้อคลาส (ถ้ามีหลายงานในม้วน)"
                 style={{flex:1,minWidth:120,padding:"5px 8px",border:`1px solid ${T.border}`,borderRadius:6,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
             </div>
-            <BtnPrimary onClick={saveMachine} disabled={busy} style={{fontSize:12,padding:"5px 12px"}}>💾 บันทึก</BtnPrimary>
+            <BtnPrimary onClick={saveMachine} disabled={busy} style={{fontSize:12,padding:"5px 12px",whiteSpace:"nowrap"}}>💾 บันทึกเครื่อง/ม้วน</BtnPrimary>
             <BtnGhost onClick={()=>setEditMachine(false)} disabled={busy} style={{fontSize:12,padding:"5px 12px"}}>ยกเลิก</BtnGhost>
           </>
         ) : (
@@ -824,7 +849,7 @@ export default function LotDetailModal({
             </div>
             <div style={{display:"flex",gap:6}}>
               <BtnGhost onClick={cancelEdit} disabled={busy} style={{flex:1,fontSize:12,padding:"6px"}}>ยกเลิก</BtnGhost>
-              <BtnPrimary onClick={saveEdit} disabled={busy} style={{flex:2,fontSize:12,padding:"6px"}}>{busy ? "กำลังบันทึก..." : "💾 บันทึก"}</BtnPrimary>
+              <BtnPrimary onClick={saveEdit} disabled={busy} style={{flex:2,fontSize:12,padding:"6px"}}>{busy ? "กำลังบันทึก..." : "💾 บันทึกรายการ (สี · ไซส์ · จำนวน)"}</BtnPrimary>
             </div>
           </>
         ) : (
