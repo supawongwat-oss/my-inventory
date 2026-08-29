@@ -47,6 +47,38 @@ export const calcInvoice = (items, vatRate, useVat, discount = 0, discountType =
   return { grossSubtotal, itemDiscountTotal, itemsAfterDiscount, billDiscount, subtotal, design, vatBase, vat, shipping, total: vatBase + vat + shipping };
 };
 
+// 🚨 ราคาที่กรอกน่าจะพิมพ์ผิด
+//
+// เคสจริง 28 ส.ค. 2569: บิล INV6908-0173 ยอด 1,301,595 บาท
+// ราคาต่อตัวที่บันทึกคือ 100115 ทั้งที่ของจริงคือ 115
+// = พิมพ์ 115 ต่อท้ายเลข 100 ที่ค้างอยู่ในช่อง แล้วบันทึกผ่านไปเลย
+// ไม่มีอะไรทักสักด่าน ทั้งที่ยอดต่างจากปกติเป็นพันเท่า
+//
+// เทียบกับ "ราคาขายในคลัง" ของรุ่น+สี+ไซส์นั้นโดยตรง แม่นกว่าตั้งเพดานลอย ๆ
+// เพราะร้านขายเสื้อหลักร้อย แต่รองเท้าหลักพัน เพดานเดียวใช้ไม่ได้ทั้งร้าน
+// เตือนอย่างเดียว ไม่บล็อก — ราคาพิเศษ/งานสั่งทำมีจริง คนตัดสินเองได้
+const PRICE_RATIO = 10;      // ต่างกันเกิน 10 เท่า = ไม่ใช่ส่วนลด/บวกเพิ่มปกติแล้ว
+const PRICE_CEILING = 20000; // ไม่มีของชิ้นไหนในร้านราคาเกินนี้ต่อตัว
+
+/**
+ * @param {Array} items รายการในบิล
+ * @param {(item)=>number} priceOf อ่านราคาขายในคลังของรายการนั้น (0 = ไม่มีให้เทียบ)
+ */
+export function suspiciousPriceLines(items = [], priceOf) {
+  const out = [];
+  (items || []).forEach((it, idx) => {
+    const price = Number(it.unitPrice) || 0;
+    if (price <= 0) return;                       // แถมฟรี/ยังไม่ใส่ราคา ไม่ใช่เรื่องผิด
+    const ref = Number(priceOf ? priceOf(it) : 0) || 0;
+    let why = "";
+    if (ref > 0 && price >= ref * PRICE_RATIO) why = `สูงกว่าราคาคลัง ${Math.round(price / ref)} เท่า`;
+    else if (ref > 0 && price * PRICE_RATIO <= ref) why = `ต่ำกว่าราคาคลัง ${Math.round(ref / price)} เท่า`;
+    else if (price >= PRICE_CEILING) why = "ราคาต่อตัวสูงผิดปกติ";
+    if (why) out.push({ idx, price, ref, why, item: it });
+  });
+  return out;
+}
+
 // 🖼️ path ของรูปที่ "บิลใบนี้เป็นเจ้าของ" — ใช้ตอนลบบิล ไม่ให้ไฟล์ค้างกินพื้นที่ Storage
 //
 // ⚠️ นับเฉพาะรูปที่แนบเข้าบิลเอง (job ที่มี __manual) และอยู่ในโฟลเดอร์ invoiceJobs/ เท่านั้น

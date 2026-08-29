@@ -13,7 +13,7 @@ import InstallPWA from "./components/InstallPWA";
 import { shouldRemindBackup, getLastBackupDate } from "./utils/backupReminder";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
 import { PRINT_FONT_SCALE, INVOICE_FONT_SCALE, scaleFontInElement, printElementById, printInvoiceCopies, downloadInvoicePdf } from "./utils/print";
-import { PAYMENT_METHODS, docTypeLabel, docTypeLabelEn, itemLineTotal, calcInvoice, getPaidTotal, getRemaining, getPaidPct, ownedImagePathsOf } from "./utils/invoice";
+import { PAYMENT_METHODS, docTypeLabel, docTypeLabelEn, itemLineTotal, calcInvoice, getPaidTotal, getRemaining, getPaidPct, ownedImagePathsOf, suspiciousPriceLines } from "./utils/invoice";
 import { compressImage } from "./utils/imageCompress";
 import { uploadImage, deleteFile } from "./utils/upload";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiRegion";
@@ -2816,6 +2816,30 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       }
     }
     const calc = calcInvoice(invoiceForm.items, invoiceForm.vatRate, invoiceVat, invoiceForm.discount, invoiceForm.discountType, invoiceForm.useShipping, invoiceForm.shippingFee, invoiceForm.designFee);
+    // 🚨 ด่านราคาพิมพ์ผิด — ใช้ทั้งตอนออกใหม่และตอนแก้บิล
+    //    (เคสจริง: กรอก 100115 แทน 115 ยอดขึ้นเป็น 1.3 ล้านโดยไม่มีอะไรทัก)
+    {
+      const priceOf = (it) => {
+        const c = clothingItems.find(x => x.id === it.clothingId);
+        const col = c?.colors?.[it.colorIdx];
+        return col ? (getPriceForSize(col, it.size) || 0) : 0;
+      };
+      const odd = suspiciousPriceLines(invoiceForm.items, priceOf);
+      if (odd.length) {
+        const NLx = String.fromCharCode(10);
+        const money = (n) => Number(n || 0).toLocaleString("th-TH");
+        const lines = odd.slice(0, 6).map(o =>
+          `  • ${o.item.clothingName || o.item.description || "-"}${o.item.colorName ? ` (${o.item.colorName})` : ""}${o.item.size ? ` ${o.item.size}` : ""}` + NLx +
+          `      กรอก ฿${money(o.price)}/ตัว${o.ref > 0 ? ` · ราคาคลัง ฿${money(o.ref)}` : ""} — ${o.why}`);
+        if (!window.confirm([
+          `⚠️ ราคาต่อตัวผิดปกติ ${odd.length} รายการ — ตรวจก่อนบันทึก`, "",
+          ...lines,
+          odd.length > 6 ? `  … และอีก ${odd.length - 6} รายการ` : "", "",
+          `ยอดรวมทั้งบิล ฿${money(calc.total)}`, "",
+          `ถ้าราคานี้ถูกต้องจริง (ราคาพิเศษ/งานสั่งทำ) กดตกลงเพื่อบันทึกต่อ`,
+        ].filter(x => x !== "").join(NLx))) return;
+      }
+    }
     const beginSave = () => { savingInvoiceRef.current = true; setSavingInvoice(true); };
     const endSave = () => { savingInvoiceRef.current = false; setSavingInvoice(false); };
     const bank = (invoiceForm.bankAccountIdx!=null&&invoiceForm.bankAccountIdx>=0)
