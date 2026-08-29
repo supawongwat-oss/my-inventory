@@ -57,8 +57,44 @@ export const calcInvoice = (items, vatRate, useVat, discount = 0, discountType =
 // เทียบกับ "ราคาขายในคลัง" ของรุ่น+สี+ไซส์นั้นโดยตรง แม่นกว่าตั้งเพดานลอย ๆ
 // เพราะร้านขายเสื้อหลักร้อย แต่รองเท้าหลักพัน เพดานเดียวใช้ไม่ได้ทั้งร้าน
 // เตือนอย่างเดียว ไม่บล็อก — ราคาพิเศษ/งานสั่งทำมีจริง คนตัดสินเองได้
-const PRICE_RATIO = 10;      // ต่างกันเกิน 10 เท่า = ไม่ใช่ส่วนลด/บวกเพิ่มปกติแล้ว
-const PRICE_CEILING = 20000; // ไม่มีของชิ้นไหนในร้านราคาเกินนี้ต่อตัว
+const PRICE_RATIO = 10;        // ต่างกันเกิน 10 เท่า = ไม่ใช่ส่วนลด/บวกเพิ่มปกติแล้ว
+const PRICE_CEILING = 20000;   // เพดานสำรอง ใช้เมื่อยังไม่มีประวัติพอจะคำนวณเส้นเอง
+
+// 💰 เพดานราคาต่อตัว คำนวณจากประวัติของร้านเอง
+//
+// ทำไมต้องคำนวณเอง: งานผลิต/สั่งทำไม่มีราคาในคลัง และ "ต้นทุนต่อตัว" ก็ไม่มีใครกรอก
+// (ตรวจข้อมูลจริงแล้ว: งานผลิต 1,779 แถว มีต้นทุนบันทึกไว้ 0 แถว)
+// ตัวเทียบที่ต้องตั้งค่าไว้ก่อนจึงใช้กับร้านนี้ไม่ได้ ต้องหาเส้นจากของที่มีอยู่แล้ว
+//
+// ใช้ "ราคากลาง" ของที่ร้านเคยขายจริง คูณ 25
+//
+// ที่ใช้ค่ากลาง ไม่ใช่เปอร์เซ็นไทล์สูง ๆ เพราะเส้นนี้ต้องทนบิลที่พิมพ์ผิด
+// ลองแล้ว: ถ้าใช้ 99% พอมีบิลพิมพ์ผิดใบเดียว 30 แถวเข้ามา เส้นพุ่งจนด่านไร้ผลทันที
+// ค่ากลางต้องมีข้อมูลผิดเกินครึ่งร้านถึงจะขยับ ซึ่งแปลว่าพังไปนานแล้ว
+//
+// วัดกับข้อมูลจริง (3,566 แถว ณ 28 ส.ค. 2569):
+//   กลาง 65 · 95% 110 · 99% 135 · ราคาสูงสุดที่ถูกต้อง 595
+//   เส้น = max(65 x 25, 2000) = 2,000
+//   -> ราคาที่พิมพ์ผิด 100,115 โดนจับ (50 เท่า) · ของแพงสุดที่ขายจริงยังห่างเส้น 3.4 เท่า
+// มีพื้นล่าง 2,000 กันเส้นรัดเกินไปตอนที่ร้านขายแต่ของถูก แล้วเริ่มรับของแพงขึ้น
+const LINE_RATIO = 25;
+const LINE_FLOOR = 2000;
+const MIN_LINES = 200;
+
+export function priceCeilingFromHistory(invoices = []) {
+  const prices = [];
+  (invoices || []).forEach(inv => {
+    if (!inv || inv.mergedInto || inv.convertedTo || (inv.status || "") === "ยกเลิก") return;
+    (inv.items || []).forEach(it => {
+      const v = Number(it?.unitPrice) || 0;
+      if (v > 0) prices.push(v);
+    });
+  });
+  if (prices.length < MIN_LINES) return PRICE_CEILING;   // ประวัติน้อยเกินไป ใช้เพดานสำรอง
+  prices.sort((a, b) => a - b);
+  const mid = prices[Math.floor((prices.length - 1) * 0.5)];
+  return Math.max(mid * LINE_RATIO, LINE_FLOOR);
+}
 
 /**
  * @param {Array} items รายการในบิล
@@ -93,7 +129,7 @@ export function oddBillTotal(total, reference) {
   return t / ref;
 }
 
-export function suspiciousPriceLines(items = [], priceOf) {
+export function suspiciousPriceLines(items = [], priceOf, ceiling = PRICE_CEILING) {
   const out = [];
   (items || []).forEach((it, idx) => {
     const price = Number(it.unitPrice) || 0;
@@ -102,7 +138,7 @@ export function suspiciousPriceLines(items = [], priceOf) {
     let why = "";
     if (ref > 0 && price >= ref * PRICE_RATIO) why = `สูงกว่าราคาคลัง ${Math.round(price / ref)} เท่า`;
     else if (ref > 0 && price * PRICE_RATIO <= ref) why = `ต่ำกว่าราคาคลัง ${Math.round(ref / price)} เท่า`;
-    else if (price >= PRICE_CEILING) why = "ราคาต่อตัวสูงผิดปกติ";
+    else if (price >= (Number(ceiling) || PRICE_CEILING)) why = "ราคาต่อตัวสูงผิดปกติ";
     if (why) out.push({ idx, price, ref, why, item: it });
   });
   return out;

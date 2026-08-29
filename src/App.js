@@ -13,7 +13,7 @@ import InstallPWA from "./components/InstallPWA";
 import { shouldRemindBackup, getLastBackupDate } from "./utils/backupReminder";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
 import { PRINT_FONT_SCALE, INVOICE_FONT_SCALE, scaleFontInElement, printElementById, printInvoiceCopies, downloadInvoicePdf } from "./utils/print";
-import { PAYMENT_METHODS, docTypeLabel, docTypeLabelEn, itemLineTotal, calcInvoice, getPaidTotal, getRemaining, getPaidPct, ownedImagePathsOf, suspiciousPriceLines, typicalBillTotal, oddBillTotal } from "./utils/invoice";
+import { PAYMENT_METHODS, docTypeLabel, docTypeLabelEn, itemLineTotal, calcInvoice, getPaidTotal, getRemaining, getPaidPct, ownedImagePathsOf, suspiciousPriceLines, typicalBillTotal, oddBillTotal, priceCeilingFromHistory } from "./utils/invoice";
 import { compressImage } from "./utils/imageCompress";
 import { uploadImage, deleteFile } from "./utils/upload";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiRegion";
@@ -2826,7 +2826,9 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         // 🏭 งานผลิต/สั่งทำ ไม่มีราคาคลัง — ใช้ต้นทุนต่อตัวที่ติดมากับใบ custom แทน
         return Number(it.costPerPiece) || 0;
       };
-      const odd = suspiciousPriceLines(invoiceForm.items, priceOf);
+      // เพดานราคาต่อตัว คิดจากราคาที่ร้านเคยขายจริง — งานผลิตไม่มีทั้งราคาคลังและต้นทุน
+      const ceiling = priceCeilingFromHistory(invoices);
+      const odd = suspiciousPriceLines(invoiceForm.items, priceOf, ceiling);
       // 🧾 ด่านที่สอง: ยอดรวมทั้งบิลเทียบกับบิลปกติของร้าน
       //    จำเป็นเพราะงานผลิตส่วนใหญ่ไม่มีตัวเทียบรายบรรทัด
       //    ถ้าราคาต่อตัวเพี้ยน ยอดรวมจะเพี้ยนตามเสมอ ด่านนี้จึงรับไม้ต่อได้
@@ -2837,7 +2839,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         const money = (n) => Number(n || 0).toLocaleString("th-TH");
         const lines = odd.slice(0, 6).map(o =>
           `  • ${o.item.clothingName || o.item.description || "-"}${o.item.colorName ? ` (${o.item.colorName})` : ""}${o.item.size ? ` ${o.item.size}` : ""}` + NLx +
-          `      กรอก ฿${money(o.price)}/ตัว${o.ref > 0 ? ` · ราคาคลัง ฿${money(o.ref)}` : ""} — ${o.why}`);
+          `      กรอก ฿${money(o.price)}/ตัว${o.ref > 0 ? ` · ราคาคลัง ฿${money(o.ref)}` : ` · ปกติร้านขายไม่เกิน ฿${money(ceiling)}/ตัว`} — ${o.why}`);
         if (!window.confirm([
           odd.length
             ? `⚠️ ราคาต่อตัวผิดปกติ ${odd.length} รายการ — ตรวจก่อนบันทึก`
