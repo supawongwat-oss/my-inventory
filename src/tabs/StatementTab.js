@@ -9,7 +9,7 @@ import { reserveDocNo } from "../utils/docNumber";
 import BulkStatementModal from "../components/BulkStatementModal";
 import LoadRangeBar from "../components/LoadRangeBar";
 import LinkInvoiceCustomers from "../components/LinkInvoiceCustomers";
-import { filterInvoicesForStatement, creditsForStatement, sumCredits, nearMissInvoices, paidOf, dueOf, statementedInvoiceIds, statementOfInvoice } from "../utils/statement";
+import { filterInvoicesForStatement, creditsForStatement, sumCredits, nearMissInvoices, paidOf, dueOf, statementedInvoiceIds, statementOfInvoice, parseDDMMYYYY } from "../utils/statement";
 
 // ── helpers ────────────────────────────────────────────────
 const pad2 = n => String(n).padStart(2, "0");
@@ -54,6 +54,11 @@ export default function StatementTab({ statements, invoices, returns = [], custo
   invoicesRange, setInvoicesRange, invoicesCapped }) {
   const [showCreate, setShowCreate] = useState(false);
   const [showBulk, setShowBulk] = useState(false); // 📅 ออกใบวางบิลทั้งเดือนทีเดียว
+  // 🖨️ พิมพ์หลายใบรวดเดียว — ออกทั้งเดือนทีนึงได้ 47 ใบ กดพิมพ์ทีละใบไม่ไหว
+  const [showBulkPrint, setShowBulkPrint] = useState(false);
+  const [bulkPrintRows, setBulkPrintRows] = useState(null);   // ใบที่กำลังพิมพ์ (ค้างไว้ให้ iframe อ่าน)
+  const [bpFrom, setBpFrom] = useState(() => { const d = new Date(); return fmtISO(new Date(d.getFullYear(), d.getMonth(), 1)); });
+  const [bpTo, setBpTo] = useState(() => { const d = new Date(); return fmtISO(new Date(d.getFullYear(), d.getMonth() + 1, 0)); });
   const [showLink, setShowLink] = useState(false); // 🔗 ซ่อมบิลที่ไม่ผูกทะเบียนลูกค้า
   const [statusFilter, setStatusFilter] = useState("ทั้งหมด");
   const [search, setSearch] = useState("");
@@ -423,6 +428,30 @@ export default function StatementTab({ statements, invoices, returns = [], custo
     }, 200);
   };
 
+  // 🖨️ ใบวางบิลที่จะพิมพ์รวดเดียว — คัดตาม "วันที่ออกใบวางบิล"
+  //    ไม่ใช้ช่วงเวลาที่วางบิล (periodStart/End) เพราะใบที่ออกวันเดียวกันอาจคนละงวด
+  //    สิ่งที่คนอยากพิมพ์คือ "ที่ออกไปเมื่อกี้/เมื่อวาน" ซึ่งคือวันที่ออก
+  //    ใบที่ยกเลิกไม่เอา — พิมพ์ไปก็ส่งลูกค้าไม่ได้
+  const bulkPrintList = useMemo(() => {
+    const from = parseISODate(bpFrom), to = parseISODate(bpTo);
+    const fromMs = from ? from.getTime() : -Infinity;
+    const toMs = to ? new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23, 59, 59).getTime() : Infinity;
+    return (statements || [])
+      .filter(st => (st.status || "ออกแล้ว") !== "ยกเลิก")
+      .filter(st => { const d = parseDDMMYYYY(st.date); return d && d.getTime() >= fromMs && d.getTime() <= toMs; })
+      .sort((a, b) => String(a.statementNo || "").localeCompare(String(b.statementNo || "")));
+  }, [statements, bpFrom, bpTo]);
+
+  const doBulkPrint = () => {
+    if (!bulkPrintList.length) return;
+    setBulkPrintRows(bulkPrintList);
+    // รอให้ React วาดทุกใบเสร็จก่อนค่อยสั่งพิมพ์ — ใบเยอะกว่าปกติจึงรอนานกว่าพิมพ์ใบเดียว
+    setTimeout(() => {
+      if (printElementById) printElementById("statement-bulk-print-area");
+      setShowBulkPrint(false);
+    }, 400 + bulkPrintList.length * 20);
+  };
+
   // ── RENDER ──────────────────────────────────────────────
   return (
     <div style={{ animation: "fadeUp 0.4s ease" }}>
@@ -449,6 +478,7 @@ export default function StatementTab({ statements, invoices, returns = [], custo
         </div>
         {role.canIssueInvoice !== false && role.canAdd !== false && (
           <>
+            <BtnGhost onClick={() => setShowBulkPrint(true)} style={{marginRight:8}}>🖨️ พิมพ์หลายใบ</BtnGhost>
             <BtnGhost onClick={() => setShowBulk(true)} style={{marginRight:8}}>📅 ออกทั้งเดือน</BtnGhost>
             <BtnPrimary onClick={() => { resetForm(); setShowCreate(true); }}>＋ สร้างใบวางบิลใหม่</BtnPrimary>
           </>
@@ -810,6 +840,73 @@ export default function StatementTab({ statements, invoices, returns = [], custo
         </div>
       )}
 
+      {/* === พิมพ์หลายใบ — ทุกใบต่อกันในงานพิมพ์เดียว ขึ้นหน้าใหม่ทุกใบ === */}
+      {bulkPrintRows && (
+        <div style={{ position: "fixed", left: -99999, top: 0, width: 800 }}>
+          <div id="statement-bulk-print-area">
+            {bulkPrintRows.map((st, i) => (
+              <div key={st.id} style={{ breakAfter: i < bulkPrintRows.length - 1 ? "page" : "auto",
+                                        pageBreakAfter: i < bulkPrintRows.length - 1 ? "always" : "auto" }}>
+                {/* ไม่ให้ id ซ้ำกับใบเดี่ยว — ที่พิมพ์จริงคือกล่องนอก */}
+                <StatementPrintLayout statement={st} companyInfo={companyInfo} id={null} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showBulkPrint && (
+        <Modal onClose={() => setShowBulkPrint(false)} w={480}>
+          <MHead title="🖨️ พิมพ์ใบวางบิลหลายใบ" sub="เลือกช่วงวันที่ออกใบวางบิล — พิมพ์ต่อกันในงานเดียว ใบละหน้า" onClose={() => setShowBulkPrint(false)}/>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+            <div>
+              <label style={{ fontSize: 11, color: T.muted, display: "block", marginBottom: 4, fontWeight: 600 }}>ออกตั้งแต่วันที่</label>
+              <input type="date" value={bpFrom} onChange={e => setBpFrom(e.target.value)}
+                style={{ width: "100%", boxSizing: "border-box", background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 8, padding: "8px 10px", fontSize: 13, fontFamily: "inherit", outline: "none" }}/>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: T.muted, display: "block", marginBottom: 4, fontWeight: 600 }}>ถึงวันที่</label>
+              <input type="date" value={bpTo} onChange={e => setBpTo(e.target.value)}
+                style={{ width: "100%", boxSizing: "border-box", background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 8, padding: "8px 10px", fontSize: 13, fontFamily: "inherit", outline: "none" }}/>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+            {[
+              { l: "วันนี้", f: () => { const d = new Date(); return [fmtISO(d), fmtISO(d)]; } },
+              { l: "เดือนนี้", f: () => { const d = new Date(); return [fmtISO(new Date(d.getFullYear(), d.getMonth(), 1)), fmtISO(new Date(d.getFullYear(), d.getMonth() + 1, 0))]; } },
+              { l: "เดือนที่แล้ว", f: () => { const d = new Date(); return [fmtISO(new Date(d.getFullYear(), d.getMonth() - 1, 1)), fmtISO(new Date(d.getFullYear(), d.getMonth(), 0))]; } },
+            ].map(b => (
+              <button key={b.l} onClick={() => { const [a, z] = b.f(); setBpFrom(a); setBpTo(z); }}
+                style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${T.border}`, background: "rgba(59,91,139,0.06)", color: T.accent, fontSize: 11, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>{b.l}</button>
+            ))}
+          </div>
+          <div style={{ padding: "10px 12px", background: "rgba(59,91,139,0.06)", border: "1px solid rgba(59,91,139,0.2)", borderRadius: 9, marginBottom: 12 }}>
+            <div style={{ fontSize: 13, color: T.text, fontWeight: 700 }}>
+              จะพิมพ์ {bulkPrintList.length} ใบ
+              <span style={{ fontSize: 12, fontWeight: 400, color: T.sub, marginLeft: 8 }}>
+                รวม ฿{bulkPrintList.reduce((a, x) => a + (Number(x.netAmount ?? x.totalAmount) || 0), 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+            {bulkPrintList.length > 0 && (
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 4, maxHeight: 110, overflowY: "auto", lineHeight: 1.7 }}>
+                {bulkPrintList.slice(0, 40).map(x => `${x.statementNo} · ${x.customerName}`).join(" · ")}
+                {bulkPrintList.length > 40 ? ` … และอีก ${bulkPrintList.length - 40} ใบ` : ""}
+              </div>
+            )}
+            {bulkPrintList.length === 0 && (
+              <div style={{ fontSize: 11, color: T.red, marginTop: 4 }}>ไม่มีใบวางบิลที่ออกในช่วงนี้ — ลองขยายช่วงวันที่</div>
+            )}
+            <div style={{ fontSize: 10, color: T.muted, marginTop: 6 }}>ไม่รวมใบที่ยกเลิก · เรียงตามเลขที่ใบวางบิล</div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <BtnGhost onClick={() => setShowBulkPrint(false)} style={{ flex: 1 }}>ปิด</BtnGhost>
+            <BtnPrimary onClick={doBulkPrint} disabled={!bulkPrintList.length} style={{ flex: 2, opacity: bulkPrintList.length ? 1 : 0.45 }}>
+              🖨️ พิมพ์ {bulkPrintList.length} ใบ
+            </BtnPrimary>
+          </div>
+        </Modal>
+      )}
+
       {/* === Preview Modal — คลิกแถวเพื่อดูรายละเอียด === */}
       {viewStatement && (() => {
         const sStyle = statusStyle(viewStatement.status || "ออกแล้ว");
@@ -916,9 +1013,10 @@ export default function StatementTab({ statements, invoices, returns = [], custo
 }
 
 // === Print Layout — รายละเอียดเล็กลง + หัวข้อสีดำ ===
-function StatementPrintLayout({ statement, companyInfo }) {
+function StatementPrintLayout({ statement, companyInfo, id = "statement-print-area" }) {
   return (
-    <div id="statement-print-area" style={{ padding: "20px 28px", fontFamily: "'Sarabun',sans-serif", color: "#000", background: "white" }}>
+    // id = null ตอนพิมพ์หลายใบ — กัน id ซ้ำกัน ที่พิมพ์จริงคือกล่องนอกที่ครอบทุกใบ
+    <div id={id || undefined} style={{ padding: "20px 28px", fontFamily: "'Sarabun',sans-serif", color: "#000", background: "white" }}>
       {/* Header — เล็กลง */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, paddingBottom: 8, borderBottom: "2px solid #000" }}>
         <div>
