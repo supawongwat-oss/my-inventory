@@ -6,6 +6,7 @@ import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { reserveDocNo } from "../utils/docNumber";
 import { SIZES, SHOE_SIZES, compareSizes } from "../theme";
 import { ORDER_PALETTE } from "./KanbanBoard";
+import { matchTokens } from "../utils/search";
 
 const T = { border:"#e3e8ef", sub:"#5b6b85", text:"#1f2a44", muted:"#8a9bb3", accent:"#3b5b8b", input:"#f6f8fb", inputBorder:"#d8dee9", red:"#dc2626", green:"#16a34a", amber:"#d97706" };
 const fmt = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -14,6 +15,10 @@ const fmtInt = (n) => Number(n || 0).toLocaleString("th-TH");
 export default function NewProductionOrderModal({ clothingItems = [], boms = [], products = [], productionOrders = [], user, onClose, onCreated, editOrder = null, onUpdated }) {
   const isEdit = !!editOrder;
   const [clothingId, setClothingId] = useState(editOrder?.clothingId || "");
+  // 🔍 ช่องค้นรุ่น — รุ่นเยอะจนเลื่อนหาใน dropdown ไม่ไหว
+  //    ใช้แบบเดียวกับหน้าออกบิล/ใบสั่งของ: พิมพ์กรอง · โฟกัสแล้วเห็นทั้งหมด · เลือกแล้วมีปุ่มล้าง
+  const [modelSearch, setModelSearch] = useState("");
+  const [modelOpen, setModelOpen] = useState(false);
   const [items, setItems] = useState(() => isEdit
     ? (editOrder.items || []).map(it => ({ colorIdx: Number(it.colorIdx) || 0, colorName: it.colorName || "", colorHex: it.colorHex || "#999", size: it.size || "", qty: Number(it.qty) || 0 }))
     : []); // [{colorIdx, colorName, colorHex, size, qty}] — โหมดทีละแถว
@@ -222,11 +227,63 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
 
       <div style={{marginBottom:14}}>
         <label style={{fontSize:11,color:T.sub,display:"block",marginBottom:5,fontWeight:500}}>เลือกรุ่นเสื้อ *</label>
-        <select value={clothingId} onChange={e => { setClothingId(e.target.value); setItems([]); setGrid({}); }}
-          style={{width:"100%",background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:8,padding:"9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}>
-          <option value="">— เลือกรุ่น —</option>
-          {clothingItems.map(c => <option key={c.id} value={c.id}>{c.model}</option>)}
-        </select>
+        {(() => {
+          const q = modelSearch.trim();
+          // ค้นจากชื่อรุ่น + ชื่อสีในรุ่นนั้น — บางทีพนักงานจำได้แค่ "รุ่นที่มีสีสายรุ้ง"
+          const rows = q
+            ? clothingItems.filter(c => matchTokens(q, c.model, (c.colors || []).map(x => x.colorName || x.name || "").join(" ")))
+            : clothingItems;
+          const clear = () => { setClothingId(""); setModelSearch(""); setItems([]); setGrid({}); setModelOpen(true); };
+          const pick = (c) => { setClothingId(c.id); setModelSearch(""); setItems([]); setGrid({}); setModelOpen(false); };
+          return (
+            <div style={{position:"relative"}}>
+              <input placeholder={clothing ? "" : "🔍 พิมพ์ชื่อรุ่น หรือชื่อสี — หรือกดเพื่อดูทั้งหมด"}
+                value={clothing ? "" : modelSearch}
+                onChange={e => setModelSearch(e.target.value)}
+                onFocus={() => setModelOpen(true)}
+                onBlur={() => setTimeout(() => setModelOpen(false), 180)}
+                style={{width:"100%",boxSizing:"border-box",background:T.input,border:`1px solid ${clothing ? "#34d399" : T.inputBorder}`,color:T.text,borderRadius:8,padding:"9px 32px 9px 12px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+              {clothing && (
+                // ทับบนช่อง input — ต้องพื้นหลังทึบ ไม่งั้นตัวหนังสือซ้อนกัน
+                <div onClick={clear} title="เปลี่ยนรุ่น — กดเพื่อเลือกใหม่"
+                  style={{position:"absolute",inset:1,borderRadius:7,background:T.input,display:"flex",alignItems:"center",gap:8,padding:"0 32px 0 12px",cursor:"pointer",fontSize:13,color:T.text,fontWeight:600,overflow:"hidden",whiteSpace:"nowrap"}}>
+                  <span>{clothing.model}</span>
+                  <span style={{fontSize:10,color:T.muted,fontWeight:400}}>· {(clothing.colors || []).length} สี</span>
+                </div>
+              )}
+              {(clothing || modelSearch)
+                ? <button onMouseDown={e => e.preventDefault()} onClick={clear} title="ล้าง"
+                    style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",border:"none",background:"transparent",color:T.muted,cursor:"pointer",fontSize:14,lineHeight:1,padding:0,zIndex:2}}>✕</button>
+                : <span style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",color:T.muted,fontSize:10,pointerEvents:"none"}}>▼</span>}
+              {!clothing && modelOpen && (
+                <div onMouseDown={e => e.preventDefault()}
+                  style={{position:"absolute",top:"100%",left:0,right:0,background:"#ffffff",border:`1px solid ${T.border}`,borderRadius:10,zIndex:60,maxHeight:280,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.25)",marginTop:2}}>
+                  <div style={{padding:"6px 14px",background:"#eff6ff",fontSize:10,color:T.accent,fontWeight:700,borderBottom:`1px solid ${T.border}`,position:"sticky",top:0}}>
+                    {rows.length > 0
+                      ? (q ? `เจอ ${rows.length} รุ่น` : `ทั้งหมด ${rows.length} รุ่น — พิมพ์เพื่อกรอง`)
+                      : "ไม่พบรุ่นนี้ — ลองพิมพ์สั้นลง"}
+                  </div>
+                  {rows.slice(0, 60).map(c => (
+                    <div key={c.id} onClick={() => pick(c)}
+                      style={{padding:"9px 14px",cursor:"pointer",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}
+                      onMouseEnter={e => e.currentTarget.style.background = "rgba(59,91,139,0.08)"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <span style={{fontSize:13,color:T.text,fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.model}</span>
+                      {/* โชว์สีเป็นจุดสี — ดูออกเร็วกว่าอ่านชื่อสีเรียงกัน */}
+                      <span style={{display:"flex",gap:3}}>
+                        {(c.colors || []).slice(0, 6).map((col, i) => (
+                          <span key={i} title={col.colorName || col.name || ""}
+                            style={{width:11,height:11,borderRadius:3,background:col.hex || col.colorHex || "#999",border:"1px solid rgba(0,0,0,0.12)"}}/>
+                        ))}
+                      </span>
+                      <span style={{fontSize:10,color:T.muted,whiteSpace:"nowrap"}}>{(c.colors || []).length} สี</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {clothingId && !bom && (
           <div style={{marginTop:6,padding:"4px 10px",background:"#fff7e6",border:"1px solid #ffd980",borderRadius:6,fontSize:10,color:"#92400e",lineHeight:1.3}}>
             ⚠️ รุ่นนี้ไม่มี BOM — สั่งผลิตได้แต่ไม่คำนวณวัตถุดิบ/ต้นทุน
