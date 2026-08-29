@@ -226,16 +226,16 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
       </div>
 
       {/* 💳 คัดลูกค้าเงินสดออก — ไม่ต้องวางบิล */}
-      <label style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 13px", marginBottom: 12, borderRadius: 9, cursor: "pointer",
+      {/* บีบให้เหลือบรรทัดเดียว — คำอธิบายยาว ๆ ย้ายไปอยู่ใน tooltip
+          เก็บไว้ในบรรทัดเฉพาะข้อที่มีผลกับยอดจริง (ยังไม่ได้ตั้ง = นับเป็นเครดิต) */}
+      <label title={"ตั้งประเภทได้ที่หน้าลูกค้า → ✏️ แก้ไข" + String.fromCharCode(10) +
+                    "ลูกค้าที่ยังไม่ได้ตั้ง = นับเป็นเครดิต (จะได้ไม่ตกหล่น)" + String.fromCharCode(10) +
+                    "🚫 บิลที่ถูกรวมเข้าบิลใหม่แล้ว ไม่ถูกนับซ้ำ"}
+        style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", marginBottom: 10, borderRadius: 9, cursor: "pointer", flexWrap: "wrap",
         background: onlyCredit ? "rgba(59,91,139,0.06)" : "#f8fafc", border: `1px solid ${onlyCredit ? "rgba(59,91,139,0.3)" : T.border}` }}>
         <input type="checkbox" checked={onlyCredit} onChange={e=>{setOnlyCredit(e.target.checked); setPicked(null);}} style={{ width: 16, height: 16, cursor: "pointer" }}/>
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: onlyCredit ? T.accent : T.text }}>📄 เฉพาะลูกค้าเครดิต (ไม่รวมลูกค้าเงินสด)</div>
-          <div style={{ fontSize: 11, color: T.muted, marginTop: 2, lineHeight: 1.6 }}>
-            ตั้งประเภทได้ที่หน้าลูกค้า → ✏️ แก้ไข · ลูกค้าที่ยังไม่ได้ตั้ง = นับเป็นเครดิต (จะได้ไม่ตกหล่น)<br/>
-            🚫 บิลที่ถูกรวมเข้าบิลใหม่แล้ว ไม่ถูกนับซ้ำ
-          </div>
-        </div>
+        <span style={{ fontSize: 12, fontWeight: 700, color: onlyCredit ? T.accent : T.text }}>📄 เฉพาะลูกค้าเครดิต (ไม่รวมเงินสด)</span>
+        <span style={{ fontSize: 11, color: T.muted }}>· ยังไม่ได้ตั้ง = นับเป็นเครดิต</span>
       </label>
 
       {/* สรุป + ค้นหา */}
