@@ -13,7 +13,7 @@ import InstallPWA from "./components/InstallPWA";
 import { shouldRemindBackup, getLastBackupDate } from "./utils/backupReminder";
 import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
 import { PRINT_FONT_SCALE, INVOICE_FONT_SCALE, scaleFontInElement, printElementById, printInvoiceCopies, downloadInvoicePdf } from "./utils/print";
-import { PAYMENT_METHODS, docTypeLabel, docTypeLabelEn, itemLineTotal, calcInvoice, getPaidTotal, getRemaining, getPaidPct, ownedImagePathsOf, suspiciousPriceLines } from "./utils/invoice";
+import { PAYMENT_METHODS, docTypeLabel, docTypeLabelEn, itemLineTotal, calcInvoice, getPaidTotal, getRemaining, getPaidPct, ownedImagePathsOf, suspiciousPriceLines, typicalBillTotal, oddBillTotal } from "./utils/invoice";
 import { compressImage } from "./utils/imageCompress";
 import { uploadImage, deleteFile } from "./utils/upload";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiRegion";
@@ -2822,21 +2822,32 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       const priceOf = (it) => {
         const c = clothingItems.find(x => x.id === it.clothingId);
         const col = c?.colors?.[it.colorIdx];
-        return col ? (getPriceForSize(col, it.size) || 0) : 0;
+        if (col) return getPriceForSize(col, it.size) || 0;
+        // 🏭 งานผลิต/สั่งทำ ไม่มีราคาคลัง — ใช้ต้นทุนต่อตัวที่ติดมากับใบ custom แทน
+        return Number(it.costPerPiece) || 0;
       };
       const odd = suspiciousPriceLines(invoiceForm.items, priceOf);
-      if (odd.length) {
+      // 🧾 ด่านที่สอง: ยอดรวมทั้งบิลเทียบกับบิลปกติของร้าน
+      //    จำเป็นเพราะงานผลิตส่วนใหญ่ไม่มีตัวเทียบรายบรรทัด
+      //    ถ้าราคาต่อตัวเพี้ยน ยอดรวมจะเพี้ยนตามเสมอ ด่านนี้จึงรับไม้ต่อได้
+      const ref = typicalBillTotal(invoices);
+      const oddX = oddBillTotal(calc.total, ref);
+      if (odd.length || oddX) {
         const NLx = String.fromCharCode(10);
         const money = (n) => Number(n || 0).toLocaleString("th-TH");
         const lines = odd.slice(0, 6).map(o =>
           `  • ${o.item.clothingName || o.item.description || "-"}${o.item.colorName ? ` (${o.item.colorName})` : ""}${o.item.size ? ` ${o.item.size}` : ""}` + NLx +
           `      กรอก ฿${money(o.price)}/ตัว${o.ref > 0 ? ` · ราคาคลัง ฿${money(o.ref)}` : ""} — ${o.why}`);
         if (!window.confirm([
-          `⚠️ ราคาต่อตัวผิดปกติ ${odd.length} รายการ — ตรวจก่อนบันทึก`, "",
-          ...lines,
-          odd.length > 6 ? `  … และอีก ${odd.length - 6} รายการ` : "", "",
-          `ยอดรวมทั้งบิล ฿${money(calc.total)}`, "",
-          `ถ้าราคานี้ถูกต้องจริง (ราคาพิเศษ/งานสั่งทำ) กดตกลงเพื่อบันทึกต่อ`,
+          odd.length
+            ? `⚠️ ราคาต่อตัวผิดปกติ ${odd.length} รายการ — ตรวจก่อนบันทึก`
+            : `⚠️ ยอดรวมบิลนี้สูงผิดปกติ — ตรวจก่อนบันทึก`,
+          ...(odd.length ? ["", ...lines, odd.length > 6 ? `  … และอีก ${odd.length - 6} รายการ` : ""] : []),
+          "",
+          `ยอดรวมทั้งบิล ฿${money(calc.total)}`,
+          oddX ? `  สูงกว่าบิลปกติของร้าน ${Math.round(oddX)} เท่า (ปกติไม่เกิน ฿${money(ref)})` : "",
+          "",
+          `ถ้าถูกต้องจริง (ราคาพิเศษ/งานสั่งทำ/ออเดอร์ใหญ่) กดตกลงเพื่อบันทึกต่อ`,
         ].filter(x => x !== "").join(NLx))) return;
       }
     }
@@ -4462,6 +4473,9 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                       jobDescription: o.jobDescription || "",
                       qty: Number(it.qty) || 0,
                       unitPrice: Number(o.costSnapshot?.totalCostPerPiece) || 0,
+                      // 🏭 ต้นทุนต่อตัว — งานผลิตไม่มีราคาในคลังให้เทียบ
+                      //    ติดไปกับรายการเพื่อให้ด่านตรวจราคาพิมพ์ผิดมีเส้นวัด
+                      costPerPiece: Number(o.costSnapshot?.totalCostPerPiece) || 0,
                       unit: "ตัว",
                       description: o.clothingName || "",
                       _fromCustom: o.prodNo,

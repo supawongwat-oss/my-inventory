@@ -64,6 +64,35 @@ const PRICE_CEILING = 20000; // ไม่มีของชิ้นไหนใ
  * @param {Array} items รายการในบิล
  * @param {(item)=>number} priceOf อ่านราคาขายในคลังของรายการนั้น (0 = ไม่มีให้เทียบ)
  */
+// 🏭 งานผลิต/สั่งทำไม่มีราคาในคลังให้เทียบ — ด่านต่อไปจึงดูที่ "ยอดรวมทั้งบิล"
+//
+// ใช้ประวัติของร้านเองเป็นเส้นวัด ไม่ตั้งตัวเลขตายตัว เพราะร้านโตขึ้นเส้นก็ต้องขยับตาม
+// ใช้เปอร์เซ็นไทล์ที่ 95 ไม่ใช่ค่าสูงสุด — ค่าสูงสุดจะถูกบิลที่พิมพ์ผิดใบเดียวดึงเส้นให้เพี้ยนถาวร
+//
+// วัดกับข้อมูลจริง (156 ใบ ณ 28 ส.ค. 2569):
+//   กลาง 6,435 · 90% 32,460 · 95% 56,130 · ใบใหญ่สุดที่ถูกต้อง 184,880
+//   เส้นเตือน = 56,130 x 5 = 280,650
+//   -> บิลที่พิมพ์ผิด 1,301,595 โดนจับ · ใบใหญ่สุดที่ถูกต้องยังผ่านสบาย (ห่าง 1.5 เท่า)
+const TOTAL_RATIO = 5;
+const MIN_HISTORY = 20;      // ข้อมูลน้อยกว่านี้ยังไม่รู้ว่า "ปกติ" ของร้านคือเท่าไหร่
+
+export function typicalBillTotal(invoices = []) {
+  const totals = (invoices || [])
+    .filter(i => i && !i.mergedInto && !i.convertedTo && (i.status || "") !== "ยกเลิก")
+    .map(i => Number(i.total) || 0)
+    .filter(v => v > 0)
+    .sort((a, b) => a - b);
+  if (totals.length < MIN_HISTORY) return 0;
+  return totals[Math.floor((totals.length - 1) * 0.95)];
+}
+
+/** คืนจำนวนเท่าที่เกินเส้น (0 = ปกติ) */
+export function oddBillTotal(total, reference) {
+  const t = Number(total) || 0, ref = Number(reference) || 0;
+  if (ref <= 0 || t < ref * TOTAL_RATIO) return 0;
+  return t / ref;
+}
+
 export function suspiciousPriceLines(items = [], priceOf) {
   const out = [];
   (items || []).forEach((it, idx) => {
