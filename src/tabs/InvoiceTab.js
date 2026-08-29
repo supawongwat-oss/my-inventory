@@ -302,7 +302,22 @@ export default function InvoiceTab({
                                         <div style={{ fontSize: 9, color: pct >= 100 ? "#16a34a" : T.amber, fontWeight: 600, marginTop: 2 }}>💵 ฿{paid.toLocaleString("th-TH", { minimumFractionDigits: 2 })} ({pct}%)</div>
                                       ); })()}
                                     </div>
-                                    <div style={{ fontSize: 11, color: T.muted }}>{inv.date}</div>
+                                    <div style={{ fontSize: 11, color: T.muted }}>
+                                      {inv.date}
+                                      {/* 👤 คนออกบิล — โชว์บนจอเท่านั้น ให้ตามตัวได้ว่าใบนี้ใครทำ
+                                          (เวลามีบิลซ้ำ/ยอดผิด จะได้ถามถูกคน ไม่ต้องไล่เปิดประวัติการใช้งาน)
+                                          ⚠️ ห้ามเอาไปใส่ในใบที่พิมพ์ (PrintInvoiceModal) เด็ดขาด
+                                          เป็นข้อมูลภายในของร้าน ลูกค้าไม่ต้องรู้ว่าพนักงานคนไหนออกให้ */}
+                                      {inv.by && (
+                                        <div title={inv.lastEditedBy && inv.lastEditedBy !== inv.by
+                                          ? `ออกโดย ${inv.by} · แก้ล่าสุดโดย ${inv.lastEditedBy}${inv.lastEditedAt ? ` (${inv.lastEditedAt})` : ""}`
+                                          : `ออกโดย ${inv.by}`}
+                                          style={{ fontSize: 10, color: T.sub, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                          👤 {inv.by}
+                                          {inv.lastEditedBy && inv.lastEditedBy !== inv.by && <span style={{ color: T.amber }}> ✏️</span>}
+                                        </div>
+                                      )}
+                                    </div>
                                     <div onClick={e => e.stopPropagation()}>
                                       <select value={inv.status || "ออกแล้ว"} onChange={e => handleUpdateInvoiceStatus(inv.id, e.target.value)}
                                         style={{ background: st.bg, border: st.border, borderRadius: 10, padding: "4px 8px", fontSize: 10, fontWeight: 600, color: st.color, cursor: "pointer", fontFamily: "'Sarabun',sans-serif", outline: "none" }}>
