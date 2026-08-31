@@ -40,8 +40,10 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
   const [dueDate, setDueDate] = useState("");
   // 🏢 หัวบริษัทบนใบที่พิมพ์ — เลือกได้ว่าจะใส่อะไรบ้าง
   //    ปิดทั้งคู่ = ไม่มีหัวบริษัทเลย สำหรับพิมพ์ลงกระดาษหัวจดหมายที่มีอยู่แล้ว
-  const [showCompanyName, setShowCompanyName] = useState(true);
-  const [showCompanyTaxId, setShowCompanyTaxId] = useState(true);
+  // 🏢 ชื่อบริษัทแสดงเสมอ · ที่เหลือปิดไว้ก่อน เปิดเองได้
+  const [showCompanyAddress, setShowCompanyAddress] = useState(false);
+  const [showCompanyPhone, setShowCompanyPhone] = useState(false);
+  const [showCompanyTaxId, setShowCompanyTaxId] = useState(false);
   // 🏦 บัญชีรับชำระที่จะขึ้นบนใบ — เดิมบังคับใช้บัญชีแรกเสมอ เลือกเองไม่ได้
   //    ค่าเริ่มต้นยังเป็นบัญชีแรกเหมือนเดิม แต่เปลี่ยนได้แล้ว (-1 = ไม่แสดงบัญชี)
   const [bankIdx, setBankIdx] = useState(0);
@@ -183,7 +185,7 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
           dueDate,
           note: "",
           bankAccount: pickedBank,
-          showCompanyName, showCompanyTaxId,
+          showCompanyAddress, showCompanyPhone, showCompanyTaxId,
           by: user?.name || user?.username || "",
           date: now(),
           createdAt: serverTimestamp(),
@@ -255,10 +257,14 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
       {/* 🏢 หัวบริษัทบนใบที่พิมพ์ — ปิดทั้งคู่ = ไม่มีหัวเลย (พิมพ์ลงกระดาษหัวจดหมาย) */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "7px 12px", marginBottom: 10, borderRadius: 9,
         background: "#f8fafc", border: `1px solid ${T.border}`, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: T.text, whiteSpace: "nowrap" }}>🏢 หัวบริษัทบนใบ:</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: T.text, whiteSpace: "nowrap" }}>
+          🏢 หัวใบ: {companyInfo?.name || "CPU"}
+        </span>
+        <span style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap" }}>(แสดงเสมอ) · ติ๊กเพิ่ม:</span>
         {[
-          { on: showCompanyName, set: setShowCompanyName, l: "ชื่อบริษัท" },
-          { on: showCompanyTaxId, set: setShowCompanyTaxId, l: "เลขผู้เสียภาษี" },
+          { on: showCompanyAddress, set: setShowCompanyAddress, l: "📍 ที่อยู่" },
+          { on: showCompanyPhone, set: setShowCompanyPhone, l: "📞 เบอร์โทร" },
+          { on: showCompanyTaxId, set: setShowCompanyTaxId, l: "🧾 เลขผู้เสียภาษี" },
         ].map(o => (
           <label key={o.l} style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12,
             color: o.on ? T.accent : T.sub, fontWeight: o.on ? 600 : 400 }}>
@@ -266,9 +272,6 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
             {o.l}
           </label>
         ))}
-        {!showCompanyName && !showCompanyTaxId && (
-          <span style={{ fontSize: 11, color: T.amber }}>· ไม่มีหัวบริษัทเลย — สำหรับพิมพ์ลงกระดาษหัวจดหมาย</span>
-        )}
       </div>
 
       {/* 🏦 บัญชีรับชำระ — ขึ้นบนใบทุกใบในรอบนี้ */}

@@ -83,8 +83,10 @@ export default function StatementTab({ statements, invoices, returns = [], custo
     dueDate: "",
     note: "",
     bankAccount: null,
-    showCompanyName: true,  // แสดงชื่อ/ที่อยู่บริษัทในใบวางบิล
-    showCompanyTaxId: true, // แสดงเลขผู้เสียภาษีของบริษัทในใบวางบิล
+    // 🏢 ชื่อบริษัทแสดงเสมอ · ที่เหลือปิดไว้ก่อน เปิดเองได้ตอนสร้างใบ
+    showCompanyAddress: false,
+    showCompanyPhone: false,
+    showCompanyTaxId: false,
   });
 
   const resetForm = () => {
@@ -275,8 +277,9 @@ export default function StatementTab({ statements, invoices, returns = [], custo
       dueDate: form.dueDate,
       note: form.note,
       bankAccount: form.bankAccount || null,
-      showCompanyName: form.showCompanyName !== false,
-      showCompanyTaxId: form.showCompanyTaxId !== false,
+      showCompanyAddress: form.showCompanyAddress === true,
+      showCompanyPhone: form.showCompanyPhone === true,
+      showCompanyTaxId: form.showCompanyTaxId === true,
       by: user?.name || user?.username || "",
       date: now(),
       createdAt: serverTimestamp(),
@@ -666,12 +669,16 @@ export default function StatementTab({ statements, invoices, returns = [], custo
 
           {/* Toggle: แสดงเลขผู้เสียภาษีบริษัทในใบวางบิล */}
           <div style={{ marginBottom: 14 }}>
-            {/* หัวบริษัทบนใบที่พิมพ์ — ปิดทั้งคู่ = ไม่มีหัวเลย (พิมพ์ลงกระดาษหัวจดหมาย) */}
+            {/* หัวบริษัทบนใบที่พิมพ์ — ชื่อบริษัทแสดงเสมอ ที่เหลือเลือกได้ */}
+            <div style={{ fontSize: 11, color: T.muted, marginBottom: 6 }}>
+              🏢 หัวใบ: <b style={{ color: T.text }}>{companyInfo?.name || "CPU"}</b> (แสดงเสมอ) · ติ๊กเพิ่มได้ตามนี้
+            </div>
             {[
-              { k: "showCompanyName", l: "🏢 ชื่อบริษัท" },
-              { k: "showCompanyTaxId", l: "🧾 เลขผู้เสียภาษีของบริษัท" },
+              { k: "showCompanyAddress", l: "📍 ที่อยู่" },
+              { k: "showCompanyPhone", l: "📞 เบอร์โทร" },
+              { k: "showCompanyTaxId", l: "🧾 เลขผู้เสียภาษี" },
             ].map(o => {
-              const on = form[o.k] !== false;
+              const on = form[o.k] === true;
               return (
                 <label key={o.k} style={{ display: "inline-flex", alignItems: "center", gap: 8, marginRight: 8, padding: "6px 12px", borderRadius: 8, border: `1px solid ${on ? T.accent : T.border}`, background: on ? "rgba(59,91,139,0.08)" : "transparent", cursor: "pointer", fontSize: 12 }}>
                   <input type="checkbox" checked={on} onChange={e => setForm(f => ({ ...f, [o.k]: e.target.checked }))} />
@@ -1032,9 +1039,13 @@ function StatementPrintLayout({ statement, companyInfo, id = "statement-print-ar
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, paddingBottom: 8, borderBottom: "2px solid #000" }}>
         <div>
           {/* ปิดหัวบริษัทได้ เผื่อพิมพ์ลงกระดาษหัวจดหมายที่มีชื่อร้านอยู่แล้ว */}
-          {statement.showCompanyName !== false && (
-            <div style={{ fontSize: 18, fontWeight: 800, color: "#000", letterSpacing: 1.5 }}>{companyInfo?.name || "CPU"}</div>
-          )}
+          {/* ชื่อบริษัทแสดงเสมอ — ใบวางบิลต้องรู้ว่าใครเป็นคนเรียกเก็บ
+              ที่เหลือเลือกเปิด/ปิดได้ทีละอย่างตอนสร้างใบ
+              ที่อยู่/เบอร์ ใช้ === true (ใบเก่าไม่มีฟิลด์ = ไม่แสดง ตามที่ร้านใช้ตอนนี้)
+              เลขภาษี ใช้ !== false (ใบเก่าเคยแสดงอยู่ พิมพ์ซ้ำต้องได้เหมือนเดิม) */}
+          <div style={{ fontSize: 18, fontWeight: 800, color: "#000", letterSpacing: 1.5 }}>{companyInfo?.name || "CPU"}</div>
+          {companyInfo?.address && statement.showCompanyAddress === true && <div style={{ fontSize: 10, color: "#000", marginTop: 2 }}>{companyInfo.address}</div>}
+          {companyInfo?.phone && statement.showCompanyPhone === true && <div style={{ fontSize: 10, color: "#000" }}>โทร: {companyInfo.phone}{companyInfo.email && `  ·  ${companyInfo.email}`}</div>}
           {companyInfo?.taxId && (statement.showCompanyTaxId !== false) && <div style={{ fontSize: 10, color: "#000" }}>เลขประจำตัวผู้เสียภาษี: {companyInfo.taxId}</div>}
         </div>
         <div style={{ textAlign: "right" }}>
