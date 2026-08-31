@@ -42,6 +42,9 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
   //    ปิดทั้งคู่ = ไม่มีหัวบริษัทเลย สำหรับพิมพ์ลงกระดาษหัวจดหมายที่มีอยู่แล้ว
   const [showCompanyName, setShowCompanyName] = useState(true);
   const [showCompanyTaxId, setShowCompanyTaxId] = useState(true);
+  // 🏦 บัญชีรับชำระที่จะขึ้นบนใบ — เดิมบังคับใช้บัญชีแรกเสมอ เลือกเองไม่ได้
+  //    ค่าเริ่มต้นยังเป็นบัญชีแรกเหมือนเดิม แต่เปลี่ยนได้แล้ว (-1 = ไม่แสดงบัญชี)
+  const [bankIdx, setBankIdx] = useState(0);
   const [search, setSearch] = useState("");
   const [picked, setPicked] = useState(null);   // Set<key> — null = ยังไม่เคยแตะ (เลือกทั้งหมด)
   const [busy, setBusy] = useState(null);       // { done, total }
@@ -114,6 +117,13 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
     } else fallback();
   };
 
+  // รูปแบบเดียวกับหน้าสร้างทีละใบ — ใบที่พิมพ์อ่านจาก bankAccount.bank
+  const pickedBank = (() => {
+    const b = (companyInfo?.bankAccounts || [])[bankIdx];
+    if (!b) return null;
+    return { __idx: bankIdx, bank: b.bankName, bankName: b.bankName, accountNo: b.accountNo, accountName: b.accountName || b.label || "" };
+  })();
+
   const createAll = async () => {
     if (selected.length === 0 || busy) return;
     const dupeSelected = selected.filter(g => g.dupe).length;
@@ -172,7 +182,7 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
           status: "ออกแล้ว",
           dueDate,
           note: "",
-          bankAccount: (companyInfo.bankAccounts || [])[0] || null,
+          bankAccount: pickedBank,
           showCompanyName, showCompanyTaxId,
           by: user?.name || user?.username || "",
           date: now(),
@@ -258,6 +268,22 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
         ))}
         {!showCompanyName && !showCompanyTaxId && (
           <span style={{ fontSize: 11, color: T.amber }}>· ไม่มีหัวบริษัทเลย — สำหรับพิมพ์ลงกระดาษหัวจดหมาย</span>
+        )}
+      </div>
+
+      {/* 🏦 บัญชีรับชำระ — ขึ้นบนใบทุกใบในรอบนี้ */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", marginBottom: 10, borderRadius: 9,
+        background: "#f8fafc", border: `1px solid ${T.border}`, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: T.text, whiteSpace: "nowrap" }}>🏦 บัญชีรับชำระ:</span>
+        <select value={String(bankIdx)} onChange={e => setBankIdx(Number(e.target.value))}
+          style={{ flex: "1 1 240px", minWidth: 200, background: "white", border: `1px solid ${T.border}`, color: T.text, borderRadius: 8, padding: "6px 10px", fontSize: 12, fontFamily: "inherit", outline: "none" }}>
+          <option value="-1">— ไม่แสดงบัญชี —</option>
+          {(companyInfo?.bankAccounts || []).map((b, i) => (
+            <option key={i} value={i}>{b.label ? `${b.label} · ` : ""}{b.bankName} · {b.accountNo}{b.accountName ? ` · ${b.accountName}` : ""}</option>
+          ))}
+        </select>
+        {(!companyInfo?.bankAccounts || companyInfo.bankAccounts.length === 0) && (
+          <span style={{ fontSize: 11, color: T.muted }}>ยังไม่มีบัญชี — เพิ่มที่ ⚙️ ตั้งค่า → ข้อมูลบริษัท</span>
         )}
       </div>
 
