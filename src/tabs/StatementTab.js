@@ -1035,7 +1035,6 @@ function StatementPrintLayout({ statement, companyInfo, id = "statement-print-ar
           {statement.showCompanyName !== false && (<>
             <div style={{ fontSize: 18, fontWeight: 800, color: "#000", letterSpacing: 1.5 }}>{companyInfo?.name || "CPU"}</div>
             {companyInfo?.address && <div style={{ fontSize: 10, color: "#000", marginTop: 2 }}>{companyInfo.address}</div>}
-            {companyInfo?.phone && <div style={{ fontSize: 10, color: "#000" }}>โทร: {companyInfo.phone}{companyInfo.email && `  ·  ${companyInfo.email}`}</div>}
           </>)}
           {companyInfo?.taxId && (statement.showCompanyTaxId !== false) && <div style={{ fontSize: 10, color: "#000" }}>เลขประจำตัวผู้เสียภาษี: {companyInfo.taxId}</div>}
         </div>
