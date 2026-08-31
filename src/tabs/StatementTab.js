@@ -83,6 +83,7 @@ export default function StatementTab({ statements, invoices, returns = [], custo
     dueDate: "",
     note: "",
     bankAccount: null,
+    showCompanyName: true,  // แสดงชื่อ/ที่อยู่บริษัทในใบวางบิล
     showCompanyTaxId: true, // แสดงเลขผู้เสียภาษีของบริษัทในใบวางบิล
   });
 
@@ -274,6 +275,7 @@ export default function StatementTab({ statements, invoices, returns = [], custo
       dueDate: form.dueDate,
       note: form.note,
       bankAccount: form.bankAccount || null,
+      showCompanyName: form.showCompanyName !== false,
       showCompanyTaxId: form.showCompanyTaxId !== false,
       by: user?.name || user?.username || "",
       date: now(),
@@ -664,10 +666,19 @@ export default function StatementTab({ statements, invoices, returns = [], custo
 
           {/* Toggle: แสดงเลขผู้เสียภาษีบริษัทในใบวางบิล */}
           <div style={{ marginBottom: 14 }}>
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 12px", borderRadius: 8, border: `1px solid ${form.showCompanyTaxId !== false ? T.accent : T.border}`, background: form.showCompanyTaxId !== false ? "rgba(59,91,139,0.08)" : "transparent", cursor: "pointer", fontSize: 12 }}>
-              <input type="checkbox" checked={form.showCompanyTaxId !== false} onChange={e => setForm(f => ({ ...f, showCompanyTaxId: e.target.checked }))} />
-              <span style={{ color: form.showCompanyTaxId !== false ? T.accent : T.sub, fontWeight: form.showCompanyTaxId !== false ? 600 : 400 }}>แสดงเลขผู้เสียภาษีของบริษัทบนใบวางบิล</span>
-            </label>
+            {/* หัวบริษัทบนใบที่พิมพ์ — ปิดทั้งคู่ = ไม่มีหัวเลย (พิมพ์ลงกระดาษหัวจดหมาย) */}
+            {[
+              { k: "showCompanyName", l: "🏢 ชื่อบริษัท + ที่อยู่" },
+              { k: "showCompanyTaxId", l: "🧾 เลขผู้เสียภาษีของบริษัท" },
+            ].map(o => {
+              const on = form[o.k] !== false;
+              return (
+                <label key={o.k} style={{ display: "inline-flex", alignItems: "center", gap: 8, marginRight: 8, padding: "6px 12px", borderRadius: 8, border: `1px solid ${on ? T.accent : T.border}`, background: on ? "rgba(59,91,139,0.08)" : "transparent", cursor: "pointer", fontSize: 12 }}>
+                  <input type="checkbox" checked={on} onChange={e => setForm(f => ({ ...f, [o.k]: e.target.checked }))} />
+                  <span style={{ color: on ? T.accent : T.sub, fontWeight: on ? 600 : 400 }}>{o.l}</span>
+                </label>
+              );
+            })}
           </div>
 
           {/* ↩️ ใบลดหนี้จากการรับคืน — หักออกจากยอดวางบิลงวดนี้ */}
@@ -1020,9 +1031,12 @@ function StatementPrintLayout({ statement, companyInfo, id = "statement-print-ar
       {/* Header — เล็กลง */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, paddingBottom: 8, borderBottom: "2px solid #000" }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: "#000", letterSpacing: 1.5 }}>{companyInfo?.name || "CPU"}</div>
-          {companyInfo?.address && <div style={{ fontSize: 10, color: "#000", marginTop: 2 }}>{companyInfo.address}</div>}
-          {companyInfo?.phone && <div style={{ fontSize: 10, color: "#000" }}>โทร: {companyInfo.phone}{companyInfo.email && `  ·  ${companyInfo.email}`}</div>}
+          {/* ปิดหัวบริษัทได้ เผื่อพิมพ์ลงกระดาษหัวจดหมายที่มีชื่อร้านอยู่แล้ว */}
+          {statement.showCompanyName !== false && (<>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#000", letterSpacing: 1.5 }}>{companyInfo?.name || "CPU"}</div>
+            {companyInfo?.address && <div style={{ fontSize: 10, color: "#000", marginTop: 2 }}>{companyInfo.address}</div>}
+            {companyInfo?.phone && <div style={{ fontSize: 10, color: "#000" }}>โทร: {companyInfo.phone}{companyInfo.email && `  ·  ${companyInfo.email}`}</div>}
+          </>)}
           {companyInfo?.taxId && (statement.showCompanyTaxId !== false) && <div style={{ fontSize: 10, color: "#000" }}>เลขประจำตัวผู้เสียภาษี: {companyInfo.taxId}</div>}
         </div>
         <div style={{ textAlign: "right" }}>

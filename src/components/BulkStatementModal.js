@@ -38,6 +38,10 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
   //    (ตั้งประเภทที่หน้าลูกค้า → แก้ไข · ไม่เคยตั้ง = ถือว่าเครดิต)
   const [onlyCredit, setOnlyCredit] = useState(true);
   const [dueDate, setDueDate] = useState("");
+  // 🏢 หัวบริษัทบนใบที่พิมพ์ — เลือกได้ว่าจะใส่อะไรบ้าง
+  //    ปิดทั้งคู่ = ไม่มีหัวบริษัทเลย สำหรับพิมพ์ลงกระดาษหัวจดหมายที่มีอยู่แล้ว
+  const [showCompanyName, setShowCompanyName] = useState(true);
+  const [showCompanyTaxId, setShowCompanyTaxId] = useState(true);
   const [search, setSearch] = useState("");
   const [picked, setPicked] = useState(null);   // Set<key> — null = ยังไม่เคยแตะ (เลือกทั้งหมด)
   const [busy, setBusy] = useState(null);       // { done, total }
@@ -169,7 +173,7 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
           dueDate,
           note: "",
           bankAccount: (companyInfo.bankAccounts || [])[0] || null,
-          showCompanyTaxId: true,
+          showCompanyName, showCompanyTaxId,
           by: user?.name || user?.username || "",
           date: now(),
           createdAt: serverTimestamp(),
@@ -237,6 +241,25 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
         <span style={{ fontSize: 12, fontWeight: 700, color: onlyCredit ? T.accent : T.text }}>📄 เฉพาะลูกค้าเครดิต (ไม่รวมเงินสด)</span>
         <span style={{ fontSize: 11, color: T.muted }}>· ยังไม่ได้ตั้ง = นับเป็นเครดิต</span>
       </label>
+
+      {/* 🏢 หัวบริษัทบนใบที่พิมพ์ — ปิดทั้งคู่ = ไม่มีหัวเลย (พิมพ์ลงกระดาษหัวจดหมาย) */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "7px 12px", marginBottom: 10, borderRadius: 9,
+        background: "#f8fafc", border: `1px solid ${T.border}`, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: T.text, whiteSpace: "nowrap" }}>🏢 หัวบริษัทบนใบ:</span>
+        {[
+          { on: showCompanyName, set: setShowCompanyName, l: "ชื่อบริษัท + ที่อยู่" },
+          { on: showCompanyTaxId, set: setShowCompanyTaxId, l: "เลขผู้เสียภาษี" },
+        ].map(o => (
+          <label key={o.l} style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12,
+            color: o.on ? T.accent : T.sub, fontWeight: o.on ? 600 : 400 }}>
+            <input type="checkbox" checked={o.on} onChange={e => o.set(e.target.checked)} style={{ cursor: "pointer" }}/>
+            {o.l}
+          </label>
+        ))}
+        {!showCompanyName && !showCompanyTaxId && (
+          <span style={{ fontSize: 11, color: T.amber }}>· ไม่มีหัวบริษัทเลย — สำหรับพิมพ์ลงกระดาษหัวจดหมาย</span>
+        )}
+      </div>
 
       {/* สรุป + ค้นหา */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
