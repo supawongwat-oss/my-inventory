@@ -257,7 +257,7 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
         background: "#f8fafc", border: `1px solid ${T.border}`, flexWrap: "wrap" }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: T.text, whiteSpace: "nowrap" }}>🏢 หัวบริษัทบนใบ:</span>
         {[
-          { on: showCompanyName, set: setShowCompanyName, l: "ชื่อบริษัท + ที่อยู่" },
+          { on: showCompanyName, set: setShowCompanyName, l: "ชื่อบริษัท" },
           { on: showCompanyTaxId, set: setShowCompanyTaxId, l: "เลขผู้เสียภาษี" },
         ].map(o => (
           <label key={o.l} style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12,

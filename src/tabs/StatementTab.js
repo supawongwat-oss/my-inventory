@@ -668,7 +668,7 @@ export default function StatementTab({ statements, invoices, returns = [], custo
           <div style={{ marginBottom: 14 }}>
             {/* หัวบริษัทบนใบที่พิมพ์ — ปิดทั้งคู่ = ไม่มีหัวเลย (พิมพ์ลงกระดาษหัวจดหมาย) */}
             {[
-              { k: "showCompanyName", l: "🏢 ชื่อบริษัท + ที่อยู่" },
+              { k: "showCompanyName", l: "🏢 ชื่อบริษัท" },
               { k: "showCompanyTaxId", l: "🧾 เลขผู้เสียภาษีของบริษัท" },
             ].map(o => {
               const on = form[o.k] !== false;
@@ -1032,10 +1032,9 @@ function StatementPrintLayout({ statement, companyInfo, id = "statement-print-ar
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, paddingBottom: 8, borderBottom: "2px solid #000" }}>
         <div>
           {/* ปิดหัวบริษัทได้ เผื่อพิมพ์ลงกระดาษหัวจดหมายที่มีชื่อร้านอยู่แล้ว */}
-          {statement.showCompanyName !== false && (<>
+          {statement.showCompanyName !== false && (
             <div style={{ fontSize: 18, fontWeight: 800, color: "#000", letterSpacing: 1.5 }}>{companyInfo?.name || "CPU"}</div>
-            {companyInfo?.address && <div style={{ fontSize: 10, color: "#000", marginTop: 2 }}>{companyInfo.address}</div>}
-          </>)}
+          )}
           {companyInfo?.taxId && (statement.showCompanyTaxId !== false) && <div style={{ fontSize: 10, color: "#000" }}>เลขประจำตัวผู้เสียภาษี: {companyInfo.taxId}</div>}
         </div>
         <div style={{ textAlign: "right" }}>
