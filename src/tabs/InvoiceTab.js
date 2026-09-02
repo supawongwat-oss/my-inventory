@@ -44,6 +44,7 @@ const norm = (s) => String(s || "").normalize("NFC").toLowerCase().replace(/\s+/
 
 export default function InvoiceTab({
   invoices, role,
+  statements = [],        // ใช้บอกว่าบิลใบไหนถูกวางบิลไปแล้ว
   invoicesRange, setInvoicesRange, invoicesCapped,
   invoiceStatusFilter, setInvoiceStatusFilter,
   invoiceSearch, setInvoiceSearch,
@@ -166,6 +167,14 @@ export default function InvoiceTab({
       ) : (() => {
         const q = norm(invoiceSearch);
         // 🔁 บิลที่ยอด+ลูกค้าตรงกันในช่วงเวลาใกล้กัน — ติดป้ายให้เห็น จะได้ตามไปยกเลิกใบเกิน
+        // 📃 บิลใบไหนอยู่ในใบวางบิลแล้ว — คนเก็บเงินต้องรู้ตั้งแต่หน้ารายการบิล
+        //    ว่าใบนี้ทวงไปแล้วหรือยัง ไม่งั้นต้องข้ามไปเปิดหน้าใบวางบิลเทียบเองทีละใบ
+        //    ใบวางบิลที่ยกเลิกไม่นับ — บิลในนั้นกลับมาวางใหม่ได้
+        const stmtMap = new Map();
+        (statements || []).forEach(st => {
+          if (!st || (st.status || "") === "ยกเลิก") return;
+          (st.invoiceIds || []).forEach(id => { if (!stmtMap.has(id)) stmtMap.set(id, st); });
+        });
         const dupMap = duplicateGroups(invoices);
         let fInv = invoiceStatusFilter === "ทั้งหมด" ? invoices : invoices.filter(x => (x.status || "ออกแล้ว") === invoiceStatusFilter);
         if (q) fInv = fInv.filter(inv =>
@@ -281,6 +290,15 @@ export default function InvoiceTab({
                                         {inv.customerId && <BillingBadge type={custById.get(inv.customerId)?.billingType}/>}
                                         {inv.mergedInto && <span title={`รวมเข้า ${inv.mergedInto.invoiceNo}`} style={{ padding: "1px 6px", fontSize: 9, background: "rgba(184,134,0,0.15)", color: T.amber, borderRadius: 5, fontWeight: 700 }}>🔗 รวมแล้ว</span>}
                                         {inv.mergedFrom?.length > 0 && <span title={`รวมจาก ${inv.mergedFrom.length} บิล`} style={{ padding: "1px 6px", fontSize: 9, background: "rgba(58,122,82,0.15)", color: T.green, borderRadius: 5, fontWeight: 700 }}>🔗 บิลรวม ×{inv.mergedFrom.length}</span>}
+                                        {stmtMap.has(inv.id) && (() => {
+                                          const st = stmtMap.get(inv.id);
+                                          return (
+                                            <span title={`อยู่ในใบวางบิล ${st.statementNo}${st.date ? ` · ออก ${(st.date || "").split(" ")[0]}` : ""}\nวางบิลไปแล้ว จะไม่ถูกดึงเข้าใบวางบิลใบใหม่อีก`}
+                                              style={{ padding: "1px 6px", fontSize: 9, background: "rgba(8,145,178,0.12)", color: "#0891b2", border: "1px solid #a5f3fc", borderRadius: 5, fontWeight: 700, cursor: "help" }}>
+                                              📃 วางบิลแล้ว {st.statementNo}
+                                            </span>
+                                          );
+                                        })()}
                                         {dupMap.has(inv.id) && (
                                           <span title={`ยอดเท่ากับ: ${dupMap.get(inv.id).map(o => `${o.invoiceNo} (${(o.date || "").split(" ")[0]})`).join(", ")}\nตรวจว่าออกซ้ำหรือไม่ — ถ้าซ้ำให้ยกเลิกใบที่เกิน`}
                                             style={{ padding: "1px 6px", fontSize: 9, background: "rgba(185,74,72,0.15)", color: T.red, borderRadius: 5, fontWeight: 700, cursor: "help" }}>
