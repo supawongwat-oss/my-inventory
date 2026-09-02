@@ -220,7 +220,7 @@ export default function NewProductionOrderModal({ clothingItems = [], boms = [],
   const SIZES_ALL = ["S","M","L","XL","2XL","3XL","4XL","5XL","6","8","10","12","14","16"];
 
   return (
-    <Modal onClose={onClose} w={820}>
+    <Modal onClose={onClose} w={960} minH={560}>
       <MHead title={isEdit ? `✏️ แก้ไขใบสั่งผลิต · ${editOrder.prodNo}` : "🏭 สร้างใบสั่งผลิตใหม่"} sub="เลือกรุ่น · สี · ไซส์ · จำนวน — ระบบคำนวณวัตถุดิบและต้นทุนให้" onClose={onClose}/>
       {saved && <Toast msg={isEdit ? "บันทึกการแก้ไขสำเร็จ" : "สร้างใบสั่งผลิตสำเร็จ"}/>}
       {isEdit && <div style={{marginBottom:12,padding:"8px 12px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,fontSize:11,color:"#1e40af",lineHeight:1.5}}>ℹ️ แก้ไขได้เพราะใบนี้ยังไม่เริ่มผลิต — เมื่อบันทึก ระบบจะอัปเดตรายการบนบอร์ด Kanban ให้อัตโนมัติ</div>}

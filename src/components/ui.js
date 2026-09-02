@@ -39,7 +39,11 @@ export function BarcodeDisplay({ value, format = "CODE128", width = 2.2, height 
   );
 }
 
-export function Modal({ onClose, children, w = 460 }) {
+// minH = ความสูงขั้นต่ำ สำหรับกล่องที่มีรายการเลื่อนลงมา (dropdown)
+//   dropdown เป็น position:absolute จึงไม่ดันความสูงของกล่องให้โตตาม
+//   พอกล่องเตี้ยกว่ารายการ ตัวรายการจะถูกขอบกล่องตัดหาย ต้องเลื่อนหาเอง
+//   จำกัดด้วย min() กันไม่ให้สูงเกินจอบนเครื่องจอเตี้ย
+export function Modal({ onClose, children, w = 460, minH = 0 }) {
   const cardRef = useRef(null);
   // 🛟 กันข้อมูลหาย — พอมีการพิมพ์/เลือกอะไรในกล่องนี้แล้ว ถ้าหน้าจะ reload/ปิด ให้เตือนก่อน
   //    (ด่านสองต่อจาก overscroll-behavior ใน index.css เผื่อ refresh มาจากทางอื่น
@@ -69,7 +73,7 @@ export function Modal({ onClose, children, w = 460 }) {
       <div
         ref={cardRef}
         className="modal-card"
-        style={{background:"#ffffff",border:`1px solid ${T.border}`,borderRadius:16,padding:28,width:w,maxWidth:"96vw",boxShadow:"0 20px 60px rgba(0,0,0,0.15)",maxHeight:"92vh",overflowY:"auto"}}
+        style={{background:"#ffffff",border:`1px solid ${T.border}`,borderRadius:16,padding:28,width:w,maxWidth:"96vw",boxShadow:"0 20px 60px rgba(0,0,0,0.15)",maxHeight:"92vh",overflowY:"auto",...(minH ? {minHeight:`min(${minH}px, 80vh)`} : {})}}
       >
         {children}
       </div>
