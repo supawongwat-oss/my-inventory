@@ -57,6 +57,11 @@ export function useFirestore(activeTab = "") {
   // 📅 ช่วงวันที่ของบิลที่กำลังโหลด — เริ่มต้น 30 วัน, ขยายได้จากหน้าออกบิล/รายงาน
   const [invoicesRange, setInvoicesRange] = useState(() => ({ from: daysAgo(DEFAULT_DAYS.invoices), to: null }));
   const [invoicesCapped, setInvoicesCapped] = useState(false);
+  // ⚠️ สองกองนี้ไม่มีช่วงวันที่ให้ขยาย มีแต่เพดานจำนวน — ชนเมื่อไรใบเก่าหายเงียบ ๆ
+  //    ที่ 50-80 ใบวางบิล/เดือน เพดาน 500 = ประมาณ 7-10 เดือนก็เต็ม
+  //    ตอนนั้นกองเดือนเก่าจะหายจากหน้าจอโดยไม่มีอะไรบอก จึงต้องมีธงไว้เตือน
+  const [statementsCapped, setStatementsCapped] = useState(false);
+  const [returnsCapped, setReturnsCapped] = useState(false);
   const [statements, setStatements] = useState([]);
   const [returns, setReturns] = useState([]);
   const [packRuns, setPackRuns] = useState([]);
@@ -217,7 +222,10 @@ export function useFirestore(activeTab = "") {
   useEffect(() => {
     if (!stmtReady) return;
     const q = query(collection(db, "statements"), orderBy("createdAt","desc"), limit(LIMITS.statements));
-    const unsub = onSnapshot(q, snap => setStatements(snap.docs.map(d=>({...d.data(),id:d.id}))), ()=>{});
+    const unsub = onSnapshot(q, snap => {
+      setStatements(snap.docs.map(d=>({...d.data(),id:d.id})));
+      setStatementsCapped(snap.size >= LIMITS.statements);
+    }, ()=>{});
     return () => unsub();
   }, [stmtReady]);
 
@@ -226,7 +234,10 @@ export function useFirestore(activeTab = "") {
   useEffect(() => {
     if (!deferReady) return;
     const q = query(collection(db, "returns"), orderBy("createdAt","desc"), limit(LIMITS.returns));
-    const unsub = onSnapshot(q, snap => setReturns(snap.docs.map(d=>({...d.data(),id:d.id}))), ()=>{});
+    const unsub = onSnapshot(q, snap => {
+      setReturns(snap.docs.map(d=>({...d.data(),id:d.id})));
+      setReturnsCapped(snap.size >= LIMITS.returns);
+    }, ()=>{});
     return () => unsub();
   }, [deferReady]);
 
@@ -367,8 +378,8 @@ export function useFirestore(activeTab = "") {
     customers,
     invoices,
     invoicesRange, setInvoicesRange, invoicesCapped,
-    statements,
-    returns,
+    statements, statementsCapped,
+    returns, returnsCapped,
     packRuns,
     companyInfo, setCompanyInfo,
     roleLabels,

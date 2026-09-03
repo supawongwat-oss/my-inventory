@@ -67,7 +67,7 @@ const statusStyle = (s) => ({
 
 // === Main Component ===
 export default function StatementTab({ statements, invoices, returns = [], customers, companyInfo, user, role, printElementById,
-  invoicesRange, setInvoicesRange, invoicesCapped }) {
+  invoicesRange, setInvoicesRange, invoicesCapped, statementsCapped = false }) {
   const [showCreate, setShowCreate] = useState(false);
   const [showBulk, setShowBulk] = useState(false); // 📅 ออกใบวางบิลทั้งเดือนทีเดียว
   // 🖨️ พิมพ์หลายใบรวดเดียว — ออกทั้งเดือนทีนึงได้ 47 ใบ กดพิมพ์ทีละใบไม่ไหว
@@ -597,6 +597,14 @@ export default function StatementTab({ statements, invoices, returns = [], custo
           </div>
         );
       })}
+
+      {/* ⚠️ ชนเพดานโหลด = งวดเก่าหายไปทั้งกอง ต้องบอกก่อนที่คนจะสรุปว่า "เดือนนั้นไม่ได้วางบิล" */}
+      {statementsCapped && (
+        <div style={{ padding: "10px 14px", marginBottom: 10, background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.4)", borderRadius: 10, fontSize: 12, color: "#b45309", lineHeight: 1.7 }}>
+          ⚠️ ใบวางบิลชนเพดานโหลด <b>500 ใบ</b> — ที่เห็นคือ 500 ใบล่าสุดเท่านั้น <b>งวดเก่าจะหายไปทั้งกอง</b>
+          <br/>ใบเก่ายังอยู่ในระบบครบ แค่ไม่ถูกโหลดมา — แจ้งผู้ดูแลระบบให้ขยายเพดานก่อนสรุปยอดย้อนหลัง
+        </div>
+      )}
 
       {/* 📅 List — จัดกองตามงวดเดือน พับเก็บได้
           ใบวางบิลสะสมเดือนละ 50-80 ใบ ถ้าไล่เป็นรายการยาวเส้นเดียว งวดเก่ากับงวดใหม่จะปนกัน

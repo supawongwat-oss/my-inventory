@@ -14,7 +14,7 @@ const statusStyle = (s) => ({
 }[s] || { bg: "rgba(59,91,139,0.1)", color: T.accent, border: `1px solid ${T.border}` });
 
 export default function ReturnsTab({
-  returns = [], role = {}, user,
+  returns = [], returnsCapped = false, role = {}, user,
   onNewReturn, onEditReturn, onCancelReturn, onDeleteReturn, onDeleteReturnsBulk, onOpenInvoice, onQcReturn, onCreditNote, onRefundPaid,
 }) {
   const [search, setSearch] = React.useState("");
@@ -164,6 +164,13 @@ export default function ReturnsTab({
         )}
       </div>
 
+      {/* ⚠️ ชนเพดานโหลด = ใบเก่าหลุดหายจากหน้านี้เงียบ ๆ ต้องบอก ไม่ใช่ปล่อยให้คนหาไม่เจอแล้วงง */}
+      {returnsCapped && (
+        <div style={{ padding: "10px 14px", background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.4)", borderRadius: 10, marginBottom: 10, fontSize: 12, color: "#b45309", lineHeight: 1.7 }}>
+          ⚠️ ใบรับคืนชนเพดานโหลด <b>500 ใบ</b> — ที่เห็นคือ 500 ใบล่าสุดเท่านั้น ใบเก่ากว่านั้นยังอยู่ในระบบแต่ไม่ถูกโหลดมา
+          <br/>ยอดรวมและการค้นหาในหน้านี้จะไม่ครบ — แจ้งผู้ดูแลระบบให้ขยายเพดาน
+        </div>
+      )}
       {waitingQc.length > 0 && (
         <div style={{ padding: "10px 14px", background: "rgba(59,91,139,0.07)", border: "1px solid rgba(59,91,139,0.3)", borderRadius: 10, marginBottom: 10, fontSize: 12, color: T.accent }}>
           🔍 รอตรวจสภาพ <b>{waitingQc.length}</b> ใบ — ของยังไม่เข้าสต็อกจนกว่าจะกด “ตรวจแล้ว” (จะเข้า <b>{waitingQcQty}</b> ชิ้น)

@@ -325,7 +325,8 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
       {/* ชนเพดานโหลด = ข้อมูลถูกตัดทิ้งบางส่วน ยอดเชื่อไม่ได้ */}
       {invoicesCapped && (
         <div style={{ padding: "9px 13px", marginBottom: 10, background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.35)", borderRadius: 9, fontSize: 11, color: "#b45309", lineHeight: 1.7 }}>
-          ⚠️ บิลที่โหลดมาชนเพดาน 3,000 ใบ — อาจมีบิลตกหล่น ให้แคบช่วงวันที่ลงแล้วออกทีละงวด แล้วเทียบยอดก่อนส่งลูกค้า
+          🚨 บิลที่โหลดมาชนเพดาน 3,000 ใบ — <b>มีบิลตกหล่นแน่นอน</b> ยอดในใบวางบิลจะน้อยกว่าความจริง
+          <br/>แคบช่วงวันที่ลงแล้วออกทีละงวด — สร้างไม่ได้จนกว่าจะไม่ชนเพดาน
         </div>
       )}
 
@@ -471,8 +472,10 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
         <div style={{ display: "flex", gap: 10 }}>
           <BtnGhost onClick={onClose} style={{ flex: 1 }}>ยกเลิก</BtnGhost>
           {/* ล็อกปุ่มไว้ถ้าบิลยังโหลดไม่ครบช่วง — ออกไปแล้วยอดขาด ต้องตามออกใบใหม่ให้ลูกค้าทีละราย */}
-          <BtnPrimary onClick={createAll} disabled={selected.length === 0 || !!notLoadedBefore} style={{ flex: 2 }}>
-            {notLoadedBefore ? "🚨 โหลดบิลให้ครบช่วงก่อน" : `📄 สร้างใบวางบิล ${selected.length > 0 ? `${selected.length} ใบ` : ""}`}
+          <BtnPrimary onClick={createAll} disabled={selected.length === 0 || !!notLoadedBefore || invoicesCapped} style={{ flex: 2 }}>
+            {notLoadedBefore ? "🚨 โหลดบิลให้ครบช่วงก่อน"
+              : invoicesCapped ? "🚨 บิลชนเพดาน — แคบช่วงวันที่ลงก่อน"
+              : `📄 สร้างใบวางบิล ${selected.length > 0 ? `${selected.length} ใบ` : ""}`}
           </BtnPrimary>
         </div>
       )}

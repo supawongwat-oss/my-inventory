@@ -127,7 +127,7 @@ export default function App() {
     } catch (e) { return ""; }
   });
 
-  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, ordersRange, setOrdersRange, ordersCapped, customers, invoices, invoicesRange, setInvoicesRange, invoicesCapped, catalogRange, setCatalogRange, catalogCapped, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, productionOrders, boms, customOrders, employees, taxDocs, catalogOrders, attendance, payrollRuns, customSizes, pendingMixSales, usersLoaded, returns, packRuns } = useFirestore(activeTab);
+  const { users, setUsers, products, setProducts, transactions, categories, setCategories, clothingItems, orders, ordersRange, setOrdersRange, ordersCapped, customers, invoices, invoicesRange, setInvoicesRange, invoicesCapped, catalogRange, setCatalogRange, catalogCapped, companyInfo, setCompanyInfo, roleLabels, auditLogs, loading, setLoading, suppliers, statements, statementsCapped, productionOrders, boms, customOrders, employees, taxDocs, catalogOrders, attendance, payrollRuns, customSizes, pendingMixSales, usersLoaded, returns, returnsCapped, packRuns } = useFirestore(activeTab);
   // 📏 ไซส์ที่ใช้จริง = มาตรฐาน + ที่เพิ่มเอง
   // เปิดมาด้วยลิงก์ ?doc= → เด้งช่องค้นหาพร้อมเลขที่เอกสารให้เลย
   useEffect(() => { if (scannedDoc) setShowGlobalSearch(true); }, [scannedDoc]);
@@ -5050,7 +5050,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           {/* ── STATEMENTS (ใบวางบิลรวมเดือน) ── */}
           {activeTab==="returns"&&(
             <ReturnsTab
-              returns={returns} role={role} user={user}
+              returns={returns} returnsCapped={returnsCapped} role={role} user={user}
               onNewReturn={()=>{setEditingReturn(null);setShowReturnModal(true);}}
               onEditReturn={(r)=>{setEditingReturn(r);setShowReturnModal(true);}}
               onCancelReturn={handleCancelReturn}
@@ -5065,7 +5065,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
           {activeTab==="statements"&&(
             <StatementTab
-              statements={statements}
+              statements={statements} statementsCapped={statementsCapped}
               returns={returns}
               invoices={invoices}
               invoicesRange={invoicesRange} setInvoicesRange={setInvoicesRange} invoicesCapped={invoicesCapped}
