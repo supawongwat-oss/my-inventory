@@ -36,6 +36,7 @@ export default function ReturnModal({
   returns = [],            // ใบรับคืนใบอื่น — ใช้นับว่าบิลต้นทางถูกคืนไปแล้วเท่าไหร่
   user,
   onSave,
+  onCancelReturn,          // ยกเลิกใบนี้ทิ้ง — ให้ทำได้จากในฟอร์มด้วย ไม่ต้องปิดไปหาปุ่มในรายการ
   onClose,
 }) {
   const [form, setForm] = React.useState(() => existing || {
@@ -52,7 +53,12 @@ export default function ReturnModal({
   const patch = (p) => setForm(f => ({ ...f, ...p }));
   const setItem = (i, p) => setForm(f => ({ ...f, items: f.items.map((x, j) => j === i ? { ...x, ...p } : x) }));
   const addItem = () => setForm(f => ({ ...f, items: [...f.items, emptyItem()] }));
-  const removeItem = (i) => setForm(f => ({ ...f, items: f.items.length > 1 ? f.items.filter((_, j) => j !== i) : f.items }));
+  // แถวสุดท้ายลบทิ้งไม่ได้ (ฟอร์มต้องมีที่ให้กรอกอย่างน้อยหนึ่งแถว) แต่ต้องล้างค่าให้
+  // ของเดิมกด ✕ แล้วเงียบ ไม่มีอะไรเกิดขึ้นและไม่มีคำอธิบาย เหมือนปุ่มเสีย
+  const removeItem = (i) => setForm(f => ({
+    ...f,
+    items: f.items.length > 1 ? f.items.filter((_, j) => j !== i) : [emptyItem()],
+  }));
 
   const validItems = form.items.filter(i => (i.clothingName || i.clothingId) && Number(i.qty) > 0);
   const calc = calcReturn(validItems);
@@ -436,6 +442,14 @@ export default function ReturnModal({
 
       <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
         <BtnGhost onClick={onClose} style={{ flex: 1 }}>ปิด</BtnGhost>
+        {/* ✕ ยกเลิกใบนี้ — เดิมมีแต่ในหน้ารายการ คนที่เปิดใบมาดูแล้วอยากยกเลิกจึงหาไม่เจอ
+            (ยกเลิกได้เฉพาะ admin และถ้าใบนี้ถูกหักในใบวางบิลไปแล้วจะถูกห้าม ตัว handler เช็กเอง) */}
+        {existing?.id && existing.status !== "ยกเลิก" && user?.role === "admin" && onCancelReturn && (
+          <BtnGhost onClick={async () => { const ok = await onCancelReturn(existing); if (ok) onClose?.(); }}
+            style={{ flex: 1, color: "#b91c1c", borderColor: "rgba(239,68,68,0.35)" }}>
+            ✕ ยกเลิกใบนี้
+          </BtnGhost>
+        )}
         {existing?.status !== "จับคู่แล้ว" && (
           <BtnGhost onClick={() => save(false)} disabled={busy || validItems.length === 0} style={{ flex: 2, opacity: (busy || validItems.length === 0) ? 0.45 : 1 }}>
             📥 รับของไว้ก่อน (ยังไม่รู้บิล)

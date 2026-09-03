@@ -3473,12 +3473,14 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       note: `จ่ายเงินคืน ฿${amount} · ${(method || "เงินสด").trim()}${r.creditNoteNo ? ` · ใบลดหนี้ ${r.creditNoteNo}` : ""}`,
     });
   };
+  // คืนค่า true เมื่อยกเลิกสำเร็จจริง — ฝั่งฟอร์มใช้ตัดสินว่าจะปิดหน้าต่างไหม
+  // ไม่งั้นคนกด "ไม่" ใน confirm แล้วฟอร์มปิดตามไปด้วย เหมือนยกเลิกสำเร็จ
   const handleCancelReturn = async (r) => {
-    if (user.role !== "admin") { alert("ยกเลิกใบรับคืนได้เฉพาะ admin"); return; }
+    if (user.role !== "admin") { alert("ยกเลิกใบรับคืนได้เฉพาะ admin"); return false; }
     if (r.appliedStatementNo) {
       alert(`ยกเลิกไม่ได้ — ใบนี้ถูกหักในใบวางบิล ${r.appliedStatementNo} ไปแล้ว` +
         String.fromCharCode(10, 10) + "ต้องลบใบวางบิลนั้นก่อน แล้วค่อยยกเลิกใบรับคืน");
-      return;
+      return false;
     }
     // เคยเข้าสต็อกไปแล้ว (ตรวจผ่าน) → ต้องย้อนออก ไม่ให้สต็อกค้างเกินจริง
     const wasStocked = qcStatusOf(r) === "ตรวจแล้ว";
@@ -3486,13 +3488,14 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     const warn = backQty > 0
       ? String.fromCharCode(10, 10) + `จะย้อนสต็อกออก ${backQty} ตัว (ที่เคยเติมเข้าไปตอนตรวจ)`
       : "";
-    if (!window.confirm(`ยกเลิกใบรับคืน ${r.returnNo}?${warn}`)) return;
+    if (!window.confirm(`ยกเลิกใบรับคืน ${r.returnNo}?${warn}`)) return false;
     if (wasStocked) await applyReturnStock(r.items || [], r.returnNo || "", -1);
     await updateDoc(doc(db, "returns", r.id), {
       status: "ยกเลิก", cancelledBy: user.name, cancelledAt: now(),
       ...(wasStocked ? { qcStatus: "รอตรวจ", stockReversedAt: now() } : {}),
     });
     logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: "returns", targetId: r.id, targetLabel: r.returnNo, note: "ยกเลิกใบรับคืน" });
+    return true;
   };
 
   // 🚫 ยกเลิกบิล — ทางที่ควรใช้แทนการลบ เพราะเลขที่บิลไม่ขาดช่วง ตรวจย้อนหลังได้
@@ -5597,6 +5600,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           returns={returns}
           user={user}
           onSave={handleSaveReturn}
+          onCancelReturn={handleCancelReturn}
           onClose={()=>{setShowReturnModal(false);setEditingReturn(null);}}
         />
       )}
