@@ -171,3 +171,38 @@ export function matchesTokens(haystack, query) {
   const h = norm(haystack);
   return tokens.every(t => h.includes(t));
 }
+
+// ↩️ รายการสินค้าที่คืนมา แบบสั้น ๆ พออ่านในบรรทัดเดียว
+//    เช่น "K-12 แดง 2XL ×2 · K-11 ดำ L ×1"
+//
+// ทำไมต้องมี: เดิมทุกที่โชว์แค่ "คืน 3 ชิ้น -฿1,200" ซึ่งบอกไม่ได้ว่าของอะไร
+// ตอนลูกค้าโทรมาถามว่าหักอะไร หรือตอนตรวจใบวางบิลก่อนส่ง ต้องเปิดใบรับคืนทีละใบ
+// และใบวางบิลที่ส่งให้ลูกค้าก็ไม่มีรายการ ลูกค้าเลยเทียบไม่ได้ว่าหักตรงกับที่คืนไปไหม
+export const returnItemLabel = (it) =>
+  [it?.clothingName || it?.description || "(ไม่ระบุรุ่น)", it?.colorName, it?.size]
+    .filter(Boolean).join(" ") + (Number(it?.qty) > 0 ? ` ×${Number(it.qty)}` : "");
+
+export const returnItemsText = (r, max = 0) => {
+  const items = (r?.items || []).filter(i => Number(i.qty) > 0);
+  if (items.length === 0) return "";
+  const labels = items.map(returnItemLabel);
+  if (max > 0 && labels.length > max) {
+    return labels.slice(0, max).join(" · ") + ` +อีก ${labels.length - max}`;
+  }
+  return labels.join(" · ");
+};
+
+// รายการสินค้าของใบรับคืนหลายใบรวมกัน — ใช้ตอนบิลใบเดียวมีของคืนหลายรอบ
+export const returnsItemsText = (list = [], max = 0) =>
+  returnItemsText({ items: list.flatMap(r => r?.items || []) }, max);
+
+// snapshot รายการสินค้าลงเอกสาร — เก็บชื่อ/สี/ไซส์/ราคา ณ ตอนออกเอกสาร
+// (กฎเหล็ก: เปลี่ยนชื่อรุ่นในคลังทีหลัง เอกสารที่ออกไปแล้วต้องไม่ขยับ)
+export const snapshotReturnItems = (r) =>
+  (r?.items || []).filter(i => Number(i.qty) > 0).map(i => ({
+    clothingName: i.clothingName || i.description || "",
+    colorName: i.colorName || "",
+    size: i.size || "",
+    qty: Number(i.qty) || 0,
+    unitPrice: Number(i.unitPrice) || 0,
+  }));

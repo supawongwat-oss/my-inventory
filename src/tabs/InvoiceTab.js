@@ -1,6 +1,6 @@
 import React from "react";
 import LoadRangeBar from "../components/LoadRangeBar";
-import { invoiceItemsText, matchesTokens, returnSummaryOf } from "../utils/returns";
+import { invoiceItemsText, matchesTokens, returnSummaryOf, returnsItemsText } from "../utils/returns";
 import { duplicateGroups } from "../utils/dupInvoice";
 import { BillingBadge } from "../components/ui";
 
@@ -312,8 +312,15 @@ export default function InvoiceTab({
                                       ฿{(inv.total || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                                       {/* ↩️ ของที่ลูกค้าคืนแล้ว — บิลต้นฉบับคงยอดเดิม โชว์ยอดสุทธิเพิ่มให้แทน */}
                                       {(() => { const rs = returnSummaryOf(returns, inv.id); if (rs.total <= 0) return null; return (
-                                        <div title={`คืน ${rs.qty} ชิ้น จาก ${rs.count} ใบรับคืน`} style={{ fontSize: 9, color: "#b45309", fontWeight: 700, marginTop: 2 }}>
-                                          ↩️ -฿{rs.total.toLocaleString("th-TH", { minimumFractionDigits: 2 })} · สุทธิ ฿{Math.max(0, (inv.total || 0) - rs.total).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                                        <div style={{ marginTop: 2 }}>
+                                          <div style={{ fontSize: 9, color: "#b45309", fontWeight: 700 }}>
+                                            ↩️ -฿{rs.total.toLocaleString("th-TH", { minimumFractionDigits: 2 })} · สุทธิ ฿{Math.max(0, (inv.total || 0) - rs.total).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                                          </div>
+                                          {/* 📦 คืนของอะไรมา — เดิมซ่อนไว้ใน tooltip ซึ่งบนแท็บเล็ตเปิดดูไม่ได้เลย
+                                              เวลาลูกค้าโทรมาถามว่าหักอะไร ต้องตอบได้จากหน้านี้ทันที */}
+                                          {returnsItemsText(rs.list, 2) && (
+                                            <div style={{ fontSize: 9, color: T.muted, fontWeight: 400 }}>{returnsItemsText(rs.list, 2)}</div>
+                                          )}
                                         </div>
                                       ); })()}
                                       {(inv.payments || []).length > 0 && (() => { const paid = getPaidTotal(inv); const pct = getPaidPct(inv); return (

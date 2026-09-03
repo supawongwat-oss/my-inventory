@@ -9,6 +9,7 @@ import { T } from "../theme";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { reserveDocNo } from "../utils/docNumber";
 import { buildStatementGroups, paidOf, dueOf, fmtISO, fmtDDMMYYYY, parseISODate as parseISO } from "../utils/statement";
+import { snapshotReturnItems, returnItemsText } from "../utils/returns";
 
 const fmtB = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -176,6 +177,8 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
             id: r.id, returnNo: r.returnNo, invoiceNo: r.invoiceNo || "",
             receivedAt: r.receivedAt || "", reason: r.reason || "",
             qty: Number(r.creditQty) || 0, total: Number(r.creditTotal) || 0,
+            // 📦 ของที่คืนมาจริง ๆ — ลูกค้าต้องเทียบได้ว่าหักตรงกับที่คืนไปไหม
+            items: snapshotReturnItems(r),
           })),
           invoiceCount: g.invoices.length,
           filterMode,
@@ -409,6 +412,15 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
                         </div>
                       );
                     })}
+                    {/* ↩️ ของที่คืนแล้วจะถูกหักในใบนี้ — ต้องเห็นว่าหักอะไรก่อนกดสร้าง
+                        ไม่ใช่รู้ตอนลูกค้าได้กระดาษไปแล้วถามว่าหักอะไร */}
+                    {g.credits?.length > 0 && g.credits.map(r => (
+                      <div key={r.id} style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", padding: "3px 0", fontSize: 11, color: "#047857" }}>
+                        <span style={{ fontFamily: "monospace" }}>↩️ {r.returnNo}</span>
+                        <span>{returnItemsText(r) || `${Number(r.creditQty) || 0} ชิ้น`}</span>
+                        <span style={{ marginLeft: "auto", fontFamily: "monospace" }}>-฿{fmtB(r.creditTotal)}</span>
+                      </div>
+                    ))}
                     {/* ใบที่ไม่ถูกนับ — ต้องเห็น ไม่งั้นบิลยอด 0 หรือบิลที่ปิดไปแล้วจะหายเงียบ */}
                     {g.excluded.map(x => {
                       const st = x.status || "ออกแล้ว";

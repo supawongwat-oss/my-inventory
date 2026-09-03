@@ -10,6 +10,7 @@ import BulkStatementModal from "../components/BulkStatementModal";
 import LoadRangeBar from "../components/LoadRangeBar";
 import LinkInvoiceCustomers from "../components/LinkInvoiceCustomers";
 import { filterInvoicesForStatement, creditsForStatement, sumCredits, nearMissInvoices, paidOf, dueOf, statementedInvoiceIds, statementOfInvoice, parseDDMMYYYY } from "../utils/statement";
+import { snapshotReturnItems, returnItemsText } from "../utils/returns";
 
 // ── helpers ────────────────────────────────────────────────
 const pad2 = n => String(n).padStart(2, "0");
@@ -270,6 +271,8 @@ export default function StatementTab({ statements, invoices, returns = [], custo
         id: r.id, returnNo: r.returnNo, invoiceNo: r.invoiceNo || "",
         receivedAt: r.receivedAt || "", reason: r.reason || "",
         qty: Number(r.creditQty) || 0, total: Number(r.creditTotal) || 0,
+        // 📦 ของที่คืนมาจริง ๆ — ลูกค้าต้องเทียบได้ว่าหักตรงกับที่คืนไปไหม
+        items: snapshotReturnItems(r),
       })),
       invoiceCount: pickedInvoices.length,
       filterMode: form.filterMode,
@@ -1117,6 +1120,11 @@ function StatementPrintLayout({ statement, companyInfo, id = "statement-print-ar
                 <tr key={i} style={{ background: "#f8fafc" }}>
                   <td colSpan={3} style={{ padding: "4px 8px", textAlign: "right", color: "#000", fontSize: 9, border: "1px solid #000" }}>
                     หัก รับคืนสินค้า {r.returnNo}{r.invoiceNo ? ` (บิล ${r.invoiceNo})` : ""}{r.qty ? ` · ${r.qty} ชิ้น` : ""}
+                    {/* 📦 บอกด้วยว่าคืนของอะไรมา — ไม่งั้นลูกค้าเทียบไม่ได้ว่าหักตรงกับที่คืนไปจริงไหม
+                        ใบเก่าที่ออกก่อนมีฟีเจอร์นี้จะไม่มี items ก็ไม่ขึ้นบรรทัดนี้ (ไม่พัง) */}
+                    {returnItemsText(r) && (
+                      <div style={{ fontSize: 8, color: "#000", fontWeight: 400 }}>{returnItemsText(r)}</div>
+                    )}
                   </td>
                   <td style={{ padding: "4px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 10, color: "#000", border: "1px solid #000", whiteSpace: "nowrap" }}>
                     -{Number(r.total || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
