@@ -5594,6 +5594,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           customers={customers}
           clothingItems={clothingItems}
           invoices={invoices}
+          returns={returns}
           user={user}
           onSave={handleSaveReturn}
           onClose={()=>{setShowReturnModal(false);setEditingReturn(null);}}

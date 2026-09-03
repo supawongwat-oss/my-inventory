@@ -14,6 +14,7 @@ import { uploadImage, deleteFile } from "../utils/upload";
 import {
   RETURN_REASONS, RETURN_CONDITIONS, conditionRestocks,
   calcReturn, suggestInvoices, lineKey, matchesTokens, invoiceItemsText, norm, SETTLE_MODES, settleModeOf,
+  checkReturnAgainstInvoice, returnableMap,
 } from "../utils/returns";
 
 const MAX_IMAGES = 6;
@@ -32,6 +33,7 @@ export default function ReturnModal({
   customers = [],
   clothingItems = [],
   invoices = [],
+  returns = [],            // ใบรับคืนใบอื่น — ใช้นับว่าบิลต้นทางถูกคืนไปแล้วเท่าไหร่
   user,
   onSave,
   onClose,
@@ -56,6 +58,12 @@ export default function ReturnModal({
   const calc = calcReturn(validItems);
 
   const pickedInvoice = form.invoiceId ? invoices.find(i => i.id === form.invoiceId) : null;
+
+  // 📏 คืนได้ไม่เกินที่ขายไป — เทียบรายบรรทัดกับบิลต้นทาง
+  //    ของเดิมกรอกเท่าไหร่ก็ได้ บิลมี 1 ตัวแต่คืน 13 ตัวก็ผ่าน = ลดหนี้เกิน + สต๊อกเกิน
+  const check = React.useMemo(
+    () => checkReturnAgainstInvoice(form.items, pickedInvoice, returns, existing?.id || ""),
+    [form.items, pickedInvoice, returns, existing]);
 
   // 🔎 บิลที่น่าจะใช่ — คิดใหม่ทุกครั้งที่ข้อมูลผู้ส่งหรือรายการสินค้าเปลี่ยน
   const suggestions = React.useMemo(
@@ -108,7 +116,10 @@ export default function ReturnModal({
         colorIdx: it.colorIdx ?? null, colorName: it.colorName || "", size: it.size || "",
         qty: 1, unitPrice: Number(it.unitPrice) || 0, condition: RETURN_CONDITIONS[0].id,
       };
-      if (idx >= 0) return { ...f, items: f.items.map((x, j) => j === idx ? { ...x, qty: Number(x.qty || 0) + 1 } : x) };
+      // กดเพิ่มทีละ 1 แต่ห้ามเกินที่ขายไป (นับใบรับคืนใบอื่นของบิลนี้ด้วย)
+      const cap = returnableMap(pickedInvoice, returns, existing?.id || "").get(k)?.left ?? Infinity;
+      if (idx >= 0) return { ...f, items: f.items.map((x, j) => j === idx ? { ...x, qty: Math.min(cap, Number(x.qty || 0) + 1) } : x) };
+      line.qty = Math.min(cap, 1);
       // แถวว่างแถวแรกให้ทับได้ ไม่งั้นจะมีแถวเปล่าค้าง
       const blank = f.items.findIndex(x => !x.clothingName && !x.clothingId);
       if (blank >= 0) return { ...f, items: f.items.map((x, j) => j === blank ? line : x) };
@@ -152,6 +163,21 @@ export default function ReturnModal({
   const save = async (matchNow) => {
     if (validItems.length === 0) { alert("ยังไม่ได้ระบุสินค้าที่คืนมา"); return; }
     if (matchNow && !pickedInvoice) { alert("ยังไม่ได้เลือกบิลต้นทาง"); return; }
+    // 🔒 คืนเกินที่ขายไป = ลดหนี้เกินจริง ต้องหยุดไว้ ไม่ใช่เตือนแล้วปล่อยผ่าน
+    if (matchNow && check.hasOver) {
+      const NL = String.fromCharCode(10);
+      alert(
+        "คืนเกินจำนวนที่ขายไปในบิลนี้ — บันทึกไม่ได้" + NL + NL +
+        form.items.map((it, i) => {
+          const r = check.rows[i];
+          if (!r?.over) return null;
+          return `• ${it.clothingName || "(ไม่ระบุรุ่น)"} ${it.colorName || ""} ${it.size || ""}: กรอก ${r.qty} · ขายไป ${r.sold}` +
+                 (r.returned > 0 ? ` · คืนแล้ว ${r.returned}` : "") + ` · คืนได้อีก ${r.left}`;
+        }).filter(Boolean).join(NL) + NL + NL +
+        "ถ้าลูกค้าคืนของจากบิลใบอื่นด้วย ให้แยกทำอีกใบตามบิลนั้น"
+      );
+      return;
+    }
     setBusy(true);
     try {
       await onSave({
@@ -278,7 +304,21 @@ export default function ReturnModal({
             <div>
               {i === 0 && <label style={labelStyle}>จำนวน</label>}
               <input type="number" min="1" value={it.qty} onChange={e => setItem(i, { qty: Math.max(1, Number(e.target.value) || 1) })}
-                style={{ ...inputStyle, padding: "7px 8px", fontSize: 12, textAlign: "center", fontFamily: "monospace" }}/>
+                style={{ ...inputStyle, padding: "7px 8px", fontSize: 12, textAlign: "center", fontFamily: "monospace",
+                  border: check.rows[i]?.over ? "1px solid #dc2626" : inputStyle.border,
+                  background: check.rows[i]?.over ? "rgba(220,38,38,0.06)" : inputStyle.background }}/>
+              {/* 📏 โควตาของบรรทัดนี้ — เห็นตอนพิมพ์เลย ไม่ใช่ไปเจอตอนกดบันทึกแล้วไม่ผ่าน */}
+              {check.rows[i]?.over && (
+                <div style={{ fontSize: 9, color: "#dc2626", fontWeight: 700, marginTop: 2, lineHeight: 1.4 }}>
+                  เกิน! ขายไป {check.rows[i].sold}{check.rows[i].returned > 0 ? ` · คืนแล้ว ${check.rows[i].returned}` : ""} · คืนได้อีก {check.rows[i].left}
+                </div>
+              )}
+              {check.rows[i] && !check.rows[i].over && !check.rows[i].notOnBill && (
+                <div style={{ fontSize: 9, color: T.muted, marginTop: 2 }}>คืนได้อีก {check.rows[i].left - check.rows[i].qty}</div>
+              )}
+              {check.rows[i]?.notOnBill && (
+                <div style={{ fontSize: 9, color: "#b45309", marginTop: 2, lineHeight: 1.4 }}>⚠️ ไม่มีบรรทัดนี้ในบิล</div>
+              )}
             </div>
             <div>
               {i === 0 && <label style={labelStyle}>ราคา/หน่วย</label>}
@@ -401,9 +441,11 @@ export default function ReturnModal({
             📥 รับของไว้ก่อน (ยังไม่รู้บิล)
           </BtnGhost>
         )}
-        <BtnPrimary onClick={() => save(true)} disabled={busy || validItems.length === 0 || !pickedInvoice}
-          style={{ flex: 2, opacity: (busy || validItems.length === 0 || !pickedInvoice) ? 0.45 : 1 }}>
-          {busy ? "⏳ กำลังบันทึก..." : (existing?.status === "จับคู่แล้ว" ? "💾 บันทึกการแก้ไข" : "✅ จับคู่บิล + ลดหนี้")}
+        <BtnPrimary onClick={() => save(true)} disabled={busy || validItems.length === 0 || !pickedInvoice || check.hasOver}
+          style={{ flex: 2, opacity: (busy || validItems.length === 0 || !pickedInvoice || check.hasOver) ? 0.45 : 1 }}>
+          {busy ? "⏳ กำลังบันทึก..."
+            : check.hasOver ? "🔒 คืนเกินจำนวนที่ขายไป"
+            : (existing?.status === "จับคู่แล้ว" ? "💾 บันทึกการแก้ไข" : "✅ จับคู่บิล + ลดหนี้")}
         </BtnPrimary>
       </div>
       <div style={{ fontSize: 10, color: T.muted, marginTop: 8, lineHeight: 1.6 }}>

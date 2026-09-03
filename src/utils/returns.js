@@ -206,3 +206,45 @@ export const snapshotReturnItems = (r) =>
     qty: Number(i.qty) || 0,
     unitPrice: Number(i.unitPrice) || 0,
   }));
+
+// 📏 คืนได้ไม่เกินที่ขายไป — คิดเป็นรายบรรทัดสินค้าของบิลต้นทาง
+//
+// ปัญหาจริงที่เจอ: บิล INV6909-0016 มี "K-11 แขนยาว แดง M" อยู่ 1 ตัว
+// แต่หน้ารับคืนให้กรอกคืน 13 ตัวได้ ไม่มีอะไรค้าน ผลคือ
+//   · ลดหนี้เกินของที่ขายไป 12 ตัว → ใบวางบิลหักเกิน = เสียเงินฟรี
+//   · ของเข้าสต๊อกเกินจริง 12 ตัว → ยอดคลังเพี้ยนตามไปด้วย
+//
+// นับ "คืนแล้ว" จากใบรับคืนใบอื่นที่จับคู่บิลเดียวกันด้วย ไม่งั้นคืนทีละใบ
+// หลาย ๆ ใบก็เกินได้อยู่ดี (ใบที่ยังไม่จับคู่บิลไม่นับ เพราะยังไม่ผูกกับบิลไหน)
+export function returnableMap(invoice, returns = [], excludeId = "") {
+  const m = new Map();
+  const bump = (k, field, n) => {
+    const cur = m.get(k) || { sold: 0, returned: 0 };
+    cur[field] += n;
+    m.set(k, cur);
+  };
+  (invoice?.items || []).forEach(it => bump(lineKey(it), "sold", num(it.qty)));
+  returns.forEach(r => {
+    if (!r || r.id === excludeId) return;          // แก้ใบเดิม ไม่ต้องนับตัวเอง
+    if (!r.invoiceId || r.invoiceId !== invoice?.id) return;
+    (r.items || []).forEach(it => bump(lineKey(it), "returned", num(it.qty)));
+  });
+  m.forEach(v => { v.left = Math.max(0, v.sold - v.returned); });
+  return m;
+}
+
+// ตรวจรายการคืนกับบิลต้นทาง — คืนผลเป็นรายบรรทัด ให้หน้าจอเอาไปแสดงเองว่าบรรทัดไหนมีปัญหา
+//   over     = คืนเกินที่ขายไป (ห้ามบันทึก)
+//   notOnBill = ไม่มีบรรทัดนี้ในบิล (เตือน แต่ไม่ห้าม — ชื่อในบิลอาจเขียนไม่เหมือนกัน)
+export function checkReturnAgainstInvoice(items = [], invoice, returns = [], excludeId = "") {
+  if (!invoice) return { rows: items.map(() => null), hasOver: false };
+  const map = returnableMap(invoice, returns, excludeId);
+  const rows = items.map(it => {
+    if (!(it?.clothingName || it?.clothingId) || !(num(it.qty) > 0)) return null;
+    const info = map.get(lineKey(it));
+    if (!info) return { notOnBill: true };
+    const over = num(it.qty) > info.left;
+    return { ...info, over, qty: num(it.qty) };
+  });
+  return { rows, hasOver: rows.some(r => r?.over) };
+}
