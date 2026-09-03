@@ -70,6 +70,9 @@ export default function ReturnModal({
   const check = React.useMemo(
     () => checkReturnAgainstInvoice(form.items, pickedInvoice, returns, existing?.id || ""),
     [form.items, pickedInvoice, returns, existing]);
+  const billQuota = React.useMemo(
+    () => returnableMap(pickedInvoice, returns, existing?.id || ""),
+    [pickedInvoice, returns, existing]);
 
   // 🔎 บิลที่น่าจะใช่ — คิดใหม่ทุกครั้งที่ข้อมูลผู้ส่งหรือรายการสินค้าเปลี่ยน
   const suggestions = React.useMemo(
@@ -123,9 +126,10 @@ export default function ReturnModal({
         qty: 1, unitPrice: Number(it.unitPrice) || 0, condition: RETURN_CONDITIONS[0].id,
       };
       // กดเพิ่มทีละ 1 แต่ห้ามเกินที่ขายไป (นับใบรับคืนใบอื่นของบิลนี้ด้วย)
-      const cap = returnableMap(pickedInvoice, returns, existing?.id || "").get(k)?.left ?? Infinity;
+      const cap = billQuota.get(k)?.left ?? Infinity;
+      if (cap <= 0) return f;   // โควตาหมดแล้ว อย่าเพิ่มแถวจำนวน 0 ทิ้งไว้ให้งง
       if (idx >= 0) return { ...f, items: f.items.map((x, j) => j === idx ? { ...x, qty: Math.min(cap, Number(x.qty || 0) + 1) } : x) };
-      line.qty = Math.min(cap, 1);
+      line.qty = 1;
       // แถวว่างแถวแรกให้ทับได้ ไม่งั้นจะมีแถวเปล่าค้าง
       const blank = f.items.findIndex(x => !x.clothingName && !x.clothingId);
       if (blank >= 0) return { ...f, items: f.items.map((x, j) => j === blank ? line : x) };
@@ -391,12 +395,25 @@ export default function ReturnModal({
         <div style={{ marginTop: 10, padding: 10, background: "rgba(59,91,139,0.05)", border: `1px solid ${T.border}`, borderRadius: 8 }}>
           <div style={{ fontSize: 11, color: T.sub, marginBottom: 6 }}>รายการในบิล {pickedInvoice.invoiceNo} — กดเพื่อเพิ่มเข้ารายการคืน</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-            {(pickedInvoice.items || []).map((it, i) => (
-              <button key={i} onClick={() => addFromInvoiceLine(it)}
-                style={{ padding: "4px 9px", borderRadius: 7, border: `1px solid ${T.border}`, background: "white", cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif", color: T.text }}>
-                {it.clothingName || it.description} {it.colorName ? `· ${it.colorName}` : ""} {it.size ? `· ${it.size}` : ""} <span style={{ color: T.muted }}>×{it.qty}</span>
-              </button>
-            ))}
+            {(pickedInvoice.items || []).map((it, i) => {
+              // เหลือคืนได้ = ขายไป − คืนไปแล้ว − ที่กรอกค้างอยู่ในฟอร์มตอนนี้
+              const k = lineKey(it);
+              const inForm = form.items.filter(x => lineKey(x) === k).reduce((a, x) => a + (Number(x.qty) || 0), 0);
+              const left = Math.max(0, (billQuota.get(k)?.left ?? 0) - inForm);
+              const done = left <= 0;
+              return (
+                <button key={i} onClick={() => { if (!done) addFromInvoiceLine(it); }} disabled={done}
+                  title={done ? "คืนครบจำนวนที่ขายไปแล้ว" : `เหลือคืนได้อีก ${left}`}
+                  style={{ padding: "4px 9px", borderRadius: 7, border: `1px solid ${T.border}`,
+                    background: done ? "#f1f3f6" : "white", cursor: done ? "default" : "pointer",
+                    opacity: done ? 0.55 : 1, fontSize: 11, fontFamily: "'Sarabun',sans-serif", color: T.text }}>
+                  {it.clothingName || it.description} {it.colorName ? `· ${it.colorName}` : ""} {it.size ? `· ${it.size}` : ""}{" "}
+                  <span style={{ color: done ? T.muted : T.green, fontWeight: 700 }}>
+                    {done ? "คืนครบแล้ว" : `เหลือ ${left}`}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

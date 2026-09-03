@@ -226,6 +226,9 @@ export function returnableMap(invoice, returns = [], excludeId = "") {
   (invoice?.items || []).forEach(it => bump(lineKey(it), "sold", num(it.qty)));
   returns.forEach(r => {
     if (!r || r.id === excludeId) return;          // แก้ใบเดิม ไม่ต้องนับตัวเอง
+    // ใบที่ยกเลิกไปแล้วไม่กินโควตา — ของถูกย้อนออกจากสต็อกและไม่มีการลดหนี้แล้ว
+    // ถ้ายังนับอยู่ คนที่ยกเลิกใบทดสอบทิ้งจะคืนของชิ้นนั้นไม่ได้อีกเลย
+    if ((r.status || "") === "ยกเลิก") return;
     if (!r.invoiceId || r.invoiceId !== invoice?.id) return;
     (r.items || []).forEach(it => bump(lineKey(it), "returned", num(it.qty)));
   });
