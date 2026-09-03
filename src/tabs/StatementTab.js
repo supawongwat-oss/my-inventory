@@ -26,6 +26,21 @@ const parseISODate = (s) => {
   return new Date(y, m - 1, d);
 };
 
+// 📅 งวดของใบวางบิล → คีย์เดือน "YYYY-MM"
+//    ใช้ "วันสิ้นงวด" ไม่ใช่วันที่ออกใบ — งวดสิงหาคมมักออกจริงต้นกันยา
+//    ถ้าจัดกลุ่มตามวันที่ออก ใบของงวด ส.ค. จะไปโผล่ในกอง ก.ย. แล้วหาไม่เจอ
+const monthKeyOf = (st) => {
+  const m = String(st?.periodEnd || st?.date || "").match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  return m ? `${m[3]}-${m[2]}` : "unknown";
+};
+const TH_MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+const monthLabelOf = (key) => {
+  const m = String(key).match(/^(\d{4})-(\d{2})$/);
+  return m ? `${TH_MONTHS[Number(m[2]) - 1]} ${Number(m[1]) + 543}` : "ไม่ระบุงวด";
+};
+const amountOf = (st) => Number(st?.netAmount != null ? st.netAmount : st?.totalAmount || 0);
+const isCollected = (st) => (st?.status || "") === "เก็บเงินแล้ว";
+
 // Date → "DD/MM/YYYY"
 const fmtDDMMYYYY = (date) => {
   if (!date) return "";
@@ -192,6 +207,22 @@ export default function StatementTab({ statements, invoices, returns = [], custo
     return (st.statementNo || "").toLowerCase().includes(q)
       || (st.customerName || "").toLowerCase().includes(q);
   });
+
+  // 📅 จัดใบวางบิลเป็นกองตามงวดเดือน — งวดใหม่อยู่บนสุด
+  const monthGroups = useMemo(() => {
+    const m = new Map();
+    filteredStatements.forEach(st => {
+      const key = monthKeyOf(st);
+      const g = m.get(key) || { key, label: monthLabelOf(key), items: [], total: 0, collected: 0 };
+      g.items.push(st);
+      g.total += amountOf(st);
+      if (isCollected(st)) g.collected++;
+      m.set(key, g);
+    });
+    // งวดที่อ่านวันที่ไม่ออกให้ไปอยู่ล่างสุด ไม่ให้ไปแทรกหน้ากองจริง
+    return [...m.values()].sort((a, b) =>
+      a.key === "unknown" ? 1 : b.key === "unknown" ? -1 : b.key.localeCompare(a.key));
+  }, [filteredStatements]);
 
   // === Customer search dropdown (case-insensitive) ===
   const customerMatches = useMemo(() => {
@@ -372,24 +403,36 @@ export default function StatementTab({ statements, invoices, returns = [], custo
   }, [statements]);
 
   const [undoBusy, setUndoBusy] = useState(null); // { run, done, total }
+  // 🔒 ถอยใบวางบิลได้เฉพาะ admin — manager ยกเลิกบิลได้แต่ถอยทั้งรอบไม่ได้
+  //    เพราะรอบเดียวคือ 70-80 ใบ และเป็นเอกสารที่ส่งถึงมือลูกค้าไปแล้ว
+  const isAdmin = user?.role === "admin";
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [openMonths, setOpenMonths] = useState(null);   // null = ยังไม่เคยตั้ง → เปิดงวดล่าสุดให้เอง
 
   // นับบิลที่ยังไม่ผูกทะเบียนในช่วงที่โหลดมา — ตัวเลขนี้คือจำนวนใบวางบิลที่จะออกมาผิดร้าน
   const unlinkedCount = useMemo(() => invoices.filter(inv =>
     !inv.customerId && !inv.mergedInto && !inv.convertedTo && (inv.customerName || "").trim()).length, [invoices]);
 
-  const undoBulkRun = async (run) => {
+  // ↩️ ถอยใบวางบิล — ใช้ร่วมกันทั้ง "ถอยทั้งรอบ" และ "ถอยเฉพาะที่เลือก"
+  //
+  //    ที่ต้องมีแบบเลือกเองด้วย: บางทีรอบหนึ่งผิดแค่ 2-3 ร้าน (ช่วงวันที่ผิด/ลูกค้าจับคู่ผิด)
+  //    ถ้ามีแต่ "ถอยทั้งรอบ" คนจะต้องลบทิ้ง 70-80 ใบแล้วออกใหม่หมด ทั้งที่ผิดอยู่ไม่กี่ใบ
+  //    — เสียเลขที่เอกสารไปเปล่า ๆ และใบที่ส่งลูกค้าไปแล้วก็โดนลบตามไปด้วย
+  const undoStatements = async (list, label, key) => {
     if (undoBusy) return;
-    // 💰 ใบที่เก็บเงินแล้วห้ามลบยกชุด — เงินเข้าบัญชีไปแล้ว ต้องไปสะสางทีละใบเอง
-    const locked = run.items.filter(s => (s.status || "") === "เก็บเงินแล้ว");
-    const targets = run.items.filter(s => (s.status || "") !== "เก็บเงินแล้ว");
-    if (targets.length === 0) { alert("รอบนี้เก็บเงินไปหมดแล้ว — ถอยทั้งรอบไม่ได้"); return; }
+    // 💰 ใบที่เก็บเงินแล้วห้ามลบ — เงินเข้าบัญชีไปแล้ว ต้องไปสะสางทีละใบเอง
+    const locked = list.filter(isCollected);
+    const targets = list.filter(s => !isCollected(s));
+    if (targets.length === 0) { alert("ใบที่เลือกเก็บเงินไปหมดแล้ว — ถอยไม่ได้"); return; }
     const sent = targets.filter(s => (s.status || "") === "ส่งแล้ว").length;
-    const amt = targets.reduce((a, s) => a + Number(s.netAmount != null ? s.netAmount : s.totalAmount || 0), 0);
+    const amt = targets.reduce((a, s) => a + amountOf(s), 0);
     const rel = targets.reduce((a, s) => a + (s.returnIds || []).length, 0);
     const nl = String.fromCharCode(10);
+    const names = targets.slice(0, 8).map(s => `   ${s.statementNo} · ${s.customerName || "-"}`);
     if (!window.confirm(
-      `ถอยรอบวางบิล ${run.at || run.id}?` + nl + nl +
+      `ถอย${label}?` + nl + nl +
       `• ลบใบวางบิล ${targets.length} ใบ · ฿${amt.toLocaleString("th-TH", { minimumFractionDigits: 2 })}` + nl +
+      names.join(nl) + (targets.length > 8 ? nl + `   … และอีก ${targets.length - 8} ใบ` : "") + nl +
       (locked.length ? `• ข้าม ${locked.length} ใบที่เก็บเงินแล้ว (ลบไม่ได้)` + nl : "") +
       (rel ? `• ใบรับคืน ${rel} ใบที่หักไว้จะถูกปล่อยกลับ ไปหักรอบหน้าแทน` + nl : "") +
       (sent ? `⚠️ มี ${sent} ใบสถานะ "ส่งแล้ว" — ถ้าส่งกระดาษถึงมือลูกค้าไปแล้ว ต้องแจ้งลูกค้าเอง` + nl : "") +
@@ -397,8 +440,9 @@ export default function StatementTab({ statements, invoices, returns = [], custo
     )) return;
     if (!window.confirm(`ยืนยันอีกครั้ง — ลบใบวางบิล ${targets.length} ใบ (ลบแล้วเรียกคืนไม่ได้)`)) return;
 
-    setUndoBusy({ run: run.id, done: 0, total: targets.length });
+    setUndoBusy({ run: key, done: 0, total: targets.length });
     const fails = [];
+    const gone = [];
     for (let i = 0; i < targets.length; i++) {
       const st = targets[i];
       try {
@@ -411,15 +455,18 @@ export default function StatementTab({ statements, invoices, returns = [], custo
           await b.commit();
         }
         await deleteDoc(doc(db, "statements", st.id));
+        gone.push(st.id);
       } catch (e) {
         fails.push(`• ${st.statementNo} — ${e?.message || e}`);
       }
-      setUndoBusy({ run: run.id, done: i + 1, total: targets.length });
+      setUndoBusy({ run: key, done: i + 1, total: targets.length });
     }
     setUndoBusy(null);
+    // ใบที่ลบไปแล้วต้องหลุดจากรายการที่เลือกด้วย ไม่งั้นแถบเลือกจะค้างนับใบที่ไม่มีอยู่แล้ว
+    setSelectedIds(prev => { const n = new Set(prev); gone.forEach(id => n.delete(id)); return n; });
     logAudit(user, {
-      action: AUDIT_ACTIONS.DELETE, collection: "statements", targetId: run.id,
-      targetLabel: `ถอยรอบวางบิล ${run.at || run.id}`,
+      action: AUDIT_ACTIONS.DELETE, collection: "statements", targetId: key,
+      targetLabel: `ถอย${label}`,
       note: `ลบ ${targets.length - fails.length} ใบ` + (locked.length ? ` · ข้ามที่เก็บเงินแล้ว ${locked.length} ใบ` : ""),
     });
     alert(
@@ -427,6 +474,14 @@ export default function StatementTab({ statements, invoices, returns = [], custo
       (locked.length ? String.fromCharCode(10) + `ข้ามที่เก็บเงินแล้ว ${locked.length} ใบ` : "") +
       (fails.length ? String.fromCharCode(10, 10) + `❌ ลบไม่สำเร็จ ${fails.length} ใบ:` + String.fromCharCode(10) + fails.slice(0, 8).join(String.fromCharCode(10)) : "")
     );
+  };
+
+  const undoBulkRun = (run) => undoStatements(run.items, `รอบวางบิล ${run.at || run.id}`, run.id);
+
+  const undoSelected = () => {
+    const list = statements.filter(s => selectedIds.has(s.id));
+    if (!list.length) return;
+    undoStatements(list, `ใบวางบิลที่เลือก ${list.length} ใบ`, "selected");
   };
 
   const handlePrint = (st) => {
@@ -520,7 +575,7 @@ export default function StatementTab({ statements, invoices, returns = [], custo
       )}
 
       {/* 📅 รอบที่ออกทั้งเดือน — ถอยกลับได้ทั้งรอบถ้ากดผิดช่วง/ผิดเงื่อนไข */}
-      {role.canDelete && bulkRuns.slice(0, 3).map(run => {
+      {isAdmin && bulkRuns.slice(0, 3).map(run => {
         const amt = run.items.reduce((a, s) => a + Number(s.netAmount != null ? s.netAmount : s.totalAmount || 0), 0);
         const paid = run.items.filter(s => (s.status || "") === "เก็บเงินแล้ว").length;
         const busyThis = undoBusy && undoBusy.run === run.id;
@@ -543,7 +598,9 @@ export default function StatementTab({ statements, invoices, returns = [], custo
         );
       })}
 
-      {/* List */}
+      {/* 📅 List — จัดกองตามงวดเดือน พับเก็บได้
+          ใบวางบิลสะสมเดือนละ 50-80 ใบ ถ้าไล่เป็นรายการยาวเส้นเดียว งวดเก่ากับงวดใหม่จะปนกัน
+          จนแยกไม่ออกว่ากำลังดูรอบไหนอยู่ */}
       {statements.length === 0 ? (
         <div style={{ textAlign: "center", padding: 60, background: T.card, borderRadius: 16, border: `1px solid ${T.border}` }}>
           <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.3 }}>📃</div>
@@ -552,46 +609,129 @@ export default function StatementTab({ statements, invoices, returns = [], custo
         </div>
       ) : filteredStatements.length === 0 ? (
         <div style={{ textAlign: "center", padding: 40, color: T.muted, fontSize: 13 }}>ไม่พบใบวางบิลตามเงื่อนไข</div>
-      ) : (
-        <div className="tbl-x" style={{ "--tbl-min": "900px" }}>
-        <CardBox style={{ padding: 0, overflow: "hidden" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 160px 120px 80px 130px 90px", alignItems: "center", padding: "10px 16px", background: "rgba(241,243,246,0.8)", borderBottom: `1px solid ${T.border}`, color: T.muted, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            <div>เลขที่</div><div>ลูกค้า</div><div>ช่วงเวลา</div><div style={{ textAlign: "right" }}>ยอดรวม</div><div style={{ textAlign: "center" }}>บิล</div><div>สถานะ</div><div style={{ textAlign: "center" }}>จัดการ</div>
-          </div>
-          {filteredStatements.map((st, i) => {
-            const sStyle = statusStyle(st.status || "ออกแล้ว");
-            return (
-              <div key={st.id}
-                onClick={() => setViewStatement(st)}
-                title="คลิกเพื่อดูรายละเอียด"
-                style={{ display: "grid", gridTemplateColumns: "120px 1fr 160px 120px 80px 130px 90px", alignItems: "center", padding: "12px 16px", borderBottom: i < filteredStatements.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s", cursor: "pointer" }}
-                onMouseEnter={e => e.currentTarget.style.background = "rgba(59,91,139,0.08)"}
-                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                <div style={{ fontFamily: "monospace", fontSize: 11, color: T.accent, fontWeight: 700 }}>{st.statementNo}</div>
-                <div>
-                  <div style={{ fontWeight: 600, color: T.text, fontSize: 13 }}>{st.customerName}</div>
-                  <div style={{ fontSize: 10, color: T.muted }}>{st.customerPhone || "—"}</div>
+      ) : monthGroups.map((g, gi) => {
+        // งวดล่าสุดเปิดไว้ให้เอง งวดเก่าพับ — เปิด/ปิดเองแล้วยึดตามที่เลือกเสมอ
+        const open = openMonths ? openMonths.has(g.key) : gi === 0;
+        const selectable = g.items.filter(s => !isCollected(s));
+        const nSel = selectable.filter(s => selectedIds.has(s.id)).length;
+        const allSel = selectable.length > 0 && nSel === selectable.length;
+        const cols = isAdmin ? "34px 120px 1fr 160px 120px 80px 130px 90px" : "120px 1fr 160px 120px 80px 130px 90px";
+        return (
+          <div key={g.key} style={{ marginBottom: 10 }}>
+            <div onClick={() => setOpenMonths(prev => {
+                const base = prev || new Set(gi === 0 ? [g.key] : [monthGroups[0]?.key]);
+                const n = new Set(base);
+                if (n.has(g.key)) n.delete(g.key); else n.add(g.key);
+                return n;
+              })}
+              style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "10px 14px", cursor: "pointer", userSelect: "none",
+                background: open ? "rgba(59,91,139,0.08)" : T.card, border: `1px solid ${open ? "rgba(59,91,139,0.3)" : T.border}`,
+                borderRadius: open ? "10px 10px 0 0" : 10 }}>
+              <span style={{ fontSize: 11, color: T.muted, width: 12 }}>{open ? "▼" : "▶"}</span>
+              <span style={{ fontSize: 13.5, fontWeight: 800, color: T.text }}>งวด {g.label}</span>
+              <span style={{ fontSize: 11.5, color: T.sub }}>{g.items.length} ใบ</span>
+              <span style={{ fontSize: 12.5, fontFamily: "monospace", fontWeight: 700, color: T.green }}>
+                ฿{g.total.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+              </span>
+              {g.collected > 0 && <span style={{ fontSize: 11, color: T.green }}>· เก็บเงินแล้ว {g.collected} ใบ</span>}
+              {/* ✅ เลือกทั้งงวด — ไว้ถอยทั้งเดือนโดยไม่ต้องติ๊กทีละใบ
+                  ใบที่เก็บเงินแล้วไม่ถูกเลือกให้ เพราะถอยไม่ได้อยู่แล้ว */}
+              {isAdmin && selectable.length > 0 && (
+                <label onClick={e => e.stopPropagation()}
+                  style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, color: T.sub, fontWeight: 600 }}>
+                  <input type="checkbox" checked={allSel}
+                    onChange={e => setSelectedIds(prev => {
+                      const n = new Set(prev);
+                      selectable.forEach(s => e.target.checked ? n.add(s.id) : n.delete(s.id));
+                      return n;
+                    })}
+                    style={{ cursor: "pointer", width: 15, height: 15, accentColor: T.accent }} />
+                  เลือกทั้งงวด{nSel > 0 && !allSel ? ` (เลือกแล้ว ${nSel})` : ""}
+                </label>
+              )}
+            </div>
+
+            {open && (
+              <div className="tbl-x" style={{ "--tbl-min": isAdmin ? "934px" : "900px" }}>
+              <CardBox style={{ padding: 0, overflow: "hidden", borderRadius: "0 0 12px 12px", borderTop: "none" }}>
+                <div style={{ display: "grid", gridTemplateColumns: cols, alignItems: "center", padding: "10px 16px", background: "rgba(241,243,246,0.8)", borderBottom: `1px solid ${T.border}`, color: T.muted, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  {isAdmin && <div />}
+                  <div>เลขที่</div><div>ลูกค้า</div><div>ช่วงเวลา</div><div style={{ textAlign: "right" }}>ยอดรวม</div><div style={{ textAlign: "center" }}>บิล</div><div>สถานะ</div><div style={{ textAlign: "center" }}>จัดการ</div>
                 </div>
-                <div style={{ fontSize: 11, color: T.sub }}>{st.periodStart} → {st.periodEnd}</div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontFamily: "monospace", fontWeight: 700, color: T.green, fontSize: 13 }}>฿{Number(st.netAmount != null ? st.netAmount : st.totalAmount || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
-                  {Number(st.creditTotal) > 0 && <div style={{ fontSize: 10, color: "#047857" }}>หักของคืน -฿{Number(st.creditTotal).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>}
-                </div>
-                <div style={{ textAlign: "center", fontSize: 12, fontFamily: "monospace", color: T.accent, fontWeight: 700 }}>{st.invoiceCount} ใบ</div>
-                <div onClick={e => e.stopPropagation()}>
-                  <select value={st.status || "ออกแล้ว"} onChange={e => handleUpdateStatus(st, e.target.value)}
-                    style={{ background: sStyle.bg, border: sStyle.border, borderRadius: 10, padding: "4px 8px", fontSize: 10, fontWeight: 600, color: sStyle.color, cursor: "pointer", fontFamily: "'Sarabun',sans-serif", outline: "none" }}>
-                    {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 5, justifyContent: "center" }}>
-                  <button onClick={() => handlePrint(st)} title="พิมพ์" style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid rgba(59,91,139,0.25)", background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>🖨️</button>
-                  {role.canDelete && <button onClick={() => handleDelete(st)} title="ลบ" style={{ padding: "5px 8px", borderRadius: 7, border: "1px solid rgba(185,74,72,0.25)", background: "rgba(185,74,72,0.08)", color: T.red, cursor: "pointer", fontSize: 11 }}>✕</button>}
-                </div>
+                {g.items.map((st, i) => {
+                  const sStyle = statusStyle(st.status || "ออกแล้ว");
+                  const picked = selectedIds.has(st.id);
+                  return (
+                    <div key={st.id}
+                      onClick={() => setViewStatement(st)}
+                      title="คลิกเพื่อดูรายละเอียด"
+                      style={{ display: "grid", gridTemplateColumns: cols, alignItems: "center", padding: "12px 16px", borderBottom: i < g.items.length - 1 ? `1px solid ${T.border}` : "none", transition: "background 0.15s", cursor: "pointer", background: picked ? "rgba(185,74,72,0.06)" : "transparent" }}
+                      onMouseEnter={e => e.currentTarget.style.background = picked ? "rgba(185,74,72,0.1)" : "rgba(59,91,139,0.08)"}
+                      onMouseLeave={e => e.currentTarget.style.background = picked ? "rgba(185,74,72,0.06)" : "transparent"}>
+                      {/* ☑️ ติ๊กเลือกไว้ถอยเฉพาะใบที่ผิด — ใบที่เก็บเงินแล้วติ๊กไม่ได้
+                          (เหตุผลอยู่ในช่องสถานะของแถวเดียวกัน ไม่ต้องเดา) */}
+                      {isAdmin && (
+                        <div onClick={e => e.stopPropagation()}>
+                          <input type="checkbox" checked={picked} disabled={isCollected(st)}
+                            onChange={e => setSelectedIds(prev => {
+                              const n = new Set(prev);
+                              if (e.target.checked) n.add(st.id); else n.delete(st.id);
+                              return n;
+                            })}
+                            style={{ cursor: isCollected(st) ? "not-allowed" : "pointer", width: 15, height: 15, accentColor: T.red, opacity: isCollected(st) ? 0.3 : 1 }} />
+                        </div>
+                      )}
+                      <div style={{ fontFamily: "monospace", fontSize: 11, color: T.accent, fontWeight: 700 }}>{st.statementNo}</div>
+                      <div>
+                        <div style={{ fontWeight: 600, color: T.text, fontSize: 13 }}>{st.customerName}</div>
+                        <div style={{ fontSize: 10, color: T.muted }}>{st.customerPhone || "—"}</div>
+                      </div>
+                      <div style={{ fontSize: 11, color: T.sub }}>{st.periodStart} → {st.periodEnd}</div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontFamily: "monospace", fontWeight: 700, color: T.green, fontSize: 13 }}>฿{amountOf(st).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>
+                        {Number(st.creditTotal) > 0 && <div style={{ fontSize: 10, color: "#047857" }}>หักของคืน -฿{Number(st.creditTotal).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</div>}
+                      </div>
+                      <div style={{ textAlign: "center", fontSize: 12, fontFamily: "monospace", color: T.accent, fontWeight: 700 }}>{st.invoiceCount} ใบ</div>
+                      <div onClick={e => e.stopPropagation()}>
+                        <select value={st.status || "ออกแล้ว"} onChange={e => handleUpdateStatus(st, e.target.value)}
+                          style={{ background: sStyle.bg, border: sStyle.border, borderRadius: 10, padding: "4px 8px", fontSize: 10, fontWeight: 600, color: sStyle.color, cursor: "pointer", fontFamily: "'Sarabun',sans-serif", outline: "none" }}>
+                          {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+                      <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+                        <button onClick={() => handlePrint(st)} title="พิมพ์" style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid rgba(59,91,139,0.25)", background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>🖨️</button>
+                        {role.canDelete && <button onClick={() => handleDelete(st)} title="ลบ" style={{ padding: "5px 8px", borderRadius: 7, border: "1px solid rgba(185,74,72,0.25)", background: "rgba(185,74,72,0.08)", color: T.red, cursor: "pointer", fontSize: 11 }}>✕</button>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </CardBox>
               </div>
-            );
-          })}
-        </CardBox>
+            )}
+          </div>
+        );
+      })}
+
+      {/* ↩️ แถบถอยที่เลือก — ลอยอยู่ท้ายจอ ไม่ต้องเลื่อนกลับไปหาปุ่ม */}
+      {isAdmin && selectedIds.size > 0 && (
+        <div style={{ position: "sticky", bottom: 12, zIndex: 20, marginTop: 12, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+          padding: "11px 16px", background: "#fff", border: "1px solid rgba(185,74,72,0.4)", borderRadius: 12, boxShadow: "0 6px 22px rgba(15,23,42,0.14)" }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>
+            เลือกไว้ <b style={{ color: T.red }}>{selectedIds.size}</b> ใบ
+          </span>
+          <span style={{ fontSize: 12.5, fontFamily: "monospace", fontWeight: 700, color: T.green }}>
+            ฿{statements.filter(s => selectedIds.has(s.id)).reduce((a, s) => a + amountOf(s), 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+          </span>
+          <button onClick={() => setSelectedIds(new Set())}
+            style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 12, fontFamily: "'Sarabun',sans-serif" }}>
+            ล้างที่เลือก
+          </button>
+          <button onClick={undoSelected} disabled={!!undoBusy}
+            style={{ marginLeft: "auto", padding: "8px 16px", borderRadius: 9, border: "none",
+              background: undoBusy ? "#cbd5e1" : "linear-gradient(135deg,#b94a48,#9b3d3b)", color: "white",
+              cursor: undoBusy ? "default" : "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Sarabun',sans-serif" }}>
+            {undoBusy && undoBusy.run === "selected" ? `กำลังถอย ${undoBusy.done}/${undoBusy.total}…` : `↩️ ถอยที่เลือก ${selectedIds.size} ใบ`}
+          </button>
         </div>
       )}
 
