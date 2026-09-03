@@ -4,6 +4,7 @@ import { Modal, MHead, BtnPrimary, BtnGhost, BtnDanger } from "./ui";
 import { compressImage } from "../utils/imageCompress";
 import { uploadImage, deleteFile } from "../utils/upload";
 import CustomerPicker from "./CustomerPicker";
+import { splitItemsByGroup, countQty } from "../utils/billGroup";
 
 const MAX_JOB_IMAGES = 8;
 
@@ -335,6 +336,72 @@ function BulkPricePanel({ items, setInvoiceForm, clothingItems = [] }) {
               );
             })}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 🏐 แยกอุปกรณ์กีฬาออกเป็นอีกใบ
+//
+// ที่ร้านเปิดบิลอุปกรณ์กีฬาแยกกับบิลเสื้อผ้ามาตลอด ระบบจึงต้องออกให้ 2 ใบเหมือนที่ทำมือ
+// ตั้งค่าเริ่มต้นเป็น "แยก" เพราะนั่นคือวิธีที่ใช้จริง แต่ต้องเห็นทั้งกล่องว่าจะได้ใบไหนยอดเท่าไร
+// ก่อนกดบันทึก — ไม่ใช่แอบแยกให้เงียบ ๆ แล้วพนักงานมางงตอนเห็นบิลโผล่มา 2 ใบ
+function SplitEquipmentPanel({ invoiceForm, setInvoiceForm, clothingItems, calcInvoice, invoiceVat }) {
+  const parts = React.useMemo(
+    () => splitItemsByGroup(invoiceForm.items || [], clothingItems),
+    [invoiceForm.items, clothingItems]
+  );
+  if (!parts.mixed) return null;
+  const on = invoiceForm.splitEquipment !== false;   // ไม่เคยตั้ง = แยก
+  const money = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 });
+  // ใบเสื้อผ้าเป็นใบหลัก — ส่วนลดท้ายบิล/ค่าส่ง/ค่าออกแบบ/มัดจำ อยู่ใบนั้นใบเดียว
+  // ยกเว้นส่วนลดแบบ % ที่ใช้กับทั้งสองใบได้ตรงไปตรงมา (คิดจากยอดของแต่ละใบเอง)
+  const pct = (invoiceForm.discountType || "amount") === "percent";
+  const cA = calcInvoice(parts.apparel, invoiceForm.vatRate, invoiceVat, invoiceForm.discount, invoiceForm.discountType, invoiceForm.useShipping, invoiceForm.shippingFee, invoiceForm.designFee);
+  const cE = calcInvoice(parts.equipment, invoiceForm.vatRate, invoiceVat, pct ? invoiceForm.discount : 0, invoiceForm.discountType, false, 0, 0);
+  const extras = [
+    (Number(invoiceForm.discount) || 0) > 0 && !pct ? "ส่วนลดท้ายบิล" : null,
+    invoiceForm.useShipping && (Number(invoiceForm.shippingFee) || 0) > 0 ? "ค่าจัดส่ง" : null,
+    (Number(invoiceForm.designFee) || 0) > 0 ? "ค่าออกแบบ" : null,
+    (Number(invoiceForm.depositAmount) || 0) > 0 || (invoiceForm.payments || []).length > 0 ? "มัดจำ/ยอดที่ชำระแล้ว" : null,
+  ].filter(Boolean);
+
+  const Line = ({ icon, label, items, c, dim }) => (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontSize: 12, opacity: dim ? 0.45 : 1 }}>
+      <span style={{ fontWeight: 700, color: T.text, minWidth: 118 }}>{icon} {label}</span>
+      <span style={{ color: T.muted, fontSize: 11 }}>{items.length} แถว · {countQty(items).toLocaleString("th-TH")} ชิ้น</span>
+      <span style={{ marginLeft: "auto", fontFamily: "monospace", fontWeight: 700, color: "#047857" }}>฿{money(c.total)}</span>
+    </div>
+  );
+
+  return (
+    <div style={{ padding: "11px 13px", marginBottom: 12, borderRadius: 10, border: `1px solid ${on ? "rgba(217,119,6,0.4)" : T.border}`, background: on ? "rgba(245,158,11,0.07)" : "rgba(148,163,184,0.06)" }}>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none", marginBottom: on ? 9 : 0 }}>
+        <input type="checkbox" checked={on} onChange={e => setInvoiceForm(f2 => ({ ...f2, splitEquipment: e.target.checked }))}
+          style={{ cursor: "pointer", width: 16, height: 16, accentColor: "#d97706" }} />
+        <span style={{ fontSize: 12.5, fontWeight: 800, color: "#b45309" }}>🏐 แยกอุปกรณ์กีฬาออกเป็นอีกใบ</span>
+        <span style={{ fontSize: 11, color: T.muted }}>
+          {on ? "จะได้บิล 2 ใบ 2 เลขที่" : "จะรวมอยู่ในบิลใบเดียว"}
+        </span>
+      </label>
+      {on ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 5, paddingLeft: 24 }}>
+          <Line icon="👕" label="ใบเสื้อผ้า" items={parts.apparel} c={cA} />
+          <Line icon="🏐" label="ใบอุปกรณ์กีฬา" items={parts.equipment} c={cE} />
+          {extras.length > 0 && (
+            <div style={{ fontSize: 10.5, color: T.muted, marginTop: 2, lineHeight: 1.5 }}>
+              {extras.join(" · ")} จะอยู่ใน<b style={{ color: "#b45309" }}>ใบเสื้อผ้า</b>ใบเดียว ไม่ถูกหารลงสองใบ
+              {pct && <> · ส่วนลด {Number(invoiceForm.discount) || 0}% คิดกับทั้งสองใบ</>}
+            </div>
+          )}
+          <div style={{ fontSize: 10.5, color: T.muted }}>
+            ตั้งว่ารุ่นไหนเป็นอุปกรณ์กีฬาได้ที่ 👕 คลังสินค้า — กดป้าย “👕 เสื้อผ้า / 🏐 อุปกรณ์กีฬา” หลังชื่อรุ่น
+          </div>
+        </div>
+      ) : (
+        <div style={{ fontSize: 10.5, color: T.muted, paddingLeft: 24, marginTop: 6 }}>
+          มีอุปกรณ์กีฬาปนอยู่ {parts.equipment.length} แถว — จะรวมกับเสื้อผ้าในบิลใบเดียว
         </div>
       )}
     </div>
@@ -879,6 +946,12 @@ export default function NewInvoiceModal({
             </div>
           </div>
 
+          {/* แก้บิลเก่าไม่แยก — บิลออกไปแล้ว มีเลขที่แล้ว ลูกค้าถือกระดาษอยู่ */}
+          {!editingInvoiceId && (
+            <SplitEquipmentPanel invoiceForm={invoiceForm} setInvoiceForm={setInvoiceForm}
+              clothingItems={clothingItems} calcInvoice={calcInvoice} invoiceVat={invoiceVat}/>
+          )}
+
           <div style={{display:"flex",gap:10}}>
             <BtnGhost onClick={()=>{onClose();}} disabled={savingInvoice} style={{flex:1,opacity:savingInvoice?0.5:1}}>ยกเลิก</BtnGhost>
             {/* ⏳ ระหว่างบันทึก ปุ่มต้องเปลี่ยนสภาพให้เห็นชัด
@@ -892,7 +965,11 @@ export default function NewInvoiceModal({
                 ? "⏳ กำลังบันทึก... อย่าเพิ่งกดซ้ำ"
                 : !invoiceForm.customerId
                   ? "🔒 ต้องเลือกลูกค้าจากทะเบียนก่อน"
-                  : (editingInvoiceId ? `💾 บันทึกการแก้ไข ${docTypeLabel(invoiceDocType)}` : `✅ ออก${docTypeLabel(invoiceDocType)} + บันทึก`)}
+                  : editingInvoiceId
+                    ? `💾 บันทึกการแก้ไข ${docTypeLabel(invoiceDocType)}`
+                    : (invoiceForm.splitEquipment !== false && splitItemsByGroup(invoiceForm.items || [], clothingItems).mixed)
+                      ? `✅ ออก${docTypeLabel(invoiceDocType)} 2 ใบ (เสื้อผ้า + อุปกรณ์กีฬา)`
+                      : `✅ ออก${docTypeLabel(invoiceDocType)} + บันทึก`}
             </BtnPrimary>
           </div>
         </Modal>

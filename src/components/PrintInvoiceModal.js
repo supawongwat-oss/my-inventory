@@ -22,6 +22,7 @@ export default function PrintInvoiceModal({
   printElementById,
   printInvoiceCopies,
   downloadInvoicePdf,
+  onOpenSibling,
 }) {
 
   if (!invoice) return null;
@@ -432,6 +433,25 @@ export default function PrintInvoiceModal({
 
             </div>
             </div>
+
+            {/* 🏐 บิลนี้ถูกแยกออกเป็น 2 ใบ — เตือนก่อนปิด ไม่งั้นพิมพ์ใบเดียวแล้วนึกว่าจบ
+                อยู่ใน print-hide เพราะลูกค้าต้องได้บิลที่อ่านเป็นเอกสารอิสระ ไม่มีร่องรอยว่าเคยอยู่ใบเดียวกัน */}
+            {invoice?.splitSiblingNo && (
+              <div className="print-hide" style={{padding:"10px 24px",borderTop:"1px solid #e2e8f0",background:"rgba(245,158,11,0.08)",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",fontSize:12.5,color:"#b45309"}}>
+                <span style={{fontWeight:700}}>
+                  {invoice.billGroup === "equipment" ? "🏐 นี่คือใบอุปกรณ์กีฬา" : "👕 นี่คือใบเสื้อผ้า"}
+                </span>
+                <span style={{color:"#92400e"}}>
+                  ออเดอร์นี้แยกเป็น 2 ใบ — อีกใบคือ <b style={{fontFamily:"monospace"}}>{invoice.splitSiblingNo}</b> ต้องพิมพ์ด้วย
+                </span>
+                {onOpenSibling && (
+                  <button onClick={()=>onOpenSibling(invoice.splitSiblingNo, invoice.__siblingId)}
+                    style={{marginLeft:"auto",padding:"6px 14px",borderRadius:8,border:"1px solid rgba(217,119,6,0.5)",background:"white",color:"#b45309",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",whiteSpace:"nowrap"}}>
+                    เปิดบิล {invoice.splitSiblingNo} →
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* ── ปุ่มด้านล่าง (ไม่พิมพ์) ── */}
             <div className="print-hide" style={{padding:"14px 24px",borderTop:"1px solid #e2e8f0",display:"flex",gap:10,justifyContent:"space-between",alignItems:"center",background:"#f8fafc",borderRadius:"0 0 16px 16px"}}>

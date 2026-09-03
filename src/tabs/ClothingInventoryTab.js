@@ -1,5 +1,6 @@
 import React from "react";
 import { priceRowsForSizes } from "../theme";
+import { isEquipmentModel } from "../utils/billGroup";
 
 const T = {
   card:"#ffffff", border:"#e3e8ef", text:"#1f2a44", sub:"#5b6b85", muted:"#8a9bb3",
@@ -30,7 +31,7 @@ export default function ClothingInventoryTab({
   editingStock, setEditingStock, handleUpdateClothingStock,
   setPriceForm, setPriceModal,
   setClothingTxModal, setClothingTxType, setClothingTxQty, setClothingTxSizeQty, setClothingTxNote,
-  handleDeleteClothingColor, onRenameClothing,
+  handleDeleteClothingColor, onRenameClothing, onToggleEquipment,
 }) {
   // ✏️ แก้ชื่อรุ่นได้ตรงนี้ — ชื่อพิมพ์ผิดตั้งแต่วันแรกแล้วไปโผล่ทุกบิล
   //    เอกสารเก่าไม่เปลี่ยนตาม เพราะบิล/ใบสั่งเก็บชื่อ ณ ตอนออกไว้ในตัวเองแล้ว
@@ -182,6 +183,22 @@ export default function ClothingInventoryTab({
                 )}
                 {item.brand && <span style={{ marginLeft: 7, fontSize: 10, padding: "2px 8px", background: "rgba(59,91,139,0.1)", color: T.accent, borderRadius: 10, fontWeight: 700, verticalAlign: "middle" }}>{item.brand}</span>}
                 {item.category && <span style={{ marginLeft: 4, fontSize: 10, padding: "2px 8px", background: "#f1f5f9", color: T.sub, borderRadius: 10, fontWeight: 600, verticalAlign: "middle" }}>{item.category}</span>}
+                {/* 🏐 รุ่นนี้เป็นอุปกรณ์กีฬาไหม — ตัดสินว่าตอนออกบิลจะถูกแยกไปอีกใบ
+                    ป้ายเขียนคำเต็มทั้งสองสถานะ ไม่ใช้แค่ไอคอน เพราะคนต้องอ่านออกว่า
+                    "รุ่นนี้จะไปอยู่บิลไหน" โดยไม่ต้องเอาเมาส์ไปจิ้มดู */}
+                {onToggleEquipment && role?.canEdit !== false && (() => {
+                  const eq = isEquipmentModel(item);
+                  return (
+                    <button onClick={e => { e.stopPropagation(); onToggleEquipment(item); }}
+                      title={eq ? "ตอนนี้นับเป็นอุปกรณ์กีฬา — จะถูกแยกออกเป็นอีกใบตอนออกบิล · กดเพื่อเปลี่ยนเป็นเสื้อผ้า" : "ตอนนี้นับเป็นเสื้อผ้า — กดเพื่อตั้งเป็นอุปกรณ์กีฬา (จะถูกแยกบิล)"}
+                      style={{ marginLeft: 4, fontSize: 10, padding: "2px 9px", borderRadius: 10, fontWeight: 700, verticalAlign: "middle", cursor: "pointer", fontFamily: "inherit",
+                        border: `1px solid ${eq ? "rgba(217,119,6,0.45)" : T.border}`,
+                        background: eq ? "rgba(245,158,11,0.12)" : "transparent",
+                        color: eq ? "#b45309" : T.muted }}>
+                      {eq ? "🏐 อุปกรณ์กีฬา" : "👕 เสื้อผ้า"}
+                    </button>
+                  );
+                })()}
               </div>
               <div style={{ fontSize: 11, color: T.muted, marginTop: 3, display: "flex", alignItems: "center", gap: 10 }}>
                 <span>{(item.colors || []).length} สี</span>

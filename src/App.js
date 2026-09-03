@@ -18,6 +18,7 @@ import { compressImage } from "./utils/imageCompress";
 import { uploadImage, deleteFile } from "./utils/upload";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiRegion";
 import { reserveDocNo } from "./utils/docNumber";
+import { isEquipmentModel, splitItemsByGroup, GROUP_LABEL } from "./utils/billGroup";
 import { runToItems, groupRun, totalOf } from "./utils/packRun";
 import { withSearchKeys, withCustomerSearchKeys } from "./utils/searchKeys";
 
@@ -1652,6 +1653,24 @@ export default function App() {
   // ✏️ เปลี่ยนชื่อรุ่นในคลัง
   //    ปลอดภัยกับเอกสารเก่า — บิล/ใบสั่ง/รอบแพ็ค เก็บชื่อ ณ ตอนบันทึกไว้ในตัวเองแล้ว
   //    และการจับคู่ชื่อสินค้าของรอบแพ็คผูกด้วย id ไม่ใช่ชื่อ จึงไม่หลุด
+  // 🏐 ติ๊กว่ารุ่นนี้เป็น "อุปกรณ์กีฬา" — ใช้ตัดสินว่าตอนออกบิลจะแยกไปอีกใบไหม
+  //    เขียนค่าจริงลงเสมอ (ทั้ง true และ false) ไม่ใช่ลบฟิลด์ทิ้ง
+  //    เพราะถ้าไม่มีฟิลด์ ระบบจะกลับไปเดาจาก sizeType — คนที่ตั้งใจเอาติ๊กออก
+  //    จากรองเท้าจะพบว่ามันติ๊กกลับมาเอง
+  const handleToggleEquipment = async (item) => {
+    const next = !isEquipmentModel(item);
+    try {
+      await updateDoc(doc(db, "clothing", item.id), { isEquipment: next });
+      logAudit(user, {
+        action: AUDIT_ACTIONS.UPDATE, collection: "clothing", targetId: item.id,
+        targetLabel: item.model || "", before: { isEquipment: isEquipmentModel(item) }, after: { isEquipment: next },
+        note: next ? "ตั้งเป็นอุปกรณ์กีฬา (แยกบิล)" : "ตั้งเป็นเสื้อผ้า",
+      });
+    } catch (e) {
+      alert("บันทึกไม่สำเร็จ: " + (e?.message || e));
+    }
+  };
+
   const handleRenameClothing = async (item, newName) => {
     const dup = clothingItems.find(c => c.id !== item.id && (c.model || "").trim() === newName);
     if (dup && !window.confirm(`มีรุ่นชื่อ "${newName}" อยู่แล้ว` + String.fromCharCode(10, 10) + "ตั้งชื่อซ้ำจะแยกกันยากตอนออกบิลและตอนอ่านใบปะหน้า — ใช้ชื่อนี้ต่อ?")) return;
@@ -2910,13 +2929,34 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     // 📅 ออกบิลย้อนหลังได้ — เลขที่เอกสารจะอยู่ในชุดของเดือนตามวันที่ที่เลือก
     const docDateStr = isoToDocDate(invoiceForm.docDate);
 
+    // 🏐 แยกอุปกรณ์กีฬาออกเป็นอีกใบ
+    //
+    //    ที่ร้านเปิดบิลอุปกรณ์กีฬาแยกกับบิลเสื้อผ้ามาตลอด ระบบจึงออกให้ 2 ใบเหมือนที่ทำมือ
+    //    ใบเสื้อผ้าเป็น "ใบหลัก" — ส่วนลดท้ายบิล/ค่าจัดส่ง/ค่าออกแบบ/มัดจำ ไปอยู่ใบนั้นใบเดียว
+    //    เพราะเป็นค่าของทั้งออเดอร์ ถ้าเอาไปใส่ทั้งสองใบลูกค้าจะโดนคิดซ้ำ และถ้าหารครึ่ง
+    //    ก็ไม่มีเกณฑ์ไหนที่อธิบายให้ลูกค้าฟังได้ · ส่วนลดแบบ % เป็นข้อยกเว้น — คิดจากยอด
+    //    ของแต่ละใบเอง จึงใช้กับทั้งสองใบได้ตรงไปตรงมา (กล่องในหน้าออกบิลบอกไว้ครบก่อนกด)
+    const split = invoiceForm.splitEquipment !== false
+      ? splitItemsByGroup(invoiceForm.items || [], clothingItems)
+      : { apparel: invoiceForm.items || [], equipment: [], mixed: false };
+    const pctDiscount = (invoiceForm.discountType || "amount") === "percent";
+    const parts = split.mixed
+      ? [{ group: "apparel", items: split.apparel, main: true },
+         { group: "equipment", items: split.equipment, main: false }]
+      : [{ group: null, items: invoiceForm.items, main: true }];
+    const calcOf = (p) => p.main
+      ? calcInvoice(p.items, invoiceForm.vatRate, invoiceVat, invoiceForm.discount, invoiceForm.discountType, invoiceForm.useShipping, invoiceForm.shippingFee, invoiceForm.designFee)
+      : calcInvoice(p.items, invoiceForm.vatRate, invoiceVat, pctDiscount ? invoiceForm.discount : 0, invoiceForm.discountType, false, 0, 0);
+
     // 🔁 กันออกบิลซ้ำ — ลูกค้าเดิม ยอดเท่ากัน ในเวลาไล่เลี่ยกัน
     //    เดิมกันเฉพาะบิลที่ออกจากใบสั่งของ ออกมือเปล่าไม่มีอะไรกันเลย
     //    เตือนอย่างเดียว ไม่บล็อก — ลูกค้าสั่งของชุดเดิมซ้ำจริง ๆ ก็มี
-    const dups = findDuplicateInvoices(invoices, {
+    //    แยกบิลแล้วต้องเช็กทีละใบ — ยอดรวมทั้งสองใบไม่ตรงกับบิลเก่าใบไหนอยู่แล้ว
+    //    ถ้าเช็กจากยอดรวม ด่านนี้จะเงียบไปเฉย ๆ ทั้งที่ของชุดเดิมออกซ้ำจริง
+    const dups = [...new Map(parts.flatMap(p => findDuplicateInvoices(invoices, {
       customerId: invoiceForm.customerId, customerName: invoiceForm.customerName,
-      total: calc.total, date: docDateStr,
-    });
+      total: calcOf(p).total, date: docDateStr,
+    })).map(d => [d.id || d.invoiceNo, d])).values()];
     if (dups.length > 0) {
       const lines = dups.slice(0, 5).map(d => `  • ${d.invoiceNo} · ${(d.date || "").split(" ")[0]} · ฿${(Number(d.total) || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}`);
       const NLx = String.fromCharCode(10);
@@ -2930,12 +2970,23 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       if (!ok) return;
     }
     beginSave();
-    let invNo;
+    // จองเลขทีละใบ — ใบที่จองไปแล้วต้องนับเป็น "มีอยู่แล้ว" ตอนจองใบถัดไป
+    // ไม่งั้นถ้า counter ใน Firestore ใช้ไม่ได้แล้วตกไปทาง fallback (max+1 จากที่โหลดมา)
+    // ทั้งสองใบจะได้เลขเดียวกัน
+    const nos = [];
     try {
-      invNo = await reserveDocNo(db, "INV", invoices, "invoiceNo", isoToJsDate(invoiceForm.docDate));
+      for (let i = 0; i < parts.length; i++) {
+        const seed = nos.length ? [...invoices, ...nos.map(n => ({ invoiceNo: n }))] : invoices;
+        nos.push(await reserveDocNo(db, "INV", seed, "invoiceNo", isoToJsDate(invoiceForm.docDate)));
+      }
     } catch (e) {
       endSave();
       alert("จองเลขที่บิลไม่สำเร็จ: " + (e?.message || e));
+      return;
+    }
+    if (new Set(nos).size !== nos.length) {
+      endSave();
+      alert("จองเลขที่บิลได้เลขซ้ำกัน — ยังไม่ได้ออกบิล" + String.fromCharCode(10, 10) + "ลองใหม่อีกครั้ง");
       return;
     }
     // 💰 มัดจำที่กรอกในหน้าออกบิล → เพิ่มเป็นการชำระ (รวมกับมัดจำที่ผูกจากใบสั่ง ถ้ามี)
@@ -2944,36 +2995,71 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       ...(invoiceForm.payments || []),
       ...(inlineDep > 0 ? [{ id: `dep_inline_${Date.now()}`, amount: inlineDep, method: invoiceForm.depositMethod || "โอน", date: docDateStr, bank: "", note: "มัดจำ (ตอนออกบิล)", receivedBy: user.name }] : []),
     ];
-    const data = {
-      ...invoiceForm, ...calc,
-      payments: finalPayments,
-      invoiceNo:invNo, docType:invoiceDocType, useVat:invoiceVat,
-      bankAccount: bank,
-      by:user.name, date:docDateStr, createdAt:serverTimestamp(), status:"ออกแล้ว"
-    };
-    delete data.depositAmount; delete data.depositMethod; // ฟิลด์ชั่วคราวของฟอร์ม ไม่ต้องเก็บลง doc
-    delete data.docDate; // ฟิลด์ของฟอร์มเท่านั้น — ตัวจริงเก็บใน date
+    const splitGroupId = split.mixed ? `sp_${Date.now()}` : null;
+    const docs = parts.map((p, i) => {
+      const c = calcOf(p);
+      const d = {
+        ...invoiceForm, ...c,
+        items: p.items,
+        payments: p.main ? finalPayments : [],
+        invoiceNo: nos[i], docType: invoiceDocType, useVat: invoiceVat,
+        bankAccount: bank,
+        by: user.name, date: docDateStr, createdAt: serverTimestamp(), status: "ออกแล้ว",
+      };
+      if (!p.main) {
+        // ใบรองรับเฉพาะของ — ค่าของทั้งออเดอร์และงานที่ผูกไว้อยู่ใบหลักทั้งหมด
+        d.discount = pctDiscount ? invoiceForm.discount : 0;
+        d.useShipping = false; d.shippingFee = 0; d.designFee = 0;
+        delete d.customDetails; delete d.mergedFromOrderIds; delete d.packRunId;
+      }
+      if (split.mixed) {
+        d.billGroup = p.group;
+        d.splitGroupId = splitGroupId;
+        // 🔗 รู้ว่าอีกใบคือใบไหน — ใช้บนจอเท่านั้น ไม่ขึ้นบนกระดาษที่ลูกค้าได้
+        //    เพราะลูกค้าต้องเห็นเป็นบิลอิสระสองใบ เหมือนที่เปิดแยกกันมาตลอด
+        d.splitSiblingNo = nos[1 - i];
+      }
+      delete d.depositAmount; delete d.depositMethod; // ฟิลด์ชั่วคราวของฟอร์ม ไม่ต้องเก็บลง doc
+      delete d.docDate;         // ฟิลด์ของฟอร์มเท่านั้น — ตัวจริงเก็บใน date
+      delete d.splitEquipment;  // เป็นตัวเลือกตอนกรอก ไม่ใช่ข้อมูลของบิล
+      return d;
+    });
     // 📦 Firestore จำกัดเอกสารละ 1MB — บิลที่รวมมาจากใบสั่งเยอะ ๆ อาจทะลุแล้วบันทึกไม่ผ่าน
-    const invKB = Math.round(JSON.stringify(data).length / 1024);
-    if (invKB > 900) {
-      endSave();
-      alert(`บันทึกไม่ได้ — บิลนี้ใหญ่เกินขีดจำกัด (${invKB} KB / สูงสุด ~1000 KB)\n\nมี ${data.items.length.toLocaleString("th-TH")} แถว — แบ่งออกเป็นหลายบิลก่อนครับ`);
-      return;
+    for (const d of docs) {
+      const invKB = Math.round(JSON.stringify(d).length / 1024);
+      if (invKB > 900) {
+        endSave();
+        alert(`บันทึกไม่ได้ — บิลนี้ใหญ่เกินขีดจำกัด (${invKB} KB / สูงสุด ~1000 KB)\n\nมี ${d.items.length.toLocaleString("th-TH")} แถว — แบ่งออกเป็นหลายบิลก่อนครับ`);
+        return;
+      }
     }
-    let ref;
-    try {
-      ref = await addDoc(collection(db,"invoices"), withSearchKeys(data));
-    } catch (e) {
-      endSave();
-      alert("บันทึกบิลไม่สำเร็จ: " + (e?.message || e) + String.fromCharCode(10, 10) + "ยังไม่ได้ออกบิล ลองใหม่อีกครั้ง");
-      return;
+    const refs = [];
+    for (let i = 0; i < docs.length; i++) {
+      try {
+        refs.push(await addDoc(collection(db, "invoices"), withSearchKeys(docs[i])));
+      } catch (e) {
+        endSave();
+        const NLx = String.fromCharCode(10);
+        // ใบแรกเขียนไปแล้วแต่ใบที่สองล้ม — ต้องบอกให้ชัดว่าตอนนี้ในระบบมีอะไรอยู่
+        // ไม่ลบใบแรกทิ้งเอง เพราะเป็นเอกสารจริงที่ออกไปแล้ว การลบเงียบ ๆ อันตรายกว่า
+        alert("บันทึกบิลไม่สำเร็จ: " + (e?.message || e) + NLx + NLx +
+          (refs.length
+            ? `ออกไปแล้ว ${refs.length} ใบ (${nos.slice(0, refs.length).join(", ")})` + NLx +
+              `ใบ${GROUP_LABEL[parts[i].group] || ""}ยังไม่ได้ออก — ออกเพิ่มอีกใบ หรือยกเลิกใบที่ออกไปแล้วก็ได้`
+            : "ยังไม่ได้ออกบิล ลองใหม่อีกครั้ง"));
+        return;
+      }
     }
+    const mainIdx = 0;                     // ใบเสื้อผ้า = ใบหลักเสมอ
+    const data = docs[mainIdx], ref = refs[mainIdx], invNo = nos[mainIdx];
 
     // 👀 บิลเขียนลงระบบแล้ว — ปิดหน้าต่างและโชว์ใบให้เห็นทันที
     //    งานที่เหลือ (ปั๊มใบสั่ง/ใบ custom) ไม่กระทบตัวบิล ปล่อยทำต่อเบื้องหลังได้
     //    เดิมรอจนครบทุกขั้นถึงจะปิด ทำให้ดูเหมือนค้าง แล้วพนักงานกดปุ่มซ้ำ
     endSave();
-    setShowPrintInvoice({...data, id:ref.id});
+    // แยกบิลแล้วเปิดใบหลักให้พิมพ์ก่อน — อีกใบตามไปเปิดได้จากแถบในหน้าพิมพ์
+    // (ถ้าไม่บอกตรงนี้ คนจะพิมพ์ใบเดียวแล้วปิด นึกว่าจบ)
+    setShowPrintInvoice({ ...data, id: ref.id, __siblingId: split.mixed ? refs[1].id : null });
     setShowNewInvoice(false);
     clearInvoiceDraft();
     setInvoiceForm({customerId:"",customerName:"",customerPhone:"",customerAddress:"",customerTaxId:"",items:[],note:"",dueDate:"",vatRate:7,discount:0,discountType:"amount",useShipping:false,shippingFee:0,designFee:0,...invoiceDefaults()});
@@ -2981,6 +3067,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     // 🔗 ปั๊ม "ออกบิลแล้ว" ลงในใบสั่งของโดยตรง
     // ทำไม: บิลโหลดมาแค่ช่วงวันที่ (ไม่ใช่ทั้งหมด) — ถ้าอ่านสถานะจากบิลที่โหลดมาอย่างเดียว
     // ใบสั่งเก่าจะกลับไปขึ้น "ยังไม่ออกบิล" ทั้งที่ออกไปแล้ว → เสี่ยงออกบิลซ้ำ
+    // แยกบิลแล้วปั๊มด้วยใบหลักใบเดียว — ช่องนี้เก็บได้เลขเดียว และใบหลักคือใบที่ยอดของทั้งออเดอร์อยู่
     const linkIds = [...new Set(invoiceForm.mergedFromOrderIds || [])];
     if (linkIds.length) {
       try {
@@ -3011,13 +3098,15 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         }
       } catch (e) { console.warn("[invoice] mark customOrders invoiced failed:", e); }
     }
-    logAudit(user, {
+    // ทุกใบต้องมีบรรทัดของตัวเองใน audit — ไม่งั้นใบอุปกรณ์จะโผล่มาโดยไม่มีที่มา
+    docs.forEach((d, i) => logAudit(user, {
       action: AUDIT_ACTIONS.CREATE,
       collection: "invoices",
-      targetId: ref.id,
-      targetLabel: `${invNo} · ${invoiceForm.customerName}`,
-      note: `${docTypeLabel(invoiceDocType)} · ฿${(data.total||0).toLocaleString("th-TH",{minimumFractionDigits:2})}${invoiceVat?" · VAT":""}`,
-    });
+      targetId: refs[i].id,
+      targetLabel: `${nos[i]} · ${invoiceForm.customerName}`,
+      note: `${docTypeLabel(invoiceDocType)} · ฿${(d.total||0).toLocaleString("th-TH",{minimumFractionDigits:2})}${invoiceVat?" · VAT":""}`
+        + (split.mixed ? ` · แยกบิล ${GROUP_LABEL[parts[i].group]} (คู่กับ ${nos[1 - i]})` : ""),
+    }));
   };
 
   // 🔗 toggle เลือกบิล
@@ -4428,6 +4517,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   setClothingTxModal={setClothingTxModal} setClothingTxType={setClothingTxType} setClothingTxQty={setClothingTxQty} setClothingTxSizeQty={setClothingTxSizeQty} setClothingTxNote={setClothingTxNote}
                   handleDeleteClothingColor={handleDeleteClothingColor}
                   onRenameClothing={handleRenameClothing}
+                  onToggleEquipment={handleToggleEquipment}
                 />
               )}
             </div>
@@ -6030,6 +6120,12 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           printElementById={printElementById}
           printInvoiceCopies={printInvoiceCopies}
           downloadInvoicePdf={downloadInvoicePdf}
+          onOpenSibling={(no, id) => {
+            // หาใบคู่จากในลิสต์ที่โหลดมา — ถ้าอยู่นอกช่วงวันที่ก็บอกตรง ๆ ว่าหาไม่เจอ
+            const sib = invoices.find(i => (id && i.id === id) || i.invoiceNo === no);
+            if (sib) setShowPrintInvoice(sib);
+            else alert(`ยังโหลดบิล ${no} ขึ้นมาไม่ได้ — ขยายช่วงวันที่ในแท็บออกบิลแล้วเปิดจากรายการ`);
+          }}
         />
       )}
 

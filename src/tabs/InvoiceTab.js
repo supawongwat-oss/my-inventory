@@ -288,6 +288,14 @@ export default function InvoiceTab({
                                             ⚠️ ห้ามเอาไปใส่ในใบที่พิมพ์ (PrintInvoiceModal) เด็ดขาด
                                             เป็นข้อมูลภายในของร้าน ลูกค้าไม่ต้องเห็นว่าเราจัดเขาเป็นประเภทไหน */}
                                         {inv.customerId && <BillingBadge type={custById.get(inv.customerId)?.billingType}/>}
+                                        {/* 🏐 บิลที่ถูกแยกออกเป็นคู่ — เห็นในรายการเลยว่าอีกใบคือใบไหน
+                                            ไม่งั้นเจอเลขที่ข้ามกันในใบวางบิลแล้วนึกว่าออกซ้ำ */}
+                                        {inv.splitSiblingNo && (
+                                          <span title={`ออเดอร์นี้แยกเป็น 2 ใบ — อีกใบคือ ${inv.splitSiblingNo}`}
+                                            style={{ padding: "1px 6px", fontSize: 9, background: "rgba(245,158,11,0.14)", color: "#b45309", border: "1px solid rgba(217,119,6,0.3)", borderRadius: 5, fontWeight: 700, cursor: "help" }}>
+                                            {inv.billGroup === "equipment" ? "🏐 อุปกรณ์กีฬา" : "👕 เสื้อผ้า"} · คู่กับ {inv.splitSiblingNo}
+                                          </span>
+                                        )}
                                         {inv.mergedInto && <span title={`รวมเข้า ${inv.mergedInto.invoiceNo}`} style={{ padding: "1px 6px", fontSize: 9, background: "rgba(184,134,0,0.15)", color: T.amber, borderRadius: 5, fontWeight: 700 }}>🔗 รวมแล้ว</span>}
                                         {inv.mergedFrom?.length > 0 && <span title={`รวมจาก ${inv.mergedFrom.length} บิล`} style={{ padding: "1px 6px", fontSize: 9, background: "rgba(58,122,82,0.15)", color: T.green, borderRadius: 5, fontWeight: 700 }}>🔗 บิลรวม ×{inv.mergedFrom.length}</span>}
                                         {stmtMap.has(inv.id) && (() => {
