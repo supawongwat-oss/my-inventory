@@ -441,13 +441,13 @@ export default function ReturnModal({
       </div>
 
       <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-        <BtnGhost onClick={onClose} style={{ flex: 1 }}>ปิด</BtnGhost>
+        <BtnGhost onClick={onClose} style={{ flex: 1 }}>{existing?.id ? "ปิดหน้าต่าง" : "ยกเลิก"}</BtnGhost>
         {/* ✕ ยกเลิกใบนี้ — เดิมมีแต่ในหน้ารายการ คนที่เปิดใบมาดูแล้วอยากยกเลิกจึงหาไม่เจอ
             (ยกเลิกได้เฉพาะ admin และถ้าใบนี้ถูกหักในใบวางบิลไปแล้วจะถูกห้าม ตัว handler เช็กเอง) */}
         {existing?.id && existing.status !== "ยกเลิก" && user?.role === "admin" && onCancelReturn && (
           <BtnGhost onClick={async () => { const ok = await onCancelReturn(existing); if (ok) onClose?.(); }}
             style={{ flex: 1, color: "#b91c1c", borderColor: "rgba(239,68,68,0.35)" }}>
-            ✕ ยกเลิกใบนี้
+            ✕ ยกเลิกใบรับคืนนี้
           </BtnGhost>
         )}
         {existing?.status !== "จับคู่แล้ว" && (

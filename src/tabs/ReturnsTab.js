@@ -126,8 +126,8 @@ export default function ReturnsTab({
                       {r.status === "รอจับคู่บิล" ? "🔗 จับคู่บิล" : "✏️"}
                     </button>
                     {user?.role === "admin" && (
-                      <button onClick={() => onCancelReturn?.(r)} title="ยกเลิกใบนี้"
-                        style={{ padding: "4px 8px", borderRadius: 7, border: "1px solid rgba(239,68,68,0.25)", background: "rgba(239,68,68,0.06)", color: "#b91c1c", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>✕</button>
+                      <button onClick={() => onCancelReturn?.(r)} title="ยกเลิกใบรับคืนนี้ — ของที่เข้าสต็อกไปแล้วจะถูกย้อนออกให้"
+                        style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.08)", color: "#b91c1c", cursor: "pointer", fontSize: 11, fontFamily: "inherit", fontWeight: 700, whiteSpace: "nowrap" }}>✕ ยกเลิก</button>
                     )}
                   </>
                 )}
