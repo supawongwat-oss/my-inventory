@@ -15,7 +15,7 @@ const statusStyle = (s) => ({
 
 export default function ReturnsTab({
   returns = [], role = {}, user,
-  onNewReturn, onEditReturn, onCancelReturn, onOpenInvoice, onQcReturn, onCreditNote, onRefundPaid,
+  onNewReturn, onEditReturn, onCancelReturn, onDeleteReturn, onDeleteReturnsBulk, onOpenInvoice, onQcReturn, onCreditNote, onRefundPaid,
 }) {
   const [search, setSearch] = React.useState("");
   const [filter, setFilter] = React.useState("ทั้งหมด");
@@ -51,6 +51,7 @@ export default function ReturnsTab({
   const creditTotal = returns.filter(r => r.status === "จับคู่แล้ว").reduce((s, r) => s + (Number(r.creditTotal) || 0), 0);
 
   const canEdit = role.canIssueInvoice !== false;
+  const isAdmin = user?.role === "admin";
 
   // การ์ดใบรับคืน 1 ใบ — ใช้ทั้งรายการหลักและกล่องที่ยกเลิกแล้ว
   const Row = (r) => {
@@ -100,6 +101,14 @@ export default function ReturnsTab({
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 {r.status === "จับคู่แล้ว" && (
                   <span style={{ fontSize: 13, fontWeight: 700, color: T.green, fontFamily: "monospace" }}>-฿{money(r.creditTotal)}</span>
+                )}
+                {/* 🗑️ ใบที่ยกเลิกแล้วเท่านั้นที่ลบทิ้งได้ — ของถูกย้อนออกจากสต็อกไปแล้วและไม่ได้ลดหนี้ใคร
+                    ใช้ล้างใบทดสอบ ไม่ให้ค้างอยู่ในระบบจริง */}
+                {isAdmin && r.status === "ยกเลิก" && (
+                  <button onClick={() => onDeleteReturn?.(r)}
+                    style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.08)", color: "#b91c1c", cursor: "pointer", fontSize: 11, fontFamily: "inherit", fontWeight: 700, whiteSpace: "nowrap" }}>
+                    🗑️ ลบถาวร
+                  </button>
                 )}
                 {canEdit && r.status !== "ยกเลิก" && (
                   <>
@@ -208,6 +217,14 @@ export default function ReturnsTab({
             <span style={{ fontSize: 10, color: T.muted }}>เก็บไว้เป็นหลักฐาน ไม่นับรวมในยอดใด ๆ</span>
             <span style={{ marginLeft: "auto", fontSize: 11, color: T.muted }}>{showCancelled ? "▲ ซ่อน" : "▼ เปิดดู"}</span>
           </div>
+          {showCancelled && isAdmin && (
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+              <button onClick={(e) => { e.stopPropagation(); onDeleteReturnsBulk?.(cancelledList); }}
+                style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.08)", color: "#b91c1c", cursor: "pointer", fontSize: 11, fontFamily: "inherit", fontWeight: 700 }}>
+                🗑️ ลบทิ้งถาวรทั้ง {cancelledList.length} ใบ
+              </button>
+            </div>
+          )}
           {showCancelled && <div style={{ marginTop: 8, opacity: 0.72 }}>{cancelledList.map(Row)}</div>}
         </div>
       )}

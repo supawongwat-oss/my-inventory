@@ -3498,6 +3498,77 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     return true;
   };
 
+  // 🗑️ ลบใบรับคืนที่ยกเลิกแล้วทิ้งถาวร — สำหรับล้างใบทดสอบออกจากระบบ
+  //
+  //    ปกติ "ยกเลิก" พอแล้ว เพราะเก็บไว้เป็นหลักฐานว่าเคยมีของเข้ามา
+  //    แต่ใบที่กรอกเล่นตอนลองระบบไม่ใช่หลักฐานอะไร ปล่อยไว้ก็รกและทำให้คนอ่านสับสน
+  //
+  //    ลบได้เฉพาะใบที่ "ยกเลิกแล้ว" เท่านั้น — ใบที่ยกเลิกแล้วคือใบที่ย้อนสต็อกออกเรียบร้อย
+  //    และไม่ได้ไปลดหนี้ใคร การลบจึงไม่กระทบตัวเลขใด ๆ ส่วนใบที่ยังใช้งานอยู่ต้องกดยกเลิกก่อน
+  //    เพื่อให้สต็อกถูกย้อนออกให้ครบ ไม่ใช่หายไปเฉย ๆ พร้อมของที่ค้างอยู่ในสต็อก
+  const canDeleteReturn = (r) => {
+    if (!r) return "";
+    if ((r.status || "") !== "ยกเลิก") return "ลบได้เฉพาะใบที่ยกเลิกแล้ว — กด ✕ ยกเลิก ก่อน เพื่อให้สต็อกถูกย้อนออกให้ถูกต้อง";
+    if (r.appliedStatementNo) return `ลบไม่ได้ — เคยถูกหักในใบวางบิล ${r.appliedStatementNo}`;
+    if (r.creditNoteNo) return `ลบไม่ได้ — ออกใบลดหนี้ ${r.creditNoteNo} ให้ลูกค้าไปแล้ว ต้องเก็บไว้เป็นหลักฐาน`;
+    if (r.refundedAt) return "ลบไม่ได้ — จ่ายเงินคืนลูกค้าไปแล้ว ต้องเก็บไว้เป็นหลักฐาน";
+    return "";
+  };
+
+  const handleDeleteReturn = async (r) => {
+    if (user.role !== "admin") { alert("ลบใบรับคืนได้เฉพาะ admin"); return false; }
+    const block = canDeleteReturn(r);
+    if (block) { alert(block); return false; }
+    const NL = String.fromCharCode(10);
+    const what = (r.items || []).map(i => `· ${i.clothingName || "-"}${i.colorName ? " " + i.colorName : ""}${i.size ? " " + i.size : ""} ×${i.qty}`).join(NL);
+    if (!window.confirm(
+      `ลบใบรับคืน ${r.returnNo} ทิ้งถาวร?` + NL +
+      `${r.customerName || "— ไม่ทราบผู้ส่ง —"}${r.invoiceNo ? " · บิล " + r.invoiceNo : ""}` +
+      (what ? NL + what : "") + NL + NL +
+      "ลบแล้วเอาคืนไม่ได้ (เหลือแค่ร่องรอยในประวัติการใช้งาน)"
+    )) return false;
+    // รูปสภาพสินค้าใน Storage ต้องไปด้วย ไม่งั้นค้างกินพื้นที่โดยไม่มีใครเปิดดูได้อีก
+    for (const im of (r.images || [])) { if (im?.path) { try { await deleteFile(im.path); } catch {} } }
+    await deleteDoc(doc(db, "returns", r.id));
+    logAudit(user, {
+      action: AUDIT_ACTIONS.DELETE, collection: "returns", targetId: r.id,
+      targetLabel: `${r.returnNo} · ${r.customerName || ""}`,
+      before: { returnNo: r.returnNo, invoiceNo: r.invoiceNo || "", customerName: r.customerName || "", items: r.items || [], reason: r.reason || "" },
+      note: "ลบใบรับคืนที่ยกเลิกแล้วทิ้งถาวร",
+    });
+    return true;
+  };
+
+  // ลบใบที่ยกเลิกแล้วทีเดียวทั้งกอง — ใบทดสอบมักมาเป็นชุด กดทีละใบเสียเวลา
+  const handleDeleteReturnsBulk = async (list = []) => {
+    if (user.role !== "admin") { alert("ลบใบรับคืนได้เฉพาะ admin"); return; }
+    const NL = String.fromCharCode(10);
+    const ok = [], skip = [];
+    for (const r of list) { const b = canDeleteReturn(r); (b ? skip : ok).push(b ? `${r.returnNo} — ${b}` : r); }
+    if (!ok.length) { alert("ไม่มีใบที่ลบได้" + (skip.length ? NL + NL + skip.join(NL) : "")); return; }
+    if (!window.confirm(
+      `ลบใบรับคืนที่ยกเลิกแล้ว ${ok.length} ใบทิ้งถาวร?` + NL +
+      ok.map(r => `· ${r.returnNo} ${r.customerName || ""}`).join(NL) +
+      (skip.length ? NL + NL + `ข้าม ${skip.length} ใบ:` + NL + skip.join(NL) : "") +
+      NL + NL + "ลบแล้วเอาคืนไม่ได้"
+    )) return;
+    let done = 0;
+    for (const r of ok) {
+      for (const im of (r.images || [])) { if (im?.path) { try { await deleteFile(im.path); } catch {} } }
+      try {
+        await deleteDoc(doc(db, "returns", r.id));
+        logAudit(user, {
+          action: AUDIT_ACTIONS.DELETE, collection: "returns", targetId: r.id,
+          targetLabel: `${r.returnNo} · ${r.customerName || ""}`,
+          before: { returnNo: r.returnNo, invoiceNo: r.invoiceNo || "", customerName: r.customerName || "", items: r.items || [], reason: r.reason || "" },
+          note: "ลบใบรับคืนที่ยกเลิกแล้วทิ้งถาวร (ลบทั้งกอง)",
+        });
+        done++;
+      } catch (e) { alert(`ลบ ${r.returnNo} ไม่สำเร็จ: ${e.message || e}`); break; }
+    }
+    alert(`ลบแล้ว ${done} ใบ`);
+  };
+
   // 🚫 ยกเลิกบิล — ทางที่ควรใช้แทนการลบ เพราะเลขที่บิลไม่ขาดช่วง ตรวจย้อนหลังได้
   //
   //    admin / manager : ยกเลิกได้เอง
@@ -4893,6 +4964,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               onNewReturn={()=>{setEditingReturn(null);setShowReturnModal(true);}}
               onEditReturn={(r)=>{setEditingReturn(r);setShowReturnModal(true);}}
               onCancelReturn={handleCancelReturn}
+              onDeleteReturn={handleDeleteReturn}
+              onDeleteReturnsBulk={handleDeleteReturnsBulk}
               onQcReturn={handleQcReturn}
               onCreditNote={openCreditNote}
               onRefundPaid={handleRefundPaid}
