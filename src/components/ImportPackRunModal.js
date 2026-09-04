@@ -134,7 +134,7 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
     setBusy("กำลังอ่านไฟล์...");
     try {
       const rowsAll = [];
-      let pages = 0, skipped = 0, mism = 0;
+      let pages = 0, skipped = 0, mism = 0, textPieces = 0, withHeader = 0;
       const failed = [];
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
@@ -146,14 +146,36 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
           pages += res.pages || 0;
           skipped += res.skipped || 0;
           mism += res.mismatched || 0;
+          textPieces += res.textPieces || 0;
+          withHeader += res.pagesWithHeader || 0;
         } catch (e) {
           failed.push(`${f.name} (${e?.message || e})`);
         }
       }
       if (!rowsAll.length) {
-        throw new Error(failed.length
-          ? `อ่านไม่ได้สักไฟล์:${String.fromCharCode(10)}${failed.join(String.fromCharCode(10))}`
-          : "อ่านใบปะหน้าไม่ออกสักใบ — ไฟล์อาจเป็นรูปสแกน ไม่ใช่ข้อความ");
+        const NL = String.fromCharCode(10);
+        if (failed.length) throw new Error(`อ่านไม่ได้สักไฟล์:${NL}${failed.join(NL)}`);
+        // 🔍 บอกสาเหตุตามที่วัดได้จริง ไม่เดา — คนละสาเหตุคนละทางแก้
+        if (textPieces === 0) {
+          throw new Error([
+            "ไฟล์นี้ไม่มีข้อความให้อ่านเลย — เป็นรูปสแกน/รูปถ่ายที่บันทึกเป็น PDF", "",
+            "ทางแก้: ขอไฟล์ต้นฉบับที่โหลดจากแพลตฟอร์มโดยตรง (ไม่ใช่ถ่ายรูปหน้าจอ)",
+            "หรือใช้แท็บ 📋 วางข้อความ พิมพ์/วางรายการเอง",
+          ].join(NL));
+        }
+        if (withHeader === 0) {
+          throw new Error([
+            `อ่านข้อความในไฟล์ได้ (${textPieces.toLocaleString("th-TH")} ชิ้น) แต่หา "ตารางสินค้า" ไม่เจอสักหน้า`, "",
+            "แปลว่าใบปะหน้าแบบนี้จัดหน้าต่างจากที่ระบบเคยเจอ (คนละแพลตฟอร์ม/คนละรุ่น)", "",
+            "ส่งไฟล์นี้ให้ผู้ดูแลระบบดู เพื่อเพิ่มรูปแบบใหม่ให้ระบบอ่านออก",
+            "ระหว่างนี้ใช้แท็บ 📋 วางข้อความ ไปก่อนได้",
+          ].join(NL));
+        }
+        throw new Error([
+          `เจอตารางสินค้า ${withHeader} หน้า แต่อ่านรายละเอียดไม่ชัวร์สักหน้า`, "",
+          "ระบบเลือกที่จะไม่เดา เพราะเดาผิดแล้วไปตัดสต๊อกและออกบิลผิดตาม",
+          "ส่งไฟล์นี้ให้ผู้ดูแลระบบดู หรือใช้แท็บ 📋 วางข้อความ ไปก่อน",
+        ].join(NL));
       }
       // อ่านไม่ได้บางไฟล์ต้องบอก ไม่ใช่เงียบแล้วลงยอดขาด
       const notes = [];
