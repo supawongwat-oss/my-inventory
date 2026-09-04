@@ -16,6 +16,7 @@ const statusStyle = (s) => ({
 export default function ReturnsTab({
   returns = [], returnsCapped = false, role = {}, user,
   onNewReturn, onEditReturn, onCancelReturn, onDeleteReturn, onDeleteReturnsBulk, onOpenInvoice, onQcReturn, onCreditNote, onRefundPaid,
+  onPrintSlip,            // 🖨️ ใบรับคืนสินค้า — พิมพ์ได้ทุกสถานะ ไม่ต้องรอจับคู่บิล
 }) {
   const [search, setSearch] = React.useState("");
   const [filter, setFilter] = React.useState("ทั้งหมด");
@@ -108,6 +109,15 @@ export default function ReturnsTab({
                   <button onClick={() => onDeleteReturn?.(r)}
                     style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.08)", color: "#b91c1c", cursor: "pointer", fontSize: 11, fontFamily: "inherit", fontWeight: 700, whiteSpace: "nowrap" }}>
                     🗑️ ลบถาวร
+                  </button>
+                )}
+                {/* 🖨️ ใบรับคืนสินค้า — ต้องพิมพ์ได้ตั้งแต่ยังไม่จับคู่บิล
+                    เพราะของถึงร้านแล้วแต่ยังไม่รู้บิล ช่วงนั้นแหละที่ต้องมีกระดาษผูกกับของ
+                    ไม่ผูกกับสิทธิ์แก้ไข — คนแกะพัสดุอาจไม่ใช่คนที่แก้เอกสารได้ */}
+                {r.status !== "ยกเลิก" && (
+                  <button onClick={() => onPrintSlip?.(r)} title="พิมพ์ใบรับคืนสินค้า — ใบหนึ่งใส่ไว้กับของ อีกใบส่งให้ลูกค้า"
+                    style={{ padding: "4px 10px", borderRadius: 7, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 11, fontFamily: "inherit", whiteSpace: "nowrap" }}>
+                    🖨️ ใบรับคืน
                   </button>
                 )}
                 {canEdit && r.status !== "ยกเลิก" && (

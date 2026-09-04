@@ -61,6 +61,7 @@ const PackAliasesModal = lazy(() => import("./components/PackAliasesModal"));
 const ReturnsTab = lazy(() => import("./tabs/ReturnsTab"));
 const ReturnModal = lazy(() => import("./components/ReturnModal"));
 const PrintCreditNoteModal = lazy(() => import("./components/PrintCreditNoteModal"));
+const PrintReturnSlipModal = lazy(() => import("./components/PrintReturnSlipModal"));
 const NewInvoiceModal = lazy(() => import("./components/NewInvoiceModal"));
 const NewOrderModal = lazy(() => import("./components/NewOrderModal"));
 const PrintInvoiceModal = lazy(() => import("./components/PrintInvoiceModal"));
@@ -3532,6 +3533,10 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   };
   // 🧾↩️ เปิดใบลดหนี้ — จองเลขชุด CN ครั้งแรกที่เปิด แล้วเก็บติดใบไว้
   //    เก็บเลขไว้เพราะเอกสารการเงินต้องพิมพ์ซ้ำแล้วได้เลขเดิมเสมอ
+  // 📦↩️ ใบรับคืนสินค้า — พิมพ์ได้ทุกสถานะ ไม่ต้องรอจับคู่บิล
+  //    ต่างจากใบลดหนี้ที่เป็นเอกสารทางบัญชี ใบนี้คือหลักฐานว่า "ของถึงร้านแล้วเท่าไหร่"
+  const [returnSlip, setReturnSlip] = useState(null);
+
   const openCreditNote = async (r) => {
     if (!r?.id) return;
     if ((r.status || "") !== "จับคู่แล้ว") {
@@ -5078,6 +5083,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               onDeleteReturnsBulk={handleDeleteReturnsBulk}
               onQcReturn={handleQcReturn}
               onCreditNote={openCreditNote}
+              onPrintSlip={setReturnSlip}
               onRefundPaid={handleRefundPaid}
               onOpenInvoice={(id)=>{const inv=invoices.find(i=>i.id===id); if(inv) setShowPrintInvoice(inv); else alert("บิลใบนี้อยู่นอกช่วงที่โหลดมา — ขยายช่วงวันที่ในแท็บออกบิลก่อน");}}
             />
@@ -5794,6 +5800,18 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           onCancelReturn={handleCancelReturn}
           onClose={()=>{setShowReturnModal(false);setEditingReturn(null);}}
         />
+      )}
+
+      {/* 📦↩️ ใบรับคืนสินค้า — หลักฐานการรับของ ใช้ได้ตั้งแต่ยังไม่จับคู่บิล */}
+      {returnSlip && (
+        <Suspense fallback={null}>
+          <PrintReturnSlipModal
+            ret={returns.find(x => x.id === returnSlip.id) || returnSlip}
+            companyInfo={companyInfo}
+            printElementById={printElementById}
+            onClose={() => setReturnSlip(null)}
+          />
+        </Suspense>
       )}
 
       {/* 🧾↩️ ใบลดหนี้ — เอกสารแยกใบ อ้างถึงบิลต้นทาง (ไม่แก้ยอดบิลเดิม) */}
