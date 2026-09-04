@@ -104,26 +104,84 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
   };
 
   // ── รับไฟล์ ────────────────────────────────────────────────
-  const takeFile = async (file) => {
-    if (!file) return;
-    setErr(""); setBusy("กำลังอ่านไฟล์...");
+  // 📂 รับได้ทีละหลายไฟล์ — ลูกค้าส่งใบปะหน้ามาทีละไฟล์ ต้องลากรวดเดียวได้
+  //    รวมทุกไฟล์เป็นชุดเดียวก่อนจับคู่ ตัวยุบรายการซ้ำจะได้ทำงานข้ามไฟล์ด้วย
+  //    (ของเดิมรับแค่ไฟล์แรก ที่เหลือหายเงียบ ๆ ไม่มีอะไรบอก)
+  const takeFiles = async (fileList) => {
+    const all = [...(fileList || [])];
+    if (!all.length) return;
+    setErr("");
+
+    const pdfs = all.filter(isPdf);
+    const others = all.filter(f => !isPdf(f));
+
+    // Excel ยังทีละไฟล์ เพราะต้องแมปคอลัมน์ทีละแผ่น
+    if (!pdfs.length) {
+      if (others.length > 1) setErr(`ไฟล์ Excel/CSV รับได้ทีละไฟล์ — อ่านให้เฉพาะ ${others[0].name}`);
+      return takeSheet(others[0]);
+    }
+
+    // ลากไฟล์เดิมซ้ำในคราวเดียว = ยอดเบิ้ล ตัดทิ้งตั้งแต่ตรงนี้
+    const seen = new Set();
+    const files = pdfs.filter(f => {
+      const k = `${f.name}|${f.size}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    const dupCount = pdfs.length - files.length;
+
+    setBusy("กำลังอ่านไฟล์...");
     try {
-      if (isPdf(file)) {
-        const res = await readLabelPdf(file, (d, t) => setBusy(`กำลังอ่านใบปะหน้า ${d}/${t}...`));
-        if (!res.rows.length) throw new Error("อ่านใบปะหน้าไม่ออกสักใบ — ไฟล์อาจเป็นรูปสแกน ไม่ใช่ข้อความ");
-        setMismatched(res.mismatched || 0);
-        runMatch(res.rows, res.skipped, `ใบปะหน้า ${file.name} · ${res.pages} ใบ`);
-      } else {
-        const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
-        const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "", raw: false });
-        if (aoa.length < 2) throw new Error("ไฟล์นี้ไม่มีข้อมูล");
-        const headers = (aoa[0] || []).map(h => String(h || "").trim());
-        const mapping = {};
-        headers.forEach((h, i) => { mapping[i] = guessPackField(h); });
-        setSheet({ headers, aoa, mapping });
-        setRows(null);
-        setSource(`ไฟล์ ${file.name}`);
+      const rowsAll = [];
+      let pages = 0, skipped = 0, mism = 0;
+      const failed = [];
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        const tag = files.length > 1 ? `ไฟล์ ${i + 1}/${files.length} · ` : "";
+        try {
+          const res = await readLabelPdf(f, (d, t) => setBusy(`${tag}กำลังอ่านใบปะหน้า ${d}/${t}...`));
+          // ติดชื่อไฟล์ไปกับแถว — เวลาสงสัยแถวไหนจะได้รู้ว่ามาจากไฟล์ไหน
+          res.rows.forEach(r => rowsAll.push({ ...r, srcFile: f.name }));
+          pages += res.pages || 0;
+          skipped += res.skipped || 0;
+          mism += res.mismatched || 0;
+        } catch (e) {
+          failed.push(`${f.name} (${e?.message || e})`);
+        }
       }
+      if (!rowsAll.length) {
+        throw new Error(failed.length
+          ? `อ่านไม่ได้สักไฟล์:${String.fromCharCode(10)}${failed.join(String.fromCharCode(10))}`
+          : "อ่านใบปะหน้าไม่ออกสักใบ — ไฟล์อาจเป็นรูปสแกน ไม่ใช่ข้อความ");
+      }
+      // อ่านไม่ได้บางไฟล์ต้องบอก ไม่ใช่เงียบแล้วลงยอดขาด
+      const notes = [];
+      if (dupCount > 0) notes.push(`ข้ามไฟล์ซ้ำ ${dupCount} ไฟล์`);
+      if (failed.length) notes.push(`อ่านไม่ได้ ${failed.length} ไฟล์: ${failed.join(" · ")}`);
+      setErr(notes.join(" · "));
+      setMismatched(mism);
+      runMatch(rowsAll, skipped, files.length > 1
+        ? `ใบปะหน้า ${files.length} ไฟล์ · ${pages} ใบ`
+        : `ใบปะหน้า ${files[0].name} · ${pages} ใบ`);
+    } catch (e) {
+      setErr(e?.message || String(e));
+    } finally { setBusy(""); }
+  };
+
+  const takeSheet = async (file) => {
+    if (!file) return;
+    setBusy("กำลังอ่านไฟล์...");
+    try {
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "", raw: false });
+      if (aoa.length < 2) throw new Error("ไฟล์นี้ไม่มีข้อมูล");
+      const headers = (aoa[0] || []).map(h => String(h || "").trim());
+      const mapping = {};
+      headers.forEach((h, i) => { mapping[i] = guessPackField(h); });
+      setSheet({ headers, aoa, mapping });
+      setRows(null);
+      setSource(`ไฟล์ ${file.name}`);
     } catch (e) {
       setErr(e?.message || String(e));
     } finally { setBusy(""); }
@@ -264,6 +322,7 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
 
   // แถวหนึ่งอาจมาจากหลายใบ (ยุบรวมของเหมือนกันแล้ว) — บอกให้ครบจะได้ตามไปดูใบจริงถูก
   const pagesOf = (r) => [...new Set((r.sources || [r]).map(x => x.page).filter(Boolean))];
+  const filesOf = (r) => [...new Set((r.sources || [r]).map(x => x.srcFile).filter(Boolean))];
   const pageLabel = (r) => {
     const ps = pagesOf(r);
     if (!ps.length) return "";
@@ -271,7 +330,9 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
   };
   const pageTitle = (r) => {
     const ps = pagesOf(r);
-    return ps.length ? `มาจากใบที่ ${ps.join(", ")}` : "";
+    const fs = filesOf(r);
+    if (!ps.length) return fs.length ? `มาจากไฟล์ ${fs.join(", ")}` : "";
+    return `มาจากใบที่ ${ps.join(", ")}` + (fs.length ? `${String.fromCharCode(10)}ไฟล์: ${fs.join(", ")}` : "");
   };
 
   const Tab = ({ id, children }) => (
@@ -299,20 +360,20 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
           {tab !== "paste" ? (
             <div onClick={() => fileRef.current?.click()}
               onDragOver={e => e.preventDefault()}
-              onDrop={e => { e.preventDefault(); takeFile(e.dataTransfer.files?.[0]); }}
+              onDrop={e => { e.preventDefault(); takeFiles(e.dataTransfer.files); }}
               style={{ border: `2px dashed ${T.accent}66`, borderRadius: 12, padding: "38px 20px", textAlign: "center", cursor: "pointer", background: "rgba(59,91,139,0.04)" }}>
               <div style={{ fontSize: 34, marginBottom: 8 }}>{tab === "pdf" ? "📄" : "📂"}</div>
               <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>
-                {tab === "pdf" ? "ลากไฟล์ใบปะหน้า PDF มาวางที่นี่" : "ลากไฟล์ Excel/CSV มาวางที่นี่"}
+                {tab === "pdf" ? "ลากไฟล์ใบปะหน้า PDF มาวางที่นี่ — ลากทีเดียวหลายไฟล์ได้" : "ลากไฟล์ Excel/CSV มาวางที่นี่"}
               </div>
               <div style={{ fontSize: 12, color: T.muted, marginTop: 6, lineHeight: 1.7 }}>
                 {tab === "pdf"
-                  ? "ไฟล์เดียวกับที่ลูกค้าส่งมาให้แปะ — ไม่ต้องขออะไรเพิ่ม ระบบอ่านชื่อสินค้า สี ไซส์ ให้เอง"
+                  ? "ไฟล์เดียวกับที่ลูกค้าส่งมาให้แปะ — ลูกค้าส่งมาทีละไฟล์ก็เลือกทีเดียวได้ทั้งหมด ระบบรวมให้เอง"
                   : "รองรับไฟล์ที่ export จาก Seller Center"}
                 <br/>หรือกดเพื่อเลือกไฟล์
               </div>
-              <input ref={fileRef} type="file" accept={tab === "pdf" ? ".pdf" : ".xlsx,.xls,.csv"} style={{ display: "none" }}
-                onChange={e => { takeFile(e.target.files?.[0]); if (e.target) e.target.value = ""; }}/>
+              <input ref={fileRef} type="file" multiple={tab === "pdf"} accept={tab === "pdf" ? ".pdf" : ".xlsx,.xls,.csv"} style={{ display: "none" }}
+                onChange={e => { takeFiles(e.target.files); if (e.target) e.target.value = ""; }}/>
             </div>
           ) : (
             <>
