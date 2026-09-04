@@ -51,6 +51,24 @@ export default function PackRunTab({
   const closed = React.useMemo(() => packRuns.filter(r => r.status === "ปิดแล้ว"), [packRuns]);
   const run = React.useMemo(() => open.find(r => r.customerId === custId) || null, [open, custId]);
 
+  // 📊 หลังพิมพ์ใบหยิบของแล้ว ยอดขยับไปเท่าไหร่
+  //    เทียบยอดปัจจุบันกับยอดที่จดไว้ตอนพิมพ์ (lastPick.counts)
+  const pickDelta = React.useMemo(() => {
+    const prev = run?.lastPick?.counts;
+    if (!prev) return null;
+    const cur = run.counts || {};
+    const add = {};
+    let addQty = 0, lessCount = 0;
+    Object.keys(cur).forEach(k => {
+      const d = (Number(cur[k]) || 0) - (Number(prev[k]) || 0);
+      if (d > 0) { add[k] = d; addQty += d; }
+      else if (d < 0) lessCount++;
+    });
+    // รายการที่หายไปจากรอบทั้งอัน (ถอนออก) ก็นับว่ายอดลด
+    Object.keys(prev).forEach(k => { if (!(k in cur) && (Number(prev[k]) || 0) > 0) lessCount++; });
+    return { add, addQty, lessCount };
+  }, [run]);
+
   // 👥 ลูกค้าแพ็คมีแค่ไม่กี่เจ้า แต่ในระบบมีลูกค้าเป็นร้อย
   //    เดิมเป็น <select> ที่เทลูกค้าทุกคนลงมา ไม่มีช่องค้นหา → หาเจ้าที่ต้องการไม่เจอ
   //    ที่นี่ใช้ "เคยเปิดรอบแพ็คมาก่อน" เป็นตัวคัด — ไม่ต้องให้ใครมานั่งติ๊กตั้งค่าเพิ่ม
@@ -412,6 +430,35 @@ export default function PackRunTab({
                 </div>
               )}
             </CardBox>
+          )}
+
+          {/* 🖨️ พิมพ์ใบหยิบของไปแล้ว แล้วมีของเพิ่มเข้ามาอีก
+              ใบที่ถืออยู่ในมือเก่ากว่าความจริง หยิบตามใบอย่างเดียวจะขาด
+              แล้วตอนปิดรอบระบบตัดสต๊อกและออกบิลตามยอดจริง = เก็บเงินของที่ไม่ได้ส่ง */}
+          {pickDelta && (pickDelta.addQty > 0 || pickDelta.lessCount > 0) && (
+            <div style={{ padding: "10px 14px", marginBottom: 12, borderRadius: 10,
+              background: "rgba(217,119,6,0.10)", border: "1px solid rgba(217,119,6,0.45)" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>
+                ⚠️ พิมพ์ใบหยิบของไปแล้วเมื่อ {run.lastPick?.at || "-"} — หลังจากนั้นยอดเปลี่ยน
+              </div>
+              <div style={{ fontSize: 12, color: "#92400e", marginTop: 3 }}>
+                {pickDelta.addQty > 0 && <>มีของเพิ่มอีก <b>{pickDelta.addQty}</b> ชิ้น</>}
+                {pickDelta.addQty > 0 && pickDelta.lessCount > 0 && " · "}
+                {pickDelta.lessCount > 0 && <>มี <b>{pickDelta.lessCount}</b> รายการที่ยอดลดลง (ต้องเทียบกับใบเดิมเอง)</>}
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                {pickDelta.addQty > 0 && (
+                  <Btn onClick={() => onPrintPickList?.(run, pickDelta.add)}
+                    title="พิมพ์เฉพาะของที่เพิ่มเข้ามาหลังใบก่อน — เอาไปหยิบเพิ่มโดยไม่ต้องไล่ทั้งรอบใหม่"
+                    style={{ background: "#d97706", color: "white", border: "none", fontWeight: 700, fontSize: 12 }}>
+                    🖨️ ใบหยิบของ (เฉพาะที่เพิ่ม {pickDelta.addQty} ชิ้น)
+                  </Btn>
+                )}
+                <Btn onClick={() => onPrintPickList?.(run)} style={{ fontSize: 12 }}>
+                  🖨️ พิมพ์ทั้งรอบใหม่
+                </Btn>
+              </div>
+            </div>
           )}
 
           <CardBox style={{ marginBottom: 12 }}>

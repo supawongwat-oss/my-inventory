@@ -2293,6 +2293,26 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   const [importPackRun, setImportPackRun] = useState(null);
   const [aliasCustomer, setAliasCustomer] = useState(null); // ลูกค้าที่กำลังดูการจับคู่ชื่อสินค้า
 
+  // 🖨️ สั่งพิมพ์ใบหยิบของ + จำไว้ว่าพิมพ์ตอนไหน ยอดเท่าไหร่
+  //
+  // ทำไมต้องจำ: พิมพ์ใบไปแล้วลูกค้ายังเพิ่มของเข้ารอบได้เรื่อย ๆ จนกว่าจะปิดรอบ
+  // ใบที่ถืออยู่ในมือจึงเก่ากว่าความจริง ถ้าหยิบตามใบอย่างเดียวจะหยิบขาด
+  // แล้วตอนปิดรอบระบบตัดสต๊อกและออกบิลตามยอดจริง = เก็บเงินของที่ไม่ได้ส่ง
+  // เก็บยอด ณ ตอนพิมพ์ไว้ เพื่อบอกได้ว่า "หลังพิมพ์มีของเพิ่มอะไรบ้าง"
+  //
+  // partial = ยอดเฉพาะส่วนที่เพิ่ม (ใบเสริม) · ไม่ส่ง = พิมพ์ทั้งรอบ
+  const handlePrintPickList = async (run, partial) => {
+    if (!run) return;
+    setPrintPackRun(partial ? { ...run, counts: partial, __partial: true, __since: run.lastPick?.at || "" } : run);
+    const live = packRuns.find(r => r.id === run.id) || run;
+    try {
+      // จดยอดปัจจุบันเสมอ แม้เป็นใบเสริม — ครั้งถัดไปจะได้นับต่อจากจุดนี้
+      await updateDoc(doc(db, "packRuns", run.id), {
+        lastPick: { at: now(), by: user.name, counts: live.counts || {} },
+      });
+    } catch (e) { console.warn("[packRun] จดเวลาพิมพ์ใบหยิบของไม่สำเร็จ:", e?.message || e); }
+  };
+
   // 🖨️ ใบหยิบของ — วาดนอกจอแล้วสั่งพิมพ์ทันที ไม่ต้องเปิดหน้าต่างให้กดซ้ำ
   //    รอ 1 จังหวะให้ React วาดเสร็จก่อน ไม่งั้นจะพิมพ์กล่องเปล่า
   useEffect(() => {
@@ -4536,7 +4556,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               onCancelRun={handleCancelPackRun}
               onBillRun={handleBillPackRun}
               openingInvoice={openingInvoice}
-              onPrintPickList={setPrintPackRun}
+              onPrintPickList={handlePrintPickList}
               onBulkImport={setImportPackRun}
               onUndoImport={handleUndoPackImport}
               onManageAliases={(c) => setAliasCustomer(c || {})}
@@ -5692,8 +5712,16 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         <div id="packrun-print-area" style={{position:"fixed",left:-99999,top:0,width:"190mm",background:"white",color:"#000",fontFamily:"'Sarabun',sans-serif"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",borderBottom:"2px solid #000",paddingBottom:6,marginBottom:10}}>
             <div>
-              <div style={{fontSize:18,fontWeight:800}}>ใบหยิบของ</div>
+              <div style={{fontSize:18,fontWeight:800}}>
+                ใบหยิบของ{printPackRun.__partial ? " (เฉพาะที่เพิ่มทีหลัง)" : ""}
+              </div>
               <div style={{fontSize:13,fontWeight:700}}>{printPackRun.customerName}</div>
+              {/* ใบเสริมต้องบอกให้ชัดว่าไม่ใช่ทั้งรอบ ไม่งั้นเผลอหยิบตามใบนี้ใบเดียวแล้วขาด */}
+              {printPackRun.__partial && (
+                <div style={{fontSize:11,fontWeight:700,border:"1px solid #000",padding:"2px 6px",marginTop:4,display:"inline-block"}}>
+                  ⚠️ ใบนี้คือของที่เพิ่มเข้ามาหลังพิมพ์ใบก่อน{printPackRun.__since ? ` (${printPackRun.__since})` : ""} — ต้องหยิบคู่กับใบเดิม
+                </div>
+              )}
             </div>
             <div style={{textAlign:"right",fontSize:11}}>
               <div style={{fontFamily:"monospace",fontWeight:700,fontSize:13}}>{printPackRun.runNo}</div>
