@@ -209,27 +209,26 @@ function LiveNumInput({ value, onApply, ...rest }) {
   );
 }
 
-// 💰 แผงตั้งราคาทีเดียว — ใส่ราคาตามกลุ่มไซส์ (หรือแยกทีละไซส์) แล้วใช้กับทุกสี/ทุกรุ่นในบิล
+// 💰 แผงตั้งราคาทีเดียว — ใส่ราคาตามกลุ่มไซส์ (หรือแยกทีละไซส์) แล้วใช้กับทุกสีในรุ่นนั้น
 function BulkPricePanel({ items, setInvoiceForm, clothingItems = [] }) {
   const [open, setOpen] = React.useState(false); // พับไว้ก่อน — กดเปิดเมื่อจะตั้งราคา
   const [mode, setMode] = React.useState("group"); // "group" = ตามกลุ่ม | "each" = แยกทีละไซส์
 
-  // 🏷️ แยกช่องราคาตาม "หมวดย่อย" ของรุ่น (ตั้งที่ 🛍️ หน้าร้าน → 🏷️ หมวดหมู่ ในหน้าคลัง)
+  // 🏷️ แยกช่องราคาตาม "ชื่อรุ่น" — แขนยาวกับแขนสั้นราคาไม่เท่ากัน ห้ามยุบเข้าช่องเดียว
   //
-  // ทำไมต้องแยก: แขนยาว/แขนสั้น (หรือคนละหมวด) ราคาไม่เท่ากัน ถ้ายุบเข้าช่องเดียว
-  // พิมพ์ราคาทีเดียวจะไปทับของอีกแบบหมด
+  // เดิมแยกตาม "หมวดย่อย" (category) ของรุ่น ซึ่งพังกับข้อมูลจริงในคลัง:
+  //   · 13 จาก 44 รุ่นไม่ได้ตั้งหมวดไว้เลย (รวม "โคตรถูก 9 แขนยาว" กับ "โคตรถูก 9 แขนกุด")
+  //     ทั้งหมดจึงตกไปอยู่กลุ่มว่างกลุ่มเดียวกัน → พิมพ์ราคาทีเดียวทับข้ามชนิดแขน
+  //   · หมวดที่ตั้งไว้ก็ไม่ได้บอกชนิดแขน — "คอกลม" หมายถึงแขนสั้นแต่ไม่มีคำว่าแขนสั้น
+  //     และมีทั้ง "คอวี แขนยาว" กับ "เสื้อคอวี แขนยาว" ที่หมายถึงอย่างเดียวกัน
   //
-  // ทำไมใช้หมวดย่อย: ระบบไม่มีช่อง "ชนิดแขน" แยกต่างหาก และเดาจากชื่อรุ่นก็ไม่แน่นอน
-  // หมวดย่อยเป็นช่องที่ตั้งเองได้อยู่แล้ว → จัดกลุ่มไว้ยังไง ราคาก็แยกตามนั้นเป๊ะ
-  // งาน custom ไม่มีรุ่นในคลัง → ใช้ช่อง variant ที่พนักงานกรอกไว้แทน
-  const catById = React.useMemo(() => {
-    const m = new Map();
-    clothingItems.forEach(c => m.set(c.id, String(c.category || "").trim()));
-    return m;
-  }, [clothingItems]);
+  // ชื่อรุ่นมีเสมอ (บิลเก็บ snapshot ไว้ในตัวเอง) ไม่ต้องรอใครไปตั้งค่าอะไรก่อน
+  // และตรงกับความจริงว่า "โคตรถูก 9 แขนยาว" กับ "โคตรถูก 9 แขนกุด" เป็นคนละรุ่นในคลังอยู่แล้ว
+  // งาน custom ที่แยกแบบด้วยช่อง variant ก็ยังแยกช่องราคาให้ตามเดิม
   const groupOf = React.useCallback(
-    (it) => catById.get(it.clothingId) || String(it.variant || "").trim(),
-    [catById]
+    (it) => [String(it.clothingName || "").trim(), String(it.variant || "").trim()]
+      .filter(Boolean).join(" · "),
+    []
   );
   const variants = React.useMemo(() => [...new Set(items.map(groupOf))], [items, groupOf]);
   const splitVariant = variants.length > 1;
@@ -246,7 +245,7 @@ function BulkPricePanel({ items, setInvoiceForm, clothingItems = [] }) {
           })();
       const v = groupOf(it);
       const key = splitVariant ? `${v}|${t.key}` : t.key;
-      const label = splitVariant ? `${v || "ไม่ระบุหมวด"} · ${t.label}` : t.label;
+      const label = splitVariant ? `${v || "ไม่ระบุรุ่น"} · ${t.label}` : t.label;
       // เรียงตามแบบเสื้อก่อน แล้วค่อยตามไซส์ — ราคาของแต่ละแบบจะอยู่ติดกัน
       const rank = splitVariant ? (vRank.get(v) ?? 99) * 1000 + t.rank : t.rank;
       if (!map.has(key)) map.set(key, { key, label, rank, idxs: [], qty: 0, prices: new Set() });
@@ -291,8 +290,8 @@ function BulkPricePanel({ items, setInvoiceForm, clothingItems = [] }) {
   return (
     <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, marginBottom: 10, background: "rgba(52,211,153,0.05)", overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", flexWrap: "wrap", cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>⚡ ตั้งราคาทีเดียว (ใช้กับทุกสี/ทุกรุ่น)</span>
-        <span style={{ fontSize: 10, color: T.muted }}>{buckets.length} กลุ่ม{splitVariant ? " · แยกตามหมวดย่อยให้แล้ว" : "ไซส์"}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>⚡ ตั้งราคาทีเดียว (ใช้กับทุกสีในรุ่นเดียวกัน)</span>
+        <span style={{ fontSize: 10, color: T.muted }}>{buckets.length} กลุ่ม{splitVariant ? ` · แยกให้แล้ว ${variants.length} รุ่น` : "ไซส์"}</span>
         <span style={{ marginLeft: "auto", fontSize: 11, color: T.muted }}>{open ? "▲" : "▼"}</span>
       </div>
       {open && (
@@ -308,10 +307,27 @@ function BulkPricePanel({ items, setInvoiceForm, clothingItems = [] }) {
               style={{ padding: "4px 10px", borderRadius: 7, cursor: "pointer", fontSize: 11, fontFamily: "inherit", fontWeight: 700, border: "1px solid rgba(59,91,139,0.35)", background: "rgba(59,91,139,0.08)", color: T.accent }}>
               🔄 ดึงราคาจากคลัง
             </button>
-            <span style={{ marginLeft: 6, fontSize: 11, color: T.muted, fontWeight: 600 }}>ทุกรายการ:</span>
+            {/* ⚠️ ช่องนี้ทับราคาทุกแถวจริง ๆ ข้ามรุ่นด้วย — บิลที่มีทั้งแขนยาวและแขนสั้น
+                ถ้าพิมพ์ทีเดียวแล้วไม่ถาม ราคาอีกรุ่นจะเพี้ยนโดยไม่มีใครทันเห็น */}
+            <span style={{ marginLeft: 6, fontSize: 11, color: splitVariant ? T.amber : T.muted, fontWeight: 600 }}
+              title={splitVariant ? "บิลนี้มีหลายรุ่น ราคาอาจไม่เท่ากัน — ใช้ช่องราคาของแต่ละรุ่นด้านล่างจะตรงกว่า" : ""}>
+              ทุกรายการ{splitVariant ? " ⚠️" : ""}:
+            </span>
             <input type="number" min="0" step="0.01" placeholder="฿"
               onFocus={e => e.target.select()}
-              onBlur={e => { if (e.target.value !== "") { applyAll(e.target.value); e.target.value = ""; } }}
+              onBlur={e => {
+                const v = e.target.value;
+                e.target.value = "";
+                if (v === "") return;
+                if (splitVariant && !window.confirm([
+                  `บิลนี้มี ${variants.length} รุ่น ราคาอาจไม่เท่ากัน (เช่น แขนยาวกับแขนสั้น)`, "",
+                  ...variants.slice(0, 8).map(x => `  • ${x || "ไม่ระบุรุ่น"}`),
+                  ...(variants.length > 8 ? [`  … และอีก ${variants.length - 8} รุ่น`] : []), "",
+                  `ตั้ง ${v} บาท ทับทุกรุ่นเลยไหม?`,
+                  `(ถ้าไม่ ให้ใช้ช่องราคาของแต่ละรุ่นด้านล่างแทน)`,
+                ].join(String.fromCharCode(10)))) return;
+                applyAll(v);
+              }}
               onKeyDown={e => e.key === "Enter" && e.target.blur()}
               style={{ width: 70, textAlign: "right", background: T.input, border: `1px solid ${T.inputBorder}`, borderRadius: 6, color: T.text, fontFamily: "monospace", fontSize: 11, padding: "4px 6px", outline: "none" }} />
           </div>
