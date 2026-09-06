@@ -19,6 +19,7 @@ import { uploadImage, deleteFile } from "./utils/upload";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiRegion";
 import { reserveDocNo } from "./utils/docNumber";
 import { isEquipmentModel, splitItemsByGroup, GROUP_LABEL } from "./utils/billGroup";
+import { fetchInvoicesOfCustomer } from "./utils/fetchInvoices";
 import { runToItems, groupRun, totalOf } from "./utils/packRun";
 import { withSearchKeys, withCustomerSearchKeys } from "./utils/searchKeys";
 
@@ -2974,7 +2975,23 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     //    เตือนอย่างเดียว ไม่บล็อก — ลูกค้าสั่งของชุดเดิมซ้ำจริง ๆ ก็มี
     //    แยกบิลแล้วต้องเช็กทีละใบ — ยอดรวมทั้งสองใบไม่ตรงกับบิลเก่าใบไหนอยู่แล้ว
     //    ถ้าเช็กจากยอดรวม ด่านนี้จะเงียบไปเฉย ๆ ทั้งที่ของชุดเดิมออกซ้ำจริง
-    const dups = [...new Map(parts.flatMap(p => findDuplicateInvoices(invoices, {
+    // 🔎 ดึงบิลของลูกค้ารายนี้มาเทียบตรง ๆ ก่อน
+    //    เดิมเทียบกับ "บิลที่บังเอิญโหลดค้างอยู่" เท่านั้น — ด่านนี้เขียนไว้ว่ากัน 30 วัน
+    //    แต่จริง ๆ กันได้แค่เท่าที่หน้าต่างโหลดครอบคลุม พอหน้าต่างสั้นลงด่านก็สั้นตาม
+    //    โดยไม่มีอะไรฟ้อง ถามตรง ๆ ว่า "ขอบิลของร้านนี้" ได้ครบเสมอ ไม่ขึ้นกับหน้าต่าง
+    beginSave();   // กันกดซ้ำระหว่างรอดึงข้อมูล — ต้องมาก่อน await ทุกครั้ง
+    let dupPool = invoices;
+    try {
+      const mine = await fetchInvoicesOfCustomer(invoiceForm.customerId);
+      if (mine.length) {
+        const seen = new Set(mine.map(i => i.id));
+        dupPool = [...mine, ...invoices.filter(i => !seen.has(i.id))];
+      }
+    } catch (e) {
+      // ดึงไม่ได้ก็ยังออกบิลได้ แค่ด่านกันซ้ำอ่อนลงเท่าเดิมกับของเก่า
+      console.warn("[invoice] ดึงบิลเก่าของลูกค้าเพื่อเช็คซ้ำไม่สำเร็จ:", e);
+    }
+    const dups = [...new Map(parts.flatMap(p => findDuplicateInvoices(dupPool, {
       customerId: invoiceForm.customerId, customerName: invoiceForm.customerName,
       total: calcOf(p).total, date: docDateStr,
     })).map(d => [d.id || d.invoiceNo, d])).values()];
@@ -2988,9 +3005,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         "ออกอีกใบ = ลูกค้าจะโดนเก็บเงิน 2 รอบ", "",
         "ถ้าลูกค้าสั่งของชุดเดิมซ้ำจริง ๆ กดตกลงเพื่อออกต่อ",
       ].filter(x => x !== "").join(NLx));
-      if (!ok) return;
+      if (!ok) { endSave(); return; }
     }
-    beginSave();
     // จองเลขทีละใบ — ใบที่จองไปแล้วต้องนับเป็น "มีอยู่แล้ว" ตอนจองใบถัดไป
     // ไม่งั้นถ้า counter ใน Firestore ใช้ไม่ได้แล้วตกไปทาง fallback (max+1 จากที่โหลดมา)
     // ทั้งสองใบจะได้เลขเดียวกัน
