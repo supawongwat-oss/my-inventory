@@ -4,6 +4,8 @@ import { T } from "../theme";
 import { CardBox } from "../components/ui";
 import { matchTokens } from "../utils/search";
 import { monthlyStats } from "../utils/orderStats";
+import { fetchInvoicesForPeriod } from "../utils/fetchInvoices";
+import { fmtISO, parseISODate as parseISO, parseDDMMYYYY as parseDDMM } from "../utils/statement";
 import { db } from "../firebase";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { AGING_DOC, DEFAULT_BANDS, DAYS_PER_MONTH, normalizeBands, bandFrom, bandLabel, bandSubLabel, bandIndexFor, tint } from "../utils/aging";
@@ -61,6 +63,56 @@ function MiniBar({ label, value, max, color, unit = "", subtext }) {
 export default function ReportsTab({ products = [], transactions = [], invoices = [], orders = [], customers = [], clothingItems = [] }) {
   const [tab, setTab] = useState("overview");
 
+  // 📥 รายงานไปขอบิลตามช่วงที่เลือกเอง แทนที่จะกินจากกองที่แอปโหลดค้างไว้
+  //
+  //    เดิมรายงานทุกหน้าคิดจากบิล 30 วันล่าสุดเท่านั้น โดยไม่มีอะไรบอก —
+  //    รายงาน VAT เดือนที่แล้วจึงได้ตัวเลขไม่ครบ และ Aging ก็เห็นหนี้แค่เดือนเดียว
+  //    ที่แย่กว่าคือมันดู "ถูก" ทุกอย่าง เลยไม่มีใครสงสัย
+  //
+  //    ตอนนี้เลือกช่วงเองได้ และต้องเขียนกำกับเสมอว่าตัวเลขมาจากช่วงไหน
+  const [rFrom, setRFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 90); return fmtISO(d); });
+  const [rTo, setRTo] = useState(() => fmtISO(new Date()));
+  const [rInv, setRInv] = useState(null);          // { invoices, at, capped }
+  const [rState, setRState] = useState("idle");    // idle | loading | done | error
+  const [rTick, setRTick] = useState(0);
+
+  useEffect(() => {
+    const from = parseISO(rFrom), to = parseISO(rTo);
+    if (!from || !to) return;
+    let dead = false;
+    setRState("loading");
+    fetchInvoicesForPeriod(from, to)
+      .then(r => { if (!dead) { setRInv(r); setRState("done"); } })
+      .catch(e => {
+        if (dead) return;
+        console.warn("[reports] ดึงบิลตามช่วงไม่สำเร็จ:", e);
+        setRInv(null); setRState("error");
+      });
+    return () => { dead = true; };
+  }, [rFrom, rTo, rTick]);
+
+  // กรองให้ตรงช่วงจริงด้วย inv.date อีกชั้น — ตัวที่ดึงมาเผื่อหัวท้ายไว้
+  // (บิลลงวันที่ย้อนหลังได้ ดูคำอธิบายใน utils/fetchInvoices.js)
+  const rangeInvoices = useMemo(() => {
+    if (!rInv) return invoices;
+    const from = parseISO(rFrom), to = parseISO(rTo);
+    if (!from || !to) return rInv.invoices;
+    const lo = from.getTime();
+    const hi = new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23, 59, 59).getTime();
+    return rInv.invoices.filter(i => {
+      const d = parseDDMM(i.date);
+      return d && d.getTime() >= lo && d.getTime() <= hi;
+    });
+  }, [rInv, rFrom, rTo, invoices]);
+
+  const quick = (label, from, to) => (
+    <button key={label} onClick={() => { setRFrom(fmtISO(from)); setRTo(fmtISO(to)); }}
+      style={{ padding: "5px 11px", borderRadius: 7, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>
+      {label}
+    </button>
+  );
+  const today = new Date();
+
   // ============== SHARED DATA ==============
   const totalStockValue = useMemo(() => products.reduce((s, p) => s + (Number(p.qty) * Number(p.costPrice || 0)), 0), [products]);
   const totalSaleValue  = useMemo(() => products.reduce((s, p) => s + (Number(p.qty) * Number(p.salePrice || 0)), 0), [products]);
@@ -79,6 +131,45 @@ export default function ReportsTab({ products = [], transactions = [], invoices 
 
   return (
     <div style={{ animation: "fadeUp 0.4s ease" }}>
+      {/* 📅 ช่วงที่รายงานใช้คิด — ต้องอยู่บนสุดและอ่านออกทันที
+          ตัวเลขในรายงานไม่มีความหมายถ้าไม่รู้ว่ามาจากช่วงไหน */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "10px 14px", marginBottom: 12, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>📅 ช่วงข้อมูล</span>
+        <input type="date" value={rFrom} onChange={e => setRFrom(e.target.value)}
+          style={{ padding: "5px 9px", borderRadius: 7, border: `1px solid ${T.border}`, fontSize: 12, fontFamily: "inherit" }}/>
+        <span style={{ color: T.muted }}>→</span>
+        <input type="date" value={rTo} onChange={e => setRTo(e.target.value)}
+          style={{ padding: "5px 9px", borderRadius: 7, border: `1px solid ${T.border}`, fontSize: 12, fontFamily: "inherit" }}/>
+        {quick("เดือนนี้", new Date(today.getFullYear(), today.getMonth(), 1), today)}
+        {quick("เดือนที่แล้ว", new Date(today.getFullYear(), today.getMonth() - 1, 1), new Date(today.getFullYear(), today.getMonth(), 0))}
+        {quick("3 เดือน", new Date(today.getFullYear(), today.getMonth() - 3, today.getDate()), today)}
+        {quick("6 เดือน", new Date(today.getFullYear(), today.getMonth() - 6, today.getDate()), today)}
+        {quick("1 ปี", new Date(today.getFullYear() - 1, today.getMonth(), today.getDate()), today)}
+        <span style={{ marginLeft: "auto", fontSize: 11, color: rState === "error" ? T.red : T.muted }}>
+          {rState === "loading" ? "⏳ กำลังดึงบิล…"
+            : rState === "error" ? "🚨 ดึงไม่สำเร็จ — ใช้บิลที่โหลดค้างไว้แทน ตัวเลขอาจไม่ครบ"
+            : rInv ? `บิลในช่วงนี้ ${rangeInvoices.length.toLocaleString("th-TH")} ใบ`
+            : ""}
+        </span>
+        {rState !== "loading" && (
+          <button onClick={() => setRTick(n => n + 1)}
+            style={{ padding: "5px 11px", borderRadius: 7, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>
+            🔄
+          </button>
+        )}
+      </div>
+      {rInv?.capped && (
+        <div style={{ padding: "9px 13px", marginBottom: 12, background: "rgba(185,74,72,0.08)", border: "1px solid rgba(185,74,72,0.4)", borderRadius: 9, fontSize: 11.5, color: T.red }}>
+          🚨 ช่วงนี้มีบิลมากเกินกว่าที่ดึงมาได้ครั้งเดียว — <b>ตัวเลขไม่ครบ</b> เลือกช่วงให้สั้นลง
+        </div>
+      )}
+      {/* ⏰ Aging ดูหนี้ค้าง — หนี้เก่าที่สุดคือตัวที่สำคัญที่สุด ถ้าช่วงสั้นไปจะไม่เห็น */}
+      {tab === "aging" && (
+        <div style={{ padding: "8px 13px", marginBottom: 12, background: "rgba(217,119,6,0.07)", border: "1px solid rgba(217,119,6,0.3)", borderRadius: 9, fontSize: 11, color: "#b45309" }}>
+          หน้านี้นับเฉพาะบิลในช่วงที่เลือกด้านบน — หนี้ที่เก่ากว่านั้นจะไม่ขึ้น กด "1 ปี" ถ้าจะตามหนี้เก่า
+        </div>
+      )}
+
       {/* Sub-tabs */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 18, padding: 8, background: T.card, borderRadius: 12, border: `1px solid ${T.border}` }}>
         {tabs.map(t => {
@@ -97,13 +188,13 @@ export default function ReportsTab({ products = [], transactions = [], invoices 
         })}
       </div>
 
-      {tab === "overview"  && <OverviewTab products={products} transactions={transactions} invoices={invoices} orders={orders} totalStockValue={totalStockValue} totalSaleValue={totalSaleValue} estimatedProfit={estimatedProfit}/>}
-      {tab === "aging"     && <AgingTab invoices={invoices}/>}
-      {tab === "customer"  && <SalesByCustomerTab invoices={invoices} customers={customers}/>}
-      {tab === "product"   && <SalesByProductTab transactions={transactions} invoices={invoices} products={products}/>}
+      {tab === "overview"  && <OverviewTab products={products} transactions={transactions} invoices={rangeInvoices} orders={orders} totalStockValue={totalStockValue} totalSaleValue={totalSaleValue} estimatedProfit={estimatedProfit}/>}
+      {tab === "aging"     && <AgingTab invoices={rangeInvoices}/>}
+      {tab === "customer"  && <SalesByCustomerTab invoices={rangeInvoices} customers={customers}/>}
+      {tab === "product"   && <SalesByProductTab transactions={transactions} invoices={rangeInvoices} products={products}/>}
       {tab === "trend"     && <MonthlyTrendTab/>}
       {tab === "profit"    && <ProfitTab products={products} clothingItems={clothingItems}/>}
-      {tab === "vat"       && <VATTab invoices={invoices}/>}
+      {tab === "vat"       && <VATTab invoices={rangeInvoices}/>}
     </div>
   );
 }
