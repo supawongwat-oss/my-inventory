@@ -11,6 +11,7 @@ import { T } from "../theme";
 import { Modal, MHead, BtnPrimary, BtnGhost } from "./ui";
 import { compressImage } from "../utils/imageCompress";
 import { uploadImage, deleteFile } from "../utils/upload";
+import { fetchInvoicesOfCustomer } from "../utils/fetchInvoices";
 import {
   RETURN_REASONS, RETURN_CONDITIONS, conditionRestocks,
   calcReturn, suggestInvoices, lineKey, matchesTokens, invoiceItemsText, norm, SETTLE_MODES, settleModeOf,
@@ -63,7 +64,35 @@ export default function ReturnModal({
   const validItems = form.items.filter(i => (i.clothingName || i.clothingId) && Number(i.qty) > 0);
   const calc = calcReturn(validItems);
 
-  const pickedInvoice = form.invoiceId ? invoices.find(i => i.id === form.invoiceId) : null;
+  // 📥 พอรู้ว่าเป็นลูกค้ารายไหน ให้ไปขอบิลของร้านนั้นมาทั้งหมด
+  //
+  //    ของคืนมาช้ากว่าวันขายเสมอ และบางทีเป็นเดือน — แต่กองที่แอปโหลดค้างไว้มีแค่ 30 วัน
+  //    ลูกค้าเอาของที่ซื้อไป 45 วันก่อนมาคืน = หาบิลต้นทางไม่เจอ จับคู่ไม่ได้
+  //    แล้วใบรับคืนก็ค้างอยู่ในกอง "รอจับคู่บิล" ทั้งที่บิลมีอยู่จริงในระบบ
+  //
+  //    ถามตรง ๆ ว่า "ขอบิลของร้านนี้" ย้อนได้ไม่จำกัด และเบากว่าโหลดทั้งเดือนมาทั้งกอง
+  const [custInvoices, setCustInvoices] = React.useState([]);
+  const [custInvBusy, setCustInvBusy] = React.useState(false);
+  React.useEffect(() => {
+    if (!form.customerId) { setCustInvoices([]); return; }
+    let dead = false;
+    setCustInvBusy(true);
+    fetchInvoicesOfCustomer(form.customerId)
+      .then(list => { if (!dead) setCustInvoices(list); })
+      // ดึงไม่ได้ → ใช้กองเดิม ยังจับคู่บิลใหม่ ๆ ได้อยู่
+      .catch(e => { if (!dead) { console.warn("[return] ดึงบิลของลูกค้าไม่สำเร็จ:", e); setCustInvoices([]); } })
+      .finally(() => { if (!dead) setCustInvBusy(false); });
+    return () => { dead = true; };
+  }, [form.customerId]);
+
+  // บิลของลูกค้ารายนี้มาก่อน แล้วต่อด้วยกองเดิม (เผื่อบิลที่ยังไม่ผูกรหัสลูกค้า)
+  const allInvoices = React.useMemo(() => {
+    if (!custInvoices.length) return invoices;
+    const seen = new Set(custInvoices.map(i => i.id));
+    return [...custInvoices, ...invoices.filter(i => !seen.has(i.id))];
+  }, [custInvoices, invoices]);
+
+  const pickedInvoice = form.invoiceId ? allInvoices.find(i => i.id === form.invoiceId) : null;
 
   // 📏 คืนได้ไม่เกินที่ขายไป — เทียบรายบรรทัดกับบิลต้นทาง
   //    ของเดิมกรอกเท่าไหร่ก็ได้ บิลมี 1 ตัวแต่คืน 13 ตัวก็ผ่าน = ลดหนี้เกิน + สต๊อกเกิน
@@ -76,20 +105,20 @@ export default function ReturnModal({
 
   // 🔎 บิลที่น่าจะใช่ — คิดใหม่ทุกครั้งที่ข้อมูลผู้ส่งหรือรายการสินค้าเปลี่ยน
   const suggestions = React.useMemo(
-    () => suggestInvoices(invoices, { ...form, items: validItems }),
+    () => suggestInvoices(allInvoices, { ...form, items: validItems }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [invoices, form.customerName, form.customerPhone, JSON.stringify(validItems.map(lineKey))]
+    [allInvoices, form.customerName, form.customerPhone, JSON.stringify(validItems.map(lineKey))]
   );
 
   const manualHits = React.useMemo(() => {
     const q = norm(invSearch);
     if (!q) return [];
-    return invoices
+    return allInvoices
       .filter(inv => !inv.mergedInto && !inv.convertedTo)
       .filter(inv => matchesTokens(
         [inv.invoiceNo, inv.customerName, inv.customerPhone, invoiceItemsText(inv)].join(" "), q))
       .slice(0, 10);
-  }, [invoices, invSearch]);
+  }, [allInvoices, invSearch]);
 
   // เลือกลูกค้าจากรายการ → เติมชื่อ+เบอร์ให้ (คะแนนจับคู่บิลจะแม่นขึ้นทันที)
   const pickCustomer = (id) => {
@@ -382,6 +411,16 @@ export default function ReturnModal({
       ) : (
         <div style={{ fontSize: 11, color: T.muted, marginBottom: 8 }}>
           ยังเดาบิลไม่ได้ — กรอกเบอร์โทรหรือระบุสินค้าให้ครบขึ้น แล้วรายการจะขึ้นเอง
+        </div>
+      )}
+
+      {form.customerId && (
+        <div style={{ fontSize: 10.5, color: custInvBusy ? T.accent : T.muted, marginBottom: 6 }}>
+          {custInvBusy
+            ? "⏳ กำลังดึงบิลเก่าทั้งหมดของลูกค้ารายนี้…"
+            : custInvoices.length
+              ? `📥 ดึงบิลของลูกค้ารายนี้มาแล้ว ${custInvoices.length} ใบ (ย้อนได้ไม่จำกัด ไม่ติดช่วง 30 วัน)`
+              : "ไม่พบบิลที่ผูกกับลูกค้ารายนี้ — ค้นจากบิลที่โหลดไว้แทน"}
         </div>
       )}
 

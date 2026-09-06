@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { fetchInvoicesOfCustomer } from "../utils/fetchInvoices";
 
 const fmt = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtInt = (n) => Number(n || 0).toLocaleString("th-TH");
@@ -18,10 +19,38 @@ function monthKey(d) {
 export default function CustomerProfile({ customer, invoices = [], orders = [], onClose, onNewInvoice }) {
   const c = customer || {};
 
+  // 📥 ดึงบิลของลูกค้ารายนี้เอง — ประวัติต้องย้อนได้ไม่จำกัด
+  //
+  //    เดิมอ่านจากกองที่แอปโหลดค้างไว้ (30 วันล่าสุด) ประวัติจึงหยุดอยู่แค่นั้น
+  //    ลูกค้าที่ซื้อประจำมา 2 ปีก็เห็นแค่เดือนเดียว แล้วสถิติ "ซื้อรวม/ซื้อครั้งล่าสุด"
+  //    ก็ผิดตามไปด้วยโดยไม่มีอะไรบอก
+  //
+  //    ถามตรง ๆ ว่า "ขอบิลของร้านนี้" ได้ครบทุกใบ และเบากว่าเดิมมาก (รายเดียวมีไม่กี่สิบใบ)
+  const [fetchedInv, setFetchedInv] = React.useState(null);
+  const [invBusy, setInvBusy] = React.useState(false);
+  React.useEffect(() => {
+    if (!c.id) { setFetchedInv(null); return; }
+    let dead = false;
+    setInvBusy(true);
+    fetchInvoicesOfCustomer(c.id)
+      .then(list => { if (!dead) setFetchedInv(list); })
+      // ดึงไม่ได้ → ใช้กองเดิมไปก่อน ประวัติสั้นแต่ไม่ถึงกับพัง
+      .catch(e => { if (!dead) { console.warn("[customerProfile] ดึงบิลของลูกค้าไม่สำเร็จ:", e); setFetchedInv(null); } })
+      .finally(() => { if (!dead) setInvBusy(false); });
+    return () => { dead = true; };
+  }, [c.id]);
+
+  // บิลที่ผูกรหัสไว้มาจากการดึงตรง · ที่ยังไม่ผูกรหัสต้องอาศัยเทียบชื่อจากกองเดิม
+  const srcInvoices = React.useMemo(() => {
+    if (!fetchedInv) return invoices;
+    const seen = new Set(fetchedInv.map(i => i.id));
+    return [...fetchedInv, ...invoices.filter(i => !seen.has(i.id))];
+  }, [fetchedInv, invoices]);
+
   // 🚫 ตัดบิลที่ถูกรวมเข้าบิลใหม่ / แปลงเป็นเอกสารอื่นแล้ว — ไม่งั้นยอดลูกค้าซ้ำ 2 เท่า
   const myInvoices = useMemo(
-    () => invoices.filter((i) => !i.mergedInto && !i.convertedTo && (i.customerId === c.id || i.customerName === c.name)),
-    [invoices, c.id, c.name]
+    () => srcInvoices.filter((i) => !i.mergedInto && !i.convertedTo && (i.customerId === c.id || i.customerName === c.name)),
+    [srcInvoices, c.id, c.name]
   );
   const myOrders = useMemo(() => orders.filter((o) => o.customerId === c.id), [orders, c.id]);
 
@@ -117,7 +146,11 @@ export default function CustomerProfile({ customer, invoices = [], orders = [], 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
             <div><div style={label}>ที่อยู่</div><div style={{ ...value, fontSize: 12, fontWeight: 400, color: T.sub }}>{c.address || "—"}</div></div>
             <div><div style={label}>อีเมล</div><div style={{ ...value, fontSize: 12, fontWeight: 400, color: T.sub }}>{c.email || "—"}</div></div>
-            <div><div style={label}>จำนวนบิลทั้งหมด</div><div style={value}>{myInvoices.length} ใบ <span style={{ fontSize: 11, color: T.muted, fontWeight: 400 }}>(ชำระ {stats.paidCount} · ค้าง {stats.pendingCount})</span></div></div>
+            <div><div style={label}>จำนวนบิลทั้งหมด</div><div style={value}>
+              {invBusy
+                ? <span style={{ fontSize: 12, fontWeight: 400, color: T.muted }}>⏳ กำลังดึงประวัติทั้งหมด…</span>
+                : <>{myInvoices.length} ใบ <span style={{ fontSize: 11, color: T.muted, fontWeight: 400 }}>(ชำระ {stats.paidCount} · ค้าง {stats.pendingCount})</span></>}
+            </div></div>
             <div><div style={label}>คำสั่งซื้อ</div><div style={value}>{myOrders.length} ครั้ง</div></div>
           </div>
         </div>
