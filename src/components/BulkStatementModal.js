@@ -8,7 +8,7 @@ import { Modal, MHead, BtnPrimary, BtnGhost, BillingBadge } from "./ui";
 import { T } from "../theme";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { reserveDocNo } from "../utils/docNumber";
-import { buildStatementGroups, paidOf, dueOf, fmtISO, fmtDDMMYYYY, parseISODate as parseISO } from "../utils/statement";
+import { buildStatementGroups, paidOf, dueOf, fmtISO, fmtDDMMYYYY, parseISODate as parseISO, parseDDMMYYYY } from "../utils/statement";
 import { snapshotReturnItems, returnItemsText } from "../utils/returns";
 import { fetchInvoicesForPeriod } from "../utils/fetchInvoices";
 
@@ -96,6 +96,25 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
   // ใช้ของที่ดึงมาเองถ้าได้ ไม่ได้ก็ถอยไปกองเดิม
   const srcInvoices = fetched ? fetched.invoices : invoices;
   const usingFetched = !!fetched;
+
+  // 🔢 "ดึงมากี่ใบ" กับ "อยู่ในงวดกี่ใบ" เป็นคนละเลขและต่างกันมาก
+  //
+  //    ที่ดึงมากว้างกว่างวดจริงเสมอ เพราะต้องเผื่อบิลที่ลงวันที่ย้อนหลัง
+  //    (ออกใบวางบิลงวด ก.ย. ดึงมา 187 ใบ แต่อยู่ในงวดจริงแค่ 23 ใบ — ที่เหลือเป็นของ ส.ค.)
+  //
+  //    ถ้าโชว์แค่เลขที่ดึงมาแล้วเขียนว่า "คิดยอดจากบิล N ใบ" คนจะอ่านว่ายอดคิดจาก N ใบ
+  //    ซึ่งผิด และทำให้ตรวจยอดไม่ได้เลยเพราะเลขไม่ตรงกับที่นับเองจากหน้าบิล
+  const inPeriodCount = useMemo(() => {
+    if (!startD || !endD) return 0;
+    const lo = startD.getTime();
+    const hi = new Date(endD.getFullYear(), endD.getMonth(), endD.getDate(), 23, 59, 59).getTime();
+    return srcInvoices.filter(inv => {
+      if (inv.mergedInto || inv.convertedTo) return false;
+      const d = parseDDMMYYYY(inv.date);
+      return d && d.getTime() >= lo && d.getTime() <= hi;
+    }).length;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [srcInvoices, periodStart, periodEnd]);
 
   // 🔍 จัดกลุ่มบิลตามลูกค้า — ใช้ helper ตัวเดียวกับหน้าสร้างทีละใบ (ผลลัพธ์ตรงกันแน่นอน)
   //
@@ -346,7 +365,8 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
       {fetchState === "done" && usingFetched && (
         <div style={{ padding: "9px 13px", marginBottom: 10, background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 9, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 11.5, color: "#047857" }}>
           <span>
-            📥 คิดยอดจากบิล <b>{fetched.invoices.length.toLocaleString("th-TH")}</b> ใบที่ดึงมาสำหรับงวดนี้โดยเฉพาะ
+            📥 <b>คิดยอดจากบิลในงวดนี้ {inPeriodCount.toLocaleString("th-TH")} ใบ</b>
+            {" · "}ดึงมาทั้งหมด {fetched.invoices.length.toLocaleString("th-TH")} ใบ (เผื่อหัวท้าย ±30 วัน เพราะบิลลงวันที่ย้อนหลังได้)
             {" · "}ดึงเมื่อ <b>{fetched.at.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}</b>
           </span>
           <button onClick={() => setReloadTick(n => n + 1)}
