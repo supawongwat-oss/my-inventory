@@ -36,14 +36,15 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          # เวอร์ชันนี้คือตัวที่รัน backup.mjs จริง — คนละเรื่องกับ Node ที่ action ใช้ข้างใน
+          node-version: '22'
 
       - name: Install firebase-admin
         run: npm install --no-save firebase-admin
@@ -126,9 +127,10 @@ jobs:
           if (failed.length) out.metadata.failed = failed;
 
           mkdirSync(`backups/${process.env.PROJECT}`, { recursive: true });
-          const today = new Date().toISOString().slice(0, 10);
+          // เลื่อนเป็นเวลาไทย (UTC+7) ก่อนตัดเอาเฉพาะวันที่ — ชื่อไฟล์จะได้ตรงกับปฏิทินที่ร้านใช้
+          const today = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
           const path = `backups/${process.env.PROJECT}/${today}.json`;
-          writeFileSync(path, JSON.stringify(out, null, 2));
+          writeFileSync(path, JSON.stringify(out));
           console.log(`Done: ${total} records จาก ${Object.keys(out.collections).length}/${COLLECTIONS.length} คอลเลกชัน → ${path}`);
           // อ่านพลาดเกินครึ่ง = น่าจะสิทธิ์หรือ config มีปัญหา ไม่ใช่แค่กองว่าง — ให้งานล้มจะได้รู้ตัว
           if (failed.length > COLLECTIONS.length / 2) {
@@ -157,7 +159,7 @@ jobs:
             echo "No backup changes to commit"
             exit 0
           fi
-          git commit -m "backup: ${{ matrix.project.name }} $(date -u +%Y-%m-%d)"
+          git commit -m "backup: ${{ matrix.project.name }} $(TZ=Asia/Bangkok date +%Y-%m-%d)"
           # Retry push พร้อม pull --rebase หาก remote เปลี่ยน
           for i in 1 2 3 4 5; do
             git pull --rebase origin master && git push origin master && { echo "✅ Push success on attempt $i"; exit 0; }
