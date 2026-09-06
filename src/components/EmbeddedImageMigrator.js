@@ -13,14 +13,25 @@
 // 🔒 กติกา: สแกนอย่างเดียวก่อนเสมอ · โชว์ว่าจะแตะเอกสารไหนบ้าง · ต้องกดยืนยัน
 //    อัปโหลดสำเร็จก่อนถึงจะเขียนทับ ถ้าอัปไม่ผ่านจะข้ามใบนั้นไป รูปเดิมไม่ถูกแตะ
 import { useState } from "react";
-import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
+import { collection, getDocs, getDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { T } from "../theme";
 import { uploadImage } from "../utils/upload";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 
 // คอลเลกชันที่แนบรูปได้ + โฟลเดอร์ปลายทางบน Storage
+//
+// 📸 clothing / products คือกองที่หนักที่สุดจริง ๆ — ไม่ใช่บิล
+//    วัดจาก backup 6 ก.ย.: ทั้งไฟล์ 21 MB โดยเป็นรูป base64 ถึง 9.2 MB (47%)
+//    และเกือบทั้งหมดอยู่ใน clothing (5.4 MB / 44 รุ่น) กับ products (3.2 MB / 12 รายการ)
+//    = รูปสินค้าที่ถูกเก็บลงเอกสารแทนที่จะขึ้น Storage
+//
+//    ที่ต้องรีบกว่าบิลเพราะ clothing ถูกโหลด "ทั้งกอง ทุกครั้งที่เปิดแอป" ไม่มีการจำกัดช่วง
+//    แปลว่าพนักงานทุกคนโหลดรูปสินค้า 5.4 MB ใหม่ทุกครั้งที่เปิด — บนแท็บเล็ตกับเน็ตมือถือ
+//    และรูปชุดเดิมนี้ยังถูก commit ซ้ำเข้า backup ใหม่ทุกคืนด้วย
 const TARGETS = [
+  { col: "clothing", folder: "clothing", labelOf: d => d.model || d.id },
+  { col: "products", folder: "products", labelOf: d => d.name || d.code || d.id },
   { col: "invoices", folder: "invoiceJobs", labelOf: d => d.invoiceNo || d.id },
   { col: "customOrders", folder: "customOrders", labelOf: d => d.orderNo || d.id },
   { col: "productionOrders", folder: "customOrders", labelOf: d => d.prodNo || d.orderNo || d.id },
@@ -114,9 +125,9 @@ export default function EmbeddedImageMigrator({ user }) {
       const h = hits[i];
       setStep(`${i + 1}/${hits.length} — ${h.label}`);
       try {
-        const snap = await getDocs(collection(db, h.col));
-        const found = snap.docs.find(d => d.id === h.id);
-        if (!found) { fail.push(`${h.label} — หาเอกสารไม่เจอแล้ว`); continue; }
+        // อ่านสด ๆ อีกทีก่อนเขียน — เผื่อมีคนแก้เอกสารนี้ระหว่างที่เราสแกนค้างไว้
+        const found = await getDoc(doc(db, h.col, h.id));
+        if (!found.exists()) { fail.push(`${h.label} — หาเอกสารไม่เจอแล้ว`); continue; }
         const data = found.data();
         const stats = { moved: 0, freed: 0, paths: [] };
         // แทนที่ทีละฟิลด์บนสุด แล้วเขียนกลับเฉพาะฟิลด์ที่เปลี่ยนจริง

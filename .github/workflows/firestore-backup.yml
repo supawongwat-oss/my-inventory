@@ -70,10 +70,22 @@ jobs:
           import { getFirestore } from "firebase-admin/firestore";
           import { writeFileSync, mkdirSync } from "node:fs";
 
+          // ⚠️ ต้องครบทุกคอลเลกชันที่แอปเขียนจริง — เพิ่มคอลเลกชันใหม่ในแอปแล้วต้องมาเติมที่นี่ด้วย
+          //    ของที่ไม่อยู่ในลิสต์นี้ = ไม่มีสำเนาเลย หายแล้วหายเลย
+          //    ที่เจ็บที่สุดถ้าหาย: payrollRuns (เงินเดือนที่จ่ายไปแล้ว สร้างใหม่ไม่ได้)
+          //    counters (ตัวนับเลขที่เอกสาร หายแล้วเลขเริ่มใหม่ทับของเก่า)
+          //    returns (ใบรับคืนที่ผูกกับใบลดหนี้และยอดหักในใบวางบิล)
           const COLLECTIONS = [
-            "users","products","clothing","transactions",
-            "customers","suppliers","orders","invoices",
-            "statements","settings"
+            // ขาย
+            "customers","suppliers","orders","invoices","statements","returns",
+            "customOrders","catalogOrders","pendingMixSales",
+            // คลัง & ผลิต
+            "products","clothing","transactions","productionOrders","boms",
+            "packRuns","packAliases",
+            // บุคคล & บัญชี
+            "employees","attendance","payrollRuns","taxDocs",
+            // ระบบ
+            "users","settings","counters","auditLog"
           ];
 
           import { readFileSync } from "node:fs";
@@ -91,21 +103,38 @@ jobs:
             collections: {},
           };
 
+          // อ่านทีละคอลเลกชัน — กองไหนอ่านไม่ได้ต้องไม่ทำให้ทั้งงานล้ม
+          // (boong-private ไม่ได้ใช้ทุกโมดูล บางกองจึงยังไม่เคยถูกสร้าง)
+          // แต่ต้องบันทึกไว้ว่าอ่านกองไหนพลาด ไม่ใช่เงียบ ๆ แล้วนึกว่า backup ครบ
           let total = 0;
+          const failed = [];
           for (const col of COLLECTIONS) {
-            const snap = await db.collection(col).get();
-            const docs = [];
-            snap.forEach(d => docs.push({ _id: d.id, ...d.data() }));
-            out.collections[col] = docs;
-            total += docs.length;
-            console.log(`  ${col}: ${docs.length}`);
+            try {
+              const snap = await db.collection(col).get();
+              const docs = [];
+              snap.forEach(d => docs.push({ _id: d.id, ...d.data() }));
+              out.collections[col] = docs;
+              total += docs.length;
+              console.log(`  ${col}: ${docs.length}`);
+            } catch (e) {
+              failed.push(`${col}: ${e.message}`);
+              console.error(`  ❌ ${col}: ${e.message}`);
+            }
           }
+          out.metadata.collectionsRequested = COLLECTIONS.length;
+          out.metadata.collectionsRead = Object.keys(out.collections).length;
+          if (failed.length) out.metadata.failed = failed;
 
           mkdirSync(`backups/${process.env.PROJECT}`, { recursive: true });
           const today = new Date().toISOString().slice(0, 10);
           const path = `backups/${process.env.PROJECT}/${today}.json`;
           writeFileSync(path, JSON.stringify(out, null, 2));
-          console.log(`Done: ${total} records → ${path}`);
+          console.log(`Done: ${total} records จาก ${Object.keys(out.collections).length}/${COLLECTIONS.length} คอลเลกชัน → ${path}`);
+          // อ่านพลาดเกินครึ่ง = น่าจะสิทธิ์หรือ config มีปัญหา ไม่ใช่แค่กองว่าง — ให้งานล้มจะได้รู้ตัว
+          if (failed.length > COLLECTIONS.length / 2) {
+            console.error("อ่านคอลเลกชันพลาดเกินครึ่ง — ถือว่า backup ไม่น่าเชื่อถือ");
+            process.exit(1);
+          }
           EOF
           node backup.mjs
 
