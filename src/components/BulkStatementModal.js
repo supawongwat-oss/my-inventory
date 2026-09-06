@@ -1,7 +1,7 @@
 // 📅 ออกใบวางบิลทั้งเดือน — สแกนบิลในช่วงที่เลือก จัดกลุ่มตามลูกค้า
 //    แล้วติ๊กเลือกว่าจะออกให้ใครบ้าง → สร้างทีเดียวทั้งหมด
 // (เดิมต้องสร้างทีละราย — 235 ลูกค้า = 2-3 ชม.)
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { collection, addDoc, serverTimestamp, doc, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
 import { Modal, MHead, BtnPrimary, BtnGhost, BillingBadge } from "./ui";
@@ -10,6 +10,7 @@ import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { reserveDocNo } from "../utils/docNumber";
 import { buildStatementGroups, paidOf, dueOf, fmtISO, fmtDDMMYYYY, parseISODate as parseISO } from "../utils/statement";
 import { snapshotReturnItems, returnItemsText } from "../utils/returns";
+import { fetchInvoicesForPeriod } from "../utils/fetchInvoices";
 
 const fmtB = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -63,6 +64,39 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
   const notLoadedBefore = loadedFrom && startD && startD.getTime() < new Date(
     loadedFrom.getFullYear(), loadedFrom.getMonth(), loadedFrom.getDate()).getTime() ? loadedFrom : null;
 
+  // 📥 หน้านี้ไปขอบิลของงวดเอง แทนที่จะกินจากกองที่แอปโหลดค้างไว้
+  //
+  //    เหตุผล: กองที่โหลดค้างมีไว้ให้งานประจำวัน ไม่ได้มีไว้คิดยอดทั้งเดือน
+  //    ถ้าผูกกับกองนั้น ก็ต้องบังคับให้แอปแบกบิลทั้งเดือนไว้ตลอดเวลา
+  //    ทั้งที่มีคนใช้เดือนละครั้ง — และยังเสี่ยงยอดขาดถ้าช่วงที่โหลดสั้นกว่างวด
+  //
+  //    ดึงครั้งเดียวแล้วจบ ไม่ค้างในหน่วยความจำ · ข้อมูลจึงนิ่งที่เวลาที่ดึง
+  //    ต้องบอกเวลาที่ดึงและมีปุ่มโหลดใหม่เสมอ ไม่งั้นคนจะออกใบวางบิลจากข้อมูลค้าง
+  const [fetched, setFetched] = useState(null);     // { invoices, at, capped }
+  const [fetchState, setFetchState] = useState("idle"); // idle | loading | done | error
+  const [fetchErr, setFetchErr] = useState("");
+  const [reloadTick, setReloadTick] = useState(0);
+
+  useEffect(() => {
+    if (!startD || !endD) return;
+    let dead = false;
+    setFetchState("loading"); setFetchErr("");
+    fetchInvoicesForPeriod(startD, endD)
+      .then(r => { if (!dead) { setFetched(r); setFetchState("done"); } })
+      .catch(e => {
+        if (dead) return;
+        // ดึงไม่ได้ → ถอยไปใช้กองที่โหลดค้างไว้ (ยอดอาจขาด) และต้องบอกให้ชัด
+        console.warn("[bulkStatement] ดึงบิลของงวดไม่สำเร็จ:", e);
+        setFetched(null); setFetchErr(e?.message || String(e)); setFetchState("error");
+      });
+    return () => { dead = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periodStart, periodEnd, reloadTick]);
+
+  // ใช้ของที่ดึงมาเองถ้าได้ ไม่ได้ก็ถอยไปกองเดิม
+  const srcInvoices = fetched ? fetched.invoices : invoices;
+  const usingFetched = !!fetched;
+
   // 🔍 จัดกลุ่มบิลตามลูกค้า — ใช้ helper ตัวเดียวกับหน้าสร้างทีละใบ (ผลลัพธ์ตรงกันแน่นอน)
   //
   // ⚠️ กับดักที่ทำให้หน้านี้เคยเละ: helper จับคู่ลูกค้าเป็นชั้น ๆ (รหัส → เบอร์ → ชื่อ)
@@ -73,8 +107,8 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
   //    ตอนนี้เลือก "เจ้าของ" ของบิล/ใบลดหนี้แต่ละใบไว้รายเดียว: ชั้นที่แน่นกว่าชนะ
   //    เสมอกันให้ลูกค้าในทะเบียนชนะบิลลอย ๆ (ข้อมูลติดต่อครบกว่า ใบวางบิลจึงถูกต้องกว่า)
   const groups = useMemo(() => buildStatementGroups({
-    invoices, customers, statements, returns, startDate: startD, endDate: endD, filterMode, onlyCredit,
-  }), [invoices, customers, statements, returns, periodStart, periodEnd, filterMode, onlyCredit]); // eslint-disable-line react-hooks/exhaustive-deps
+    invoices: srcInvoices, customers, statements, returns, startDate: startD, endDate: endD, filterMode, onlyCredit,
+  }), [srcInvoices, customers, statements, returns, periodStart, periodEnd, filterMode, onlyCredit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -303,8 +337,42 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
           style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>ล้าง</button>
       </div>
 
-      {/* 🚨 กันใบวางบิลยอดขาด — ห้ามสร้างจนกว่าจะโหลดบิลครบช่วง */}
-      {notLoadedBefore && (
+      {/* 📥 สถานะการดึงบิลของงวดนี้ — ต้องเห็นเสมอว่าคิดยอดจากข้อมูลชุดไหน ดึงมาตอนไหน */}
+      {fetchState === "loading" && (
+        <div style={{ padding: "10px 14px", marginBottom: 10, background: "rgba(59,91,139,0.07)", border: "1px solid rgba(59,91,139,0.3)", borderRadius: 9, fontSize: 12, color: T.accent }}>
+          ⏳ กำลังดึงบิลของงวดนี้…
+        </div>
+      )}
+      {fetchState === "done" && usingFetched && (
+        <div style={{ padding: "9px 13px", marginBottom: 10, background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 9, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 11.5, color: "#047857" }}>
+          <span>
+            📥 คิดยอดจากบิล <b>{fetched.invoices.length.toLocaleString("th-TH")}</b> ใบที่ดึงมาสำหรับงวดนี้โดยเฉพาะ
+            {" · "}ดึงเมื่อ <b>{fetched.at.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}</b>
+          </span>
+          <button onClick={() => setReloadTick(n => n + 1)}
+            style={{ marginLeft: "auto", padding: "5px 12px", borderRadius: 7, border: "1px solid rgba(16,185,129,0.45)", background: "white", color: "#047857", cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "inherit" }}>
+            🔄 โหลดใหม่
+          </button>
+        </div>
+      )}
+      {fetched?.capped && (
+        <div style={{ padding: "9px 13px", marginBottom: 10, background: "rgba(185,74,72,0.08)", border: "1px solid rgba(185,74,72,0.4)", borderRadius: 9, fontSize: 11.5, color: T.red, lineHeight: 1.7 }}>
+          🚨 บิลของงวดนี้มากเกินกว่าที่ดึงมาได้ในครั้งเดียว — <b>มีบิลตกหล่นแน่นอน</b> แบ่งงวดให้สั้นลงแล้วออกทีละช่วง
+        </div>
+      )}
+      {fetchState === "error" && (
+        <div style={{ padding: "10px 14px", marginBottom: 10, background: "rgba(185,74,72,0.08)", border: "1px solid rgba(185,74,72,0.4)", borderRadius: 9, fontSize: 11.5, color: T.red, lineHeight: 1.7 }}>
+          🚨 ดึงบิลของงวดนี้ไม่สำเร็จ ({fetchErr}) — ตอนนี้คิดยอดจากบิลที่แอปโหลดค้างไว้แทน <b>ยอดอาจขาด</b>
+          <button onClick={() => setReloadTick(n => n + 1)}
+            style={{ marginLeft: 10, padding: "4px 11px", borderRadius: 7, border: "1px solid " + T.red, background: "white", color: T.red, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "inherit" }}>
+            ลองใหม่
+          </button>
+        </div>
+      )}
+
+      {/* 🚨 กันใบวางบิลยอดขาด — เตือนเฉพาะตอนที่ต้องพึ่งกองที่โหลดค้างไว้จริง ๆ
+          ถ้าดึงบิลของงวดมาเองได้แล้ว ช่วงที่แอปโหลดค้างไม่เกี่ยวกับยอดอีกต่อไป */}
+      {!usingFetched && notLoadedBefore && (
         <div style={{ padding: "10px 14px", marginBottom: 10, background: "rgba(185,74,72,0.08)", border: "1px solid rgba(185,74,72,0.4)", borderRadius: 9 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: T.red, marginBottom: 4 }}>
             🚨 บิลยังโหลดมาไม่ครบช่วง — ยอดจะขาด
@@ -323,9 +391,9 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
       )}
 
       {/* ชนเพดานโหลด = ข้อมูลถูกตัดทิ้งบางส่วน ยอดเชื่อไม่ได้ */}
-      {invoicesCapped && (
+      {!usingFetched && invoicesCapped && (
         <div style={{ padding: "9px 13px", marginBottom: 10, background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.35)", borderRadius: 9, fontSize: 11, color: "#b45309", lineHeight: 1.7 }}>
-          🚨 บิลที่โหลดมาชนเพดาน 3,000 ใบ — <b>มีบิลตกหล่นแน่นอน</b> ยอดในใบวางบิลจะน้อยกว่าความจริง
+          🚨 บิลที่แอปโหลดค้างไว้ชนเพดาน — <b>มีบิลตกหล่นแน่นอน</b> ยอดในใบวางบิลจะน้อยกว่าความจริง
           <br/>แคบช่วงวันที่ลงแล้วออกทีละงวด — สร้างไม่ได้จนกว่าจะไม่ชนเพดาน
         </div>
       )}
@@ -472,9 +540,14 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
         <div style={{ display: "flex", gap: 10 }}>
           <BtnGhost onClick={onClose} style={{ flex: 1 }}>ยกเลิก</BtnGhost>
           {/* ล็อกปุ่มไว้ถ้าบิลยังโหลดไม่ครบช่วง — ออกไปแล้วยอดขาด ต้องตามออกใบใหม่ให้ลูกค้าทีละราย */}
-          <BtnPrimary onClick={createAll} disabled={selected.length === 0 || !!notLoadedBefore || invoicesCapped} style={{ flex: 2 }}>
-            {notLoadedBefore ? "🚨 โหลดบิลให้ครบช่วงก่อน"
-              : invoicesCapped ? "🚨 บิลชนเพดาน — แคบช่วงวันที่ลงก่อน"
+          <BtnPrimary onClick={createAll}
+            disabled={selected.length === 0 || fetchState === "loading" || !!fetched?.capped
+              || (!usingFetched && (!!notLoadedBefore || invoicesCapped))}
+            style={{ flex: 2 }}>
+            {fetchState === "loading" ? "⏳ กำลังดึงบิลของงวดนี้…"
+              : fetched?.capped ? "🚨 บิลเกินที่ดึงได้ — แบ่งงวดให้สั้นลง"
+              : (!usingFetched && notLoadedBefore) ? "🚨 โหลดบิลให้ครบช่วงก่อน"
+              : (!usingFetched && invoicesCapped) ? "🚨 บิลชนเพดาน — แคบช่วงวันที่ลงก่อน"
               : `📄 สร้างใบวางบิล ${selected.length > 0 ? `${selected.length} ใบ` : ""}`}
           </BtnPrimary>
         </div>
