@@ -4,7 +4,7 @@
 // ใช้กับงานที่ต้องการข้อมูลกว้างแต่นาน ๆ ใช้ที (ออกใบวางบิล / รายงาน / ประวัติลูกค้า)
 // จะได้ไม่ต้องแบกบิลทั้งเดือนไว้ตลอดเวลาแค่เพราะเดือนละครั้งมีคนต้องใช้
 
-import { collection, query, where, orderBy, limit, getDocs, Timestamp } from "firebase/firestore";
+import { collection, query, where, orderBy, limit, startAfter, getDocs, Timestamp } from "firebase/firestore";
 import { db } from "../firebase";
 
 // ⚠️ กับดักที่ต้องรู้ก่อนแก้ตรงนี้: บิลมีวันที่ 2 ชุดที่ไม่ตรงกัน
@@ -29,9 +29,15 @@ const shift = (d, days) => {
   return x;
 };
 
-// เพดานกันเผลอเลือกช่วงกว้างเกิน — อ่านครั้งเดียวจึงตั้งสูงได้
-// (2,500 ใบ/เดือน + เผื่อหัวท้าย 2 เดือน ≈ 7,500 ใบ)
-export const FETCH_CAP = 20000;
+// 🚧 Firestore ไม่ยอมให้ limit() เกิน 10,000 — ใส่มากกว่านั้น query ถูกปฏิเสธทั้งอัน
+//    ("Limit value in the structured query is over the maximum value of 10000")
+//    จึงแบ่งดึงเป็นหน้า ๆ ด้วย startAfter แทนการขอทีเดียวก้อนใหญ่
+//    ผลลัพธ์เหมือนเดิมทุกประการ ต่างแค่วิ่งไปขอหลายรอบ
+const PAGE = 5000;
+
+// เพดานกันเผลอเลือกช่วงกว้างเกิน (เช่นลากช่วงเป็นปี) — อ่านครั้งเดียวจึงตั้งสูงได้
+// 2,500 ใบ/เดือน + เผื่อหัวท้าย 2 เดือน ≈ 7,500 ใบ ต่อการออกใบวางบิล 1 งวด
+export const FETCH_CAP = 60000;
 
 /**
  * ดึงบิลที่อาจอยู่ในงวด startDate–endDate
@@ -43,11 +49,24 @@ export async function fetchInvoicesForPeriod(startDate, endDate) {
   const to = endDate instanceof Date && !isNaN(endDate) ? shift(endDate, DATE_SLACK_DAYS) : null;
   const clauses = [where("createdAt", ">=", Timestamp.fromDate(from))];
   if (to) clauses.push(where("createdAt", "<=", Timestamp.fromDate(new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23, 59, 59))));
-  const snap = await getDocs(query(collection(db, "invoices"), ...clauses, orderBy("createdAt", "desc"), limit(FETCH_CAP)));
+  const base = [collection(db, "invoices"), ...clauses, orderBy("createdAt", "desc")];
+  const invoices = [];
+  let cursor = null;
+  for (;;) {
+    const q = cursor
+      ? query(...base, startAfter(cursor), limit(PAGE))
+      : query(...base, limit(PAGE));
+    const snap = await getDocs(q);
+    snap.docs.forEach(d => invoices.push({ ...d.data(), id: d.id }));
+    // หน้าสุดท้ายจะได้น้อยกว่าขนาดหน้าเสมอ — เจอเมื่อไรแปลว่าครบแล้ว
+    if (snap.size < PAGE) break;
+    if (invoices.length >= FETCH_CAP) break;
+    cursor = snap.docs[snap.docs.length - 1];
+  }
   return {
-    invoices: snap.docs.map(d => ({ ...d.data(), id: d.id })),
+    invoices,
     at: new Date(),
-    capped: snap.size >= FETCH_CAP,
+    capped: invoices.length >= FETCH_CAP,
     from, to,
   };
 }
