@@ -224,7 +224,7 @@ export default function App() {
     if (!user || !usersLoaded) return;
     const fresh = users.find(u => String(u.id) === String(user.id));
     if (!fresh) return; // ไม่พบ (เช่น seed admin ที่ไม่ได้อยู่ใน Firestore) → ไม่แตะ
-    const keys = ["role", "allowedTabs", "permissions", "name", "avatar", "position", "username"];
+    const keys = ["role", "allowedTabs", "permissions", "name", "avatar", "position", "username", "pinnedTabs"];
     const changed = keys.some(k => JSON.stringify(fresh[k]) !== JSON.stringify(user[k]));
     if (changed) setUser(prev => ({ ...prev, ...Object.fromEntries(keys.map(k => [k, fresh[k]])) }));
   }, [users, usersLoaded, user]);
@@ -1671,6 +1671,27 @@ export default function App() {
       });
     } catch (e) {
       alert("บันทึกไม่สำเร็จ: " + (e?.message || e));
+    }
+  };
+
+  // ⭐ ปักหมุดเมนูที่ใช้บ่อย — เก็บติดตัวคน ไม่ใช่ติดเครื่อง
+  //
+  //    ที่ร้านคนหนึ่งใช้หลายเครื่อง (แท็บเล็ตหน้าร้าน + คอมหลังร้าน) ถ้าเก็บใน localStorage
+  //    จะต้องมาตั้งใหม่ทุกเครื่อง คนก็จะเลิกใช้ · เก็บที่ users/{id} แล้วซิงก์เองผ่าน effect ข้างบน
+  //
+  //    เรียงตามลำดับที่ปัก ไม่เรียงใหม่อัตโนมัติ — เมนูที่ขยับเองทำให้กดผิดตลอด
+  //    คนใช้ทั้งวันจำตำแหน่งด้วยมือ ไม่ได้อ่านทุกครั้ง
+  const togglePin = async (tabId) => {
+    if (!tabId || !user) return;
+    const cur = Array.isArray(user.pinnedTabs) ? user.pinnedTabs : [];
+    const next = cur.includes(tabId) ? cur.filter(x => x !== tabId) : [...cur, tabId];
+    if (next.length > 8) { alert("ปักหมุดได้สูงสุด 8 เมนู — เอาอันที่ไม่ใช้แล้วออกก่อน"); return; }
+    setUser(prev => ({ ...prev, pinnedTabs: next }));   // ให้ตอบสนองทันที ไม่ต้องรอเขียนเสร็จ
+    try {
+      await updateDoc(doc(db, "users", String(user.id)), { pinnedTabs: next });
+    } catch (e) {
+      // เขียนไม่ได้ (เช่น บัญชี seed ที่ไม่มีใน Firestore) → ยังใช้ได้ในรอบนี้ แค่ไม่ติดตัวไปเครื่องอื่น
+      console.warn("[pin] บันทึกเมนูที่ปักหมุดไม่สำเร็จ:", e);
     }
   };
 
@@ -4127,6 +4148,24 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     })
     .filter(Boolean);
 
+  // ⭐ เมนูที่ปักหมุด — อ่านจาก navItems ที่กรองสิทธิ์แล้ว
+  //    ถ้าแอดมินถอนสิทธิ์เมนูไหนทีหลัง อันนั้นจะหายจากกล่องนี้เองโดยไม่ต้องไปล้าง pinnedTabs
+  const navFlat = navItems.flatMap(e => e.type === "item" ? [e] : (e.children || []));
+  const navById = new Map(navFlat.map(x => [x.id, x]));
+  const pinnedIds = (Array.isArray(user.pinnedTabs) ? user.pinnedTabs : []).filter(id => navById.has(id));
+  const isPinned = (id) => pinnedIds.includes(id);
+
+  // ⭐ ปุ่มดาว — โชว์ตลอดทั้งที่ปักและยังไม่ปัก ไม่ซ่อนไว้ใต้การเอาเมาส์ชี้
+  //    บนแท็บเล็ตไม่มี hover ถ้าซ่อนไว้ก็เท่ากับไม่มีปุ่ม
+  const PinBtn = ({ id, pushed }) => (
+    <span onClick={(e) => { e.stopPropagation(); togglePin(id); }}
+      title={isPinned(id) ? "เอาออกจาก ⭐ ใช้บ่อย" : "ปักหมุดขึ้นไปไว้บนสุด"}
+      style={{ marginLeft: pushed ? 6 : "auto", padding: touchUI ? "3px 7px" : "1px 5px", fontSize: touchUI ? 15 : 12,
+        lineHeight: 1, cursor: "pointer", opacity: isPinned(id) ? 1 : 0.28, flexShrink: 0, userSelect: "none" }}>
+      {isPinned(id) ? "⭐" : "☆"}
+    </span>
+  );
+
   // 🔒 ผู้ใช้ที่ยังไม่ได้รับสิทธิ์ใด ๆ — แสดงหน้า "รออนุมัติ" แทน
   if (user.role !== "admin" && navItems.length === 0) {
     return (
@@ -4255,6 +4294,33 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         </div>
 
         <nav style={{padding:"10px 8px",flex:1,overflowY:"auto"}}>
+          {/* ⭐ ใช้บ่อย — ของที่กดทุกวันอยู่ในกลุ่มที่ต้องกางก่อน กดถึง 2 ครั้งทุกที
+              ปักไว้แล้วเหลือครั้งเดียว · เรียงตามลำดับที่ปัก ไม่ขยับเอง */}
+          {pinnedIds.length > 0 && (
+            <div style={{marginBottom:8,paddingBottom:8,borderBottom:`1px solid ${T.border}`}}>
+              {sidebarOpen && (
+                <div style={{padding:touchUI?"6px 14px":"4px 14px",fontSize:touchUI?12:11,fontWeight:600,color:T.muted,letterSpacing:"0.06em",textTransform:"uppercase"}}>
+                  ⭐ ใช้บ่อย
+                </div>
+              )}
+              {pinnedIds.map(id => {
+                const it = navById.get(id);
+                const active = activeTab === id;
+                return (
+                  <div key={"pin-"+id} onClick={() => guardedSetActiveTab(id)}
+                    className={active?"nav-active-bar":""}
+                    title={sidebarOpen?undefined:(it.badge>0?`${it.label} (${it.badge})`:it.label)}
+                    style={{display:"flex",alignItems:"center",gap:10,padding:NAV.pad,borderRadius:10,cursor:"pointer",transition:"all .2s",color:active?T.navActiveText:T.sub,fontWeight:active?600:400,fontSize:NAV.font,background:active?T.navActive:"transparent",border:active?`1px solid ${T.navActiveBorder}`:"1px solid transparent",marginBottom:2,justifyContent:sidebarOpen?"flex-start":"center",position:"relative"}}>
+                    <span style={{fontSize:sidebarOpen?NAV.icon:railIcon,flexShrink:0}}>{it.icon}</span>
+                    {sidebarOpen&&<span style={{fontFamily:"'DM Sans','Sarabun',sans-serif"}}>{it.label}</span>}
+                    {sidebarOpen&&it.badge>0&&<span style={{marginLeft:"auto",background:T.red,color:"white",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{it.badge}</span>}
+                    {!sidebarOpen&&it.badge>0&&<span style={{position:"absolute",top:5,right:9,width:7,height:7,borderRadius:4,background:T.red}}/>}
+                    {sidebarOpen&&<PinBtn id={id} pushed={it.badge>0}/>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
           {navItems.map(entry => {
             // ── flat item ──
             if (entry.type === "item") {
@@ -4266,6 +4332,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   <span style={{fontSize:sidebarOpen?NAV.icon:railIcon,flexShrink:0}}>{entry.icon}</span>
                   {sidebarOpen&&<span style={{fontFamily:"'DM Sans','Sarabun',sans-serif"}}>{entry.label}</span>}
                   {sidebarOpen&&entry.badge>0&&<span style={{marginLeft:"auto",background:T.red,color:"white",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{entry.badge}</span>}
+                  {sidebarOpen&&<PinBtn id={entry.id} pushed={entry.badge>0}/>}
                 </div>
               );
             }
@@ -4309,6 +4376,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                       <span style={{fontSize:NAV.childIcon,flexShrink:0}}>{c.icon}</span>
                       <span style={{fontFamily:"'DM Sans','Sarabun',sans-serif"}}>{c.label}</span>
                       {c.badge>0&&<span style={{marginLeft:"auto",background:T.red,color:"white",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{c.badge}</span>}
+                      <PinBtn id={c.id} pushed={c.badge>0}/>
                     </div>
                   );
                 })}
