@@ -21,7 +21,7 @@ const colorOf = (col) => col?.colorHex || col?.hex || "#ccc";
 
 export default function PackRunTab({
   packRuns = [], customers = [], clothingItems = [], sizesFor, user, role = {},
-  onOpenRun, onBump, onCloseRun, onCutStock, onReopenRun, onCancelRun, onBillRun, onPrintPickList,
+  onOpenRun, onBump, onCloseRun, onCutStock, onReopenRun, onCancelRun, onDeleteRun, onBillRun, onPrintPickList,
   openingInvoice = false,   // 🔒 เพิ่งกดไป กำลังเปิดหน้าออกบิล — ปิดปุ่มกันแตะซ้ำตอนเครื่องช้า
   onBulkImport, onUndoImport, onManageAliases,
 }) {
@@ -532,6 +532,13 @@ export default function PackRunTab({
                   style={{ padding: "3px 10px", fontSize: 11, color: "#b45309", borderColor: "rgba(217,119,6,0.45)", background: "rgba(217,119,6,0.08)", fontWeight: 700 }}>✂️ ตัดสต็อกตอนนี้</Btn>}
                 {canEdit && !r.invoiceNo && <Btn onClick={() => onBillRun(r)} disabled={openingInvoice} style={{ padding: "3px 10px", fontSize: 11, color: T.accent, borderColor: "rgba(59,91,139,0.4)", opacity: openingInvoice ? 0.5 : 1, cursor: openingInvoice ? "wait" : "pointer" }}>🧾 ออกบิล</Btn>}
                 {user?.role === "admin" && !r.invoiceNo && <Btn onClick={() => onReopenRun(r)} style={{ padding: "3px 10px", fontSize: 11 }} title="เปิดรอบกลับมาแก้ (คืนสต็อกที่ตัดไป)">↩️ เปิดกลับ</Btn>}
+                {/* 🗑️ ล้างรอบทดสอบ — ถ้ารอบนี้ออกบิลไปแล้ว ตัวจัดการจะเช็คให้ว่าบิลถูกยกเลิกหรือยัง
+                    และคืนสต็อกให้ก่อนลบถ้าเคยตัดไป */}
+                {user?.role === "admin" && onDeleteRun && (
+                  <Btn onClick={() => onDeleteRun(r)}
+                    style={{ padding: "3px 10px", fontSize: 11, color: "#b91c1c", borderColor: "rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.07)", fontWeight: 700 }}
+                    title="ลบรอบนี้ทิ้งถาวร — ต้องยกเลิกบิลที่ผูกอยู่ก่อน (ถ้ามี)">🗑️ ลบถาวร</Btn>
+                )}
               </div>
             </div>
           ))}

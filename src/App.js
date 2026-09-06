@@ -1,6 +1,6 @@
 ﻿import React, { useState, useRef, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import { db, authReady } from "./firebase";
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, writeBatch, runTransaction, serverTimestamp, query, orderBy, where, Timestamp, limit, increment, FieldPath, deleteField } from "firebase/firestore";
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDoc, setDoc, getDocs, writeBatch, runTransaction, serverTimestamp, query, orderBy, where, Timestamp, limit, increment, FieldPath, deleteField } from "firebase/firestore";
 import { T, SIZES, SHOE_SIZES, getSizesFor, mergeSizes, PRESET_COLORS, MASTER_KEY, SIZE_GROUPS, priceRowsForSizes, getPriceForSize, compareSizes, splitSizesIntoRows } from "./theme";
 import { INIT_USERS, ROLES, INIT_CATS } from "./constants";
 import { BarcodeDisplay, Modal, MHead, Toast, Input, BtnPrimary, BtnSuccess, BtnDanger, BtnGhost, Badge, CardBox } from "./components/ui";
@@ -2531,6 +2531,72 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     });
   };
 
+  // 🗑️ ลบรอบที่ปิดแล้วทิ้งถาวร — สำหรับล้างรอบทดสอบออกจากระบบ
+  //
+  //    ปกติรอบที่ปิดแล้วห้ามลบ เพราะบิลที่ออกจากรอบชี้กลับมาหามัน
+  //    ลบทิ้งแล้วบิลจะชี้ไปหารอบที่ไม่มี ตามย้อนไม่ได้ว่ายอดในบิลมาจากไหน
+  //    แต่รอบที่กดเล่นตอนลองระบบไม่ได้เป็นที่มาของยอดอะไร ปล่อยไว้ก็รก
+  //
+  //    เงื่อนไขที่ต้องผ่านก่อนลบ:
+  //      · บิลที่ผูกอยู่ต้องถูกยกเลิกหรือลบไปแล้ว — เช็คจาก Firestore ตรง ๆ ไม่ใช่จากที่โหลดค้างไว้
+  //        (หน้าต่างโหลดเหลือ 7 วัน บิลเก่าจึงมักไม่อยู่ในมือ ถ้าเช็คจากกองนั้นจะเข้าใจผิดว่าบิลหายแล้ว)
+  //      · ถ้าตัดสต๊อกไปแล้วต้องคืนสต๊อกก่อน ไม่งั้นของหายจากคลังโดยไม่มีที่มา
+  const handleDeletePackRun = async (run) => {
+    if (!run) return;
+    if (user.role !== "admin") { alert("ลบรอบแพ็คได้เฉพาะ admin"); return; }
+    const NL = String.fromCharCode(10);
+
+    if (run.invoiceId || run.invoiceNo) {
+      let inv = null;
+      try {
+        if (run.invoiceId) {
+          const snap = await getDoc(doc(db, "invoices", run.invoiceId));
+          inv = snap.exists() ? { ...snap.data(), id: snap.id } : null;
+        } else {
+          inv = invoices.find(i => i.invoiceNo === run.invoiceNo) || null;
+        }
+      } catch (e) {
+        alert("ตรวจสอบบิลที่ผูกอยู่ไม่สำเร็จ: " + (e?.message || e) + NL + "ยังไม่ได้ลบอะไร");
+        return;
+      }
+      if (inv && (inv.status || "") !== "ยกเลิก") {
+        alert(`ลบไม่ได้ — รอบนี้ออกบิล ${run.invoiceNo || inv.invoiceNo} ไปแล้ว และบิลยังใช้งานอยู่` + NL + NL +
+          "ถ้าเป็นรอบทดสอบ ให้ไปยกเลิกบิลใบนั้นก่อน แล้วค่อยกลับมาลบรอบ");
+        return;
+      }
+    }
+
+    const total = Object.values(run.counts || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+    const backLine = run.stockCut
+      ? NL + `⚠️ รอบนี้ตัดสต๊อกไปแล้ว — จะคืนของ ${total.toLocaleString("th-TH")} ชิ้นกลับเข้าคลังก่อนลบ`
+      : NL + "รอบนี้ยังไม่ได้ตัดสต๊อก — คลังไม่กระทบ";
+    if (!window.confirm(
+      `ลบรอบแพ็ค ${run.runNo} · ${run.customerName} ทิ้งถาวร?` + NL +
+      `นับไว้ ${total.toLocaleString("th-TH")} ชิ้น` +
+      (run.invoiceNo ? NL + `บิลที่เคยผูก: ${run.invoiceNo} (ยกเลิก/ลบไปแล้ว)` : "") +
+      backLine + NL + NL + "ลบแล้วเอาคืนไม่ได้"
+    )) return;
+    if (!window.confirm(`ยืนยันอีกครั้ง — ลบรอบ ${run.runNo}`)) return;
+
+    // คืนสต๊อกให้เสร็จก่อนลบเสมอ — ถ้าลบสำเร็จแต่คืนพลาด จะไม่เหลือข้อมูลให้คืนทีหลังเลย
+    if (run.stockCut) {
+      try { await applyPackRunStock(run, +1, `คืนสต๊อก ลบรอบแพ็ค ${run.runNo}`); }
+      catch (e) { alert("คืนสต๊อกไม่สำเร็จ: " + (e?.message || e) + NL + "ยังไม่ได้ลบรอบ"); return; }
+    }
+    try {
+      await deleteDoc(doc(db, "packRuns", run.id));
+    } catch (e) {
+      alert("ลบไม่สำเร็จ: " + (e?.message || e) + (run.stockCut ? NL + "⚠️ สต๊อกถูกคืนไปแล้ว — ตรวจคลังด้วย" : ""));
+      return;
+    }
+    logAudit(user, {
+      action: AUDIT_ACTIONS.DELETE, collection: "packRuns", targetId: run.id,
+      targetLabel: `${run.runNo} · ${run.customerName}`,
+      before: { runNo: run.runNo, customerName: run.customerName, totalQty: total, invoiceNo: run.invoiceNo || "", stockCut: !!run.stockCut },
+      note: `ลบรอบแพ็คที่ปิดแล้วทิ้งถาวร (${total} ชิ้น)` + (run.stockCut ? " · คืนสต๊อกแล้ว" : ""),
+    });
+  };
+
   // ยกเลิกรอบที่ยังเปิดอยู่ — ยังไม่ได้ตัดสต๊อก จึงลบทิ้งได้เลย ไม่กระทบคลัง
   //   (รอบที่ปิดแล้วห้ามมาทางนี้ ต้อง "เปิดกลับ" ก่อนเพื่อคืนสต๊อก)
   const handleCancelPackRun = async (run) => {
@@ -4576,6 +4642,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               onCutStock={handleCutPackRunStock}
               onReopenRun={handleReopenPackRun}
               onCancelRun={handleCancelPackRun}
+              onDeleteRun={handleDeletePackRun}
               onBillRun={handleBillPackRun}
               openingInvoice={openingInvoice}
               onPrintPickList={handlePrintPickList}
