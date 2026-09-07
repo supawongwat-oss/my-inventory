@@ -467,6 +467,50 @@ export default function ReturnModal({
       {/* ── จับคู่บิล ── */}
       <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", margin: "18px 0 8px" }}>บิลต้นทาง</div>
 
+      {/* 📄 ป้ายบอกว่าตอนนี้ผูกกับบิลใบไหน — ใช้ร่วมกันทุกทางที่เลือกบิล
+          เดิมมีให้เห็นชัดเฉพาะทางเลขพัสดุ (ลูกค้าที่ขายออนไลน์) ส่วนลูกค้าปกติที่กดเลือกจากรายการ
+          ต้องไปสังเกตเอาเองว่าแถวไหนมีเครื่องหมายถูก เลื่อนจอผ่านไปนิดเดียวก็ไม่รู้แล้วว่าเลือกไว้หรือยัง
+          เรื่องเงินต้องเห็นตลอดเวลาว่ากำลังหักกับบิลใบไหน */}
+      {pickedInvoice ? (
+        <div style={{ padding: "9px 12px", marginBottom: 10, borderRadius: 9,
+          background: "rgba(16,185,129,0.13)", border: "1px solid rgba(16,185,129,0.5)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+            <div style={{ fontSize: 13, color: T.text }}>
+              📄 ต้นบิลคือ{" "}
+              <b style={{ fontFamily: "monospace", fontSize: 15 }}>{pickedInvoice.invoiceNo || "(ไม่มีเลข)"}</b>
+              {parcelInvoice && parcelInvoice.id === pickedInvoice.id && (
+                <span style={{ marginLeft: 7, padding: "2px 7px", borderRadius: 6, fontSize: 10,
+                  background: "rgba(16,185,129,0.2)", color: "#047857", fontWeight: 700 }}>📦 ตามจากเลขพัสดุ</span>
+              )}
+            </div>
+            <button type="button" onClick={() => pickInvoice(null)}
+              style={{ padding: "3px 10px", borderRadius: 7, cursor: "pointer", border: `1px solid ${T.border}`,
+                background: "white", color: T.sub, fontFamily: "'Sarabun',sans-serif", fontSize: 11 }}>
+              เปลี่ยนบิล
+            </button>
+          </div>
+          <div style={{ fontSize: 11.5, color: T.sub, marginTop: 2, fontFamily: "monospace" }}>
+            {pickedInvoice.customerName || "-"} · {pickedInvoice.date || "-"} · ฿{money(pickedInvoice.total)}
+          </div>
+          {/* บิลที่แยกใบ (เสื้อผ้า/อุปกรณ์กีฬา) — ของที่คืนอาจอยู่อีกใบ ต้องเตือนไม่ให้หักผิดใบ */}
+          {pickedInvoice.splitSiblingNo && (
+            <div style={{ fontSize: 11, color: "#b45309", marginTop: 4, lineHeight: 1.6 }}>
+              ⚠️ บิลนี้แยกเป็น 2 ใบ — ถ้าของที่คืนไม่อยู่ในใบนี้ ให้เลือก{" "}
+              <b style={{ fontFamily: "monospace" }}>{pickedInvoice.splitSiblingNo}</b> แทน
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ padding: "9px 12px", marginBottom: 10, borderRadius: 9,
+          background: "rgba(245,158,11,0.09)", border: "1px solid rgba(245,158,11,0.4)",
+          fontSize: 12, color: T.text, lineHeight: 1.7 }}>
+          ⚠️ <b>ยังไม่ได้เลือกบิลต้นทาง</b> — เลือกจากรายการข้างล่าง หรือค้นด้วยเลขพัสดุบนกล่อง
+          <div style={{ fontSize: 11, color: T.sub }}>
+            บันทึกไว้ก่อนได้ (จะขึ้นเป็น “รอจับคู่บิล”) แต่จะยังไม่ถูกหักในใบวางบิลจนกว่าจะจับคู่บิล
+          </div>
+        </div>
+      )}
+
       {suggestions.length > 0 ? (
         <>
           <div style={{ fontSize: 11, color: T.sub, marginBottom: 6 }}>บิลที่น่าจะใช่ — เรียงจากตรงมากสุด กดเลือกได้เลย</div>
@@ -528,35 +572,23 @@ export default function ReturnModal({
                 </span>
               ))}
             </div>
-            {/* 📄 เลขบิล — นี่คือคำตอบที่คนเปิดหน้านี้มาหา ต้องเห็นชัดที่สุดในกล่อง
-                ของเดิมเจอบิลแล้วแต่ return null คือไม่แสดงอะไรเลย เงียบสนิททุกครั้งที่สำเร็จ */}
+            {/* เลขบิลที่ตามได้ — ตัวเต็มอยู่ที่ป้ายบิลต้นทางข้างบนแล้ว ตรงนี้เหลือบรรทัดเดียวพอ
+                ไม่งั้นมีกล่องเขียวซ้อนกันสองชั้นบอกเรื่องเดียวกัน */}
             <div style={{ marginTop: 6 }}>
               {parcelInvoice ? (
-                <div style={{ padding: "8px 11px", borderRadius: 8, background: "rgba(16,185,129,0.13)",
-                  border: "1px solid rgba(16,185,129,0.5)", color: T.text }}>
-                  <div style={{ fontSize: 13 }}>
-                    📄 ต้นบิลคือ{" "}
-                    <b style={{ fontFamily: "monospace", fontSize: 15 }}>{parcelInvoice.invoiceNo || "(ไม่มีเลข)"}</b>
-                    {parcelInvoice.date ? ` · ${parcelInvoice.date}` : ""}
-                    {form.invoiceId === parcelInvoice.id
-                      ? <b style={{ color: "#059669" }}> · เลือกให้แล้ว ✅</b>
-                      : (
-                        <button type="button" onClick={() => pickInvoice(parcelInvoice)}
-                          style={{ marginLeft: 8, padding: "3px 10px", borderRadius: 7, cursor: "pointer",
-                            border: "1px solid rgba(16,185,129,0.6)", background: "rgba(16,185,129,0.15)",
-                            color: T.text, fontFamily: "'Sarabun',sans-serif", fontSize: 11.5, fontWeight: 700 }}>
-                          ใช้บิลนี้
-                        </button>
-                      )}
-                  </div>
-                  {/* รอบที่แยกบิล 2 ใบ (เสื้อผ้า/อุปกรณ์กีฬา) รอบเก็บเลขบิลได้ใบเดียว
-                      ของที่คืนอาจอยู่อีกใบ — ต้องเตือน ไม่ใช่ปล่อยให้หักผิดใบ */}
-                  {parcelInvoice.splitSiblingNo && (
-                    <div style={{ fontSize: 11, color: "#b45309", marginTop: 4, lineHeight: 1.6 }}>
-                      ⚠️ รอบนี้แยกบิล 2 ใบ — ถ้าของที่คืนไม่อยู่ในบิลใบนี้ ให้เลือก{" "}
-                      <b style={{ fontFamily: "monospace" }}>{parcelInvoice.splitSiblingNo}</b> จากรายการด้านล่างแทน
-                    </div>
-                  )}
+                <div style={{ fontSize: 12, color: T.text }}>
+                  📄 กล่องนี้ผูกกับบิล{" "}
+                  <b style={{ fontFamily: "monospace" }}>{parcelInvoice.invoiceNo || "(ไม่มีเลข)"}</b>
+                  {form.invoiceId === parcelInvoice.id
+                    ? <b style={{ color: "#059669" }}> · ใช้อยู่ ✅</b>
+                    : (
+                      <button type="button" onClick={() => pickInvoice(parcelInvoice)}
+                        style={{ marginLeft: 8, padding: "3px 10px", borderRadius: 7, cursor: "pointer",
+                          border: "1px solid rgba(16,185,129,0.6)", background: "rgba(16,185,129,0.15)",
+                          color: T.text, fontFamily: "'Sarabun',sans-serif", fontSize: 11.5, fontWeight: 700 }}>
+                        ใช้บิลนี้
+                      </button>
+                    )}
                 </div>
               ) : (
                 <div style={{ fontSize: 11.5, color: T.sub }}>
