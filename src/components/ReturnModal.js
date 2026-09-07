@@ -12,6 +12,7 @@ import { Modal, MHead, BtnPrimary, BtnGhost } from "./ui";
 import { compressImage } from "../utils/imageCompress";
 import { uploadImage, deleteFile } from "../utils/upload";
 import { fetchInvoicesOfCustomer } from "../utils/fetchInvoices";
+import { findParcel } from "../utils/parcelLookup";
 import {
   RETURN_REASONS, RETURN_CONDITIONS, conditionRestocks,
   calcReturn, suggestInvoices, lineKey, matchesTokens, invoiceItemsText, norm, SETTLE_MODES, settleModeOf,
@@ -31,6 +32,7 @@ const emptyItem = () => ({ clothingId: "", clothingName: "", colorIdx: null, col
 
 export default function ReturnModal({
   existing = null,          // แก้ใบเดิม (เช่น กลับมาจับคู่บิลทีหลัง)
+  packRuns = [],            // ใช้บอกว่ารอบที่พัสดุมาจากนั้นออกบิลแล้วหรือยัง
   customers = [],
   clothingItems = [],
   invoices = [],
@@ -91,6 +93,33 @@ export default function ReturnModal({
     const seen = new Set(custInvoices.map(i => i.id));
     return [...custInvoices, ...invoices.filter(i => !seen.has(i.id))];
   }, [custInvoices, invoices]);
+
+  // 📦 ตามจากเลขพัสดุบนกล่อง — ทางเดียวที่ "รู้" ไม่ใช่ "เดา"
+  //
+  //    ของจากรอบแพ็คไม่มีทางเดาต้นบิลได้เลย: รอบเก็บเป็นตัวนับ ปิดรอบออกบิลใบเดียวทั้งรอบ
+  //    และรุ่นเดียวกันออกทุกวัน — ตัวช่วยเดาด้านล่างจะเจอบิลที่คะแนนเท่ากันเป็นสิบใบ
+  //    แต่เลขพัสดุติดกล่องมาเสมอ และถูกเก็บไว้ตอนลากใบปะหน้าเข้าระบบแล้ว
+  const [parcel, setParcel] = React.useState(null);
+  const [parcelBusy, setParcelBusy] = React.useState(false);
+  const [parcelMsg, setParcelMsg] = React.useState("");
+
+  const lookupParcel = async (raw) => {
+    const q = String(raw || "").trim();
+    if (!q) return;
+    setParcelBusy(true); setParcelMsg(""); setParcel(null);
+    try {
+      const p = await findParcel(q);
+      if (!p) {
+        setParcelMsg("ไม่พบเลขพัสดุนี้ — อาจเป็นของก่อนที่ระบบจะเริ่มเก็บ หรือเป็นรอบที่นำเข้าด้วยการวางข้อความ");
+        return;
+      }
+      setParcel(p);
+      // เติมให้เท่าที่รู้ — ลูกค้าคือเจ้าของรอบแพ็ค (คนที่เราออกบิลให้) ไม่ใช่คนที่ส่งของกลับมา
+      patch({ customerId: p.customerId || "", customerName: p.customerName || "", trackingNo: p.track || q });
+    } catch (e) {
+      setParcelMsg("ค้นไม่สำเร็จ: " + (e?.message || e));
+    } finally { setParcelBusy(false); }
+  };
 
   const pickedInvoice = form.invoiceId ? allInvoices.find(i => i.id === form.invoiceId) : null;
 
@@ -413,6 +442,54 @@ export default function ReturnModal({
           ยังเดาบิลไม่ได้ — กรอกเบอร์โทรหรือระบุสินค้าให้ครบขึ้น แล้วรายการจะขึ้นเอง
         </div>
       )}
+
+      {/* 📦 ตามจากเลขพัสดุ — วางไว้บนสุดของส่วนจับคู่บิล เพราะเป็นทางที่แน่นอนที่สุด
+          ต้องลองทางนี้ก่อนค่อยไปเดา ไม่ใช่เดาก่อนแล้วค่อยนึกได้ */}
+      <div style={{ padding: "10px 12px", marginBottom: 10, borderRadius: 9,
+        border: parcel ? "1px solid rgba(16,185,129,0.45)" : `1px solid ${T.border}`,
+        background: parcel ? "rgba(16,185,129,0.06)" : "rgba(59,91,139,0.04)" }}>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: T.text, marginBottom: 6 }}>
+          📦 มีเลขพัสดุบนกล่องไหม? — ตามได้เลยว่ามาจากบิลไหน
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <input
+            defaultValue={form.trackingNo || ""}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); lookupParcel(e.currentTarget.value); } }}
+            onBlur={e => { const v = e.currentTarget.value.trim(); if (v && v !== (parcel?.track || "")) lookupParcel(v); }}
+            placeholder="พิมพ์หรือสแกนเลขพัสดุ เช่น JTTH204465059304 / TH265269379394C"
+            style={{ ...inputStyle, flex: "1 1 260px" }}/>
+          {parcelBusy && <span style={{ fontSize: 11, color: T.accent, alignSelf: "center" }}>⏳ กำลังค้น…</span>}
+        </div>
+        {parcelMsg && <div style={{ fontSize: 11, color: "#b45309", marginTop: 6, lineHeight: 1.6 }}>⚠️ {parcelMsg}</div>}
+        {parcel && (
+          <div style={{ marginTop: 8, fontSize: 11.5, color: T.text, lineHeight: 1.9 }}>
+            <div>
+              ✅ กล่องนี้มาจากรอบ <b style={{ fontFamily: "monospace" }}>{parcel.runNo}</b>
+              {" · "}<b>{parcel.customerName}</b>
+              {parcel.runDate ? ` · ${String(parcel.runDate).split(" ")[0]}` : ""}
+              {parcel.orderNo ? ` · ออเดอร์ ${parcel.orderNo}` : ""}
+            </div>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 4 }}>
+              {(parcel.items || []).map((it, i) => (
+                <span key={i} style={{ padding: "3px 9px", borderRadius: 7, background: "rgba(16,185,129,0.1)",
+                  border: "1px solid rgba(16,185,129,0.3)", fontSize: 11 }}>
+                  {it.clothingName}{it.colorName ? ` · ${it.colorName}` : ""}{it.size ? ` · ${it.size}` : ""}
+                  <b style={{ fontFamily: "monospace" }}> ×{it.qty}</b>
+                </span>
+              ))}
+            </div>
+            {/* รอบที่ยังไม่ปิด/ยังไม่ออกบิล = ยังไม่มีบิลให้หัก ต้องบอกตรง ๆ ไม่ใช่ปล่อยให้หาไม่เจอเอง */}
+            <div style={{ marginTop: 5, color: T.sub }}>
+              {(() => {
+                const run = (packRuns || []).find(r => r.id === parcel.runId);
+                if (!run) return "รอบนี้อยู่นอกช่วงที่โหลดมา — ค้นบิลด้วยเลขที่ด้านล่างได้";
+                if (!run.invoiceNo) return "⏳ รอบนี้ยังไม่ได้ออกบิล — บันทึกไว้ก่อนเป็น “รอจับคู่บิล” แล้วค่อยกลับมาจับทีหลัง";
+                return null;
+              })()}
+            </div>
+          </div>
+        )}
+      </div>
 
       {form.customerId && (
         <div style={{ fontSize: 10.5, color: custInvBusy ? T.accent : T.muted, marginBottom: 6 }}>

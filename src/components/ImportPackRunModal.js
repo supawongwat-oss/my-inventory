@@ -316,8 +316,24 @@ export default function ImportPackRunModal({ run, clothingItems = [], sizesFor, 
       // ตัวที่มีอยู่ก่อนแล้วเป็นของลูกค้ารายอื่นสอนไว้ ห้ามไปลบของเขา
       const sharedKeys = aliasKeys.filter(k => !gAliases[k]);
 
+      // 📦 พัสดุที่อ่านเลขได้ — เก็บแยกไว้ให้ตามของที่ตีกลับได้ว่ามาจากกล่องไหน รอบไหน บิลไหน
+      //    รวบจาก view (แถวที่จับคู่แล้ว) ไม่ใช่จาก entries เพราะ entries ยุบเป็นตัวนับไปแล้ว
+      //    แถวที่อ่านเลขพัสดุไม่ออกก็ข้ามไป — ยังนำเข้าตัวนับได้ตามปกติ แค่ตามกลับไม่ได้
+      const byTrack = new Map();
+      view.forEach(r => {
+        if (!r.track || r.status === "ข้าม") return;
+        const p = r.pick;
+        if (!p || p.colorIdx == null || !p.size || !(Number(r.qty) > 0)) return;
+        if (!byTrack.has(r.track)) byTrack.set(r.track, { track: r.track, orderNo: r.orderNo || "", items: [] });
+        byTrack.get(r.track).items.push({
+          clothingId: p.clothingId, clothingName: p.clothingName,
+          colorIdx: p.colorIdx, colorName: p.colorName, size: p.size, qty: Number(r.qty) || 0,
+        });
+      });
+      const parcels = [...byTrack.values()];
+
       await onCommit(run, entries, {
-        importId, source, rows: rows.length, qty: totalQty, fp: fingerprintOf(entries),
+        importId, source, rows: rows.length, qty: totalQty, fp: fingerprintOf(entries), parcels,
         aliasKeys, sharedKeys,
         // เก็บคู่ กุญแจ+คำอธิบาย ไว้เป็นอาร์เรย์ (ไม่ใช้ map เพราะกุญแจมีจุดได้)
         aliasLog: aliasKeys.map(k => ({ k, label: (labelOf[k] || "").slice(0, 120) })),

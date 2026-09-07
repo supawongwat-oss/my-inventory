@@ -40,6 +40,7 @@ service cloud.firestore {
     match /attendance/{doc}    { allow read, write: if isAuthed(); }
     match /payrollRuns/{doc}   { allow read, write: if isAuthed(); }
     match /counters/{doc}      { allow read, write: if isAuthed(); } // 🔢 เลขรันเอกสารแบบ atomic (กันเลขซ้ำ)
+    match /packParcels/{doc}   { allow read, write: if isAuthed(); } // 📦 เลขพัสดุ → รอบแพ็ค (ตามของที่ตีกลับ)
     match /returns/{doc}       { allow read, write: if isAuthed(); } // ↩️ ใบรับคืนสินค้า
     match /packRuns/{doc}      { allow read, write: if isAuthed(); } // 📦 รอบแพ็ค (ลูกค้าขายบนแพลตฟอร์ม)
     match /packAliases/{doc}   { allow read, write: if isAuthed(); } // 🧠 จำการจับคู่ชื่อสินค้าของลูกค้าแต่ละราย

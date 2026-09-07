@@ -2450,14 +2450,47 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     args.push(new FieldPath("imports", meta.importId), {
       at: now(), by: user.name, source: meta.source || "",
       rows: meta.rows || entries.length, qty: meta.qty || 0, fp: meta.fp || "", keys,
+      parcels: (meta.parcels || []).length,
       // 🧠 ชุดนี้สอนการจับคู่อะไรไว้บ้าง — ใช้ตอนถอน ถ้าถอนเพราะจับคู่ผิดจะได้ลืมตามได้
       aliasKeys: meta.aliasKeys || [], sharedKeys: meta.sharedKeys || [], aliasLog: meta.aliasLog || [],
     });
     await updateDoc(doc(db, "packRuns", run.id), ...args);
+
+    // 📦 สมุดจดว่าพัสดุใบไหนอยู่รอบไหน — ตัวเดียวที่ตามของตีกลับได้
+    //
+    //    ใช้ "เลขพัสดุเป็นชื่อเอกสาร" เพื่อให้ค้นด้วยการเปิดตรง ๆ ไม่ต้อง query ไม่ต้องสร้าง index
+    //    (index ไม่ deploy อัตโนมัติ ต้องกดเองทั้ง 2 โปรเจกต์ ลืมเมื่อไรหน้านั้นพังทันที)
+    //
+    //    ไม่ได้ทำให้กลายเป็น "ใบสั่งจริง 1,200 ใบ/วัน" ที่ตั้งใจเลี่ยงไว้ —
+    //    เอกสารนี้เก็บแค่ว่าชี้ไปรอบไหนกับมีอะไรอยู่ในกล่อง ไม่มีสถานะ ไม่มีขั้นตอน ไม่มีใครต้องมาดูแล
+    //
+    //    เขียนหลังอัปเดตรอบสำเร็จแล้วเท่านั้น และพลาดก็ไม่ throw —
+    //    ยอดในรอบคือของจริงที่ต้องถูก ส่วนนี้เป็นตัวช่วยตามของ ห้ามทำให้การนำเข้าล้มทั้งชุด
+    const parcels = meta.parcels || [];
+    if (parcels.length) {
+      try {
+        for (let i = 0; i < parcels.length; i += 400) {
+          const b = writeBatch(db);
+          parcels.slice(i, i + 400).forEach(p => {
+            b.set(doc(db, "packParcels", p.track), {
+              track: p.track, orderNo: p.orderNo || "",
+              runId: run.id, runNo: run.runNo || "", runDate: live.date || "",
+              customerId: run.customerId || "", customerName: run.customerName || "",
+              items: p.items || [],
+              qty: (p.items || []).reduce((s, x) => s + (Number(x.qty) || 0), 0),
+              importId: meta.importId, at: now(), by: user.name,
+            }, { merge: true });
+          });
+          await b.commit();
+        }
+      } catch (e) { console.warn("[packParcels] บันทึกเลขพัสดุไม่สำเร็จ:", e); }
+    }
+
     logAudit(user, {
       action: AUDIT_ACTIONS.UPDATE, collection: "packRuns", targetId: run.id,
       targetLabel: `${run.runNo} · ${run.customerName}`,
-      note: `นำเข้า ${entries.length} รายการ ${meta.qty} ชิ้น (${meta.source || "-"})`,
+      note: `นำเข้า ${entries.length} รายการ ${meta.qty} ชิ้น (${meta.source || "-"})`
+        + (parcels.length ? ` · เก็บเลขพัสดุ ${parcels.length} ใบ` : ""),
     });
   };
 
@@ -5942,6 +5975,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       {/* ── MODAL: รับคืนสินค้า ── */}
       {showReturnModal&&(
         <ReturnModal
+          packRuns={packRuns}
           existing={editingReturn}
           customers={customers}
           clothingItems={clothingItems}

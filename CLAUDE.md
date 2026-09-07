@@ -33,7 +33,7 @@
 
 ### Firestore collections
 `products` `clothing` `transactions` `customers` `suppliers` `orders` `invoices` `statements`
-`productionOrders` `customOrders` `boms` `returns` `packRuns` `packAliases` `catalogOrders`
+`productionOrders` `customOrders` `boms` `returns` `packRuns` `packAliases` `packParcels` `catalogOrders`
 `employees` `attendance` `payrollRuns` `taxDocs` `pendingMixSales` `users` `settings` `auditLog` `counters`
 
 > `firestore.rules` อยู่ในรีโปแต่ **ไม่ได้ deploy อัตโนมัติ** — เพิ่ม collection ใหม่ต้องไป Publish ที่ Firebase Console เอง (ทำกับทั้ง 2 โปรเจกต์)

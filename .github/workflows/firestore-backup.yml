@@ -82,7 +82,7 @@ jobs:
             "customOrders","catalogOrders","pendingMixSales",
             // คลัง & ผลิต
             "products","clothing","transactions","productionOrders","boms",
-            "packRuns","packAliases",
+            "packRuns","packAliases","packParcels",
             // บุคคล & บัญชี
             "employees","attendance","payrollRuns","taxDocs",
             // ระบบ
