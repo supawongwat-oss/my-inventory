@@ -5136,6 +5136,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                           {k:"canClear",l:"ล้าง",c:T.amber},
                           {k:"canCreateOrder",l:"📋 ออกใบสั่ง",c:"#3b5b8b"},
                           {k:"canIssueInvoice",l:"🧾 ออกบิล",c:"#a78bfa"},
+                          {k:"canStatement",l:"📃 ใบวางบิล",c:"#0ea5e9"},
                         ].map(p=>{
                           const on=eff(p.k);
                           return (

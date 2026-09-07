@@ -576,7 +576,9 @@ export default function StatementTab({ statements, invoices, returns = [], custo
             );
           })}
         </div>
-        {role.canIssueInvoice !== false && role.canAdd !== false && (
+        {/* 📃 ใช้สิทธิ์ของตัวเอง ไม่เกาะสิทธิ์ออกบิลอีกแล้ว
+            คนที่ปิดสิทธิ์นี้ยังเข้าหน้านี้ได้ ดูยอดได้ พิมพ์ซ้ำได้ แค่ออกใบใหม่ไม่ได้ */}
+        {role.canStatement !== false && (
           <>
             <BtnGhost onClick={() => setShowBulkPrint(true)} style={{marginRight:8}}>🖨️ พิมพ์หลายใบ</BtnGhost>
             <BtnGhost onClick={() => setShowBulk(true)} style={{marginRight:8}}>📅 ออกทั้งเดือน</BtnGhost>
@@ -745,7 +747,11 @@ export default function StatementTab({ statements, invoices, returns = [], custo
                       </div>
                       <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 5, justifyContent: "center" }}>
                         <button onClick={() => handlePrint(st)} title="พิมพ์" style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid rgba(59,91,139,0.25)", background: "rgba(59,91,139,0.08)", color: T.accent, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>🖨️</button>
-                        {role.canDelete && <button onClick={() => handleDelete(st)} title="ลบ" style={{ padding: "5px 8px", borderRadius: 7, border: "1px solid rgba(185,74,72,0.25)", background: "rgba(185,74,72,0.08)", color: T.red, cursor: "pointer", fontSize: 11 }}>✕</button>}
+                        {/* 🔒 ลบใบวางบิล = admin เท่านั้น ให้ตรงกับ "↩️ ถอยทั้งรอบ"
+                            สองปุ่มนี้ผลลัพธ์เหมือนกันเป๊ะ: บิลกลับมาเป็น "ยังไม่วางบิล" และ
+                            ใบรับคืนที่หักไปแล้วกลับมาเป็น "ยังไม่หัก" — ทั้งคู่ทำให้ถูกวางบิล/หักซ้ำได้
+                            เดิมปิดประตูหน้า (ถอยทั้งรอบ = admin) แต่ประตูหลัง (ลบทีละใบ) เปิดอยู่ */}
+                        {isAdmin && <button onClick={() => handleDelete(st)} title="ลบ" style={{ padding: "5px 8px", borderRadius: 7, border: "1px solid rgba(185,74,72,0.25)", background: "rgba(185,74,72,0.08)", color: T.red, cursor: "pointer", fontSize: 11 }}>✕</button>}
                       </div>
                     </div>
                   );
