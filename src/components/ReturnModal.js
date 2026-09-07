@@ -12,7 +12,7 @@ import { Modal, MHead, BtnPrimary, BtnGhost } from "./ui";
 import { compressImage } from "../utils/imageCompress";
 import { uploadImage, deleteFile } from "../utils/upload";
 import { fetchInvoicesOfCustomer } from "../utils/fetchInvoices";
-import { findParcel } from "../utils/parcelLookup";
+import { findParcelSource } from "../utils/parcelLookup";
 import {
   RETURN_REASONS, RETURN_CONDITIONS, conditionRestocks,
   calcReturn, suggestInvoices, lineKey, matchesTokens, invoiceItemsText, norm, SETTLE_MODES, settleModeOf,
@@ -32,7 +32,6 @@ const emptyItem = () => ({ clothingId: "", clothingName: "", colorIdx: null, col
 
 export default function ReturnModal({
   existing = null,          // แก้ใบเดิม (เช่น กลับมาจับคู่บิลทีหลัง)
-  packRuns = [],            // ใช้บอกว่ารอบที่พัสดุมาจากนั้นออกบิลแล้วหรือยัง
   customers = [],
   clothingItems = [],
   invoices = [],
@@ -66,6 +65,13 @@ export default function ReturnModal({
   const validItems = form.items.filter(i => (i.clothingName || i.clothingId) && Number(i.qty) > 0);
   const calc = calcReturn(validItems);
 
+  // 📦 ผลการตามจากเลขพัสดุ (ตัวค้นอยู่ล่างลงไป) — ประกาศไว้ตรงนี้เพราะ allInvoices ข้างล่างอ่านค่าไปใช้
+  const [parcel, setParcel] = React.useState(null);
+  const [parcelRun, setParcelRun] = React.useState(null);
+  const [parcelInvoice, setParcelInvoice] = React.useState(null);
+  const [parcelBusy, setParcelBusy] = React.useState(false);
+  const [parcelMsg, setParcelMsg] = React.useState("");
+
   // 📥 พอรู้ว่าเป็นลูกค้ารายไหน ให้ไปขอบิลของร้านนั้นมาทั้งหมด
   //
   //    ของคืนมาช้ากว่าวันขายเสมอ และบางทีเป็นเดือน — แต่กองที่แอปโหลดค้างไว้มีแค่ 30 วัน
@@ -88,38 +94,59 @@ export default function ReturnModal({
   }, [form.customerId]);
 
   // บิลของลูกค้ารายนี้มาก่อน แล้วต่อด้วยกองเดิม (เผื่อบิลที่ยังไม่ผูกรหัสลูกค้า)
+  // บิลที่ตามได้จากเลขพัสดุต้องอยู่ในกองนี้ด้วย ไม่งั้น pickedInvoice เป็น null
+  // → ด่านกันคืนเกินหายไปเงียบ ๆ ทั้งที่รู้บิลแล้ว
   const allInvoices = React.useMemo(() => {
-    if (!custInvoices.length) return invoices;
-    const seen = new Set(custInvoices.map(i => i.id));
-    return [...custInvoices, ...invoices.filter(i => !seen.has(i.id))];
-  }, [custInvoices, invoices]);
+    const head = parcelInvoice ? [parcelInvoice] : [];
+    custInvoices.forEach(i => { if (i.id !== parcelInvoice?.id) head.push(i); });
+    const seen = new Set(head.map(i => i.id));
+    return [...head, ...invoices.filter(i => !seen.has(i.id))];
+  }, [custInvoices, invoices, parcelInvoice]);
 
   // 📦 ตามจากเลขพัสดุบนกล่อง — ทางเดียวที่ "รู้" ไม่ใช่ "เดา"
   //
   //    ของจากรอบแพ็คไม่มีทางเดาต้นบิลได้เลย: รอบเก็บเป็นตัวนับ ปิดรอบออกบิลใบเดียวทั้งรอบ
   //    และรุ่นเดียวกันออกทุกวัน — ตัวช่วยเดาด้านล่างจะเจอบิลที่คะแนนเท่ากันเป็นสิบใบ
   //    แต่เลขพัสดุติดกล่องมาเสมอ และถูกเก็บไว้ตอนลากใบปะหน้าเข้าระบบแล้ว
-  const [parcel, setParcel] = React.useState(null);
-  const [parcelBusy, setParcelBusy] = React.useState(false);
-  const [parcelMsg, setParcelMsg] = React.useState("");
-
   const lookupParcel = async (raw) => {
     const q = String(raw || "").trim();
     if (!q) return;
-    setParcelBusy(true); setParcelMsg(""); setParcel(null);
+    setParcelBusy(true); setParcelMsg("");
+    setParcel(null); setParcelRun(null); setParcelInvoice(null);
     try {
-      const p = await findParcel(q);
-      if (!p) {
+      const src = await findParcelSource(q);
+      if (!src) {
         setParcelMsg("ไม่พบเลขพัสดุนี้ — อาจเป็นของก่อนที่ระบบจะเริ่มเก็บ หรือเป็นรอบที่นำเข้าด้วยการวางข้อความ");
         return;
       }
-      setParcel(p);
+      setParcel(src.parcel); setParcelRun(src.run); setParcelInvoice(src.invoice);
       // เติมให้เท่าที่รู้ — ลูกค้าคือเจ้าของรอบแพ็ค (คนที่เราออกบิลให้) ไม่ใช่คนที่ส่งของกลับมา
-      patch({ customerId: p.customerId || "", customerName: p.customerName || "", trackingNo: p.track || q });
+      patch({
+        customerId: src.parcel.customerId || "", customerName: src.parcel.customerName || "",
+        trackingNo: src.parcel.track || q,
+      });
+      // เลือกบิลให้เลยเมื่อยังไม่ได้เลือกไว้
+      //
+      // ไม่ขัดกับกฎ "ห้ามจับคู่บิลอัตโนมัติ" ข้างบน — กฎนั้นห้ามเชื่อ "การเดา" จากคะแนนความคล้าย
+      // อันนี้ไม่ใช่การเดา: เลขพัสดุถูกจดไว้ตอนนำเข้าใบปะหน้าว่าอยู่รอบไหน และรอบนั้นถูกปั๊มเลขบิลไว้ตอนออกบิล
+      // เป็นเส้นที่ระบบบันทึกเอง คนยังต้องกดบันทึกใบคืนอยู่ดี และเปลี่ยนบิลเองได้จากรายการด้านล่าง
+      //
+      // ไม่แตะบิลที่เลือกไว้แล้ว — pickInvoice ทับราคาต่อหน่วยด้วยราคาของบิลใหม่
+      // ใบที่ตกลงยอดกับลูกค้าไปแล้ว ห้ามให้การกดค้นเลขพัสดุไปเปลี่ยนยอดเงียบ ๆ
+      if (src.invoice && !form.invoiceId) pickInvoice(src.invoice);
     } catch (e) {
       setParcelMsg("ค้นไม่สำเร็จ: " + (e?.message || e));
     } finally { setParcelBusy(false); }
   };
+
+  // เปิดใบเก่าที่มีเลขพัสดุติดมาอยู่แล้ว → ตามให้เลย ไม่ต้องรอให้คนไปคลิกช่องซ้ำ
+  const autoLookedUp = React.useRef(false);
+  React.useEffect(() => {
+    if (autoLookedUp.current || !existing?.trackingNo) return;
+    autoLookedUp.current = true;
+    lookupParcel(existing.trackingNo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const pickedInvoice = form.invoiceId ? allInvoices.find(i => i.id === form.invoiceId) : null;
 
@@ -478,14 +505,43 @@ export default function ReturnModal({
                 </span>
               ))}
             </div>
-            {/* รอบที่ยังไม่ปิด/ยังไม่ออกบิล = ยังไม่มีบิลให้หัก ต้องบอกตรง ๆ ไม่ใช่ปล่อยให้หาไม่เจอเอง */}
-            <div style={{ marginTop: 5, color: T.sub }}>
-              {(() => {
-                const run = (packRuns || []).find(r => r.id === parcel.runId);
-                if (!run) return "รอบนี้อยู่นอกช่วงที่โหลดมา — ค้นบิลด้วยเลขที่ด้านล่างได้";
-                if (!run.invoiceNo) return "⏳ รอบนี้ยังไม่ได้ออกบิล — บันทึกไว้ก่อนเป็น “รอจับคู่บิล” แล้วค่อยกลับมาจับทีหลัง";
-                return null;
-              })()}
+            {/* 📄 เลขบิล — นี่คือคำตอบที่คนเปิดหน้านี้มาหา ต้องเห็นชัดที่สุดในกล่อง
+                ของเดิมเจอบิลแล้วแต่ return null คือไม่แสดงอะไรเลย เงียบสนิททุกครั้งที่สำเร็จ */}
+            <div style={{ marginTop: 6 }}>
+              {parcelInvoice ? (
+                <div style={{ padding: "8px 11px", borderRadius: 8, background: "rgba(16,185,129,0.13)",
+                  border: "1px solid rgba(16,185,129,0.5)", color: T.text }}>
+                  <div style={{ fontSize: 13 }}>
+                    📄 ต้นบิลคือ{" "}
+                    <b style={{ fontFamily: "monospace", fontSize: 15 }}>{parcelInvoice.invoiceNo || "(ไม่มีเลข)"}</b>
+                    {parcelInvoice.date ? ` · ${parcelInvoice.date}` : ""}
+                    {form.invoiceId === parcelInvoice.id
+                      ? <b style={{ color: "#059669" }}> · เลือกให้แล้ว ✅</b>
+                      : (
+                        <button type="button" onClick={() => pickInvoice(parcelInvoice)}
+                          style={{ marginLeft: 8, padding: "3px 10px", borderRadius: 7, cursor: "pointer",
+                            border: "1px solid rgba(16,185,129,0.6)", background: "rgba(16,185,129,0.15)",
+                            color: T.text, fontFamily: "'Sarabun',sans-serif", fontSize: 11.5, fontWeight: 700 }}>
+                          ใช้บิลนี้
+                        </button>
+                      )}
+                  </div>
+                  {/* รอบที่แยกบิล 2 ใบ (เสื้อผ้า/อุปกรณ์กีฬา) รอบเก็บเลขบิลได้ใบเดียว
+                      ของที่คืนอาจอยู่อีกใบ — ต้องเตือน ไม่ใช่ปล่อยให้หักผิดใบ */}
+                  {parcelInvoice.splitSiblingNo && (
+                    <div style={{ fontSize: 11, color: "#b45309", marginTop: 4, lineHeight: 1.6 }}>
+                      ⚠️ รอบนี้แยกบิล 2 ใบ — ถ้าของที่คืนไม่อยู่ในบิลใบนี้ ให้เลือก{" "}
+                      <b style={{ fontFamily: "monospace" }}>{parcelInvoice.splitSiblingNo}</b> จากรายการด้านล่างแทน
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ fontSize: 11.5, color: T.sub }}>
+                  {!parcelRun
+                    ? "⚠️ เปิดรอบของพัสดุใบนี้ไม่ได้ (รอบอาจถูกลบ) — ค้นบิลจากรายการด้านล่างแทน"
+                    : "⏳ รอบนี้ยังไม่ได้ออกบิล — บันทึกไว้ก่อนเป็น “รอจับคู่บิล” แล้วค่อยกลับมาจับทีหลัง"}
+                </div>
+              )}
             </div>
           </div>
         )}

@@ -38,3 +38,33 @@ export async function findParcel(input) {
     throw e;
   }
 }
+
+/**
+ * ตามให้สุดสาย: เลขพัสดุ → รอบแพ็ค → บิล
+ *
+ * ทำไมต้องเปิดรอบตรงจาก id แทนที่จะหาในกองที่แอปโหลดไว้:
+ * กองรอบมีแค่ 200 รอบล่าสุด แต่ของคืนมาช้ากว่าวันแพ็คเสมอ (บางทีเป็นเดือน)
+ * พอเลย 200 รอบก็หาไม่เจอทั้งที่รอบยังอยู่ในระบบ — เปิดตรงไม่มีเพดานนี้
+ *
+ * เปิดตรงด้วย id ทั้งสองต่อ = ไม่ต้อง query ไม่ต้องสร้าง index
+ * รอบ/บิลหายไปไม่ throw — ยังต้องบอกให้ได้ว่าเจอกล่องนี้แล้วมาจากไหน
+ */
+export async function findParcelSource(input) {
+  const parcel = await findParcel(input);
+  if (!parcel) return null;
+
+  let run = null, invoice = null;
+  if (parcel.runId) {
+    try {
+      const s = await getDoc(doc(db, "packRuns", parcel.runId));
+      if (s.exists()) run = { ...s.data(), id: s.id };
+    } catch (e) { console.warn("[parcel] เปิดรอบแพ็คไม่สำเร็จ:", e); }
+  }
+  if (run && run.invoiceId) {
+    try {
+      const s = await getDoc(doc(db, "invoices", run.invoiceId));
+      if (s.exists()) invoice = { ...s.data(), id: s.id };
+    } catch (e) { console.warn("[parcel] เปิดบิลไม่สำเร็จ:", e); }
+  }
+  return { parcel, run, invoice };
+}

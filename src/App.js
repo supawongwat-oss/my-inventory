@@ -5975,7 +5975,6 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       {/* ── MODAL: รับคืนสินค้า ── */}
       {showReturnModal&&(
         <ReturnModal
-          packRuns={packRuns}
           existing={editingReturn}
           customers={customers}
           clothingItems={clothingItems}
