@@ -139,14 +139,22 @@ export default function ReturnModal({
     } finally { setParcelBusy(false); }
   };
 
-  // เปิดใบเก่าที่มีเลขพัสดุติดมาอยู่แล้ว → ตามให้เลย ไม่ต้องรอให้คนไปคลิกช่องซ้ำ
-  const autoLookedUp = React.useRef(false);
+  // ค้นให้เองเมื่อพิมพ์/สแกนครบ — ไม่ต้องกด Enter ไม่ต้องคลิกออกจากช่อง
+  //
+  //    ของเดิมค้นตอน Enter กับตอน blur เท่านั้น พิมพ์เลขเสร็จแล้วมองจอรอ = ไม่มีอะไรเกิดขึ้น
+  //    ดูเหมือนฟีเจอร์เสีย ทั้งที่แค่ยังไม่ได้สั่งให้ค้น
+  //    เครื่องสแกนบาร์โค้ดส่วนใหญ่เคาะ Enter ให้อยู่แล้ว แต่คนพิมพ์มือไม่เคาะ
+  //
+  //    หน่วง 450ms กันยิงรัวทุกตัวอักษร และกันเลขที่พิมพ์ค้างกลางคัน
+  const [trackInput, setTrackInput] = React.useState(existing?.trackingNo || "");
+  const lastLookup = React.useRef("");
   React.useEffect(() => {
-    if (autoLookedUp.current || !existing?.trackingNo) return;
-    autoLookedUp.current = true;
-    lookupParcel(existing.trackingNo);
+    const v = trackInput.trim();
+    if (v.length < 8 || v === lastLookup.current) return;
+    const t = setTimeout(() => { lastLookup.current = v; lookupParcel(v); }, 450);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [trackInput]);
 
   const pickedInvoice = form.invoiceId ? allInvoices.find(i => i.id === form.invoiceId) : null;
 
@@ -480,14 +488,29 @@ export default function ReturnModal({
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <input
-            defaultValue={form.trackingNo || ""}
-            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); lookupParcel(e.currentTarget.value); } }}
-            onBlur={e => { const v = e.currentTarget.value.trim(); if (v && v !== (parcel?.track || "")) lookupParcel(v); }}
+            value={trackInput}
+            onChange={e => setTrackInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); lastLookup.current = trackInput.trim(); lookupParcel(trackInput); } }}
             placeholder="พิมพ์หรือสแกนเลขพัสดุ เช่น JTTH204465059304 / TH265269379394C"
             style={{ ...inputStyle, flex: "1 1 260px" }}/>
-          {parcelBusy && <span style={{ fontSize: 11, color: T.accent, alignSelf: "center" }}>⏳ กำลังค้น…</span>}
+          <button type="button" onClick={() => { lastLookup.current = trackInput.trim(); lookupParcel(trackInput); }}
+            disabled={parcelBusy || trackInput.trim().length < 8}
+            style={{ padding: "8px 14px", borderRadius: 8, cursor: parcelBusy ? "wait" : "pointer",
+              border: `1px solid ${T.border}`, background: "white", color: T.text,
+              fontFamily: "'Sarabun',sans-serif", fontSize: 12, fontWeight: 700,
+              opacity: trackInput.trim().length < 8 ? 0.5 : 1 }}>
+            {parcelBusy ? "⏳ กำลังค้น…" : "🔍 ค้น"}
+          </button>
         </div>
         {parcelMsg && <div style={{ fontSize: 11, color: "#b45309", marginTop: 6, lineHeight: 1.6 }}>⚠️ {parcelMsg}</div>}
+        {/* ต้องบอกล่วงหน้าว่าค้นได้แค่ไหน ไม่ใช่ให้คนพิมพ์เลขเก่าแล้วงงว่าทำไมไม่เจอ
+            สมุดจดเริ่มบันทึกตอนลากใบปะหน้าเข้าระบบ ของที่ส่งไปก่อนหน้านั้นไม่มีอยู่ในสมุด */}
+        {!parcel && !parcelMsg && !parcelBusy && (
+          <div style={{ fontSize: 10.5, color: T.muted, marginTop: 6, lineHeight: 1.6 }}>
+            ค้นได้เฉพาะกล่องที่ส่งออกจาก “รอบแพ็ค” และนำเข้าใบปะหน้า (PDF) ไว้แล้วเท่านั้น —
+            ของที่ส่งก่อนเริ่มใช้ระบบนี้ หรือรอบที่นำเข้าด้วยการวางข้อความ จะไม่มีเลขพัสดุให้ค้น
+          </div>
+        )}
         {parcel && (
           <div style={{ marginTop: 8, fontSize: 11.5, color: T.text, lineHeight: 1.9 }}>
             <div>
