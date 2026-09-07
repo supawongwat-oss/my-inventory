@@ -15,6 +15,7 @@ import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
 import { PRINT_FONT_SCALE, INVOICE_FONT_SCALE, scaleFontInElement, printElementById, printInvoiceCopies, downloadInvoicePdf } from "./utils/print";
 import { PAYMENT_METHODS, docTypeLabel, docTypeLabelEn, itemLineTotal, calcInvoice, getPaidTotal, getRemaining, getPaidPct, ownedImagePathsOf, suspiciousPriceLines, typicalBillTotal, oddBillTotal, priceCeilingFromHistory } from "./utils/invoice";
 import { compressImage } from "./utils/imageCompress";
+import { applyStockDeltas, shortStockText } from "./utils/stockTx";
 import { uploadImage, deleteFile } from "./utils/upload";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiRegion";
 import { reserveDocNo } from "./utils/docNumber";
@@ -2717,6 +2718,14 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     setActiveTab("invoice");
   };
 
+  // 🔄 หน้าต่างรับ/จ่ายเปิดค้างได้เป็นนาที — ระหว่างนั้นคนอื่นแก้สต็อกรุ่นเดียวกันได้
+  //    ถ้าไม่ดึงตัวล่าสุดมาทับ พนักงานจะเห็นยอดเก่าแล้วตัดสินใจผิด (และคำเตือน "เกินสต็อก" ก็ผิดตาม)
+  useEffect(() => {
+    if (!clothingTxModal) return;
+    const live = clothingItems.find(c => c.id === clothingTxModal.item.id);
+    if (live && live !== clothingTxModal.item) setClothingTxModal(m => (m ? { ...m, item: live } : m));
+  }, [clothingItems, clothingTxModal]);
+
   const handleClothingTx = async () => {
     if (txSaving) return; // กัน double-submit (ใช้ flag เดียวกัน)
     if (!clothingTxModal) return;
@@ -2730,30 +2739,26 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       const { item, colorIdx } = clothingTxModal;
       // 🔗 รวมทุกสีที่เลือก (สีปัจจุบัน + สีที่ติ๊กเพิ่ม)
       const allColorIdxs = new Set([colorIdx, ...clothingTxExtraColors]);
-      // คำนวณสต็อกใหม่ทุกไซส์สำหรับทุกสีที่เลือก
-      const newColors = item.colors.map((c, i) => {
-        if (!allColorIdxs.has(i)) return c;
-        const newStock = { ...(c.stock || {}) };
-        for (const [sz, q] of entries) {
-          const curQty = newStock[sz] || 0;
-          const newQty = clothingTxType === "รับ" ? curQty + q : Math.max(0, curQty - q);
-          newStock[sz] = newQty;
-        }
-        return { ...c, stock: newStock };
-      });
-      await updateDoc(doc(db, "clothing", item.id), { colors: newColors });
-      // 1 transaction ต่อ 1 สี × 1 ไซส์
-      for (const ci of allColorIdxs) {
-        const c = item.colors[ci];
-        for (const [sz, q] of entries) {
-          await addDoc(collection(db, "transactions"), {
-            type: clothingTxType, code: item.id,
-            name: `${item.model} / ${c.colorName} / ${sz}`,
-            qty: q, by: user.name,
-            date: now(), note: clothingTxNote || "", createdAt: serverTimestamp(),
-            category: "เสื้อผ้า"
-          });
-        }
+
+      // 🔒 ขยับสต็อกด้วย transaction — อ่านของจริง ณ วินาทีที่เขียน ไม่ใช่ภาพที่ค้างอยู่ในจอ
+      //    หน้าต่างนี้เปิดค้างได้เป็นนาที ระหว่างนั้นรอบแพ็ค/ใบผลิต/ใบคืน แก้สต็อกรุ่นเดียวกันได้
+      //    เขียนทับทั้งก้อนแบบเดิม = ของที่คนอื่นเพิ่งตัดไปเด้งกลับมาโดยไม่มีอะไรฟ้อง
+      const sign = clothingTxType === "รับ" ? 1 : -1;
+      const deltas = [];
+      for (const ci of allColorIdxs) for (const [sz, q] of entries) deltas.push({ colorIdx: ci, size: sz, delta: sign * q });
+      const { moves } = await applyStockDeltas(db, item.id, deltas);
+
+      // 1 บรรทัดในสมุดต่อ 1 สี × 1 ไซส์ — บันทึกยอดก่อน/หลังจริงจาก transaction
+      // ไม่ใช่ยอดที่เห็นบนจอตอนกด (ซึ่งอาจเก่าไปแล้ว) สมุดกับสต็อกจะได้ตรงกันเสมอ
+      for (const m of moves) {
+        await addDoc(collection(db, "transactions"), {
+          type: clothingTxType, code: item.id,
+          name: `${item.model} / ${m.colorName} / ${m.size}`,
+          qty: Math.abs(m.delta), by: user.name,
+          stockBefore: m.before, stockAfter: m.after,
+          date: now(), note: clothingTxNote || "", createdAt: serverTimestamp(),
+          category: "เสื้อผ้า"
+        });
       }
       const totalQty = entries.reduce((s, [, q]) => s + q, 0) * allColorIdxs.size;
       const colorNames = Array.from(allColorIdxs).map(i => item.colors[i]?.colorName).join(", ");
@@ -2772,7 +2777,15 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       setTimeout(() => setTxSuccess(false), 1500);
     } catch (e) {
       console.error("[handleClothingTx] failed:", e);
-      alert("บันทึกไม่สำเร็จ: " + (e.message || e));
+      // ของไม่พอ = บอกให้ชัดว่าขาดตัวไหนเท่าไหร่ ไม่ใช่ตัดให้เหลือ 0 เงียบ ๆ แบบเดิม
+      // (ของเดิมสมุดจดว่าจ่าย 50 แต่สต็อกลดแค่ 30 แล้วไม่มีใครรู้ว่าเริ่มเพี้ยนตอนไหน)
+      if (e?.code === "SHORT_STOCK") {
+        const NL = String.fromCharCode(10);
+        alert("จ่ายไม่ได้ — ของในคลังไม่พอ" + NL + NL + shortStockText(e.short) + NL + NL +
+          "อาจมีคนอื่นเพิ่งตัดสต็อกรุ่นนี้ไประหว่างที่เปิดหน้าต่างนี้ค้างไว้ — ปิดแล้วเปิดใหม่เพื่อดูยอดล่าสุด");
+      } else {
+        alert("บันทึกไม่สำเร็จ: " + (e.message || e));
+      }
     } finally {
       setTxSaving(false);
     }
@@ -7172,7 +7185,10 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                   <label style={{fontSize:11,color:T.muted,display:"block",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>จำนวนแต่ละไซส์ *</label>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {chosen.map(sz=>{
-                      const stock=((clothingTxModal.item.colors[clothingTxModal.colorIdx]||{}).stock||{})[sz]||0;
+                      // ติ๊กหลายสี = ตัดจากทุกสีเท่ากัน คำเตือนจึงต้องยึด "สีที่มีน้อยที่สุด"
+                      // ของเดิมดูแต่สีปัจจุบัน ติ๊กเพิ่มอีก 3 สีแล้วสีอื่นไม่พอก็ไม่มีอะไรเตือน
+                      const idxs=[clothingTxModal.colorIdx,...clothingTxExtraColors];
+                      const stock=Math.min(...idxs.map(ci=>((clothingTxModal.item.colors[ci]||{}).stock||{})[sz]||0));
                       const q=Number(clothingTxSizeQty[sz])||0;
                       const over=clothingTxType==="จ่าย"&&q>stock;
                       return (
@@ -7181,7 +7197,9 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                           <input type="number" placeholder="0" value={clothingTxSizeQty[sz]} autoFocus={chosen[chosen.length-1]===sz}
                             onChange={e=>setClothingTxSizeQty(p=>({...p,[sz]:e.target.value}))}
                             style={{flex:1,background:T.input,border:`1px solid ${over?"#ef4444":T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
-                          <div style={{fontSize:11,color:over?"#ef4444":T.sub,whiteSpace:"nowrap",width:90}}>{over?"⚠️ เกินสต็อก":`สต็อก ${stock}`}</div>
+                          <div style={{fontSize:11,color:over?"#ef4444":T.sub,whiteSpace:"nowrap",width:110}}>
+                            {over?`⚠️ มีแค่ ${stock}`:`สต็อก ${stock}${clothingTxExtraColors.size?" (สีน้อยสุด)":""}`}
+                          </div>
                         </div>
                       );
                     })}
@@ -7201,8 +7219,18 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
                 const totalQty = Object.values(clothingTxSizeQty).reduce((s,q)=>s+(Number(q)||0),0);
                 const nColors = 1 + clothingTxExtraColors.size;
                 const grand = totalQty * nColors;
-                const disabled = txSaving || totalQty <= 0;
+                // 🔒 ของไม่พอต้องกดไม่ได้ ไม่ใช่เตือนแล้วปล่อยผ่าน
+                //    ของเดิมกดผ่านได้ แล้วตัวบันทึกไปตัดให้เหลือ 0 เงียบ ๆ
+                //    สมุดจดว่าจ่าย 50 แต่สต็อกลดแค่ 30 → ตัวเลขสองฝั่งไม่ตรงกันถาวร
+                const idxs = [clothingTxModal.colorIdx, ...clothingTxExtraColors];
+                const shortCount = clothingTxType !== "จ่าย" ? 0 :
+                  Object.entries(clothingTxSizeQty).filter(([sz, q]) => {
+                    const have = Math.min(...idxs.map(ci => ((clothingTxModal.item.colors[ci] || {}).stock || {})[sz] || 0));
+                    return (Number(q) || 0) > have;
+                  }).length;
+                const disabled = txSaving || totalQty <= 0 || shortCount > 0;
                 const suffix = totalQty > 0 ? ` (${grand}${nColors > 1 ? ` = ${totalQty}×${nColors} สี` : ""})` : "";
+                if (shortCount > 0) return <BtnDanger disabled style={{flex:1}}>{`⚠️ ของไม่พอ ${shortCount} ไซส์ — แก้จำนวนก่อน`}</BtnDanger>;
                 return clothingTxType==="รับ"
                   ?<BtnSuccess onClick={handleClothingTx} disabled={disabled} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":`✅ ยืนยันรับสินค้า${suffix}`}</BtnSuccess>
                   :<BtnDanger onClick={handleClothingTx} disabled={disabled} style={{flex:1}}>{txSaving?"⏳ กำลังบันทึก...":`✅ ยืนยันจ่ายสินค้า${suffix}`}</BtnDanger>;
