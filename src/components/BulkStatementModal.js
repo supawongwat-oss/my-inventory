@@ -31,7 +31,7 @@ const nextUnused = (no, used) => {
 const now = () => { const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
 
 export default function BulkStatementModal({ invoices = [], customers = [], statements = [], returns = [], companyInfo = {}, user, onClose, onDone,
-  invoicesRange, setInvoicesRange, invoicesCapped = false }) {
+  invoicesRange, setInvoicesRange, invoicesCapped = false, returnsCapped = false }) {
   const t = new Date();
   const [periodStart, setPeriodStart] = useState(fmtISO(new Date(t.getFullYear(), t.getMonth(), 1)));
   const [periodEnd, setPeriodEnd] = useState(fmtISO(new Date(t.getFullYear(), t.getMonth()+1, 0)));
@@ -417,6 +417,16 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
         <div style={{ padding: "9px 13px", marginBottom: 10, background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.35)", borderRadius: 9, fontSize: 11, color: "#b45309", lineHeight: 1.7 }}>
           🚨 บิลที่แอปโหลดค้างไว้ชนเพดาน — <b>มีบิลตกหล่นแน่นอน</b> ยอดในใบวางบิลจะน้อยกว่าความจริง
           <br/>แคบช่วงวันที่ลงแล้วออกทีละงวด — สร้างไม่ได้จนกว่าจะไม่ชนเพดาน
+        </div>
+      )}
+
+      {/* 🚨 ใบคืนหาย = เก็บเงินเกิน (คนละทิศกับบิลหายที่ทำให้เก็บขาด)
+          ไม่ล็อกปุ่มสร้างเหมือนบิลชนเพดาน เพราะใบรับคืนไม่มีช่วงวันที่ให้ผู้ใช้แคบลงเอง
+          ล็อกไปก็ไม่มีทางออก — บอกให้ชัดแล้วให้คนตัดสินใจแทน */}
+      {returnsCapped && (
+        <div style={{ padding: "9px 13px", marginBottom: 10, background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.4)", borderRadius: 9, fontSize: 11, color: "#b91c1c", lineHeight: 1.7 }}>
+          🚨 ใบรับคืนชนเพดานโหลด — <b>ของคืนบางใบจะไม่ถูกหัก</b> ยอดที่ได้จะมากกว่าความจริง
+          <br/>ตรวจรายการ “หักของคืน” ในตัวอย่างข้างล่างกับสมุดรับคืนก่อนกดสร้าง
         </div>
       )}
 

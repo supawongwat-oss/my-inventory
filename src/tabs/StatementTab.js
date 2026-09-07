@@ -67,7 +67,7 @@ const statusStyle = (s) => ({
 
 // === Main Component ===
 export default function StatementTab({ statements, invoices, returns = [], customers, companyInfo, user, role, printElementById,
-  invoicesRange, setInvoicesRange, invoicesCapped, statementsCapped = false }) {
+  invoicesRange, setInvoicesRange, invoicesCapped, statementsCapped = false, returnsCapped = false }) {
   const [showCreate, setShowCreate] = useState(false);
   const [showBulk, setShowBulk] = useState(false); // 📅 ออกใบวางบิลทั้งเดือนทีเดียว
   // 🖨️ พิมพ์หลายใบรวดเดียว — ออกทั้งเดือนทีนึงได้ 47 ใบ กดพิมพ์ทีละใบไม่ไหว
@@ -608,6 +608,18 @@ export default function StatementTab({ statements, invoices, returns = [], custo
         </div>
       )}
 
+      {/* 🚨 ใบรับคืนชนเพดาน = ของคืนบางใบไม่ถูกโหลดมา → ไม่ถูกหักในใบวางบิล
+          ทิศทางผิดคนละทางกับบิลชนเพดาน: บิลหายทำให้เก็บเงิน "ขาด"
+          แต่ใบคืนหายทำให้เก็บเงิน "เกิน" — ลูกค้าคืนของแล้วแต่ยังโดนเก็บเต็ม
+          ต้องเตือนที่หน้านี้ด้วย ไม่ใช่เตือนแค่ในแท็บรับคืนที่คนออกใบวางบิลไม่ได้เปิด */}
+      {returnsCapped && (
+        <div style={{ padding: "10px 14px", marginBottom: 10, background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.4)", borderRadius: 10, fontSize: 12, color: "#b91c1c", lineHeight: 1.7 }}>
+          🚨 ใบรับคืนชนเพดานโหลด <b>500 ใบ</b> — ใบคืนเก่าที่ยังไม่เคยถูกหักจะ<b>ไม่ถูกนำมาหัก</b>
+          <br/>ยอดในใบวางบิลจะ<b>มากกว่าความจริง</b> = เก็บเงินลูกค้าเกินจากของที่คืนไปแล้ว
+          <br/>แจ้งผู้ดูแลระบบให้ขยายเพดานก่อนออกใบวางบิลงวดนี้
+        </div>
+      )}
+
       {/* 📅 List — จัดกองตามงวดเดือน พับเก็บได้
           ใบวางบิลสะสมเดือนละ 50-80 ใบ ถ้าไล่เป็นรายการยาวเส้นเดียว งวดเก่ากับงวดใหม่จะปนกัน
           จนแยกไม่ออกว่ากำลังดูรอบไหนอยู่ */}
@@ -753,7 +765,7 @@ export default function StatementTab({ statements, invoices, returns = [], custo
       {showBulk && (
         <BulkStatementModal
           invoices={invoices} customers={customers} statements={statements}
-          returns={returns}
+          returns={returns} returnsCapped={returnsCapped}
           invoicesRange={invoicesRange} setInvoicesRange={setInvoicesRange} invoicesCapped={invoicesCapped}
           companyInfo={companyInfo} user={user}
           onClose={() => setShowBulk(false)}

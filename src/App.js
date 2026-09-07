@@ -5279,7 +5279,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           {activeTab==="statements"&&(
             <StatementTab
               statements={statements} statementsCapped={statementsCapped}
-              returns={returns}
+              returns={returns} returnsCapped={returnsCapped}
               invoices={invoices}
               invoicesRange={invoicesRange} setInvoicesRange={setInvoicesRange} invoicesCapped={invoicesCapped}
               customers={customers}
