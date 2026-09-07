@@ -11,6 +11,7 @@ import LoadRangeBar from "../components/LoadRangeBar";
 import LinkInvoiceCustomers from "../components/LinkInvoiceCustomers";
 import { filterInvoicesForStatement, creditsForStatement, sumCredits, nearMissInvoices, paidOf, dueOf, statementedInvoiceIds, statementOfInvoice, parseDDMMYYYY } from "../utils/statement";
 import { snapshotReturnItems, returnItemsByBill, billsOfReturn } from "../utils/returns";
+import { fetchReturnsForCredit } from "../utils/fetchReturns";
 
 // ── helpers ────────────────────────────────────────────────
 const pad2 = n => String(n).padStart(2, "0");
@@ -70,6 +71,40 @@ export default function StatementTab({ statements, invoices, returns = [], custo
   invoicesRange, setInvoicesRange, invoicesCapped, statementsCapped = false, returnsCapped = false }) {
   const [showCreate, setShowCreate] = useState(false);
   const [showBulk, setShowBulk] = useState(false); // 📅 ออกใบวางบิลทั้งเดือนทีเดียว
+
+  // ↩️ ใบรับคืนสำหรับคิดยอดหัก — ไปขอเองตอนจะออกใบวางบิล ไม่ใช้กองที่โหลดค้างไว้
+  //
+  //    กองนั้นมีเพดาน 500 ใบล้วน ไม่มีช่วงวันที่ พอของคืนเยอะขึ้นใบเก่าจะหลุดเงียบ ๆ
+  //    แล้วใบที่ยังไม่เคยถูกหักก็ไม่ถูกนำมาหัก = เก็บเงินลูกค้าเกินจากของที่คืนไปแล้ว
+  //    (บิลหาย = เก็บขาด · ใบคืนหาย = เก็บเกิน — อันหลังลูกค้าเป็นฝ่ายเสียหาย)
+  //
+  //    ดึงตอนเปิดหน้าสร้างเท่านั้น เดือนละไม่กี่ครั้ง จึงไม่ต้องแบกไว้ตลอดเวลา
+  const [retFetch, setRetFetch] = useState(null);   // { returns, at, capped }
+  const [retBusy, setRetBusy] = useState(false);
+  useEffect(() => {
+    if (!showCreate && !showBulk) return;
+    if (retFetch || retBusy) return;
+    let dead = false;
+    setRetBusy(true);
+    fetchReturnsForCredit()
+      .then(r => { if (!dead) setRetFetch(r); })
+      // ดึงไม่ได้ → ถอยไปใช้กองเดิม แล้วปล่อยให้คำเตือน "ชนเพดาน" ทำงานตามเดิม
+      .catch(e => { console.warn("[statement] ดึงใบรับคืนไม่สำเร็จ:", e); })
+      .finally(() => { if (!dead) setRetBusy(false); });
+    return () => { dead = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCreate, showBulk]);
+
+  // ปิดหน้าสร้างแล้วทิ้งของที่ดึงมา — ระหว่างนั้นมีการปั๊ม appliedStatementId ไปแล้ว
+  // ถ้าเก็บไว้ใช้ซ้ำ รอบถัดไปจะเห็นใบที่หักไปแล้วว่ายังไม่ถูกหัก
+  useEffect(() => {
+    if (!showCreate && !showBulk && retFetch) setRetFetch(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCreate, showBulk]);
+
+  // ใช้ของที่ดึงมาถ้าดึงสำเร็จ ไม่งั้นถอยไปใช้กองเดิม
+  const creditReturns = retFetch ? retFetch.returns : returns;
+  const usingFetchedReturns = !!retFetch;
   // 🖨️ พิมพ์หลายใบรวดเดียว — ออกทั้งเดือนทีนึงได้ 47 ใบ กดพิมพ์ทีละใบไม่ไหว
   const [showBulkPrint, setShowBulkPrint] = useState(false);
   const [bulkPrintRows, setBulkPrintRows] = useState(null);   // ใบที่กำลังพิมพ์ (ค้างไว้ให้ iframe อ่าน)
@@ -182,8 +217,8 @@ export default function StatementTab({ statements, invoices, returns = [], custo
   // ↩️ ของที่ลูกค้ารายนี้คืนมาและยังไม่เคยถูกหักในใบวางบิลใบไหน
   //    เก็บเป็น "ใบที่ตัดออก" เหมือนฝั่งบิล — ใบลดหนี้ที่โผล่มาใหม่จะถูกเลือกให้เองเสมอ
   const previewCredits = useMemo(
-    () => creditsForStatement(returns, form.customerId, form.customerName, parseISODate(form.periodEnd), form.customerPhone),
-    [returns, form.customerId, form.customerName, form.customerPhone, form.periodEnd]
+    () => creditsForStatement(creditReturns, form.customerId, form.customerName, parseISODate(form.periodEnd), form.customerPhone),
+    [creditReturns, form.customerId, form.customerName, form.customerPhone, form.periodEnd]
   );
   const [excludedCredits, setExcludedCredits] = useState(() => new Set());
   useEffect(() => { setExcludedCredits(new Set()); }, [pickKey]);
@@ -608,18 +643,6 @@ export default function StatementTab({ statements, invoices, returns = [], custo
         </div>
       )}
 
-      {/* 🚨 ใบรับคืนชนเพดาน = ของคืนบางใบไม่ถูกโหลดมา → ไม่ถูกหักในใบวางบิล
-          ทิศทางผิดคนละทางกับบิลชนเพดาน: บิลหายทำให้เก็บเงิน "ขาด"
-          แต่ใบคืนหายทำให้เก็บเงิน "เกิน" — ลูกค้าคืนของแล้วแต่ยังโดนเก็บเต็ม
-          ต้องเตือนที่หน้านี้ด้วย ไม่ใช่เตือนแค่ในแท็บรับคืนที่คนออกใบวางบิลไม่ได้เปิด */}
-      {returnsCapped && (
-        <div style={{ padding: "10px 14px", marginBottom: 10, background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.4)", borderRadius: 10, fontSize: 12, color: "#b91c1c", lineHeight: 1.7 }}>
-          🚨 ใบรับคืนชนเพดานโหลด <b>500 ใบ</b> — ใบคืนเก่าที่ยังไม่เคยถูกหักจะ<b>ไม่ถูกนำมาหัก</b>
-          <br/>ยอดในใบวางบิลจะ<b>มากกว่าความจริง</b> = เก็บเงินลูกค้าเกินจากของที่คืนไปแล้ว
-          <br/>แจ้งผู้ดูแลระบบให้ขยายเพดานก่อนออกใบวางบิลงวดนี้
-        </div>
-      )}
-
       {/* 📅 List — จัดกองตามงวดเดือน พับเก็บได้
           ใบวางบิลสะสมเดือนละ 50-80 ใบ ถ้าไล่เป็นรายการยาวเส้นเดียว งวดเก่ากับงวดใหม่จะปนกัน
           จนแยกไม่ออกว่ากำลังดูรอบไหนอยู่ */}
@@ -765,7 +788,8 @@ export default function StatementTab({ statements, invoices, returns = [], custo
       {showBulk && (
         <BulkStatementModal
           invoices={invoices} customers={customers} statements={statements}
-          returns={returns} returnsCapped={returnsCapped}
+          returns={creditReturns} returnsCapped={returnsCapped}
+          usingFetchedReturns={usingFetchedReturns} returnsFetchCapped={!!retFetch?.capped} returnsBusy={retBusy}
           invoicesRange={invoicesRange} setInvoicesRange={setInvoicesRange} invoicesCapped={invoicesCapped}
           companyInfo={companyInfo} user={user}
           onClose={() => setShowBulk(false)}
@@ -776,6 +800,20 @@ export default function StatementTab({ statements, invoices, returns = [], custo
       {showCreate && (
         <Modal onClose={() => setShowCreate(false)} w={720}>
           <MHead title="📃 สร้างใบวางบิลรวม" sub="รวมยอดบิลของลูกค้าในช่วงเวลาที่กำหนด" onClose={() => setShowCreate(false)} />
+          {/* ↩️ บอกตรง ๆ ว่ายอดหักของคืนคิดจากกองไหน — เรื่องเงินห้ามเดา
+              ดึงเองสำเร็จ = ครบทั้งระบบ · ดึงไม่ได้ = ถอยไปใช้กองที่โหลดค้าง ซึ่งอาจไม่ครบ */}
+          <div style={{ fontSize: 10.5, marginBottom: 8, lineHeight: 1.7,
+            color: retBusy ? T.accent : usingFetchedReturns ? T.muted : "#b91c1c" }}>
+            {retBusy
+              ? "⏳ กำลังดึงใบรับคืนทั้งหมดมาคิดยอดหัก…"
+              : usingFetchedReturns
+                ? (retFetch.capped
+                    ? `🚨 ใบรับคืนมีมากเกินที่ดึงได้ (${retFetch.returns.length} ใบ) — ของคืนที่เก่ากว่านี้จะไม่ถูกหัก แจ้งผู้ดูแลระบบก่อนออกใบ`
+                    : `↩️ คิดยอดหักจากใบรับคืนทั้งระบบ ${retFetch.returns.length} ใบ (ไม่ติดเพดานกองที่โหลดค้างไว้)`)
+                : returnsCapped
+                  ? "🚨 ดึงใบรับคืนไม่สำเร็จ และกองที่โหลดค้างไว้ชนเพดาน 500 ใบ — ของคืนบางใบจะไม่ถูกหัก ยอดจะมากกว่าความจริง"
+                  : "↩️ ดึงใบรับคืนไม่สำเร็จ — ใช้กองที่โหลดค้างไว้แทน"}
+          </div>
 
           {/* 1. เลือกลูกค้า */}
           <div style={{ marginBottom: 14, position: "relative" }}>
@@ -1010,8 +1048,13 @@ export default function StatementTab({ statements, invoices, returns = [], custo
           {/* Buttons */}
           <div style={{ display: "flex", gap: 10 }}>
             <BtnGhost onClick={() => setShowCreate(false)} style={{ flex: 1 }}>ยกเลิก</BtnGhost>
-            <BtnPrimary onClick={() => handleSave(false)} disabled={previewInvoices.length === 0} style={{ flex: 1 }}>💾 บันทึก</BtnPrimary>
-            <BtnPrimary onClick={() => handleSave(true)} disabled={previewInvoices.length === 0} style={{ flex: 1 }}>💾 บันทึก + พิมพ์</BtnPrimary>
+            {/* ใบรับคืนยังดึงไม่เสร็จ = ยอดหักยังไม่ครบ กดตอนนี้ได้ใบที่เก็บเงินลูกค้าเกิน */}
+            <BtnPrimary onClick={() => handleSave(false)} disabled={previewInvoices.length === 0 || retBusy} style={{ flex: 1 }}>
+              {retBusy ? "⏳ กำลังดึงใบรับคืน…" : "💾 บันทึก"}
+            </BtnPrimary>
+            <BtnPrimary onClick={() => handleSave(true)} disabled={previewInvoices.length === 0 || retBusy} style={{ flex: 1 }}>
+              {retBusy ? "⏳ กำลังดึงใบรับคืน…" : "💾 บันทึก + พิมพ์"}
+            </BtnPrimary>
           </div>
         </Modal>
       )}

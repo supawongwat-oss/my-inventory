@@ -31,7 +31,8 @@ const nextUnused = (no, used) => {
 const now = () => { const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
 
 export default function BulkStatementModal({ invoices = [], customers = [], statements = [], returns = [], companyInfo = {}, user, onClose, onDone,
-  invoicesRange, setInvoicesRange, invoicesCapped = false, returnsCapped = false }) {
+  invoicesRange, setInvoicesRange, invoicesCapped = false, returnsCapped = false,
+  usingFetchedReturns = false, returnsFetchCapped = false, returnsBusy = false }) {
   const t = new Date();
   const [periodStart, setPeriodStart] = useState(fmtISO(new Date(t.getFullYear(), t.getMonth(), 1)));
   const [periodEnd, setPeriodEnd] = useState(fmtISO(new Date(t.getFullYear(), t.getMonth()+1, 0)));
@@ -420,12 +421,23 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
         </div>
       )}
 
-      {/* 🚨 ใบคืนหาย = เก็บเงินเกิน (คนละทิศกับบิลหายที่ทำให้เก็บขาด)
-          ไม่ล็อกปุ่มสร้างเหมือนบิลชนเพดาน เพราะใบรับคืนไม่มีช่วงวันที่ให้ผู้ใช้แคบลงเอง
+      {/* ↩️ ยอดหักของคืนคิดจากกองไหน — เรื่องเงินห้ามเดา
+          ใบคืนหาย = เก็บเงินเกิน (คนละทิศกับบิลหายที่ทำให้เก็บขาด) ลูกค้าเป็นฝ่ายเสียหาย
+          ไม่ล็อกปุ่มสร้างตอนดึงไม่สำเร็จ เพราะใบรับคืนไม่มีช่วงวันที่ให้ผู้ใช้แคบลงเอง
           ล็อกไปก็ไม่มีทางออก — บอกให้ชัดแล้วให้คนตัดสินใจแทน */}
-      {returnsCapped && (
+      {returnsBusy && (
+        <div style={{ padding: "9px 13px", marginBottom: 10, background: "rgba(59,91,139,0.06)", border: `1px solid ${T.border}`, borderRadius: 9, fontSize: 11, color: T.accent }}>
+          ⏳ กำลังดึงใบรับคืนทั้งหมดมาคิดยอดหัก…
+        </div>
+      )}
+      {!returnsBusy && usingFetchedReturns && !returnsFetchCapped && (
+        <div style={{ padding: "7px 13px", marginBottom: 10, fontSize: 10.5, color: T.muted }}>
+          ↩️ คิดยอดหักจากใบรับคืนทั้งระบบ {returns.length} ใบ (ไม่ติดเพดานกองที่โหลดค้างไว้)
+        </div>
+      )}
+      {!returnsBusy && (returnsFetchCapped || (!usingFetchedReturns && returnsCapped)) && (
         <div style={{ padding: "9px 13px", marginBottom: 10, background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.4)", borderRadius: 9, fontSize: 11, color: "#b91c1c", lineHeight: 1.7 }}>
-          🚨 ใบรับคืนชนเพดานโหลด — <b>ของคืนบางใบจะไม่ถูกหัก</b> ยอดที่ได้จะมากกว่าความจริง
+          🚨 ใบรับคืนที่เอามาคิดไม่ครบ — <b>ของคืนบางใบจะไม่ถูกหัก</b> ยอดที่ได้จะมากกว่าความจริง
           <br/>ตรวจรายการ “หักของคืน” ในตัวอย่างข้างล่างกับสมุดรับคืนก่อนกดสร้าง
         </div>
       )}
@@ -578,9 +590,12 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
           {/* ล็อกปุ่มไว้ถ้าบิลยังโหลดไม่ครบช่วง — ออกไปแล้วยอดขาด ต้องตามออกใบใหม่ให้ลูกค้าทีละราย */}
           <BtnPrimary onClick={createAll}
             disabled={selected.length === 0 || fetchState === "loading" || !!fetched?.capped
+              || returnsBusy
               || (!usingFetched && (!!notLoadedBefore || invoicesCapped))}
             style={{ flex: 2 }}>
-            {fetchState === "loading" ? "⏳ กำลังดึงบิลของงวดนี้…"
+            {/* ใบรับคืนยังดึงไม่เสร็จ = ยอดหักยังไม่ครบ กดตอนนี้ได้ใบที่เก็บเงินเกิน */}
+            {returnsBusy ? "⏳ กำลังดึงใบรับคืน…"
+              : fetchState === "loading" ? "⏳ กำลังดึงบิลของงวดนี้…"
               : fetched?.capped ? "🚨 บิลเกินที่ดึงได้ — แบ่งงวดให้สั้นลง"
               : (!usingFetched && notLoadedBefore) ? "🚨 โหลดบิลให้ครบช่วงก่อน"
               : (!usingFetched && invoicesCapped) ? "🚨 บิลชนเพดาน — แคบช่วงวันที่ลงก่อน"
