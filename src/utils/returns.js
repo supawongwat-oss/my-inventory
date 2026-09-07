@@ -141,16 +141,61 @@ export function suggestInvoices(invoices = [], ret, { limit = 8, minScore = 20 }
     .slice(0, limit);
 }
 
+// ── 🧾 บิลต้นทางผูกที่ "รายบรรทัดสินค้า" ไม่ใช่ที่หัวเอกสาร ──────────
+//
+// ทำไม: ของคืนไม่ได้มาทีละกล่องแล้วลงบันทึกทันที มันกองรวมกันหลายวันกว่าจะได้เปิดดู
+// พอเปิดดูทีเดียว ของในกองมาจากคนละบิลกัน — ของเดิมบังคับให้แยกทำใบละบิล
+// กลายเป็นเปิดใบรับคืน 5 ใบสำหรับของกองเดียว แล้วลูกค้าก็เห็นในใบวางบิลเป็น 5 บรรทัดงง ๆ
+//
+// ใบเก่าที่ทำไว้ก่อนหน้านี้ไม่มีบิลรายบรรทัด → ถอยไปอ่านบิลที่หัวเอกสารเหมือนเดิม
+// ทุกฟังก์ชันที่นับของต้องเรียกตัวนี้ ห้ามอ่าน r.invoiceId ตรง ๆ ไม่งั้นใบหลายบิลจะนับผิด
+export const lineInvoiceId = (it, r) => it?.invoiceId || r?.invoiceId || "";
+
+// บิลทั้งหมดที่ใบรับคืนใบนี้อ้างถึง — เรียงตามที่เจอในรายการ ไม่ซ้ำ
+export function billsOfReturn(r) {
+  const out = new Map();
+  (r?.items || []).forEach(it => {
+    const id = lineInvoiceId(it, r);
+    if (!id || out.has(id)) return;
+    out.set(id, it?.invoiceNo || (id === r?.invoiceId ? r?.invoiceNo || "" : ""));
+  });
+  if (out.size === 0 && r?.invoiceId) out.set(r.invoiceId, r.invoiceNo || "");
+  return [...out.entries()].map(([id, no]) => ({ id, no }));
+}
+
+// เลขบิลอ่านเป็นข้อความ เช่น "INV6909-0016, INV6909-0029"
+export const returnBillNosText = (r) => {
+  const nos = billsOfReturn(r).map(b => b.no).filter(Boolean);
+  return nos.length ? nos.join(", ") : (r?.invoiceNo || "");
+};
+
 // ── สรุปยอดคืนของบิลหนึ่งใบ ──────────────────────────────────
 // นับเฉพาะใบที่จับคู่แล้ว — ใบที่ยังรอจับคู่ยังไม่ผูกกับบิลไหน
+// นับรายบรรทัด: ใบหนึ่งใบอาจมีของของบิลนี้แค่บางบรรทัด ที่เหลือเป็นของบิลอื่น
 export function returnSummaryOf(returns = [], invoiceId) {
-  const mine = returns.filter(r => r.invoiceId === invoiceId && r.status === "จับคู่แล้ว");
-  return {
-    count: mine.length,
-    qty: mine.reduce((s, r) => s + num(r.creditQty), 0),
-    total: mine.reduce((s, r) => s + num(r.creditTotal), 0),
-    list: mine,
-  };
+  if (!invoiceId) return { count: 0, qty: 0, total: 0, list: [] };
+  const list = [];
+  let qty = 0, total = 0;
+  (returns || []).forEach(r => {
+    if (!r || (r.status || "") !== "จับคู่แล้ว") return;
+    const items = r.items || [];
+    const mine = items.filter(it => lineInvoiceId(it, r) === invoiceId);
+    if (mine.length === 0) {
+      // ใบเก่าที่ไม่ได้เก็บรายการสินค้าไว้ — ยังต้องนับได้จากหัวเอกสาร ไม่งั้นยอดเก่าหาย
+      if (items.length === 0 && r.invoiceId === invoiceId) {
+        list.push(r); qty += num(r.creditQty); total += num(r.creditTotal);
+      }
+      return;
+    }
+    list.push(r);
+    // ใบที่ทั้งใบเป็นของบิลนี้ ใช้ยอดที่บันทึกไว้ตรง ๆ ให้ตัวเลขเท่าของเดิมเป๊ะ
+    if (mine.length === items.length) { qty += num(r.creditQty); total += num(r.creditTotal); }
+    else {
+      qty += mine.reduce((s, it) => s + num(it.qty), 0);
+      total += mine.reduce((s, it) => s + num(it.qty) * num(it.unitPrice), 0);
+    }
+  });
+  return { count: list.length, qty, total, list };
 }
 
 // ยอดสุทธิหลังหักของที่คืน — ตัวเลขที่ควรใช้ตอนทวงเงินและดูยอดค้าง
@@ -205,7 +250,22 @@ export const snapshotReturnItems = (r) =>
     size: i.size || "",
     qty: Number(i.qty) || 0,
     unitPrice: Number(i.unitPrice) || 0,
+    // เลขบิลของบรรทัดนี้ — ใบรับคืนใบเดียวมีของหลายบิลได้
+    // ลูกค้าต้องเทียบได้ว่าที่หักไปนั้นหักจากบิลไหนบ้าง
+    invoiceNo: i.invoiceNo || r?.invoiceNo || "",
   }));
+
+// จัดรายการคืนเป็นกลุ่มตามบิล — ใช้ตอนพิมพ์ใบวางบิลให้ลูกค้าเทียบทีละบิล
+// คืน [{ no, text }] ; ใบที่มาจากบิลเดียวจะได้กลุ่มเดียว (เหมือนเดิมทุกประการ)
+export function returnItemsByBill(r) {
+  const groups = new Map();
+  (r?.items || []).filter(i => Number(i.qty) > 0).forEach(i => {
+    const no = i.invoiceNo || r?.invoiceNo || "";
+    if (!groups.has(no)) groups.set(no, []);
+    groups.get(no).push(i);
+  });
+  return [...groups.entries()].map(([no, items]) => ({ no, text: returnItemsText({ items }) }));
+}
 
 // 📏 คืนได้ไม่เกินที่ขายไป — คิดเป็นรายบรรทัดสินค้าของบิลต้นทาง
 //
@@ -226,28 +286,53 @@ export function returnableMap(invoice, returns = [], excludeId = "") {
   (invoice?.items || []).forEach(it => bump(lineKey(it), "sold", num(it.qty)));
   returns.forEach(r => {
     if (!r || r.id === excludeId) return;          // แก้ใบเดิม ไม่ต้องนับตัวเอง
-    // ใบที่ยกเลิกไปแล้วไม่กินโควตา — ของถูกย้อนออกจากสต็อกและไม่มีการลดหนี้แล้ว
-    // ถ้ายังนับอยู่ คนที่ยกเลิกใบทดสอบทิ้งจะคืนของชิ้นนั้นไม่ได้อีกเลย
-    if ((r.status || "") === "ยกเลิก") return;
-    if (!r.invoiceId || r.invoiceId !== invoice?.id) return;
-    (r.items || []).forEach(it => bump(lineKey(it), "returned", num(it.qty)));
+    // นับเฉพาะใบที่จับคู่บิลแล้ว
+    //   · ใบที่ยกเลิก — ของถูกย้อนออกจากสต็อกและไม่มีการลดหนี้แล้ว ถ้ายังนับอยู่
+    //     คนที่ยกเลิกใบทดสอบทิ้งจะคืนของชิ้นนั้นไม่ได้อีกเลย
+    //   · ใบร่างที่ยังรอจับคู่ — ตอนนี้มีเลขบิลติดมาในรายการได้แล้ว ถ้านับด้วย
+    //     จะกินโควตาทั้งที่ยังไม่มีการลดหนี้จริง
+    if ((r.status || "") !== "จับคู่แล้ว") return;
+    // นับทีละบรรทัด — ใบเดียวมีของหลายบิลได้ บรรทัดของบิลอื่นต้องไม่มากินโควตาบิลนี้
+    (r.items || []).forEach(it => {
+      if (!invoice?.id || lineInvoiceId(it, r) !== invoice.id) return;
+      bump(lineKey(it), "returned", num(it.qty));
+    });
   });
   m.forEach(v => { v.left = Math.max(0, v.sold - v.returned); });
   return m;
 }
 
-// ตรวจรายการคืนกับบิลต้นทาง — คืนผลเป็นรายบรรทัด ให้หน้าจอเอาไปแสดงเองว่าบรรทัดไหนมีปัญหา
-//   over     = คืนเกินที่ขายไป (ห้ามบันทึก)
+// ตรวจรายการคืน "ทีละบรรทัด กับบิลของบรรทัดนั้นเอง"
+//   over      = คืนเกินที่ขายไป (ห้ามบันทึก)
 //   notOnBill = ไม่มีบรรทัดนี้ในบิล (เตือน แต่ไม่ห้าม — ชื่อในบิลอาจเขียนไม่เหมือนกัน)
-export function checkReturnAgainstInvoice(items = [], invoice, returns = [], excludeId = "") {
-  if (!invoice) return { rows: items.map(() => null), hasOver: false };
-  const map = returnableMap(invoice, returns, excludeId);
+//   noBill    = ยังไม่ได้ระบุว่าบรรทัดนี้มาจากบิลไหน (จับคู่ไม่ได้จนกว่าจะระบุ)
+//
+// invoiceOf(id) ให้ผู้เรียกส่งมา เพราะบิลต้นทางอยู่คนละกอง (กองที่โหลดไว้ / ที่ดึงมาตามลูกค้า)
+//
+// สำคัญ: นับของที่กรอกค้างในฟอร์มนี้เข้าไปด้วย — กรอกรุ่นเดียวกันของบิลเดียวกัน 2 บรรทัด
+// ถ้าเทียบแยกบรรทัดทั้งคู่จะผ่านทั้งคู่ รวมกันแล้วเกินโควตาโดยไม่มีอะไรค้าน
+export function checkReturnLines(items = [], invoiceOf, returns = [], excludeId = "") {
+  const maps = new Map();   // invoiceId → โควตาของบิลนั้น
+  const used = new Map();   // invoiceId|บรรทัด → จำนวนที่กรอกไปแล้วในฟอร์มนี้
   const rows = items.map(it => {
     if (!(it?.clothingName || it?.clothingId) || !(num(it.qty) > 0)) return null;
-    const info = map.get(lineKey(it));
-    if (!info) return { notOnBill: true };
-    const over = num(it.qty) > info.left;
-    return { ...info, over, qty: num(it.qty) };
+    const invId = it.invoiceId || "";
+    if (!invId) return { noBill: true };
+    const inv = invoiceOf ? invoiceOf(invId) : null;
+    if (!inv) return { noBill: true, unknownBill: true, invoiceNo: it.invoiceNo || "" };
+    if (!maps.has(invId)) maps.set(invId, returnableMap(inv, returns, excludeId));
+    const info = maps.get(invId).get(lineKey(it));
+    if (!info) return { notOnBill: true, invoiceNo: inv.invoiceNo || "" };
+    const k = invId + "|" + lineKey(it);
+    const before = used.get(k) || 0;
+    const q = num(it.qty);
+    used.set(k, before + q);
+    const left = Math.max(0, info.left - before);
+    return { ...info, left, qty: q, over: q > left, invoiceNo: inv.invoiceNo || "" };
   });
-  return { rows, hasOver: rows.some(r => r?.over) };
+  return {
+    rows,
+    hasOver: rows.some(r => r?.over),
+    hasNoBill: rows.some(r => r?.noBill),
+  };
 }

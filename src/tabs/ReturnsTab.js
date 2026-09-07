@@ -3,7 +3,7 @@
 // จึงดันขึ้นบนสุดและทำให้เห็นชัด ไม่ให้ค้างลืม
 import React from "react";
 import { T } from "../theme";
-import { RETURN_STATUSES, qcStatusOf, needsQC, isCashRefund, norm, matchesTokens } from "../utils/returns";
+import { RETURN_STATUSES, qcStatusOf, needsQC, isCashRefund, norm, matchesTokens, billsOfReturn, returnBillNosText } from "../utils/returns";
 
 const money = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 });
 
@@ -26,7 +26,7 @@ export default function ReturnsTab({
     const q = norm(search);
     if (q) {
       l = l.filter(r => matchesTokens([
-        r.returnNo, r.invoiceNo, r.customerName, r.customerPhone, r.trackingNo, r.reason, r.note,
+        r.returnNo, returnBillNosText(r), r.customerName, r.customerPhone, r.trackingNo, r.reason, r.note,
         (r.items || []).map(i => [i.clothingName, i.colorName, i.size].filter(Boolean).join(" ")).join(" "),
       ].filter(Boolean).join(" "), q));
     }
@@ -86,8 +86,13 @@ export default function ReturnsTab({
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <span>เหตุผล: {r.reason || "-"}</span>
                 {r.trackingNo && <span>📦 {r.trackingNo}</span>}
-                {r.invoiceNo
-                  ? <button onClick={() => onOpenInvoice?.(r.invoiceId)} style={{ background: "none", border: "none", color: T.accent, cursor: "pointer", fontSize: 11, fontFamily: "inherit", textDecoration: "underline", padding: 0 }}>🧾 {r.invoiceNo}</button>
+                {/* ใบเดียวอ้างได้หลายบิล — โชว์ให้ครบ ไม่ใช่โชว์ใบแรกใบเดียวแล้วเข้าใจผิดว่าหักบิลเดียว
+                    ใบที่ยังไม่จับคู่ก็มีเลขบิลติดในรายการได้ (กรอกค้างไว้) แต่ยังไม่ถือว่าผูกกับบิล
+                    ต้องขึ้นว่า "ยังไม่ผูกกับบิล" ตามสถานะจริง ไม่ใช่ตามเลขที่ติดมา */}
+                {r.status === "จับคู่แล้ว" && billsOfReturn(r).length
+                  ? billsOfReturn(r).map(b => (
+                      <button key={b.id} onClick={() => onOpenInvoice?.(b.id)} style={{ background: "none", border: "none", color: T.accent, cursor: "pointer", fontSize: 11, fontFamily: "inherit", textDecoration: "underline", padding: 0, marginRight: 6 }}>🧾 {b.no || "(ไม่มีเลข)"}</button>
+                    ))
                   : <span style={{ color: T.amber }}>ยังไม่ผูกกับบิล</span>}
                 {qcStatusOf(r) === "ตรวจแล้ว"
                   ? <span style={{ color: T.green }}>✅ ตรวจแล้ว · เข้าสต็อก {restock} ชิ้น</span>

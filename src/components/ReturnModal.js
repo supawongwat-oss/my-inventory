@@ -16,7 +16,7 @@ import { findParcelSource } from "../utils/parcelLookup";
 import {
   RETURN_REASONS, RETURN_CONDITIONS, conditionRestocks,
   calcReturn, suggestInvoices, lineKey, matchesTokens, invoiceItemsText, norm, SETTLE_MODES, settleModeOf,
-  checkReturnAgainstInvoice, returnableMap,
+  checkReturnLines, returnableMap,
 } from "../utils/returns";
 
 const MAX_IMAGES = 6;
@@ -158,14 +158,59 @@ export default function ReturnModal({
 
   const pickedInvoice = form.invoiceId ? allInvoices.find(i => i.id === form.invoiceId) : null;
 
-  // 📏 คืนได้ไม่เกินที่ขายไป — เทียบรายบรรทัดกับบิลต้นทาง
+  const invoiceById = React.useMemo(() => {
+    const m = new Map();
+    allInvoices.forEach(i => m.set(i.id, i));
+    return m;
+  }, [allInvoices]);
+  const invoiceOf = React.useCallback(id => invoiceById.get(id) || null, [invoiceById]);
+
+  // 📏 คืนได้ไม่เกินที่ขายไป — เทียบทีละบรรทัด กับบิลของบรรทัดนั้นเอง
   //    ของเดิมกรอกเท่าไหร่ก็ได้ บิลมี 1 ตัวแต่คืน 13 ตัวก็ผ่าน = ลดหนี้เกิน + สต๊อกเกิน
   const check = React.useMemo(
-    () => checkReturnAgainstInvoice(form.items, pickedInvoice, returns, existing?.id || ""),
-    [form.items, pickedInvoice, returns, existing]);
+    () => checkReturnLines(form.items, invoiceOf, returns, existing?.id || ""),
+    [form.items, invoiceOf, returns, existing]);
   const billQuota = React.useMemo(
     () => returnableMap(pickedInvoice, returns, existing?.id || ""),
     [pickedInvoice, returns, existing]);
+
+  // 🧾 บิลที่ใบนี้อ้างถึงทั้งหมด — ใบเดียวมีของหลายบิลได้
+  const billsInForm = React.useMemo(() => {
+    const out = [];
+    form.items.forEach(it => {
+      if (!it.invoiceId || !(Number(it.qty) > 0)) return;
+      const hit = out.find(b => b.id === it.invoiceId);
+      if (hit) { hit.qty += Number(it.qty) || 0; hit.total += (Number(it.qty) || 0) * (Number(it.unitPrice) || 0); }
+      else out.push({ id: it.invoiceId, no: it.invoiceNo || "", qty: Number(it.qty) || 0, total: (Number(it.qty) || 0) * (Number(it.unitPrice) || 0) });
+    });
+    return out;
+  }, [form.items]);
+
+  // ราคาต่อหน่วยของบรรทัดนี้ "ในบิลใบนั้น" — ไม่ใช่ราคาป้ายวันนี้
+  const priceInInvoice = (inv, it) => {
+    const k = lineKey(it);
+    const hit = (inv?.items || []).find(x => lineKey(x) === k);
+    return hit ? Number(hit.unitPrice) || 0 : null;
+  };
+
+  // ผูกบรรทัดหนึ่งเข้ากับบิล พร้อมดึงราคาของบิลนั้นมาให้
+  const assignBill = (i, inv) => {
+    if (!inv) { setItem(i, { invoiceId: "", invoiceNo: "" }); return; }
+    const p = priceInInvoice(inv, form.items[i]);
+    setItem(i, { invoiceId: inv.id, invoiceNo: inv.invoiceNo || "", ...(p != null ? { unitPrice: p } : {}) });
+  };
+
+  // ใส่บิลที่เลือกอยู่ให้ทุกแถว — ทางลัดของเคสปกติที่ทั้งใบมาจากบิลเดียว
+  const assignBillToAll = (inv) => {
+    if (!inv) return;
+    setForm(f => ({
+      ...f,
+      items: f.items.map(it => {
+        const p = priceInInvoice(inv, it);
+        return { ...it, invoiceId: inv.id, invoiceNo: inv.invoiceNo || "", ...(p != null ? { unitPrice: p } : {}) };
+      }),
+    }));
+  };
 
   // 🔎 บิลที่น่าจะใช่ — คิดใหม่ทุกครั้งที่ข้อมูลผู้ส่งหรือรายการสินค้าเปลี่ยน
   const suggestions = React.useMemo(
@@ -190,7 +235,10 @@ export default function ReturnModal({
     patch(c ? { customerId: c.id, customerName: c.name || "", customerPhone: c.phone || "" } : { customerId: "" });
   };
 
-  // เลือกบิล → ดึงราคาต่อหน่วย "ของบิลใบนั้น" มาใส่ให้ ไม่ใช่ราคาป้ายวันนี้
+  // เลือกบิลที่ "กำลังทำอยู่" → ดึงราคาต่อหน่วยของบิลใบนั้นมาใส่ให้ ไม่ใช่ราคาป้ายวันนี้
+  //
+  // แตะเฉพาะแถวที่ยังไม่ได้ผูกบิล — แถวที่ผูกบิลอื่นไว้แล้วห้ามโดนเปลี่ยนราคาตาม
+  // ไม่งั้นพอเลือกบิลใบที่สองเพื่อกรอกของอีกกอง ราคาของกองแรกจะเพี้ยนไปทั้งแถบ
   const pickInvoice = (inv) => {
     if (!inv) { patch({ invoiceId: "", invoiceNo: "" }); return; }
     const priceOf = new Map();
@@ -202,8 +250,10 @@ export default function ReturnModal({
       customerName: f.customerName || inv.customerName || "",
       customerPhone: f.customerPhone || inv.customerPhone || "",
       items: f.items.map(it => {
+        if (it.invoiceId) return it;
         const p = priceOf.get(lineKey(it));
-        return p != null ? { ...it, unitPrice: p } : it;
+        const stamped = { ...it, invoiceId: inv.id, invoiceNo: inv.invoiceNo || "" };
+        return p != null ? { ...stamped, unitPrice: p } : stamped;
       }),
     }));
   };
@@ -212,11 +262,13 @@ export default function ReturnModal({
   const addFromInvoiceLine = (it) => {
     setForm(f => {
       const k = lineKey(it);
-      const idx = f.items.findIndex(x => lineKey(x) === k);
+      // เทียบด้วย "บรรทัด + บิล" — รุ่นสีไซส์เดียวกันมาจากคนละบิลได้ ต้องแยกแถวกัน
+      const idx = f.items.findIndex(x => lineKey(x) === k && (x.invoiceId || "") === (pickedInvoice?.id || ""));
       const line = {
         clothingId: it.clothingId || "", clothingName: it.clothingName || it.description || "",
         colorIdx: it.colorIdx ?? null, colorName: it.colorName || "", size: it.size || "",
         qty: 1, unitPrice: Number(it.unitPrice) || 0, condition: RETURN_CONDITIONS[0].id,
+        invoiceId: pickedInvoice?.id || "", invoiceNo: pickedInvoice?.invoiceNo || "",
       };
       // กดเพิ่มทีละ 1 แต่ห้ามเกินที่ขายไป (นับใบรับคืนใบอื่นของบิลนี้ด้วย)
       const cap = billQuota.get(k)?.left ?? Infinity;
@@ -265,7 +317,18 @@ export default function ReturnModal({
 
   const save = async (matchNow) => {
     if (validItems.length === 0) { alert("ยังไม่ได้ระบุสินค้าที่คืนมา"); return; }
-    if (matchNow && !pickedInvoice) { alert("ยังไม่ได้เลือกบิลต้นทาง"); return; }
+    // จับคู่ = ทุกแถวต้องรู้ว่ามาจากบิลไหน (คนละบิลกันได้ แต่ต้องรู้ทุกแถว)
+    if (matchNow && check.hasNoBill) {
+      const NL = String.fromCharCode(10);
+      alert(
+        "ยังมีรายการที่ไม่ได้ระบุบิลต้นทาง — จับคู่ไม่ได้" + NL + NL +
+        form.items.map((it, i) => check.rows[i]?.noBill
+          ? `• ${it.clothingName || "(ไม่ระบุรุ่น)"} ${it.colorName || ""} ${it.size || ""}`
+          : null).filter(Boolean).join(NL) + NL + NL +
+        "เลือกบิลข้างล่างแล้วกด “ใส่บิล…” ใต้แถวนั้น หรือกดบันทึกไว้ก่อนเป็น “รอจับคู่บิล”"
+      );
+      return;
+    }
     // 🔒 คืนเกินที่ขายไป = ลดหนี้เกินจริง ต้องหยุดไว้ ไม่ใช่เตือนแล้วปล่อยผ่าน
     if (matchNow && check.hasOver) {
       const NL = String.fromCharCode(10);
@@ -274,10 +337,10 @@ export default function ReturnModal({
         form.items.map((it, i) => {
           const r = check.rows[i];
           if (!r?.over) return null;
-          return `• ${it.clothingName || "(ไม่ระบุรุ่น)"} ${it.colorName || ""} ${it.size || ""}: กรอก ${r.qty} · ขายไป ${r.sold}` +
+          return `• ${it.clothingName || "(ไม่ระบุรุ่น)"} ${it.colorName || ""} ${it.size || ""} (บิล ${r.invoiceNo || "-"}): กรอก ${r.qty} · ขายไป ${r.sold}` +
                  (r.returned > 0 ? ` · คืนแล้ว ${r.returned}` : "") + ` · คืนได้อีก ${r.left}`;
         }).filter(Boolean).join(NL) + NL + NL +
-        "ถ้าลูกค้าคืนของจากบิลใบอื่นด้วย ให้แยกทำอีกใบตามบิลนั้น"
+        "ถ้าของชิ้นนี้จริง ๆ มาจากบิลใบอื่น ให้กด “ใส่บิล…” ใต้แถวนั้นเปลี่ยนเป็นบิลที่ถูก"
       );
       return;
     }
@@ -290,8 +353,14 @@ export default function ReturnModal({
         creditQty: calc.qty,
         creditTotal: matchNow ? calc.total : 0,   // ยังไม่จับคู่ = ยังไม่รู้ราคาจริง ยังลดหนี้ไม่ได้
         restockQty: calc.restockQty,
-        invoiceId: matchNow ? form.invoiceId : "",
-        invoiceNo: matchNow ? form.invoiceNo : "",
+        // 🧾 บิลอยู่ที่รายบรรทัดแล้ว — ช่องหัวเอกสารเก็บ "ใบแรก" ไว้เพื่อไม่ให้ของเดิมพัง
+        //    (ลิงก์ในรายการ / ใบลดหนี้ / บันทึกตรวจสอบ ยังอ่านช่องนี้อยู่)
+        //    เคสปกติทั้งใบมาจากบิลเดียว ค่าที่ได้จึงเท่าของเดิมเป๊ะ
+        invoiceId: matchNow ? (billsInForm[0]?.id || "") : "",
+        invoiceNo: matchNow ? (billsInForm[0]?.no || "") : "",
+        invoiceIds: matchNow ? billsInForm.map(b => b.id) : [],
+        invoiceNos: matchNow ? billsInForm.map(b => b.no).filter(Boolean) : [],
+        multiBill: matchNow && billsInForm.length > 1,
         settleMode: settleModeOf(form),
       }, matchNow);
       onClose();
@@ -370,7 +439,8 @@ export default function ReturnModal({
         const ci = clothingItems.find(c => c.id === it.clothingId);
         const colors = ci?.colors || [];
         return (
-          <div key={i} style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 0.7fr 0.6fr 0.8fr 1fr 28px", gap: 6, marginBottom: 6, alignItems: "end" }}>
+          <div key={i} style={{ marginBottom: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 0.7fr 0.6fr 0.8fr 1fr 28px", gap: 6, alignItems: "end" }}>
             <div>
               {i === 0 && <label style={labelStyle}>รุ่น</label>}
               <select value={it.clothingId} onChange={e => {
@@ -440,6 +510,40 @@ export default function ReturnModal({
             <button onClick={() => removeItem(i)} title="ลบแถวนี้"
               style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 13, padding: "8px 0" }}>✕</button>
           </div>
+
+          {/* 🧾 บิลของ "แถวนี้" — ใบรับคืนใบเดียวมีของจากหลายบิลได้
+              ของคืนกองรวมกันหลายวันกว่าจะได้เปิดดู ในกองมาจากคนละบิลกันเป็นเรื่องปกติ
+              ต้องบอกทีละแถว ไม่งั้นหักเงินผิดใบและโควตาคืนเกินก็เช็คไม่ได้ */}
+          {(it.clothingName || it.clothingId) && (
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 3, paddingLeft: 2 }}>
+              {it.invoiceNo || it.invoiceId ? (
+                <span style={{ fontSize: 10.5, padding: "2px 8px", borderRadius: 6, fontFamily: "monospace",
+                  background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.35)", color: T.text }}>
+                  🧾 {it.invoiceNo || "(ไม่มีเลข)"}
+                </span>
+              ) : (
+                <span style={{ fontSize: 10.5, padding: "2px 8px", borderRadius: 6,
+                  background: "rgba(245,158,11,0.14)", border: "1px solid rgba(245,158,11,0.45)", color: "#b45309", fontWeight: 700 }}>
+                  ⚠️ ยังไม่ระบุบิล
+                </span>
+              )}
+              {pickedInvoice && it.invoiceId !== pickedInvoice.id && (
+                <button type="button" onClick={() => assignBill(i, pickedInvoice)}
+                  style={{ padding: "2px 8px", borderRadius: 6, cursor: "pointer", fontSize: 10.5,
+                    border: `1px solid ${T.border}`, background: "white", color: T.accent, fontFamily: "'Sarabun',sans-serif" }}>
+                  ใส่บิล {pickedInvoice.invoiceNo}
+                </button>
+              )}
+              {it.invoiceId && (
+                <button type="button" onClick={() => assignBill(i, null)}
+                  style={{ padding: "2px 8px", borderRadius: 6, cursor: "pointer", fontSize: 10.5,
+                    border: "none", background: "none", color: T.muted, fontFamily: "'Sarabun',sans-serif" }}>
+                  เอาบิลออก
+                </button>
+              )}
+            </div>
+          )}
+          </div>
         );
       })}
       <button onClick={addItem} style={{ padding: "6px 12px", borderRadius: 8, border: `1px dashed ${T.accent}`, background: "rgba(59,91,139,0.06)", color: T.accent, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "'Sarabun',sans-serif" }}>➕ เพิ่มรายการ</button>
@@ -476,18 +580,29 @@ export default function ReturnModal({
           background: "rgba(16,185,129,0.13)", border: "1px solid rgba(16,185,129,0.5)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
             <div style={{ fontSize: 13, color: T.text }}>
-              📄 ต้นบิลคือ{" "}
+              📄 บิลที่กำลังกรอกอยู่{" "}
               <b style={{ fontFamily: "monospace", fontSize: 15 }}>{pickedInvoice.invoiceNo || "(ไม่มีเลข)"}</b>
               {parcelInvoice && parcelInvoice.id === pickedInvoice.id && (
                 <span style={{ marginLeft: 7, padding: "2px 7px", borderRadius: 6, fontSize: 10,
                   background: "rgba(16,185,129,0.2)", color: "#047857", fontWeight: 700 }}>📦 ตามจากเลขพัสดุ</span>
               )}
             </div>
-            <button type="button" onClick={() => pickInvoice(null)}
-              style={{ padding: "3px 10px", borderRadius: 7, cursor: "pointer", border: `1px solid ${T.border}`,
-                background: "white", color: T.sub, fontFamily: "'Sarabun',sans-serif", fontSize: 11 }}>
-              เปลี่ยนบิล
-            </button>
+            <div style={{ display: "flex", gap: 6 }}>
+              {/* ทางลัดของเคสปกติ: ทั้งใบมาจากบิลเดียว กดทีเดียวจบ ไม่ต้องไล่ใส่ทีละแถว */}
+              {form.items.some(it => (it.clothingName || it.clothingId) && it.invoiceId !== pickedInvoice.id) && (
+                <button type="button" onClick={() => assignBillToAll(pickedInvoice)}
+                  style={{ padding: "3px 10px", borderRadius: 7, cursor: "pointer",
+                    border: "1px solid rgba(16,185,129,0.6)", background: "rgba(16,185,129,0.18)",
+                    color: T.text, fontFamily: "'Sarabun',sans-serif", fontSize: 11, fontWeight: 700 }}>
+                  ใส่บิลนี้ให้ทุกแถว
+                </button>
+              )}
+              <button type="button" onClick={() => pickInvoice(null)}
+                style={{ padding: "3px 10px", borderRadius: 7, cursor: "pointer", border: `1px solid ${T.border}`,
+                  background: "white", color: T.sub, fontFamily: "'Sarabun',sans-serif", fontSize: 11 }}>
+                เลือกบิลอื่น
+              </button>
+            </div>
           </div>
           <div style={{ fontSize: 11.5, color: T.sub, marginTop: 2, fontFamily: "monospace" }}>
             {pickedInvoice.customerName || "-"} · {pickedInvoice.date || "-"} · ฿{money(pickedInvoice.total)}
@@ -504,10 +619,39 @@ export default function ReturnModal({
         <div style={{ padding: "9px 12px", marginBottom: 10, borderRadius: 9,
           background: "rgba(245,158,11,0.09)", border: "1px solid rgba(245,158,11,0.4)",
           fontSize: 12, color: T.text, lineHeight: 1.7 }}>
-          ⚠️ <b>ยังไม่ได้เลือกบิลต้นทาง</b> — เลือกจากรายการข้างล่าง หรือค้นด้วยเลขพัสดุบนกล่อง
+          ⚠️ <b>ยังไม่ได้เลือกบิล</b> — เลือกจากรายการข้างล่าง หรือค้นด้วยเลขพัสดุบนกล่อง
           <div style={{ fontSize: 11, color: T.sub }}>
             บันทึกไว้ก่อนได้ (จะขึ้นเป็น “รอจับคู่บิล”) แต่จะยังไม่ถูกหักในใบวางบิลจนกว่าจะจับคู่บิล
           </div>
+        </div>
+      )}
+
+      {/* 🧾 สรุปว่าใบรับคืนใบนี้อ้างบิลอะไรบ้าง — ของคืนกองหลายวันมาจากคนละบิลได้
+          ต้องเห็นภาพรวมก่อนกดบันทึก ไม่ใช่ไปไล่อ่านทีละแถว */}
+      {(billsInForm.length > 1 || check.hasNoBill) && (
+        <div style={{ padding: "8px 11px", marginBottom: 10, borderRadius: 9,
+          border: `1px solid ${T.border}`, background: "rgba(59,91,139,0.04)" }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: T.text, marginBottom: 4 }}>
+            🧾 ใบนี้หักจาก {billsInForm.length} บิล
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {billsInForm.map(b => (
+              <button key={b.id} type="button" onClick={() => { const inv = invoiceOf(b.id); if (inv) pickInvoice(inv); }}
+                title="กดเพื่อสลับไปกรอกของบิลนี้"
+                style={{ padding: "3px 9px", borderRadius: 7, cursor: "pointer", fontSize: 11,
+                  fontFamily: "'Sarabun',sans-serif", color: T.text,
+                  border: b.id === form.invoiceId ? `2px solid ${T.accent}` : `1px solid ${T.border}`,
+                  background: "white" }}>
+                <b style={{ fontFamily: "monospace" }}>{b.no || "(ไม่มีเลข)"}</b> · {b.qty} ชิ้น · ฿{money(b.total)}
+              </button>
+            ))}
+          </div>
+          {check.hasNoBill && (
+            <div style={{ fontSize: 11, color: "#b45309", marginTop: 5, lineHeight: 1.6 }}>
+              ⚠️ ยังมีแถวที่ไม่ได้ระบุบิล — เลือกบิลแล้วกด “ใส่บิล…” ที่ใต้แถวนั้น
+              ถ้ายังหาไม่เจอ บันทึกไว้ก่อนเป็น “รอจับคู่บิล” ได้
+            </div>
+          )}
         </div>
       )}
 
@@ -625,7 +769,10 @@ export default function ReturnModal({
             {(pickedInvoice.items || []).map((it, i) => {
               // เหลือคืนได้ = ขายไป − คืนไปแล้ว − ที่กรอกค้างอยู่ในฟอร์มตอนนี้
               const k = lineKey(it);
-              const inForm = form.items.filter(x => lineKey(x) === k).reduce((a, x) => a + (Number(x.qty) || 0), 0);
+              // นับเฉพาะแถวที่ผูกกับบิลนี้ — แถวของบิลอื่นไม่กินโควตาบิลนี้
+              const inForm = form.items
+                .filter(x => lineKey(x) === k && x.invoiceId === pickedInvoice.id)
+                .reduce((a, x) => a + (Number(x.qty) || 0), 0);
               const left = Math.max(0, (billQuota.get(k)?.left ?? 0) - inForm);
               const done = left <= 0;
               return (

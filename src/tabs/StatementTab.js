@@ -10,7 +10,7 @@ import BulkStatementModal from "../components/BulkStatementModal";
 import LoadRangeBar from "../components/LoadRangeBar";
 import LinkInvoiceCustomers from "../components/LinkInvoiceCustomers";
 import { filterInvoicesForStatement, creditsForStatement, sumCredits, nearMissInvoices, paidOf, dueOf, statementedInvoiceIds, statementOfInvoice, parseDDMMYYYY } from "../utils/statement";
-import { snapshotReturnItems, returnItemsText } from "../utils/returns";
+import { snapshotReturnItems, returnItemsByBill, billsOfReturn } from "../utils/returns";
 
 // ── helpers ────────────────────────────────────────────────
 const pad2 = n => String(n).padStart(2, "0");
@@ -300,6 +300,8 @@ export default function StatementTab({ statements, invoices, returns = [], custo
       returnIds: pickedCredits.map(r => r.id),
       returnsSnapshot: pickedCredits.map(r => ({
         id: r.id, returnNo: r.returnNo, invoiceNo: r.invoiceNo || "",
+        // ใบรับคืนใบเดียวหักได้หลายบิล — เก็บให้ครบ ไม่งั้นใบวางบิลที่พิมพ์ไปแล้วบอกบิลไม่ครบ
+        invoiceNos: billsOfReturn(r).map(b => b.no).filter(Boolean),
         receivedAt: r.receivedAt || "", reason: r.reason || "",
         qty: Number(r.creditQty) || 0, total: Number(r.creditTotal) || 0,
         // 📦 ของที่คืนมาจริง ๆ — ลูกค้าต้องเทียบได้ว่าหักตรงกับที่คืนไปไหม
@@ -1267,12 +1269,27 @@ function StatementPrintLayout({ statement, companyInfo, id = "statement-print-ar
               {(statement.returnsSnapshot || []).map((r, i) => (
                 <tr key={i} style={{ background: "#f8fafc" }}>
                   <td colSpan={3} style={{ padding: "4px 8px", textAlign: "right", color: "#000", fontSize: 9, border: "1px solid #000" }}>
-                    หัก รับคืนสินค้า {r.returnNo}{r.invoiceNo ? ` (บิล ${r.invoiceNo})` : ""}{r.qty ? ` · ${r.qty} ชิ้น` : ""}
+                    {/* ใบรับคืนใบเดียวหักได้หลายบิล — ต้องบอกให้ครบทุกใบ
+                        ไม่งั้นลูกค้าเห็นบิลเดียวแล้วนึกว่าหักผิด (ใบเก่าที่มีบิลเดียวได้ผลเหมือนเดิม) */}
+                    หัก รับคืนสินค้า {r.returnNo}
+                    {(() => {
+                      const nos = (r.invoiceNos || []).length ? r.invoiceNos : (r.invoiceNo ? [r.invoiceNo] : []);
+                      return nos.length ? ` (บิล ${nos.join(", ")})` : "";
+                    })()}
+                    {r.qty ? ` · ${r.qty} ชิ้น` : ""}
                     {/* 📦 บอกด้วยว่าคืนของอะไรมา — ไม่งั้นลูกค้าเทียบไม่ได้ว่าหักตรงกับที่คืนไปจริงไหม
+                        มาจากหลายบิล = แยกบรรทัดตามบิล ลูกค้าจะได้เทียบทีละใบ
                         ใบเก่าที่ออกก่อนมีฟีเจอร์นี้จะไม่มี items ก็ไม่ขึ้นบรรทัดนี้ (ไม่พัง) */}
-                    {returnItemsText(r) && (
-                      <div style={{ fontSize: 8, color: "#000", fontWeight: 400 }}>{returnItemsText(r)}</div>
-                    )}
+                    {(() => {
+                      const g = returnItemsByBill(r).filter(x => x.text);
+                      if (g.length === 0) return null;
+                      if (g.length === 1) return <div style={{ fontSize: 8, color: "#000", fontWeight: 400 }}>{g[0].text}</div>;
+                      return g.map((x, j) => (
+                        <div key={j} style={{ fontSize: 8, color: "#000", fontWeight: 400 }}>
+                          บิล {x.no || "-"}: {x.text}
+                        </div>
+                      ));
+                    })()}
                   </td>
                   <td style={{ padding: "4px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 10, color: "#000", border: "1px solid #000", whiteSpace: "nowrap" }}>
                     -{Number(r.total || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}

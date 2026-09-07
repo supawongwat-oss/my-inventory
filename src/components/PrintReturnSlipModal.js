@@ -14,6 +14,7 @@
 //    จับคู่บิลแล้วค่อยมีราคาและเลขบิลต้นทางขึ้นให้
 import React from "react";
 import { INVOICE_FONT_SCALE, INVOICE_MARGIN_TOP, INVOICE_MARGIN_BOTTOM, INVOICE_PAD_TOP, INVOICE_PAD_BOTTOM } from "../utils/print";
+import { returnBillNosText } from "../utils/returns";
 
 const money = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 });
 
@@ -73,8 +74,9 @@ export default function PrintReturnSlipModal({
 
           {/* บิลต้นทาง — มีเฉพาะที่จับคู่แล้ว ยังไม่จับคู่ต้องบอกให้ชัดว่ายังไม่รู้ */}
           <div style={{ border: "1px solid #000", padding: "5px 8px", marginBottom: 8, fontSize: 11 }}>
-            {ret.invoiceNo
-              ? <>บิลต้นทาง: <b style={{ fontFamily: "monospace" }}>{ret.invoiceNo}</b></>
+            {/* ใบเดียวหักได้หลายบิล — ของคืนกองรวมกันหลายวันมาจากคนละบิลได้ */}
+            {returnBillNosText(ret)
+              ? <>บิลต้นทาง: <b style={{ fontFamily: "monospace" }}>{returnBillNosText(ret)}</b></>
               : <b>ยังไม่ได้จับคู่บิลต้นทาง — ใบนี้เป็นหลักฐานการรับของเท่านั้น ยังไม่ใช่การลดหนี้</b>}
           </div>
 

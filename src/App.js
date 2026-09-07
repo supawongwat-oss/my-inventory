@@ -7,7 +7,7 @@ import { BarcodeDisplay, Modal, MHead, Toast, Input, BtnPrimary, BtnSuccess, Btn
 import LoginPage, { CompanyEditor } from "./components/LoginPage";
 import { useFirestore } from "./hooks/useFirestore";
 import { useFormDraft, timeAgoTH } from "./hooks/useFormDraft";
-import { qcStatusOf, isCashRefund } from "./utils/returns";
+import { qcStatusOf, isCashRefund, returnBillNosText } from "./utils/returns";
 import { findDuplicateInvoices } from "./utils/dupInvoice";
 import InstallPWA from "./components/InstallPWA";
 import { shouldRemindBackup, getLastBackupDate } from "./utils/backupReminder";
@@ -3627,14 +3627,16 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       await addDoc(collection(db, "returns"), payload);
     }
     const refNo = payload.returnNo || editing?.returnNo || "";
+    // ใบรับคืนใบเดียวหักได้หลายบิล — บันทึกตรวจสอบต้องเห็นครบ ไม่ใช่เห็นแค่ใบแรก
+    const billNos = (payload.invoiceNos || []).join(", ") || payload.invoiceNo || "";
     // ⚠️ ของ "ไม่" เข้าสต็อกตรงนี้ — การจับคู่บิลเป็นเรื่องเงิน ไม่ใช่เรื่องสภาพของ
     //    ของเข้าสต็อกตอนกด "ตรวจแล้ว" ที่หน้ารับคืน (handleQcReturn) เท่านั้น
     logAudit(user, {
       action: editing ? AUDIT_ACTIONS.UPDATE : AUDIT_ACTIONS.CREATE,
       collection: "returns", targetId: editing?.id || refNo,
       targetLabel: `${refNo} · ${payload.customerName || "ไม่ทราบผู้ส่ง"}`,
-      after: { status: payload.status, qty: payload.creditQty, credit: payload.creditTotal, invoiceNo: payload.invoiceNo },
-      note: matchNow && !wasMatched ? `จับคู่บิล ${payload.invoiceNo} · ลดหนี้ ฿${payload.creditTotal}` : "",
+      after: { status: payload.status, qty: payload.creditQty, credit: payload.creditTotal, invoiceNo: billNos },
+      note: matchNow && !wasMatched ? `จับคู่บิล ${billNos} · ลดหนี้ ฿${payload.creditTotal}` : "",
     });
     setEditingReturn(null);
   };
@@ -3696,7 +3698,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         logAudit(user, {
           action: AUDIT_ACTIONS.CREATE, collection: "returns", targetId: r.id,
           targetLabel: `${cnNo} · ${r.customerName || ""}`,
-          note: `ออกใบลดหนี้ ${cnNo} · อ้างบิล ${r.invoiceNo || "-"} · ฿${r.creditTotal || 0}`,
+          note: `ออกใบลดหนี้ ${cnNo} · อ้างบิล ${returnBillNosText(r) || "-"} · ฿${r.creditTotal || 0}`,
         });
       } catch (e) {
         console.warn("[creditNote] จองเลขไม่สำเร็จ:", e?.message || e);

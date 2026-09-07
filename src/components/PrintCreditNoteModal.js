@@ -8,6 +8,7 @@
 // VAT: ถ้าบิลต้นทางมี VAT ใบลดหนี้ต้องแยกฐานภาษี/ภาษี ให้ตรงกัน ไม่งั้นยอดคืนภาษีไม่ตรง
 import React from "react";
 import { INVOICE_FONT_SCALE, INVOICE_MARGIN_TOP, INVOICE_MARGIN_BOTTOM, INVOICE_PAD_TOP, INVOICE_PAD_BOTTOM } from "../utils/print";
+import { billsOfReturn, returnBillNosText } from "../utils/returns";
 
 const money = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 });
 
@@ -85,12 +86,14 @@ export default function PrintCreditNoteModal({
                   <span style={{ fontSize: 10, fontWeight: 600, minWidth: 62, textAlign: "right" }}>วันที่:</span>
                   <span style={{ fontSize: 10, fontWeight: 600 }}>{(ret.checkedAt || ret.receivedAt || "").split(" ")[0]}</span>
                 </div>
-                {/* 🔗 อ้างบิลต้นทาง — หัวใจของใบลดหนี้ ต้องบอกว่าไปหักใบไหน */}
+                {/* 🔗 อ้างบิลต้นทาง — หัวใจของใบลดหนี้ ต้องบอกว่าไปหักใบไหน
+                    ใบรับคืนใบเดียวหักได้หลายบิล ต้องอ้างให้ครบทุกใบ ไม่ใช่อ้างใบแรกใบเดียว */}
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
                   <span style={{ fontSize: 10, fontWeight: 600, minWidth: 62, textAlign: "right" }}>อ้างถึงบิล:</span>
-                  <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 700 }}>{ret.invoiceNo || "-"}</span>
+                  <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 700 }}>{returnBillNosText(ret) || "-"}</span>
                 </div>
-                {invoice?.date && (
+                {/* วันที่บิลใส่ได้เฉพาะตอนอ้างบิลเดียว — อ้างหลายบิลทีจะกลายเป็นวันที่ของใบแรกใบเดียว */}
+                {invoice?.date && billsOfReturn(ret).length <= 1 && (
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
                     <span style={{ fontSize: 10, fontWeight: 600, minWidth: 62, textAlign: "right" }}>ลงวันที่:</span>
                     <span style={{ fontSize: 10 }}>{(invoice.date || "").split(" ")[0]}</span>
