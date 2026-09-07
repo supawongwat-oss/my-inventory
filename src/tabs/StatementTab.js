@@ -1266,36 +1266,39 @@ function StatementPrintLayout({ statement, companyInfo, id = "statement-print-ar
                   ฿{Number(statement.totalAmount || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
               </tr>
-              {(statement.returnsSnapshot || []).map((r, i) => (
+              {(statement.returnsSnapshot || []).map((r, i) => {
+                // จัดรายการที่คืนเป็นกลุ่มตามบิล — เลขบิลไปอยู่หัวคอลัมน์ซ้ายของบล็อกรายการ
+                // ไม่ต้องพ่วงท้ายหัวบรรทัดอีก (ใบที่หัก 5 บิล หัวบรรทัดจะยาวจนตกบรรทัด)
+                const groups = returnItemsByBill(r).filter(x => x.text);
+                // ใบวางบิลเก่าที่ไม่ได้เก็บรายการสินค้าไว้ — ไม่มีบล็อกรายการให้ใส่เลขบิล
+                // ต้องพ่วงท้ายหัวบรรทัดแบบเดิม ไม่งั้นพิมพ์ใบเก่าซ้ำแล้วเลขบิลหายไปเฉย ๆ
+                const nos = (r.invoiceNos || []).length ? r.invoiceNos : (r.invoiceNo ? [r.invoiceNo] : []);
+                return (
                 <tr key={i} style={{ background: "#f8fafc" }}>
-                  <td colSpan={3} style={{ padding: "4px 8px", textAlign: "right", color: "#000", fontSize: 9, border: "1px solid #000" }}>
-                    {/* ใบรับคืนใบเดียวหักได้หลายบิล — ต้องบอกให้ครบทุกใบ
-                        ไม่งั้นลูกค้าเห็นบิลเดียวแล้วนึกว่าหักผิด (ใบเก่าที่มีบิลเดียวได้ผลเหมือนเดิม) */}
-                    หัก รับคืนสินค้า {r.returnNo}
-                    {(() => {
-                      const nos = (r.invoiceNos || []).length ? r.invoiceNos : (r.invoiceNo ? [r.invoiceNo] : []);
-                      return nos.length ? ` (บิล ${nos.join(", ")})` : "";
-                    })()}
-                    {r.qty ? ` · ${r.qty} ชิ้น` : ""}
-                    {/* 📦 บอกด้วยว่าคืนของอะไรมา — ไม่งั้นลูกค้าเทียบไม่ได้ว่าหักตรงกับที่คืนไปจริงไหม
-                        มาจากหลายบิล = แยกบรรทัดตามบิล ลูกค้าจะได้เทียบทีละใบ
-                        ใบเก่าที่ออกก่อนมีฟีเจอร์นี้จะไม่มี items ก็ไม่ขึ้นบรรทัดนี้ (ไม่พัง) */}
-                    {(() => {
-                      const g = returnItemsByBill(r).filter(x => x.text);
-                      if (g.length === 0) return null;
-                      if (g.length === 1) return <div style={{ fontSize: 8, color: "#000", fontWeight: 400 }}>{g[0].text}</div>;
-                      return g.map((x, j) => (
-                        <div key={j} style={{ fontSize: 8, color: "#000", fontWeight: 400 }}>
-                          บิล {x.no || "-"}: {x.text}
-                        </div>
-                      ));
-                    })()}
+                  <td colSpan={3} style={{ padding: "4px 8px", color: "#000", fontSize: 9, border: "1px solid #000" }}>
+                    {/* หัวบรรทัดชิดขวา ให้ตรงแนวกับ "รวมบิล" ข้างบนและช่องเงินด้านขวา */}
+                    <div style={{ textAlign: "right" }}>
+                      หัก รับคืนสินค้า {r.returnNo}
+                      {groups.length === 0 && nos.length ? ` (บิล ${nos.join(", ")})` : ""}
+                      {r.qty ? ` · ${r.qty} ชิ้น` : ""}
+                    </div>
+                    {/* 📦 คืนของอะไรมาบ้าง — ลูกค้าต้องเทียบได้ว่าหักตรงกับที่คืนไปจริงไหม
+                        วางเป็น 2 คอลัมน์ (เลขบิล | รายการ) ชิดซ้ายทั้งบล็อก
+                        เดิมยัดรวมกับหัวบรรทัดแล้วชิดขวาทั้งก้อน พอรายการยาวจนตกบรรทัด
+                        ขอบซ้ายจะกระดิกไปมาอ่านไม่รู้เรื่อง และเลขบิลก็ไม่เรียงเป็นแนวให้ไล่ตรวจทีละใบ */}
+                    {groups.map((x, j) => (
+                      <div key={j} style={{ display: "flex", gap: 6, fontSize: 8, lineHeight: 1.5, marginTop: j === 0 ? 2 : 0 }}>
+                        <span style={{ fontFamily: "monospace", flex: "0 0 74px" }}>{x.no || "-"}</span>
+                        <span style={{ flex: 1 }}>{x.text}</span>
+                      </div>
+                    ))}
                   </td>
-                  <td style={{ padding: "4px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 10, color: "#000", border: "1px solid #000", whiteSpace: "nowrap" }}>
+                  <td style={{ padding: "4px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 10, color: "#000", border: "1px solid #000", whiteSpace: "nowrap", verticalAlign: "top" }}>
                     -{Number(r.total || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               <tr style={{ background: "#f1f5f9", fontWeight: 800 }}>
                 <td colSpan={3} style={{ padding: "6px 8px", textAlign: "right", color: "#000", fontSize: 11, border: "2px solid #000" }}>ยอดที่ต้องชำระ</td>
                 <td style={{ padding: "6px 8px", textAlign: "right", fontFamily: "monospace", fontSize: 13, color: "#000", border: "2px solid #000", whiteSpace: "nowrap" }}>
