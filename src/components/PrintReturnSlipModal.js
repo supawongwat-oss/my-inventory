@@ -14,7 +14,7 @@
 //    จับคู่บิลแล้วค่อยมีราคาและเลขบิลต้นทางขึ้นให้
 import React from "react";
 import { INVOICE_FONT_SCALE, INVOICE_MARGIN_TOP, INVOICE_MARGIN_BOTTOM, INVOICE_PAD_TOP, INVOICE_PAD_BOTTOM } from "../utils/print";
-import { returnBillNosText } from "../utils/returns";
+import { returnBillNosText, billsOfReturn } from "../utils/returns";
 
 const money = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 });
 
@@ -27,6 +27,11 @@ export default function PrintReturnSlipModal({
   if (!ret) return null;
 
   const items = (ret.items || []).filter(i => Number(i.qty) > 0);
+  // ใบที่หักหลายบิล ต้องบอกเป็นคอลัมน์ท้ายรายการ ไม่ใช่กองเลขบิลไว้บรรทัดเดียวข้างบน
+  // (5 บิลเรียงกันข้างบนแล้วดูไม่ออกว่าของชิ้นไหนเป็นของใบไหน = ตรวจกับลูกค้าไม่ได้)
+  // บิลเดียวไม่ต้องมีคอลัมน์ ซ้ำกับบรรทัดข้างบนเปล่า ๆ และกินที่บนกระดาษ
+  const bills = billsOfReturn(ret);
+  const showBillCol = bills.length > 1;
   const totalQty = items.reduce((s, i) => s + (Number(i.qty) || 0), 0);
   // มีราคาให้แสดงเฉพาะตอนจับคู่บิลแล้ว
   const priced = (ret.status || "") === "จับคู่แล้ว" && Number(ret.creditTotal) > 0;
@@ -76,7 +81,7 @@ export default function PrintReturnSlipModal({
           <div style={{ border: "1px solid #000", padding: "5px 8px", marginBottom: 8, fontSize: 11 }}>
             {/* ใบเดียวหักได้หลายบิล — ของคืนกองรวมกันหลายวันมาจากคนละบิลได้ */}
             {returnBillNosText(ret)
-              ? <>บิลต้นทาง: <b style={{ fontFamily: "monospace" }}>{returnBillNosText(ret)}</b></>
+              ? <>บิลต้นทาง{showBillCol ? ` (${bills.length} ใบ)` : ""}: <b style={{ fontFamily: "monospace" }}>{returnBillNosText(ret)}</b></>
               : <b>ยังไม่ได้จับคู่บิลต้นทาง — ใบนี้เป็นหลักฐานการรับของเท่านั้น ยังไม่ใช่การลดหนี้</b>}
           </div>
 
@@ -86,6 +91,7 @@ export default function PrintReturnSlipModal({
               <tr style={{ background: "#eee" }}>
                 <th style={{ ...cell, width: 28, textAlign: "center" }}>#</th>
                 <th style={{ ...cell, textAlign: "left" }}>รายการ</th>
+                {showBillCol && <th style={{ ...cell, width: 96, textAlign: "center" }}>บิลต้นทาง</th>}
                 <th style={{ ...cell, width: 62, textAlign: "center" }}>สี</th>
                 <th style={{ ...cell, width: 48, textAlign: "center" }}>ไซส์</th>
                 <th style={{ ...cell, width: 52, textAlign: "center" }}>จำนวน</th>
@@ -100,6 +106,11 @@ export default function PrintReturnSlipModal({
                 <tr key={i}>
                   <td style={{ ...cell, textAlign: "center" }}>{i + 1}</td>
                   <td style={cell}>{it.clothingName || it.description || "-"}</td>
+                  {showBillCol && (
+                    <td style={{ ...cell, textAlign: "center", fontFamily: "monospace", fontSize: 9 }}>
+                      {it.invoiceNo || ret.invoiceNo || "-"}
+                    </td>
+                  )}
                   <td style={{ ...cell, textAlign: "center" }}>{it.colorName || "-"}</td>
                   <td style={{ ...cell, textAlign: "center", fontFamily: "monospace", fontWeight: 700 }}>{it.size || "-"}</td>
                   <td style={{ ...cell, textAlign: "center", fontFamily: "monospace", fontWeight: 700, fontSize: 12 }}>{it.qty}</td>
@@ -109,7 +120,7 @@ export default function PrintReturnSlipModal({
                 </tr>
               ))}
               <tr style={{ background: "#f1f5f9" }}>
-                <td style={{ ...cell, textAlign: "right", fontWeight: 700 }} colSpan={4}>รวมที่รับคืน</td>
+                <td style={{ ...cell, textAlign: "right", fontWeight: 700 }} colSpan={showBillCol ? 5 : 4}>รวมที่รับคืน</td>
                 <td style={{ ...cell, textAlign: "center", fontFamily: "monospace", fontWeight: 800, fontSize: 13 }}>{totalQty}</td>
                 {priced && <td style={{ ...cell }} />}
                 {priced && <td style={{ ...cell, textAlign: "right", fontFamily: "monospace", fontWeight: 800 }}>{money(ret.creditTotal)}</td>}
