@@ -16,7 +16,7 @@ import { findParcelSource } from "../utils/parcelLookup";
 import {
   RETURN_REASONS, RETURN_CONDITIONS, conditionRestocks,
   calcReturn, suggestInvoices, lineKey, matchesTokens, invoiceItemsText, norm, SETTLE_MODES, settleModeOf,
-  checkReturnLines, returnableMap,
+  checkReturnLines, returnableMap, invoiceLineResolver,
 } from "../utils/returns";
 
 const MAX_IMAGES = 6;
@@ -187,8 +187,10 @@ export default function ReturnModal({
   }, [form.items]);
 
   // ราคาต่อหน่วยของบรรทัดนี้ "ในบิลใบนั้น" — ไม่ใช่ราคาป้ายวันนี้
+  //   เทียบด้วยตัวแปลงกุญแจ ไม่ใช่ lineKey ดิบ — บรรทัดที่พิมพ์ชื่อเอง (ไม่มี id)
+  //   ต้องได้ราคาจากบิลด้วย ไม่งั้นค้างที่ 0 แล้วลดหนี้ขาดโดยไม่มีใครเห็น
   const priceInInvoice = (inv, it) => {
-    const k = lineKey(it);
+    const k = invoiceLineResolver(inv)(it);
     const hit = (inv?.items || []).find(x => lineKey(x) === k);
     return hit ? Number(hit.unitPrice) || 0 : null;
   };
@@ -241,6 +243,7 @@ export default function ReturnModal({
   // ไม่งั้นพอเลือกบิลใบที่สองเพื่อกรอกของอีกกอง ราคาของกองแรกจะเพี้ยนไปทั้งแถบ
   const pickInvoice = (inv) => {
     if (!inv) { patch({ invoiceId: "", invoiceNo: "" }); return; }
+    const keyOf = invoiceLineResolver(inv);
     const priceOf = new Map();
     (inv.items || []).forEach(it => { if (!priceOf.has(lineKey(it))) priceOf.set(lineKey(it), Number(it.unitPrice) || 0); });
     setForm(f => ({
@@ -251,7 +254,7 @@ export default function ReturnModal({
       customerPhone: f.customerPhone || inv.customerPhone || "",
       items: f.items.map(it => {
         if (it.invoiceId) return it;
-        const p = priceOf.get(lineKey(it));
+        const p = priceOf.get(keyOf(it));
         const stamped = { ...it, invoiceId: inv.id, invoiceNo: inv.invoiceNo || "" };
         return p != null ? { ...stamped, unitPrice: p } : stamped;
       }),
@@ -344,6 +347,36 @@ export default function ReturnModal({
       );
       return;
     }
+    // ⚠️ บรรทัดที่ไม่มีในบิลที่ผูกไว้ แต่มีราคาติดมาด้วย
+    //
+    // สิ้นเดือนใบวางบิลหักของคืนด้วยยอดเงินรวมระดับลูกค้า ไม่ได้ไล่ดูรายบรรทัด
+    // เงินก้อนนี้จะถูกหักออกจากที่ลูกค้าต้องจ่าย ทั้งที่ของไม่เคยอยู่ในบิลใบไหน
+    // = ลดหนี้ให้ของที่ยังไม่เคยเก็บเงิน · ต้องให้คนตัดสินตรงนี้ ตอนที่ของยังอยู่ตรงหน้า
+    let offBillLines = [];
+    if (matchNow && check.offBillTotal > 0) {
+      const NL = String.fromCharCode(10);
+      offBillLines = check.offBillIdx.map(i => {
+        const it = form.items[i];
+        return {
+          clothingName: it.clothingName || "", colorName: it.colorName || "", size: it.size || "",
+          qty: Number(it.qty) || 0, unitPrice: Number(it.unitPrice) || 0, invoiceNo: it.invoiceNo || "",
+        };
+      });
+      const ok = window.confirm(
+        `มี ${offBillLines.length} รายการที่ไม่มีอยู่ในบิลที่ผูกไว้` + NL + NL +
+        offBillLines.map(l =>
+          `• ${l.clothingName || "(ไม่ระบุรุ่น)"} ${l.colorName} ${l.size} × ${l.qty} = ฿${money(l.qty * l.unitPrice)}` +
+          (l.invoiceNo ? ` (ผูกกับบิล ${l.invoiceNo})` : "")
+        ).join(NL) + NL + NL +
+        `รวม ฿${money(check.offBillTotal)} — ยอดนี้จะถูกหักออกจากใบวางบิลสิ้นเดือน` + NL +
+        `ทั้งที่ของพวกนี้ไม่ได้อยู่ในบิลที่ผูกไว้` + NL + NL +
+        `ถ้าของมาจากบิลใบอื่น → กดยกเลิก แล้วกด "ใส่บิล…" ใต้แถวนั้นเปลี่ยนเป็นบิลที่ถูก` + NL +
+        `ถ้าชื่อในบิลเขียนไม่เหมือนกัน → กดยกเลิก แล้วติ๊กบรรทัดจากบิลแทนการพิมพ์เอง` + NL +
+        `ถ้าลูกค้าคืนของที่ยังไม่เคยออกบิล → ตั้งราคาเป็น 0 (รับของเข้าสต๊อก แต่ไม่ลดหนี้)` + NL + NL +
+        `ยืนยันหักเงินก้อนนี้ให้ลูกค้า?`
+      );
+      if (!ok) return;
+    }
     setBusy(true);
     try {
       await onSave({
@@ -352,6 +385,9 @@ export default function ReturnModal({
         status: matchNow ? "จับคู่แล้ว" : "รอจับคู่บิล",
         creditQty: calc.qty,
         creditTotal: matchNow ? calc.total : 0,   // ยังไม่จับคู่ = ยังไม่รู้ราคาจริง ยังลดหนี้ไม่ได้
+        // ปั๊มไว้บนใบ ให้คนออกใบวางบิลสิ้นเดือนเห็นว่ายอดนี้มีส่วนที่ไม่มีในบิลปนอยู่เท่าไร
+        offBillTotal: matchNow ? Math.round(check.offBillTotal * 100) / 100 : 0,
+        offBillLines,
         restockQty: calc.restockQty,
         // 🧾 บิลอยู่ที่รายบรรทัดแล้ว — ช่องหัวเอกสารเก็บ "ใบแรก" ไว้เพื่อไม่ให้ของเดิมพัง
         //    (ลิงก์ในรายการ / ใบลดหนี้ / บันทึกตรวจสอบ ยังอ่านช่องนี้อยู่)
@@ -490,7 +526,10 @@ export default function ReturnModal({
                 <div style={{ fontSize: 9, color: T.muted, marginTop: 2 }}>คืนได้อีก {check.rows[i].left - check.rows[i].qty}</div>
               )}
               {check.rows[i]?.notOnBill && (
-                <div style={{ fontSize: 9, color: "#b45309", marginTop: 2, lineHeight: 1.4 }}>⚠️ ไม่มีบรรทัดนี้ในบิล</div>
+                <div style={{ fontSize: 9, color: check.rows[i].amount > 0 ? "#dc2626" : "#b45309", fontWeight: check.rows[i].amount > 0 ? 700 : 400, marginTop: 2, lineHeight: 1.4 }}>
+                  ⚠️ ไม่มีบรรทัดนี้ในบิล {check.rows[i].invoiceNo || ""}
+                  {check.rows[i].amount > 0 && <> — จะหักเงิน ฿{money(check.rows[i].amount)} ที่ไม่ได้อยู่ในบิล</>}
+                </div>
               )}
             </div>
             <div>

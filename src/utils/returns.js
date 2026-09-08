@@ -67,6 +67,34 @@ export const lineKey = (it) => [
   norm(it?.size),
 ].join("|");
 
+// กุญแจสำรอง — เทียบด้วย "ชื่อรุ่น" ล้วน ไม่สนใจ id
+export const nameLineKey = (it) => [
+  norm(it?.clothingName || it?.description),
+  norm(it?.colorName),
+  norm(it?.size),
+].join("|");
+
+// 🔗 แปลง "บรรทัดที่กรอกในใบรับคืน" → "กุญแจของบรรทัดในบิลใบนั้น"
+//
+// ทำไมต้องมี: lineKey ใช้ clothingId ก่อนถ้ามี และบรรทัดในบิลจริงมี id แทบทั้งหมด
+// (4,079 จาก 4,082 บรรทัดในข้อมูลจริง) ส่วนของที่คืนมามักพิมพ์ชื่อเองจากป้ายบนตัวเสื้อ
+// ไม่มี id ติดมา เทียบตรง ๆ จึงไม่มีวันตรง → บรรทัดที่พิมพ์เองขึ้น "ไม่มีในบิล" ทุกใบ
+// ทั้งที่ของอยู่ในบิลจริง ๆ · พอเตือนผิดทุกครั้งพนักงานก็เลิกอ่าน แล้ววันที่ไม่มีในบิลจริง
+// ก็หลุดไปหักเงินในใบวางบิลสิ้นเดือนโดยไม่มีใครทัก
+//
+// รวมทุกกุญแจของบรรทัดเดียวกันให้ชี้ไป "กุญแจหลัก" อันเดียว โควตาคืนจะได้ไม่ถูกนับแยกกอง
+// (ถ้าลงทะเบียนสองกุญแจแยกกัน จะคืนด้วยชื่อ 1 ตัว + คืนด้วย id อีก 1 ตัว = เกินที่ขายไป)
+export function invoiceLineResolver(invoice) {
+  const canon = new Map();
+  (invoice?.items || []).forEach(it => {
+    const main = lineKey(it);
+    canon.set(main, main);
+    const byName = nameLineKey(it);
+    if (byName && !canon.has(byName)) canon.set(byName, main);
+  });
+  return (it) => canon.get(lineKey(it)) || canon.get(nameLineKey(it)) || lineKey(it);
+}
+
 // ยอดลดหนี้ของใบรับคืน — ราคาต่อหน่วยยึดตาม "บิลต้นทาง" ไม่ใช่ราคาป้ายวันนี้
 export const calcReturn = (items = []) => {
   const qty = items.reduce((s, i) => s + num(i.qty), 0);
@@ -277,13 +305,14 @@ export function returnItemsByBill(r) {
 // นับ "คืนแล้ว" จากใบรับคืนใบอื่นที่จับคู่บิลเดียวกันด้วย ไม่งั้นคืนทีละใบ
 // หลาย ๆ ใบก็เกินได้อยู่ดี (ใบที่ยังไม่จับคู่บิลไม่นับ เพราะยังไม่ผูกกับบิลไหน)
 export function returnableMap(invoice, returns = [], excludeId = "") {
+  const keyOf = invoiceLineResolver(invoice);
   const m = new Map();
   const bump = (k, field, n) => {
     const cur = m.get(k) || { sold: 0, returned: 0 };
     cur[field] += n;
     m.set(k, cur);
   };
-  (invoice?.items || []).forEach(it => bump(lineKey(it), "sold", num(it.qty)));
+  (invoice?.items || []).forEach(it => bump(keyOf(it), "sold", num(it.qty)));
   returns.forEach(r => {
     if (!r || r.id === excludeId) return;          // แก้ใบเดิม ไม่ต้องนับตัวเอง
     // นับเฉพาะใบที่จับคู่บิลแล้ว
@@ -295,7 +324,7 @@ export function returnableMap(invoice, returns = [], excludeId = "") {
     // นับทีละบรรทัด — ใบเดียวมีของหลายบิลได้ บรรทัดของบิลอื่นต้องไม่มากินโควตาบิลนี้
     (r.items || []).forEach(it => {
       if (!invoice?.id || lineInvoiceId(it, r) !== invoice.id) return;
-      bump(lineKey(it), "returned", num(it.qty));
+      bump(keyOf(it), "returned", num(it.qty));
     });
   });
   m.forEach(v => { v.left = Math.max(0, v.sold - v.returned); });
@@ -304,8 +333,13 @@ export function returnableMap(invoice, returns = [], excludeId = "") {
 
 // ตรวจรายการคืน "ทีละบรรทัด กับบิลของบรรทัดนั้นเอง"
 //   over      = คืนเกินที่ขายไป (ห้ามบันทึก)
-//   notOnBill = ไม่มีบรรทัดนี้ในบิล (เตือน แต่ไม่ห้าม — ชื่อในบิลอาจเขียนไม่เหมือนกัน)
+//   notOnBill = ไม่มีบรรทัดนี้ในบิลที่ผูกไว้ (เตือน แต่ไม่ห้าม — ของอาจถูกลงบิลผิดใบจริง ๆ)
 //   noBill    = ยังไม่ได้ระบุว่าบรรทัดนี้มาจากบิลไหน (จับคู่ไม่ได้จนกว่าจะระบุ)
+//
+// offBillTotal = เงินของบรรทัดที่ไม่มีในบิล รวมกัน
+//   สิ้นเดือนใบวางบิลหักของคืนด้วย "ยอดเงินรวมระดับลูกค้า" ไม่ได้ไล่ดูรายบรรทัด
+//   ยอดนี้จึงจะถูกหักออกจากที่ลูกค้าต้องจ่าย ทั้งที่ของชิ้นนั้นไม่ได้อยู่ในบิลใบไหน
+//   ต้องคิดไว้ตั้งแต่ตอนรับของ เพราะหลังจากนั้นไม่มีใครรู้อีกแล้วว่าหักอะไรออกไป
 //
 // invoiceOf(id) ให้ผู้เรียกส่งมา เพราะบิลต้นทางอยู่คนละกอง (กองที่โหลดไว้ / ที่ดึงมาตามลูกค้า)
 //
@@ -313,6 +347,7 @@ export function returnableMap(invoice, returns = [], excludeId = "") {
 // ถ้าเทียบแยกบรรทัดทั้งคู่จะผ่านทั้งคู่ รวมกันแล้วเกินโควตาโดยไม่มีอะไรค้าน
 export function checkReturnLines(items = [], invoiceOf, returns = [], excludeId = "") {
   const maps = new Map();   // invoiceId → โควตาของบิลนั้น
+  const keyOfs = new Map(); // invoiceId → ตัวแปลงกุญแจของบิลนั้น
   const used = new Map();   // invoiceId|บรรทัด → จำนวนที่กรอกไปแล้วในฟอร์มนี้
   const rows = items.map(it => {
     if (!(it?.clothingName || it?.clothingId) || !(num(it.qty) > 0)) return null;
@@ -320,19 +355,26 @@ export function checkReturnLines(items = [], invoiceOf, returns = [], excludeId 
     if (!invId) return { noBill: true };
     const inv = invoiceOf ? invoiceOf(invId) : null;
     if (!inv) return { noBill: true, unknownBill: true, invoiceNo: it.invoiceNo || "" };
-    if (!maps.has(invId)) maps.set(invId, returnableMap(inv, returns, excludeId));
-    const info = maps.get(invId).get(lineKey(it));
-    if (!info) return { notOnBill: true, invoiceNo: inv.invoiceNo || "" };
-    const k = invId + "|" + lineKey(it);
+    if (!maps.has(invId)) {
+      maps.set(invId, returnableMap(inv, returns, excludeId));
+      keyOfs.set(invId, invoiceLineResolver(inv));
+    }
+    const keyOf = keyOfs.get(invId);
+    const info = maps.get(invId).get(keyOf(it));
+    if (!info) return { notOnBill: true, invoiceNo: inv.invoiceNo || "", amount: num(it.qty) * num(it.unitPrice) };
+    const k = invId + "|" + keyOf(it);
     const before = used.get(k) || 0;
     const q = num(it.qty);
     used.set(k, before + q);
     const left = Math.max(0, info.left - before);
     return { ...info, left, qty: q, over: q > left, invoiceNo: inv.invoiceNo || "" };
   });
+  const offBillIdx = rows.map((r, i) => (r?.notOnBill ? i : -1)).filter(i => i >= 0);
   return {
     rows,
     hasOver: rows.some(r => r?.over),
     hasNoBill: rows.some(r => r?.noBill),
+    offBillIdx,
+    offBillTotal: offBillIdx.reduce((a, i) => a + num(items[i].qty) * num(items[i].unitPrice), 0),
   };
 }

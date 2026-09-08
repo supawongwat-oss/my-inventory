@@ -339,6 +339,8 @@ export default function StatementTab({ statements, invoices, returns = [], custo
         invoiceNos: billsOfReturn(r).map(b => b.no).filter(Boolean),
         receivedAt: r.receivedAt || "", reason: r.reason || "",
         qty: Number(r.creditQty) || 0, total: Number(r.creditTotal) || 0,
+        // ส่วนที่ไม่มีอยู่ในบิลต้นทาง — ติดไปกับใบวางบิลด้วย จะได้ตามได้ทีหลังว่าหักอะไรไป
+        offBillTotal: Number(r.offBillTotal) || 0,
         // 📦 ของที่คืนมาจริง ๆ — ลูกค้าต้องเทียบได้ว่าหักตรงกับที่คืนไปไหม
         items: snapshotReturnItems(r),
       })),
@@ -919,6 +921,13 @@ export default function StatementTab({ statements, invoices, returns = [], custo
                       <span style={{ fontSize: 11, color: T.sub }}>{(r.receivedAt || "").split(" ")[0]}</span>
                       <span style={{ fontSize: 11, color: T.muted }}>{r.invoiceNo ? `จากบิล ${r.invoiceNo}` : ""} · {r.reason || "-"}</span>
                       <span style={{ marginLeft: "auto", fontFamily: "monospace", fontSize: 12, fontWeight: 700, color: "#047857", textDecoration: off ? "line-through" : "none" }}>-฿{Number(r.creditTotal || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
+                      {/* ⚠️ ส่วนที่ตอนรับของพบว่าไม่มีอยู่ในบิลที่ผูกไว้
+                          ต้องเห็นตรงนี้ เพราะจุดนี้คือจุดที่เงินถูกหักจริง — ตอนรับของยังไม่มีใครเสียเงิน */}
+                      {Number(r.offBillTotal) > 0 && (
+                        <span style={{ width: "100%", fontSize: 10, color: "#dc2626", fontWeight: 700, paddingLeft: 26 }}>
+                          ⚠️ ในนี้มี ฿{Number(r.offBillTotal).toLocaleString("th-TH", { minimumFractionDigits: 2 })} ที่ไม่มีอยู่ในบิลต้นทาง — ตัดออกถ้ายังไม่ได้ตรวจ
+                        </span>
+                      )}
                     </label>
                   );
                 })}

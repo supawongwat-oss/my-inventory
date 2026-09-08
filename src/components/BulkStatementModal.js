@@ -233,6 +233,8 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
             invoiceNos: billsOfReturn(r).map(b => b.no).filter(Boolean),
             receivedAt: r.receivedAt || "", reason: r.reason || "",
             qty: Number(r.creditQty) || 0, total: Number(r.creditTotal) || 0,
+            // ส่วนที่ไม่มีอยู่ในบิลต้นทาง — ติดไปกับใบวางบิลด้วย จะได้ตามได้ทีหลังว่าหักอะไรไป
+            offBillTotal: Number(r.offBillTotal) || 0,
             // 📦 ของที่คืนมาจริง ๆ — ลูกค้าต้องเทียบได้ว่าหักตรงกับที่คืนไปไหม
             items: snapshotReturnItems(r),
           })),
@@ -536,6 +538,12 @@ export default function BulkStatementModal({ invoices = [], customers = [], stat
                         </span>
                         <span>{returnItemsText(r) || `${Number(r.creditQty) || 0} ชิ้น`}</span>
                         <span style={{ marginLeft: "auto", fontFamily: "monospace" }}>-฿{fmtB(r.creditTotal)}</span>
+                        {/* ออกทีเดียวหลายใบยิ่งไม่มีใครไล่ดูรายบรรทัด ส่วนที่ไม่มีในบิลต้องโผล่มาเอง */}
+                        {Number(r.offBillTotal) > 0 && (
+                          <span style={{ width: "100%", fontSize: 10, color: "#dc2626", fontWeight: 700, paddingLeft: 18 }}>
+                            ⚠️ มี ฿{fmtB(r.offBillTotal)} ที่ไม่มีอยู่ในบิลต้นทาง
+                          </span>
+                        )}
                       </div>
                     ))}
                     {/* ใบที่ไม่ถูกนับ — ต้องเห็น ไม่งั้นบิลยอด 0 หรือบิลที่ปิดไปแล้วจะหายเงียบ */}
