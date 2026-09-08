@@ -1206,7 +1206,32 @@ export default function LotDetailModal({
 // ── Roll-split modal: แบ่งของในล็อตเป็นหลายม้วน (อัตโนมัติ หรือ กรอกเอง) ──
 function RollSplitModal({ lot, lots = [], lotIdx, busy, setNo = "", clothingName = "", onClose, onConfirm, onConfirmManual }) {
   const [mode, setMode] = useState("manual"); // "manual" | "auto"
-  const lotItems = lot.items || [];
+
+  // 🧷 เรียงให้เหมือนตอนเปิดใบสั่งผลิตเสมอ — สีตามลำดับในคลัง แล้วค่อยไซส์เล็ก→ใหญ่
+  //
+  // ทำไมต้องเรียงเอง: lot.items เรียงตาม "ที่มาของของ" ไม่ใช่ตามใบงาน
+  // พอกดรวมม้วนกลับ (handleMergeAllLots หรือรวมอัตโนมัติตอนลากเข้าเย็บ)
+  // ของถูกไล่ทีละล็อตแล้วยัดเข้า Map ลำดับที่ได้จึงกลายเป็น "ลำดับม้วน" ไม่ใช่ลำดับสีในใบงาน
+  // → ตารางคงเหลือสลับที่ทุกครั้งที่รวมกลับ คนกรอกจำตำแหน่งไม่ได้ ต้องไล่หาใหม่ทุกรอบ
+  //
+  // colorIdx คือลำดับสีในคลัง ซึ่งเป็นลำดับเดียวกับที่เห็นตอนเปิดใบ จึงกลับไปเหมือนเดิมได้เป๊ะ
+  // สีที่ไม่มี colorIdx (งาน custom ที่พิมพ์ชื่อสีเอง) ต่อท้ายตามลำดับที่เจอครั้งแรก
+  // — ไม่เอาไปปนกับสีในคลัง และไม่สลับที่กันเองด้วย
+  const lotItems = React.useMemo(() => {
+    const src = lot.items || [];
+    const seen = new Map();
+    src.forEach(it => { const k = it.colorName || ""; if (!seen.has(k)) seen.set(k, seen.size); });
+    const colorRank = (it) => {
+      const ci = Number(it.colorIdx);
+      return Number.isFinite(ci) ? ci : 1e6 + (seen.get(it.colorName || "") ?? 0);
+    };
+    return src.map((it, i) => ({ it, i }))
+      .sort((a, b) =>
+        colorRank(a.it) - colorRank(b.it) ||
+        sizeRank(a.it.productionSize || a.it.size) - sizeRank(b.it.productionSize || b.it.size) ||
+        a.i - b.i)
+      .map(x => x.it);
+  }, [lot.items]);
 
   // 🩹 หา rollNo สูงสุดของม้วนพี่น้อง (ที่ไม่ใช่ตัวเอง) — เพื่อให้ลำดับม้วนใหม่ต่อจากเดิม
   // รองรับม้วนที่รวมแล้วเป็นช่วง เช่น "1-14" → ได้ 14 (ไม่ใช่ 1)
