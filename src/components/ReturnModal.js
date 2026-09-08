@@ -49,6 +49,8 @@ export default function ReturnModal({
     invoiceId: "", invoiceNo: "", settleMode: "statement",
   });
   const [busy, setBusy] = React.useState(false);
+  // ชื่อ/เบอร์บนกล่องเปิดค้างไว้ถ้าใบเดิมเคยกรอกไว้ — ไม่งั้นเปิดใบเก่ามาแล้วมองไม่เห็นว่ามีข้อมูลอยู่
+  const [showBoxInfo, setShowBoxInfo] = React.useState(() => !!(existing?.customerName || existing?.customerPhone));
   const [invSearch, setInvSearch] = React.useState("");
   const fileRef = React.useRef(null);
 
@@ -117,6 +119,9 @@ export default function ReturnModal({
       const src = await findParcelSource(q);
       if (!src) {
         setParcelMsg("ไม่พบเลขพัสดุนี้ — อาจเป็นของก่อนที่ระบบจะเริ่มเก็บ หรือเป็นรอบที่นำเข้าด้วยการวางข้อความ");
+        // ค้นไม่เจอก็ยังต้องเก็บเลขที่พิมพ์มาไว้ในใบ — เป็นหลักฐานว่ากล่องไหน
+        // (ตอนนี้ช่องนี้เป็นช่องเดียวที่รับเลขพัสดุแล้ว ถ้าไม่เก็บตรงนี้ก็ไม่มีที่เก็บเลย)
+        patch({ trackingNo: q });
         return;
       }
       setParcel(src.parcel); setParcelRun(src.run); setParcelInvoice(src.invoice);
@@ -193,6 +198,36 @@ export default function ReturnModal({
     const k = invoiceLineResolver(inv)(it);
     const hit = (inv?.items || []).find(x => lineKey(x) === k);
     return hit ? Number(hit.unitPrice) || 0 : null;
+  };
+
+  // 📦 ของในกล่องนี้ — กดเพิ่มเข้ารายการคืนได้เลย ไม่ต้องพิมพ์ชื่อรุ่น/สี/ไซส์/ราคาเอง
+  //
+  //    ระบบรู้อยู่แล้วว่ากล่องนี้ใส่อะไรไปบ้าง (จดไว้ตอนลากใบปะหน้าเข้าระบบ)
+  //    ให้พนักงานพิมพ์ซ้ำอีกรอบคือให้พิมพ์ผิดฟรี ๆ — ชื่อรุ่นบนป้ายกับในคลังสะกดไม่เหมือนกันบ่อย
+  //
+  //    ลูกค้าคืนไม่ครบกล่องก็มี จึงกดทีละชิ้นได้ และมีปุ่มเพิ่มทั้งกล่องไว้ให้เคสคืนทั้งกล่อง
+  const parcelRowOf = (x) => {
+    const base = {
+      clothingId: x.clothingId || "", clothingName: x.clothingName || "",
+      colorIdx: x.colorIdx ?? null, colorName: x.colorName || "", size: x.size || "",
+      qty: Number(x.qty) || 1, unitPrice: 0, condition: RETURN_CONDITIONS[0].id,
+      invoiceId: parcelInvoice?.id || "", invoiceNo: parcelInvoice?.invoiceNo || "",
+    };
+    const p = parcelInvoice ? priceInInvoice(parcelInvoice, base) : null;
+    return p != null ? { ...base, unitPrice: p } : base;
+  };
+  const parcelLineKey = (it) => lineKey(it) + "|" + (it.invoiceId || "");
+  const addParcelItems = (list) => {
+    const rows = (list || []).filter(x => Number(x.qty) > 0).map(parcelRowOf);
+    if (!rows.length) return;
+    setForm(f => {
+      // ทับแถวเปล่าที่ยังไม่ได้กรอก ไม่ใช่ต่อท้ายให้มีแถวว่างค้าง
+      const kept = f.items.filter(it => it.clothingName || it.clothingId);
+      const seen = new Set(kept.map(parcelLineKey));
+      const add = rows.filter(r => !seen.has(parcelLineKey(r)));
+      const next = [...kept, ...add];
+      return { ...f, items: next.length ? next : f.items };
+    });
   };
 
   // ผูกบรรทัดหนึ่งเข้ากับบิล พร้อมดึงราคาของบิลนั้นมาให้
@@ -435,9 +470,109 @@ export default function ReturnModal({
         sub={existing?.returnNo || "ของถึงร้านแล้ว บันทึกไว้ก่อนได้ ยังไม่ต้องรู้บิล"}
         onClose={onClose} color={T.amber}/>
 
+      {/* 📦 ตามจากเลขพัสดุ — วางไว้บนสุดของส่วนจับคู่บิล เพราะเป็นทางที่แน่นอนที่สุด
+          ต้องลองทางนี้ก่อนค่อยไปเดา ไม่ใช่เดาก่อนแล้วค่อยนึกได้ */}
+      <div style={{ padding: "10px 12px", marginBottom: 10, borderRadius: 9,
+        border: parcel ? "1px solid rgba(16,185,129,0.45)" : `1px solid ${T.border}`,
+        background: parcel ? "rgba(16,185,129,0.06)" : "rgba(59,91,139,0.04)" }}>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: T.text, marginBottom: 6 }}>
+          📦 มีเลขพัสดุบนกล่องไหม? — ตามได้เลยว่ามาจากบิลไหน
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <input
+            value={trackInput}
+            onChange={e => setTrackInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); lastLookup.current = trackInput.trim(); lookupParcel(trackInput); } }}
+            placeholder="พิมพ์หรือสแกนเลขพัสดุ เช่น JTTH204465059304 / TH265269379394C"
+            style={{ ...inputStyle, flex: "1 1 260px" }}/>
+          <button type="button" onClick={() => { lastLookup.current = trackInput.trim(); lookupParcel(trackInput); }}
+            disabled={parcelBusy || trackInput.trim().length < 8}
+            style={{ padding: "8px 14px", borderRadius: 8, cursor: parcelBusy ? "wait" : "pointer",
+              border: `1px solid ${T.border}`, background: "white", color: T.text,
+              fontFamily: "'Sarabun',sans-serif", fontSize: 12, fontWeight: 700,
+              opacity: trackInput.trim().length < 8 ? 0.5 : 1 }}>
+            {parcelBusy ? "⏳ กำลังค้น…" : "🔍 ค้น"}
+          </button>
+        </div>
+        {parcelMsg && <div style={{ fontSize: 11, color: "#b45309", marginTop: 6, lineHeight: 1.6 }}>⚠️ {parcelMsg}</div>}
+        {/* ต้องบอกล่วงหน้าว่าค้นได้แค่ไหน ไม่ใช่ให้คนพิมพ์เลขเก่าแล้วงงว่าทำไมไม่เจอ
+            สมุดจดเริ่มบันทึกตอนลากใบปะหน้าเข้าระบบ ของที่ส่งไปก่อนหน้านั้นไม่มีอยู่ในสมุด */}
+        {!parcel && !parcelMsg && !parcelBusy && (
+          <div style={{ fontSize: 10.5, color: T.muted, marginTop: 6, lineHeight: 1.6 }}>
+            ค้นได้เฉพาะกล่องที่ส่งออกจาก “รอบแพ็ค” และนำเข้าใบปะหน้า (PDF) ไว้แล้วเท่านั้น —
+            ของที่ส่งก่อนเริ่มใช้ระบบนี้ หรือรอบที่นำเข้าด้วยการวางข้อความ จะไม่มีเลขพัสดุให้ค้น
+          </div>
+        )}
+        {parcel && (
+          <div style={{ marginTop: 8, fontSize: 11.5, color: T.text, lineHeight: 1.9 }}>
+            <div>
+              ✅ กล่องนี้มาจากรอบ <b style={{ fontFamily: "monospace" }}>{parcel.runNo}</b>
+              {" · "}<b>{parcel.customerName}</b>
+              {parcel.runDate ? ` · ${String(parcel.runDate).split(" ")[0]}` : ""}
+              {parcel.orderNo ? ` · ออเดอร์ ${parcel.orderNo}` : ""}
+            </div>
+            {/* กดชิ้นไหน = เพิ่มชิ้นนั้นเข้ารายการคืน พร้อมบิลและราคาของบิลนั้น
+                ไม่ต้องเลื่อนลงไปพิมพ์รุ่น/สี/ไซส์/ราคาเองทีละช่อง */}
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 4, alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: T.sub }}>ของในกล่อง — กดเพื่อเพิ่ม:</span>
+              {(parcel.items || []).map((it, i) => {
+                const added = form.items.some(x => parcelLineKey(x) === parcelLineKey(parcelRowOf(it)));
+                return (
+                  <button key={i} type="button" onClick={() => addParcelItems([it])} disabled={added}
+                    title={added ? "เพิ่มไปแล้ว" : "กดเพื่อเพิ่มเข้ารายการคืน"}
+                    style={{ padding: "3px 9px", borderRadius: 7, fontSize: 11, cursor: added ? "default" : "pointer",
+                      fontFamily: "'Sarabun',sans-serif", color: T.text, opacity: added ? 0.5 : 1,
+                      background: added ? "#eef2f6" : "rgba(16,185,129,0.1)",
+                      border: "1px solid rgba(16,185,129,0.3)" }}>
+                    {added ? "✓ " : "＋ "}{it.clothingName}{it.colorName ? ` · ${it.colorName}` : ""}{it.size ? ` · ${it.size}` : ""}
+                    <b style={{ fontFamily: "monospace" }}> ×{it.qty}</b>
+                  </button>
+                );
+              })}
+              {(parcel.items || []).length > 1 && (
+                <button type="button" onClick={() => addParcelItems(parcel.items)}
+                  style={{ padding: "3px 10px", borderRadius: 7, fontSize: 11, cursor: "pointer", fontWeight: 700,
+                    fontFamily: "'Sarabun',sans-serif", color: T.text,
+                    background: "rgba(16,185,129,0.2)", border: "1px solid rgba(16,185,129,0.55)" }}>
+                  ＋ เพิ่มทั้งกล่อง ({(parcel.items || []).length})
+                </button>
+              )}
+            </div>
+            {/* เลขบิลที่ตามได้ — ตัวเต็มอยู่ที่ป้ายบิลต้นทางข้างบนแล้ว ตรงนี้เหลือบรรทัดเดียวพอ
+                ไม่งั้นมีกล่องเขียวซ้อนกันสองชั้นบอกเรื่องเดียวกัน */}
+            <div style={{ marginTop: 6 }}>
+              {parcelInvoice ? (
+                <div style={{ fontSize: 12, color: T.text }}>
+                  📄 กล่องนี้ผูกกับบิล{" "}
+                  <b style={{ fontFamily: "monospace" }}>{parcelInvoice.invoiceNo || "(ไม่มีเลข)"}</b>
+                  {form.invoiceId === parcelInvoice.id
+                    ? <b style={{ color: "#059669" }}> · ใช้อยู่ ✅</b>
+                    : (
+                      <button type="button" onClick={() => pickInvoice(parcelInvoice)}
+                        style={{ marginLeft: 8, padding: "3px 10px", borderRadius: 7, cursor: "pointer",
+                          border: "1px solid rgba(16,185,129,0.6)", background: "rgba(16,185,129,0.15)",
+                          color: T.text, fontFamily: "'Sarabun',sans-serif", fontSize: 11.5, fontWeight: 700 }}>
+                        ใช้บิลนี้
+                      </button>
+                    )}
+                </div>
+              ) : (
+                <div style={{ fontSize: 11.5, color: T.sub }}>
+                  {!parcelRun
+                    ? "⚠️ เปิดรอบของพัสดุใบนี้ไม่ได้ (รอบอาจถูกลบ) — ค้นบิลจากรายการด้านล่างแทน"
+                    : "⏳ รอบนี้ยังไม่ได้ออกบิล — บันทึกไว้ก่อนเป็น “รอจับคู่บิล” แล้วค่อยกลับมาจับทีหลัง"}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* ── ผู้ส่งคืน ── */}
       <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>ผู้ส่งคืน</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+      {/* ช่องที่ต้องกรอกจริง ๆ เหลือเท่านี้ — ที่เหลือได้มาจากการค้นเลขพัสดุข้างบน
+          ช่อง "เลขพัสดุ" เดิมตรงนี้ถูกตัดออก เพราะซ้ำกับช่องค้นข้างบน (กรอกที่เดียวพอ) */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}>
         <div>
           <label style={labelStyle}>ลูกค้า (ถ้ารู้)</label>
           <select value={form.customerId} onChange={e => pickCustomer(e.target.value)} style={inputStyle}>
@@ -446,27 +581,40 @@ export default function ReturnModal({
           </select>
         </div>
         <div>
-          <label style={labelStyle}>เลขพัสดุ / ขนส่ง</label>
-          <input value={form.trackingNo} onChange={e => patch({ trackingNo: e.target.value })} placeholder="เช่น TH123456789" style={inputStyle}/>
-        </div>
-        <div>
-          <label style={labelStyle}>ชื่อบนกล่อง</label>
-          <input value={form.customerName} onChange={e => patch({ customerName: e.target.value, customerId: "" })} placeholder="ชื่อผู้ส่ง" style={inputStyle}/>
-        </div>
-        <div>
-          <label style={labelStyle}>เบอร์บนกล่อง <span style={{ color: T.green }}>← ช่วยหาบิลได้แม่นสุด</span></label>
-          <input value={form.customerPhone} onChange={e => patch({ customerPhone: e.target.value, customerId: "" })} placeholder="08x-xxx-xxxx" style={inputStyle}/>
-        </div>
-        <div>
           <label style={labelStyle}>เหตุผลที่คืน</label>
           <select value={form.reason} onChange={e => patch({ reason: e.target.value })} style={inputStyle}>
             {RETURN_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
-        <div>
+        <div style={{ gridColumn: "1 / -1" }}>
           <label style={labelStyle}>หมายเหตุ</label>
-          <input value={form.note} onChange={e => patch({ note: e.target.value })} placeholder="รายละเอียดเพิ่มเติม" style={inputStyle}/>
+          <input value={form.note} onChange={e => patch({ note: e.target.value })} placeholder="รายละเอียดเพิ่มเติม (ไม่ใส่ก็ได้)" style={inputStyle}/>
         </div>
+      </div>
+
+      {/* 📮 ชื่อ/เบอร์บนกล่อง — พับไว้ ใช้เฉพาะตอนไม่มีเลขพัสดุให้ค้น
+          สองช่องนี้มีไว้ให้ตัวเดาบิททำงานเท่านั้น ถ้าค้นเลขพัสดุเจอแล้วไม่ต้องใช้เลย
+          ของเดิมโผล่ตลอดเวลา พนักงานเลยนึกว่าต้องกรอกทุกครั้ง */}
+      <div style={{ marginBottom: 10 }}>
+        <button type="button" onClick={() => setShowBoxInfo(v => !v)}
+          style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: T.accent,
+            fontFamily: "'Sarabun',sans-serif", fontSize: 11.5 }}>
+          {showBoxInfo ? "▾" : "▸"} ไม่มีเลขพัสดุ? กรอกชื่อ/เบอร์บนกล่องช่วยเดาบิลได้
+          {!showBoxInfo && (form.customerName || form.customerPhone)
+            ? ` · กรอกไว้แล้ว: ${[form.customerName, form.customerPhone].filter(Boolean).join(" · ")}` : ""}
+        </button>
+        {showBoxInfo && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
+            <div>
+              <label style={labelStyle}>ชื่อบนกล่อง</label>
+              <input value={form.customerName} onChange={e => patch({ customerName: e.target.value, customerId: "" })} placeholder="ชื่อผู้ส่ง" style={inputStyle}/>
+            </div>
+            <div>
+              <label style={labelStyle}>เบอร์บนกล่อง <span style={{ color: T.green }}>← เดาบิลได้แม่นกว่าชื่อ</span></label>
+              <input value={form.customerPhone} onChange={e => patch({ customerPhone: e.target.value, customerId: "" })} placeholder="08x-xxx-xxxx" style={inputStyle}/>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── สินค้าที่คืนมา ── */}
@@ -705,85 +853,6 @@ export default function ReturnModal({
         </div>
       )}
 
-      {/* 📦 ตามจากเลขพัสดุ — วางไว้บนสุดของส่วนจับคู่บิล เพราะเป็นทางที่แน่นอนที่สุด
-          ต้องลองทางนี้ก่อนค่อยไปเดา ไม่ใช่เดาก่อนแล้วค่อยนึกได้ */}
-      <div style={{ padding: "10px 12px", marginBottom: 10, borderRadius: 9,
-        border: parcel ? "1px solid rgba(16,185,129,0.45)" : `1px solid ${T.border}`,
-        background: parcel ? "rgba(16,185,129,0.06)" : "rgba(59,91,139,0.04)" }}>
-        <div style={{ fontSize: 11.5, fontWeight: 700, color: T.text, marginBottom: 6 }}>
-          📦 มีเลขพัสดุบนกล่องไหม? — ตามได้เลยว่ามาจากบิลไหน
-        </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <input
-            value={trackInput}
-            onChange={e => setTrackInput(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); lastLookup.current = trackInput.trim(); lookupParcel(trackInput); } }}
-            placeholder="พิมพ์หรือสแกนเลขพัสดุ เช่น JTTH204465059304 / TH265269379394C"
-            style={{ ...inputStyle, flex: "1 1 260px" }}/>
-          <button type="button" onClick={() => { lastLookup.current = trackInput.trim(); lookupParcel(trackInput); }}
-            disabled={parcelBusy || trackInput.trim().length < 8}
-            style={{ padding: "8px 14px", borderRadius: 8, cursor: parcelBusy ? "wait" : "pointer",
-              border: `1px solid ${T.border}`, background: "white", color: T.text,
-              fontFamily: "'Sarabun',sans-serif", fontSize: 12, fontWeight: 700,
-              opacity: trackInput.trim().length < 8 ? 0.5 : 1 }}>
-            {parcelBusy ? "⏳ กำลังค้น…" : "🔍 ค้น"}
-          </button>
-        </div>
-        {parcelMsg && <div style={{ fontSize: 11, color: "#b45309", marginTop: 6, lineHeight: 1.6 }}>⚠️ {parcelMsg}</div>}
-        {/* ต้องบอกล่วงหน้าว่าค้นได้แค่ไหน ไม่ใช่ให้คนพิมพ์เลขเก่าแล้วงงว่าทำไมไม่เจอ
-            สมุดจดเริ่มบันทึกตอนลากใบปะหน้าเข้าระบบ ของที่ส่งไปก่อนหน้านั้นไม่มีอยู่ในสมุด */}
-        {!parcel && !parcelMsg && !parcelBusy && (
-          <div style={{ fontSize: 10.5, color: T.muted, marginTop: 6, lineHeight: 1.6 }}>
-            ค้นได้เฉพาะกล่องที่ส่งออกจาก “รอบแพ็ค” และนำเข้าใบปะหน้า (PDF) ไว้แล้วเท่านั้น —
-            ของที่ส่งก่อนเริ่มใช้ระบบนี้ หรือรอบที่นำเข้าด้วยการวางข้อความ จะไม่มีเลขพัสดุให้ค้น
-          </div>
-        )}
-        {parcel && (
-          <div style={{ marginTop: 8, fontSize: 11.5, color: T.text, lineHeight: 1.9 }}>
-            <div>
-              ✅ กล่องนี้มาจากรอบ <b style={{ fontFamily: "monospace" }}>{parcel.runNo}</b>
-              {" · "}<b>{parcel.customerName}</b>
-              {parcel.runDate ? ` · ${String(parcel.runDate).split(" ")[0]}` : ""}
-              {parcel.orderNo ? ` · ออเดอร์ ${parcel.orderNo}` : ""}
-            </div>
-            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 4 }}>
-              {(parcel.items || []).map((it, i) => (
-                <span key={i} style={{ padding: "3px 9px", borderRadius: 7, background: "rgba(16,185,129,0.1)",
-                  border: "1px solid rgba(16,185,129,0.3)", fontSize: 11 }}>
-                  {it.clothingName}{it.colorName ? ` · ${it.colorName}` : ""}{it.size ? ` · ${it.size}` : ""}
-                  <b style={{ fontFamily: "monospace" }}> ×{it.qty}</b>
-                </span>
-              ))}
-            </div>
-            {/* เลขบิลที่ตามได้ — ตัวเต็มอยู่ที่ป้ายบิลต้นทางข้างบนแล้ว ตรงนี้เหลือบรรทัดเดียวพอ
-                ไม่งั้นมีกล่องเขียวซ้อนกันสองชั้นบอกเรื่องเดียวกัน */}
-            <div style={{ marginTop: 6 }}>
-              {parcelInvoice ? (
-                <div style={{ fontSize: 12, color: T.text }}>
-                  📄 กล่องนี้ผูกกับบิล{" "}
-                  <b style={{ fontFamily: "monospace" }}>{parcelInvoice.invoiceNo || "(ไม่มีเลข)"}</b>
-                  {form.invoiceId === parcelInvoice.id
-                    ? <b style={{ color: "#059669" }}> · ใช้อยู่ ✅</b>
-                    : (
-                      <button type="button" onClick={() => pickInvoice(parcelInvoice)}
-                        style={{ marginLeft: 8, padding: "3px 10px", borderRadius: 7, cursor: "pointer",
-                          border: "1px solid rgba(16,185,129,0.6)", background: "rgba(16,185,129,0.15)",
-                          color: T.text, fontFamily: "'Sarabun',sans-serif", fontSize: 11.5, fontWeight: 700 }}>
-                        ใช้บิลนี้
-                      </button>
-                    )}
-                </div>
-              ) : (
-                <div style={{ fontSize: 11.5, color: T.sub }}>
-                  {!parcelRun
-                    ? "⚠️ เปิดรอบของพัสดุใบนี้ไม่ได้ (รอบอาจถูกลบ) — ค้นบิลจากรายการด้านล่างแทน"
-                    : "⏳ รอบนี้ยังไม่ได้ออกบิล — บันทึกไว้ก่อนเป็น “รอจับคู่บิล” แล้วค่อยกลับมาจับทีหลัง"}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
 
       {form.customerId && (
         <div style={{ fontSize: 10.5, color: custInvBusy ? T.accent : T.muted, marginBottom: 6 }}>
