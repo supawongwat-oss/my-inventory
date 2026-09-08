@@ -363,13 +363,15 @@ function BulkPricePanel({ items, setInvoiceForm, clothingItems = [] }) {
 // ที่ร้านเปิดบิลอุปกรณ์กีฬาแยกกับบิลเสื้อผ้ามาตลอด ระบบจึงต้องออกให้ 2 ใบเหมือนที่ทำมือ
 // ตั้งค่าเริ่มต้นเป็น "แยก" เพราะนั่นคือวิธีที่ใช้จริง แต่ต้องเห็นทั้งกล่องว่าจะได้ใบไหนยอดเท่าไร
 // ก่อนกดบันทึก — ไม่ใช่แอบแยกให้เงียบ ๆ แล้วพนักงานมางงตอนเห็นบิลโผล่มา 2 ใบ
+// ค่าเริ่มต้นคือ "ไม่แยก" — กล่องนี้ยังขึ้นเสมอเมื่อบิลมีทั้งเสื้อผ้าและอุปกรณ์
+// เพื่อให้เห็นว่าแยกได้ แต่ต้องติ๊กเอง
 function SplitEquipmentPanel({ invoiceForm, setInvoiceForm, clothingItems, calcInvoice, invoiceVat }) {
   const parts = React.useMemo(
     () => splitItemsByGroup(invoiceForm.items || [], clothingItems),
     [invoiceForm.items, clothingItems]
   );
   if (!parts.mixed) return null;
-  const on = invoiceForm.splitEquipment !== false;   // ไม่เคยตั้ง = แยก
+  const on = invoiceForm.splitEquipment === true;   // ไม่เคยตั้ง = ไม่แยก (ต้องติ๊กเอง)
   const money = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 });
   // ใบเสื้อผ้าเป็นใบหลัก — ส่วนลดท้ายบิล/ค่าส่ง/ค่าออกแบบ/มัดจำ อยู่ใบนั้นใบเดียว
   // ยกเว้นส่วนลดแบบ % ที่ใช้กับทั้งสองใบได้ตรงไปตรงมา (คิดจากยอดของแต่ละใบเอง)
@@ -983,7 +985,7 @@ export default function NewInvoiceModal({
                   ? "🔒 ต้องเลือกลูกค้าจากทะเบียนก่อน"
                   : editingInvoiceId
                     ? `💾 บันทึกการแก้ไข ${docTypeLabel(invoiceDocType)}`
-                    : (invoiceForm.splitEquipment !== false && splitItemsByGroup(invoiceForm.items || [], clothingItems).mixed)
+                    : (invoiceForm.splitEquipment === true && splitItemsByGroup(invoiceForm.items || [], clothingItems).mixed)
                       ? `✅ ออก${docTypeLabel(invoiceDocType)} 2 ใบ (เสื้อผ้า + อุปกรณ์กีฬา)`
                       : `✅ ออก${docTypeLabel(invoiceDocType)} + บันทึก`}
             </BtnPrimary>
