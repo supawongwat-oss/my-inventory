@@ -99,6 +99,9 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
   //    ต่อให้ประมาณพลาด ดวงก็ยัง overflow:hidden อยู่ ไม่ทำให้หน้าอื่นเพี้ยน
   const addrH = addrLayout.h, addrW = addrLayout.w;
   const addrPad = Math.max(2, Math.min(6, Math.min(addrH, addrW) * 0.045));
+  // กรอบนอกหนาตามขนาดดวง — ดวงเล็ก 99×38 ใช้ 0.9mm เท่าดวงใหญ่แล้วกรอบกินเนื้อที่
+  // จนตัวหนังสือต้องหดเพิ่มโดยไม่จำเป็น
+  const addrBorder = Math.max(0.4, Math.min(0.9, Math.min(addrH, addrW) * 0.009));
 
   // ขนาดตั้งต้นคิดจาก "ความกว้าง" ของดวง — ความกว้างเป็นตัวจำกัดว่าตัวหนังสือโตได้แค่ไหน
   // ก่อนจะตกบรรทัด (ความสูงไม่ได้บังคับอะไร นอกจากว่าจะใส่ได้กี่บรรทัด)
@@ -527,26 +530,27 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
               คนขนส่งอ่านยากทั้งที่มีที่ให้พิมพ์เต็มไปหมด */}
           <style>{`
             .ad-grid { display: grid; grid-template-columns: repeat(${addrLayout.cols}, 1fr); gap: 3mm; }
-            /* 🔲 กรอบจริงทุกดวง — ป้ายที่ไม่มีกรอบดูเหมือนพิมพ์พลาดลงกลางแผ่น
-               และเวลาแปะบนกล่องน้ำตาล ขอบช่วยแยกป้ายออกจากพื้นกล่องให้ตาจับได้ทันที
-               หนา 0.45mm — บางกว่านี้เครื่องพิมพ์ความร้อนพิมพ์ออกมาขาดเป็นช่วง ๆ */
+            /* 🔲 กรอบนอกหนา / เส้นแบ่งข้างในเป็นเส้นประ
+               กรอบนอกหนาไว้ให้เห็นขอบป้ายชัดตอนแปะบนกล่องน้ำตาล
+               ส่วนเส้นแบ่งข้างในถ้าหนาเท่ากันจะแย่งสายตากับตัวหนังสือ ใช้เส้นประจึงเบากว่า
+               แต่ยังบอกได้ว่าแต่ละส่วนจบตรงไหน */
             .ad-cell, .ad-thermal { box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column;
-                                    background: #fff; color: #000; border: 0.45mm solid #000; border-radius: 1mm; }
+                                    background: #fff; color: #000; border: ${addrBorder.toFixed(2)}mm solid #000; border-radius: 1mm; }
             .ad-cell { height: ${addrLayout.h}mm; }
             /* โหมดความร้อน: 1 ดวง = 1 หน้า ไม่ใช่ตาราง */
             .ad-thermal { width: ${addrLayout.w}mm; height: ${addrLayout.h}mm; page-break-after: always; }
             .ad-thermal:last-child { page-break-after: auto; }
 
             /* แต่ละส่วนมีเส้นคั่นของตัวเอง — ผู้ส่ง / ผู้รับ / หมายเหตุ แยกกันชัดในแวบเดียว */
-            .ad-sender { padding: ${addrPad}mm; border-bottom: 0.45mm solid #000; line-height: 1.3;
+            .ad-sender { padding: ${addrPad}mm; border-bottom: 0.35mm dashed #000; line-height: 1.3;
                          font-size: calc(var(--small) * var(--s)); }
-            .ad-to { padding: 0.9mm ${addrPad}mm; border-bottom: 0.25mm solid #000; font-weight: 800;
+            .ad-to { padding: 0.9mm ${addrPad}mm; border-bottom: 0.35mm dashed #000; font-weight: 800;
                      letter-spacing: .1em; font-size: calc(var(--small) * var(--s)); }
             /* ⚠️ ห้ามใส่ overflow:hidden ตรงนี้ — ถ้าซ่อนไว้ ข้อความจะโดนตัดเงียบ ๆ
                   แล้วตัววัดข้างนอกจะเห็นว่า "พอดี" ทั้งที่หายไปครึ่งหนึ่ง (เจอมาแล้วกับดวง 99×38) */
             .ad-body { display: flex; flex-direction: column; flex: 0 0 auto; padding: ${addrPad}mm; }
             /* ช่องหมายเหตุยุบตัวก่อนเสมอ — ที่ว่างหมดเมื่อไรค่อยไปหดตัวหนังสือ */
-            .ad-note { flex: 1 1 0; min-height: 0; border-top: 0.45mm solid #000; padding: 1.2mm ${addrPad}mm;
+            .ad-note { flex: 1 1 0; min-height: 0; border-top: 0.35mm dashed #000; padding: 1.2mm ${addrPad}mm;
                        font-size: calc(var(--small) * var(--s)); font-weight: 700; overflow: hidden; }
 
             /* หัวข้อกำกับอยู่คอลัมน์ซ้าย กว้างคงที่ ค่าอยู่ขวา — เรียงเป็นแนวเดียวกันทั้งดวง
