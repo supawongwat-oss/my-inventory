@@ -7471,6 +7471,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
         <BarcodePrintModal
           products={products}
           clothingItems={clothingItems}
+          customers={customers}
+          companyInfo={companyInfo}
           onClose={() => setShowBarcodePrint(false)}
           printElementById={printElementById}
         />
