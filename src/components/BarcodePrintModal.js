@@ -167,8 +167,8 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
             ผู้ส่ง: {companyInfo.name}{companyInfo.phone ? ` โทร ${companyInfo.phone}` : ""}
           </div>
         )}
+        <div className="ad-to">ผู้รับ</div>
         <div className="ad-body">
-          <div className="ad-to">ผู้รับ</div>
           <Row k="ชื่อ" v={c.name} varName="name" bold/>
           {showAddr && <Row k="ที่อยู่" v={c.address} varName="addr"/>}
           {/* เบอร์โทรห้ามตกบรรทัด — ขาดเป็นสองท่อนแล้วคนขนส่งกดผิด
@@ -527,27 +527,28 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
               คนขนส่งอ่านยากทั้งที่มีที่ให้พิมพ์เต็มไปหมด */}
           <style>{`
             .ad-grid { display: grid; grid-template-columns: repeat(${addrLayout.cols}, 1fr); gap: 3mm; }
-            .ad-cell { border: 1px dashed #cbd5e1; border-radius: 3px; padding: ${addrPad}mm; box-sizing: border-box;
-                       height: ${addrLayout.h}mm; overflow: hidden; display: flex; flex-direction: column; }
+            /* 🔲 กรอบจริงทุกดวง — ป้ายที่ไม่มีกรอบดูเหมือนพิมพ์พลาดลงกลางแผ่น
+               และเวลาแปะบนกล่องน้ำตาล ขอบช่วยแยกป้ายออกจากพื้นกล่องให้ตาจับได้ทันที
+               หนา 0.45mm — บางกว่านี้เครื่องพิมพ์ความร้อนพิมพ์ออกมาขาดเป็นช่วง ๆ */
+            .ad-cell, .ad-thermal { box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column;
+                                    background: #fff; color: #000; border: 0.45mm solid #000; border-radius: 1mm; }
+            .ad-cell { height: ${addrLayout.h}mm; }
             /* โหมดความร้อน: 1 ดวง = 1 หน้า ไม่ใช่ตาราง */
-            .ad-thermal { width: ${addrLayout.w}mm; height: ${addrLayout.h}mm; padding: ${addrPad}mm; box-sizing: border-box;
-                          display: flex; flex-direction: column; overflow: hidden;
-                          page-break-after: always; background: #fff; }
+            .ad-thermal { width: ${addrLayout.w}mm; height: ${addrLayout.h}mm; page-break-after: always; }
             .ad-thermal:last-child { page-break-after: auto; }
-            /* ตัวกลางกินที่ที่เหลือทั้งหมด — ผู้ส่งอยู่บนสุด เบอร์อยู่ล่างสุด ที่อยู่อยู่ตรงกลางเต็มพื้นที่ */
-            /* ชิดบนเป็นก้อนเดียว — จัดกึ่งกลางแนวตั้งแล้วเนื้อหาลอยอยู่กลางแผ่น ดูเหมือนวางผิดที่
-               ⚠️ ห้ามใส่ overflow:hidden ตรงนี้ — ถ้าซ่อนไว้ ข้อความจะโดนตัดเงียบ ๆ
-                  แล้วตัววัดข้างนอกจะเห็นว่า "พอดี" ทั้งที่หายไปครึ่งหนึ่ง (เจอมาแล้วกับดวง 99×38) */
-            .ad-body { display: flex; flex-direction: column; flex: 0 0 auto; }
-            /* ช่องหมายเหตุยุบตัวก่อนเสมอ — ที่ว่างหมดเมื่อไรค่อยไปหดตัวหนังสือ */
-            .ad-note { flex: 1 1 0; min-height: 0; margin-top: 2.5mm; border: 1px dashed #000; border-radius: 1mm;
-                       padding: 1.5mm 2mm; font-size: calc(var(--small) * var(--s)); font-weight: 700; overflow: hidden; }
-            .ad-sender { color: #000; border-bottom: 1px solid #000; padding-bottom: 1mm; margin-bottom: 2mm; line-height: 1.3;
+
+            /* แต่ละส่วนมีเส้นคั่นของตัวเอง — ผู้ส่ง / ผู้รับ / หมายเหตุ แยกกันชัดในแวบเดียว */
+            .ad-sender { padding: ${addrPad}mm; border-bottom: 0.45mm solid #000; line-height: 1.3;
                          font-size: calc(var(--small) * var(--s)); }
-            .ad-to { color: #000; letter-spacing: .08em; font-weight: 700; margin-bottom: 1mm;
-                     font-size: calc(var(--small) * var(--s)); }
-            /* หัวข้อกำกับอยู่คอลัมน์ซ้ายความกว้างคงที่ ค่าอยู่ขวา — เรียงเป็นแนวเดียวกันทั้งดวง
-               ถ้าปล่อยให้ไหลตามความยาวหัวข้อ ("ชื่อ" กับ "ที่อยู่" ยาวไม่เท่ากัน) ค่าจะเหลื่อมกันอ่านยาก */
+            .ad-to { padding: 0.9mm ${addrPad}mm; border-bottom: 0.25mm solid #000; font-weight: 800;
+                     letter-spacing: .1em; font-size: calc(var(--small) * var(--s)); }
+            /* ⚠️ ห้ามใส่ overflow:hidden ตรงนี้ — ถ้าซ่อนไว้ ข้อความจะโดนตัดเงียบ ๆ
+                  แล้วตัววัดข้างนอกจะเห็นว่า "พอดี" ทั้งที่หายไปครึ่งหนึ่ง (เจอมาแล้วกับดวง 99×38) */
+            .ad-body { display: flex; flex-direction: column; flex: 0 0 auto; padding: ${addrPad}mm; }
+            /* ช่องหมายเหตุยุบตัวก่อนเสมอ — ที่ว่างหมดเมื่อไรค่อยไปหดตัวหนังสือ */
+            .ad-note { flex: 1 1 0; min-height: 0; border-top: 0.45mm solid #000; padding: 1.2mm ${addrPad}mm;
+                       font-size: calc(var(--small) * var(--s)); font-weight: 700; overflow: hidden; }
+
             /* หัวข้อกำกับอยู่คอลัมน์ซ้าย กว้างคงที่ ค่าอยู่ขวา — เรียงเป็นแนวเดียวกันทั้งดวง
                ถ้าปล่อยให้ไหลตามความยาวหัวข้อ ("ชื่อ" กับ "ที่อยู่" ยาวไม่เท่ากัน) ค่าจะเหลื่อมกันอ่านยาก */
             .ad-row { display: flex; align-items: baseline; gap: 1.8mm; line-height: 1.3; margin-bottom: 2mm; }
@@ -558,7 +559,6 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
             /* ช่องที่ยังไม่มีข้อมูล — เส้นประให้เขียนมือ ไม่ใช่ปล่อยว่าง */
             .ad-blank { flex: 1; border-bottom: 1px dashed #000; align-self: flex-end; height: 1.1em; }
             .ad-phone { margin-top: 1.5mm; }
-            @media print { .ad-cell { border: none; } }
           `}</style>
           {addrLayout.thermal ? (
             addrList.map((c, i) => <AddrLabel key={i} c={c} cls="ad-thermal"/>)
