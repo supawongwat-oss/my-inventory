@@ -1133,49 +1133,78 @@ export default function App() {
   //    บิลยังพิมพ์ชื่อจริง (12) เสมอ ชื่อเรียกอื่นมีไว้ให้พนักงานพิมพ์ตามที่ลูกค้าส่งมาได้
   //    โดยระบบยังนับเป็นไซส์เดียวกัน — สต๊อก ราคา รับคืน รอบแพ็ค ตรงกันหมด
   const addSizeAlias = async (fromRaw, toRaw) => {
-    const from = String(fromRaw || "").trim();
-    const to = String(toRaw || "").trim();
-    if (!from || !to) return;
-    if (from.toUpperCase() === to.toUpperCase()) { alert("ชื่อเรียกอื่นกับไซส์จริงต้องไม่ใช่ตัวเดียวกัน"); return; }
-    // ไซส์จริงต้องมีอยู่ในรายการ ไม่งั้นจะแปลไปหาไซส์ที่ไม่มีช่องสต๊อก
+    // รับหลายชื่อพร้อมกัน — ลูกค้าคนละเจ้าเรียกไซส์เดียวกันคนละอย่าง (KXL, SS, XS ล้วนคือ 12)
+    // ถ้าให้เพิ่มทีละชื่อ คนจะตั้งไม่ครบแล้วเหลือชื่อที่ยังหลุดเป็นไซส์ผี
+    const names = String(fromRaw || "").split(/[,\n/]+/).map(x => x.trim()).filter(Boolean);
+    let to = String(toRaw || "").trim();
+    if (names.length === 0 || !to) return;
+    const NL = String.fromCharCode(10);
     const all = [...SIZES, ...SHOE_SIZES, ...(customSizes?.apparel || []), ...(customSizes?.shoe || [])];
+    const cur = customSizes?.aliases || {};
+
+    // 🔗 ปลายทางต้องเป็น "ไซส์จริง" ไม่ใช่ชื่อเรียกอื่นอีกทอด
+    //    ตั้ง KXL = SS ตอนที่ SS = 12 อยู่แล้ว จะได้สายยาวที่อ่านยากและพังง่าย
+    //    ดัดให้ชี้ไปไซส์ปลายทางจริงตั้งแต่ตอนตั้ง จะได้เห็นชัดว่าทุกชื่อเท่ากับอะไร
+    const finalOf = (v, hops = 0) => {
+      const hit = cur[String(v).toUpperCase()];
+      return (hit && hops < 5) ? finalOf(hit, hops + 1) : v;
+    };
+    const resolved = finalOf(to);
+    if (String(resolved).toUpperCase() !== to.toUpperCase()) {
+      if (!window.confirm(
+        `"${to}" เป็นชื่อเรียกอื่นของไซส์ "${resolved}" อยู่แล้ว` + NL + NL +
+        `จะตั้งให้ ${names.join(", ")} = "${resolved}" แทนเลยไหม?`
+      )) return;
+      to = resolved;
+    }
     if (!all.some(x => String(x).toUpperCase() === to.toUpperCase())) {
       alert(`ยังไม่มีไซส์ "${to}" ในรายการ — เพิ่มไซส์จริงก่อน แล้วค่อยตั้งชื่อเรียกอื่น`);
       return;
     }
-    // ห้ามตั้งชื่อเรียกอื่นทับไซส์จริงที่ใช้งานอยู่ ไม่งั้นไซส์นั้นจะหายไปทั้งระบบ
-    if (all.some(x => String(x).toUpperCase() === from.toUpperCase())) {
-      // นับของที่ค้างอยู่ในช่องนี้จริง — เตือนลอย ๆ ว่า "จะไม่ถูกย้ายให้" ไม่พอ
-      // ต้องบอกไปเลยว่าจะมีของกี่ตัวกี่รุ่นหายไปจากตารางสต๊อก
-      let strandedQty = 0; const strandedModels = [];
-      (clothingItems || []).forEach(m => {
+
+    const dupSelf = names.filter(n => n.toUpperCase() === to.toUpperCase());
+    if (dupSelf.length) { alert(`"${to}" เป็นไซส์จริง ตั้งเป็นชื่อเรียกอื่นของตัวเองไม่ได้`); return; }
+
+    // ชื่อไหนที่ตอนนี้เป็นไซส์จริงอยู่ → ช่องนั้นจะหายจากตารางสต๊อก
+    // เตือนลอย ๆ ว่า "จะไม่ถูกย้ายให้" ไม่พอ ต้องบอกว่ามีของกี่ตัวกี่รุ่นที่จะหายไป
+    const live = names.filter(n => all.some(x => String(x).toUpperCase() === n.toUpperCase()));
+    if (live.length) {
+      const lines = [];
+      let total = 0;
+      live.forEach(n => {
+        const models = [];
         let q = 0;
-        (m.colors || []).forEach(c => {
-          Object.entries(c.stock || {}).forEach(([k, v]) => {
-            if (String(k).toUpperCase() === from.toUpperCase()) q += Number(v) || 0;
+        (clothingItems || []).forEach(m => {
+          let mq = 0;
+          (m.colors || []).forEach(c => {
+            Object.entries(c.stock || {}).forEach(([k, v]) => {
+              if (String(k).toUpperCase() === n.toUpperCase()) mq += Number(v) || 0;
+            });
           });
+          if (mq > 0) { q += mq; models.push(`${m.name || m.id} (${mq})`); }
         });
-        if (q > 0) { strandedQty += q; strandedModels.push(`${m.name || m.id} (${q})`); }
+        total += q;
+        lines.push(q > 0
+          ? `• "${n}" มีของค้าง ${q} ตัว — ${models.slice(0, 4).join(", ")}${models.length > 4 ? ` … อีก ${models.length - 4} รุ่น` : ""}`
+          : `• "${n}" ไม่มีสต๊อกค้าง`);
       });
-      const NL = String.fromCharCode(10);
       if (!window.confirm(
-        `"${from}" เป็นไซส์จริงในรายการอยู่ตอนนี้` + NL +
-        `ถ้าตั้งให้แปลเป็น "${to}" ช่อง "${from}" จะหายจากรายการไซส์` + NL + NL +
-        (strandedQty > 0
-          ? `⚠️ ตอนนี้มีของค้างในช่อง "${from}" อยู่ ${strandedQty} ตัว` + NL +
-            strandedModels.slice(0, 8).map(x => `   • ${x}`).join(NL) +
-            (strandedModels.length > 8 ? NL + `   … และอีก ${strandedModels.length - 8} รุ่น` : "") + NL +
-            `ของก้อนนี้จะหายจากตารางสต๊อก และระบบไม่ย้ายให้อัตโนมัติ` + NL +
-            `แนะนำ: กดยกเลิก → ย้ายของไปช่อง "${to}" ก่อน แล้วค่อยกลับมาตั้ง`
-          : `(ตรวจแล้ว ไม่มีสต๊อกค้างในช่อง "${from}" — ตั้งได้เลย)`) + NL + NL +
+        `${live.length} ชื่อนี้เป็นไซส์จริงในรายการอยู่ตอนนี้: ${live.join(", ")}` + NL +
+        `ตั้งเป็นชื่อเรียกอื่นของ "${to}" แล้ว ช่องพวกนี้จะหายจากรายการไซส์` + NL + NL +
+        lines.join(NL) + NL + NL +
+        (total > 0
+          ? `⚠️ ของรวม ${total} ตัวจะหายจากตารางสต๊อก และระบบไม่ย้ายให้อัตโนมัติ` + NL +
+            `แนะนำ: กดยกเลิก → ย้ายของไปช่อง "${to}" ก่อน แล้วค่อยกลับมาตั้ง` + NL + NL
+          : "") +
         `ยืนยัน?`
       )) return;
     }
+
+    const patch = {};
+    names.forEach(n => { patch[n.toUpperCase()] = to; });
     try {
-      await setDoc(doc(db, "settings", "sizes"), {
-        aliases: { ...(customSizes?.aliases || {}), [from.toUpperCase()]: to },
-      }, { merge: true });
-      logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: "settings", targetId: "sizes", targetLabel: "ไซส์", note: `เพิ่มชื่อเรียกอื่น: ${from} = ${to}` });
+      await setDoc(doc(db, "settings", "sizes"), { aliases: { ...cur, ...patch } }, { merge: true });
+      logAudit(user, { action: AUDIT_ACTIONS.UPDATE, collection: "settings", targetId: "sizes", targetLabel: "ไซส์", note: `เพิ่มชื่อเรียกอื่น: ${names.join(", ")} = ${to}` });
       setNewAliasFrom(""); setNewAliasTo("");
     } catch (e) { alert("บันทึกไม่สำเร็จ: " + (e.message || e)); }
   };
@@ -6709,27 +6738,42 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           <div style={{marginTop:22,paddingTop:18,borderTop:`1px solid ${T.border}`}}>
             <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:6}}>🔤 ชื่อเรียกอื่นของไซส์</div>
             <div style={{fontSize:11,color:T.sub,marginBottom:10,lineHeight:1.7,background:"rgba(217,119,6,0.07)",border:"1px solid rgba(217,119,6,0.3)",borderRadius:8,padding:"8px 11px"}}>
-              ไซส์เดียวกันแต่เรียกคนละชื่อ เช่น <b>XS = 12</b> และ <b>SS = 12</b><br/>
+              ไซส์เดียวกันแต่ลูกค้าแต่ละเจ้าเรียกคนละชื่อ เช่น <b>KXL = SS = XS = 12</b><br/>
               พนักงานพิมพ์ชื่อไหนก็ได้ ระบบนับเป็นไซส์เดียวกันหมด — สต๊อก · ราคา · รับคืน · รอบแพ็ค<br/>
               <b>บิลที่พิมพ์ให้ลูกค้าจะขึ้นชื่อจริงเสมอ</b> (ขึ้น <b>12</b> ไม่ใช่ XS)
             </div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+            {/* จัดกลุ่มตามไซส์จริง — ไซส์เดียวมีชื่อเรียกได้หลายชื่อ ถ้าเรียงเป็นคู่ ๆ
+                พอมี 10-20 ชื่อจะอ่านไม่ออกว่าอันไหนเท่ากับอันไหน */}
+            <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
               {Object.keys(customSizes?.aliases||{}).length === 0
                 ? <span style={{fontSize:11,color:T.muted}}>ยังไม่ได้ตั้งชื่อเรียกอื่น</span>
-                : Object.entries(customSizes?.aliases||{}).sort((a,b)=>compareSizes(a[1],b[1])||a[0].localeCompare(b[0])).map(([from,to])=>(
-                  <span key={from} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"5px 8px 5px 12px",borderRadius:8,border:"1px solid rgba(217,119,6,0.45)",background:"rgba(217,119,6,0.12)",color:"#92400e",fontFamily:"monospace",fontSize:12,fontWeight:700}}>
-                    {from} = {to}
-                    <button onClick={()=>removeSizeAlias(from)} title="ลบ" style={{border:"none",background:"transparent",color:T.red,cursor:"pointer",fontSize:13,lineHeight:1,padding:0}}>✕</button>
-                  </span>
-                ))}
+                : Object.entries(
+                    Object.entries(customSizes?.aliases||{}).reduce((acc,[from,to])=>{
+                      (acc[to] = acc[to] || []).push(from); return acc;
+                    }, {})
+                  ).sort((a,b)=>compareSizes(a[0],b[0])).map(([to,froms])=>(
+                    <div key={to} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"6px 10px",borderRadius:8,border:`1px solid ${T.border}`,background:"white"}}>
+                      <span style={{fontFamily:"monospace",fontSize:13,fontWeight:800,color:T.text,minWidth:44}}>{to}</span>
+                      <span style={{fontSize:11,color:T.muted}}>เรียกอีกชื่อว่า</span>
+                      {froms.slice().sort().map(from=>(
+                        <span key={from} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"3px 6px 3px 10px",borderRadius:7,border:"1px solid rgba(217,119,6,0.45)",background:"rgba(217,119,6,0.12)",color:"#92400e",fontFamily:"monospace",fontSize:12,fontWeight:700}}>
+                          {from}
+                          <button onClick={()=>removeSizeAlias(from)} title={`ลบ "${from}"`} style={{border:"none",background:"transparent",color:T.red,cursor:"pointer",fontSize:13,lineHeight:1,padding:0}}>✕</button>
+                        </span>
+                      ))}
+                    </div>
+                  ))}
             </div>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              <input value={newAliasFrom} onChange={e=>setNewAliasFrom(e.target.value)} placeholder="ชื่อที่ลูกค้าเรียก เช่น XS"
-                style={{flex:1,minWidth:0,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
+              <input value={newAliasFrom} onChange={e=>setNewAliasFrom(e.target.value)} placeholder="ชื่อที่ลูกค้าเรียก — ใส่หลายชื่อคั่นด้วย , ได้"
+                style={{flex:2,minWidth:0,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
               <span style={{fontSize:14,color:T.muted,fontWeight:700}}>=</span>
               <input value={newAliasTo} onChange={e=>setNewAliasTo(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addSizeAlias(newAliasFrom,newAliasTo)} placeholder="ไซส์จริง เช่น 12"
                 style={{flex:1,minWidth:0,background:T.input,border:`1px solid ${T.inputBorder}`,color:T.text,borderRadius:9,padding:"9px 14px",fontFamily:"'Sarabun',sans-serif",fontSize:13,outline:"none"}}/>
               <BtnPrimary onClick={()=>addSizeAlias(newAliasFrom,newAliasTo)} disabled={!newAliasFrom.trim()||!newAliasTo.trim()}>➕ เพิ่ม</BtnPrimary>
+            </div>
+            <div style={{fontSize:10,color:T.muted,marginTop:6}}>
+              💡 เช่น พิมพ์ <b>KXL, SS, XS</b> = <b>12</b> ทีเดียวได้เลย
             </div>
           </div>
 

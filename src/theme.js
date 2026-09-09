@@ -97,9 +97,19 @@ export const getSizeAliases = () => ({ ...SIZE_ALIASES });
 export const canonSize = (sz) => {
   const raw = String(sz ?? "").trim().replace(/\s+/g, " ");
   if (!raw) return "";
-  const u = raw.toUpperCase();
-  const shaped = (/^\d+$/.test(u) || /^\d*XL$/.test(u) || /^[SML]$/.test(u)) ? u : raw;
-  return SIZE_ALIASES[shaped.toUpperCase()] || shaped;
+  const shape = (v) => {
+    const u = v.toUpperCase();
+    return (/^\d+$/.test(u) || /^\d*XL$/.test(u) || /^[SML]$/.test(u)) ? u : v;
+  };
+  let cur = shape(raw);
+  // เดินตามสายได้หลายทอด เผื่อมีคนตั้ง KXL = SS ไว้ แล้ว SS = 12 อีกที
+  // กันวนซ้ำด้วย seen — ตั้ง A=B แล้ว B=A ถ้าไม่กันจะลูปไม่จบ หน้าจอค้างทั้งแอป
+  const seen = new Set();
+  while (SIZE_ALIASES[cur.toUpperCase()] && !seen.has(cur.toUpperCase())) {
+    seen.add(cur.toUpperCase());
+    cur = shape(SIZE_ALIASES[cur.toUpperCase()]);
+  }
+  return cur;
 };
 
 // 🔧 รวมไซส์มาตรฐาน + ไซส์ที่ผู้ใช้เพิ่มเอง (custom) แล้วเรียงลำดับให้ถูก
