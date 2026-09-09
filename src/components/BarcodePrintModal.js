@@ -85,33 +85,53 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
     ? { ...addrLayoutBase, w: Number(addrThermalW) || 100, h: Number(addrThermalH) || 150 }
     : addrLayoutBase;
 
-  // 📐 ขนาดตัวอักษรคิดจากความสูงของดวง (หน่วย mm) ให้เนื้อหาเต็มแผ่นเสมอ
-  //    ดวงเตี้ย (99×38) ได้ตัวเล็ก · ดวงสูง (100×150) ได้ตัวใหญ่เต็มพื้นที่
-  //    มีขั้นต่ำ/ขั้นสูงกำกับ ไม่งั้นดวงจิ๋วจะอ่านไม่ออก และดวงยักษ์จะล้นออกนอกแผ่น
-  const addrH = addrLayout.h;
-  const addrPad = Math.max(2, Math.min(6, addrH * 0.035));
-  const mmName = Math.max(4.2, Math.min(12, addrH * 0.078));
-  const mmAddr = Math.max(3.0, Math.min(8, addrH * 0.052));
-  const mmPhone = Math.max(3.4, Math.min(9, addrH * 0.060));
-  const mmSmall = Math.max(2.3, Math.min(4.5, addrH * 0.027));
+  // 📐 หาขนาดตัวอักษรที่ "ใหญ่ที่สุดเท่าที่ยังไม่ล้นดวง" — คิดใหม่ทุกดวง
+  //
+  //    สูตรตายตัวใช้ไม่ได้ เพราะสิ่งที่กินที่คือ "จำนวนบรรทัดหลังตกบรรทัด"
+  //    ซึ่งขึ้นกับความยาวที่อยู่กับความกว้างดวงพร้อมกัน:
+  //      · ดวงตั้ง 100×150 — ความกว้างเป็นตัวจำกัด ที่อยู่ยาวตกหลายบรรทัด แต่ยังเหลือที่ว่างด้านล่าง
+  //      · ดวงนอน 150×100 — กว้างขึ้น ที่อยู่ตกบรรทัดน้อยลง ตัวหนังสือจึงโตได้อีก
+  //    จึงไล่ลองขนาดจากใหญ่ลงมาแล้วหยุดที่ตัวแรกที่ยังไม่ล้น — ได้ผลถูกทั้งสองแนวโดยไม่ต้องจูนมือ
+  //
+  //    ประมาณความกว้างตัวอักษรไทยที่ ~0.5 เท่าของขนาดฟอนต์ (Sarabun) เผื่อไว้นิดหน่อย
+  //    ต่อให้ประมาณพลาด ดวงก็ยัง overflow:hidden อยู่ ไม่ทำให้หน้าอื่นเพี้ยน
+  const addrH = addrLayout.h, addrW = addrLayout.w;
+  const addrPad = Math.max(2, Math.min(6, Math.min(addrH, addrW) * 0.045));
 
-  // ที่อยู่ยาวไม่เท่ากัน — รายที่ยาวมากต้องย่อลง ไม่งั้นล้นแผ่นแล้วโดนตัดหาย
-  // (CSS ย่อตามเนื้อหาเองไม่ได้ ต้องคิดเป็นตัวเลขส่งเข้าไป)
-  const fitOf = (c) => {
-    const len = String(c?.address || "").length + String(c?.name || "").length;
-    return len > 150 ? 0.62 : len > 110 ? 0.72 : len > 80 ? 0.83 : len > 55 ? 0.92 : 1;
+  const fitSizes = (c) => {
+    const usableW = addrW - addrPad * 2;
+    const usableH = addrH - addrPad * 2;
+    const name = String(c?.name || "") || "x";
+    // ช่องว่างที่จะเขียนมือก็กินที่เท่าบรรทัดจริง — คิดเผื่อไว้ ไม่งั้นดวงที่ข้อมูลไม่ครบจะตัวโตผิดปกติ
+    const addr = String(c?.address || "") || "xxxxxxxxxxxxxxxxxxxxxxxx";
+    const phone = String(c?.phone || "") || "xxxxxxxxxx";
+    const hasSender = showSender && !!companyInfo?.name;
+    for (let s = 18; s >= 2.6; s -= 0.2) {
+      const nameS = s, addrS = s * 0.62, phoneS = s * 0.70;
+      const smallS = Math.max(2.2, Math.min(4.6, s * 0.30));
+      const keyW = showKeys ? smallS * 3.6 + 1.5 : 0;
+      const lines = (txt, fs) => Math.max(1, Math.ceil((txt.length * fs * 0.5) / Math.max(8, usableW - keyW)));
+      let h = 0;
+      if (hasSender) h += smallS * 1.35 + 2.5;                       // แถบผู้ส่ง + เส้นคั่น
+      h += smallS * 1.35;                                            // คำว่า "ผู้รับ"
+      h += lines(name, nameS) * nameS * 1.2 + 1;
+      if (showAddr) h += lines(addr, addrS) * addrS * 1.45 + 1;
+      if (showPhone) h += lines(phone, phoneS) * phoneS * 1.35 + 1.5;
+      if (h <= usableH) return { nameS, addrS, phoneS, smallS };
+    }
+    return { nameS: 2.6, addrS: 2.2, phoneS: 2.3, smallS: 2.2 };
   };
 
   // ดวงเดียว — ใช้ทั้งโหมดความร้อนและตาราง A4 จะได้ไม่มีทางเพี้ยนกันเอง
   const AddrLabel = ({ c, cls }) => {
-    const f = fitOf(c);
+    const { nameS, addrS, phoneS, smallS } = fitSizes(c);
     // บรรทัดหนึ่ง = หัวข้อ + ค่า · ไม่มีค่า → เส้นประไว้เขียนมือ
     //
     // ลูกค้า 254 จาก 260 รายยังไม่มีที่อยู่ครบ ปริ้นออกมาแล้วเขียนเติมหน้างานได้เลย
     // ดีกว่าปล่อยว่างเปล่าแล้วต้องกลับมาปริ้นใหม่ทีหลัง
     const Row = ({ k, v, mm, bold, mono }) => (
       <div className="ad-row" style={{ fontSize: `${mm}mm` }}>
-        {showKeys && <span className="ad-key" style={{ fontSize: `${mmSmall}mm` }}>{k}</span>}
+        {showKeys && <span className="ad-key" style={{ fontSize: `${smallS.toFixed(2)}mm`, minWidth: `${(smallS * 3.6).toFixed(1)}mm` }}>{k}</span>}
         {v
           ? <span style={{ fontWeight: bold ? 800 : 400, fontFamily: mono ? "monospace" : "inherit" }}>{v}</span>
           : <span className="ad-blank"/>}
@@ -120,16 +140,16 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
     return (
       <div className={cls}>
         {showSender && companyInfo?.name && (
-          <div className="ad-sender" style={{ fontSize: `${mmSmall}mm` }}>
+          <div className="ad-sender" style={{ fontSize: `${smallS.toFixed(2)}mm` }}>
             ผู้ส่ง: {companyInfo.name}{companyInfo.phone ? ` โทร ${companyInfo.phone}` : ""}
           </div>
         )}
         <div className="ad-body">
-          <div className="ad-to" style={{ fontSize: `${mmSmall}mm` }}>ผู้รับ</div>
-          <Row k="ชื่อ" v={c.name} mm={(mmName * f).toFixed(2)} bold/>
-          {showAddr && <Row k="ที่อยู่" v={c.address} mm={(mmAddr * f).toFixed(2)}/>}
+          <div className="ad-to" style={{ fontSize: `${smallS.toFixed(2)}mm` }}>ผู้รับ</div>
+          <Row k="ชื่อ" v={c.name} mm={nameS.toFixed(2)} bold/>
+          {showAddr && <Row k="ที่อยู่" v={c.address} mm={addrS.toFixed(2)}/>}
         </div>
-        {showPhone && <Row k="เบอร์" v={c.phone} mm={(mmPhone * f).toFixed(2)} bold mono/>}
+        {showPhone && <Row k="เบอร์" v={c.phone} mm={phoneS.toFixed(2)} bold mono/>}
       </div>
     );
   };
@@ -260,7 +280,17 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
                   <span style={{ color: T.muted, fontSize: 12 }}>×</span>
                   <input type="number" min="20" max="250" value={addrThermalH} onChange={e => setAddrThermalH(e.target.value)}
                     style={{ width: 70, background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 6, padding: "5px 8px", fontSize: 12, outline: "none", fontFamily: "monospace", textAlign: "center" }}/>
-                  <span style={{ fontSize: 11, color: T.muted }}>(ป้ายพัสดุมาตรฐาน 100×150)</span>
+                  {/* ⇄ สลับแนวตั้ง/นอน — สติกเกอร์ม้วนเดียวกันแต่หมุนเนื้อหาได้
+                      ที่อยู่ไทยยาวในแนวนอน ดวงนอน (150×100) จึงตกบรรทัดน้อยกว่า
+                      ตัวหนังสือเลยโตได้อีกและเหลือที่ว่างน้อยลง */}
+                  <button type="button" onClick={() => { const w = addrThermalW, h = addrThermalH; setAddrThermalW(h); setAddrThermalH(w); }}
+                    title="สลับแนวตั้ง ↔ แนวนอน"
+                    style={{ padding: "5px 10px", borderRadius: 6, border: `1px solid ${T.border}`, background: "white", color: T.accent, cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "'Sarabun',sans-serif" }}>
+                    ⇄ สลับแนว
+                  </button>
+                  <span style={{ fontSize: 11, color: T.muted }}>
+                    {Number(addrThermalW) > Number(addrThermalH) ? "แนวนอน" : "แนวตั้ง"} · ป้ายพัสดุมาตรฐาน 100×150
+                  </span>
                 </div>
               )}
             </div>
@@ -477,7 +507,7 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
             /* หัวข้อกำกับอยู่คอลัมน์ซ้ายความกว้างคงที่ ค่าอยู่ขวา — เรียงเป็นแนวเดียวกันทั้งดวง
                ถ้าปล่อยให้ไหลตามความยาวหัวข้อ ("ชื่อ" กับ "ที่อยู่" ยาวไม่เท่ากัน) ค่าจะเหลื่อมกันอ่านยาก */
             .ad-row { display: flex; align-items: baseline; gap: 1.5mm; line-height: 1.35; margin-bottom: 1mm; }
-            .ad-key { flex: 0 0 auto; min-width: ${(mmSmall * 3.4).toFixed(1)}mm; font-weight: 700; }
+            .ad-key { flex: 0 0 auto; font-weight: 700; }
             .ad-key::after { content: ":"; }
             /* ช่องที่ยังไม่มีข้อมูล — เส้นประให้เขียนมือ ไม่ใช่ปล่อยว่าง */
             .ad-blank { flex: 1; border-bottom: 1px dashed #000; align-self: flex-end; height: 1.1em; }
