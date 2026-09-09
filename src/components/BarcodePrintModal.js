@@ -81,6 +81,47 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
     ? { ...addrLayoutBase, w: Number(addrThermalW) || 100, h: Number(addrThermalH) || 150 }
     : addrLayoutBase;
 
+  // 📐 ขนาดตัวอักษรคิดจากความสูงของดวง (หน่วย mm) ให้เนื้อหาเต็มแผ่นเสมอ
+  //    ดวงเตี้ย (99×38) ได้ตัวเล็ก · ดวงสูง (100×150) ได้ตัวใหญ่เต็มพื้นที่
+  //    มีขั้นต่ำ/ขั้นสูงกำกับ ไม่งั้นดวงจิ๋วจะอ่านไม่ออก และดวงยักษ์จะล้นออกนอกแผ่น
+  const addrH = addrLayout.h;
+  const addrPad = Math.max(2, Math.min(6, addrH * 0.035));
+  const mmName = Math.max(4.2, Math.min(12, addrH * 0.078));
+  const mmAddr = Math.max(3.0, Math.min(8, addrH * 0.052));
+  const mmPhone = Math.max(3.4, Math.min(9, addrH * 0.060));
+  const mmSmall = Math.max(2.3, Math.min(4.5, addrH * 0.027));
+
+  // ที่อยู่ยาวไม่เท่ากัน — รายที่ยาวมากต้องย่อลง ไม่งั้นล้นแผ่นแล้วโดนตัดหาย
+  // (CSS ย่อตามเนื้อหาเองไม่ได้ ต้องคิดเป็นตัวเลขส่งเข้าไป)
+  const fitOf = (c) => {
+    const len = String(c?.address || "").length + String(c?.name || "").length;
+    return len > 150 ? 0.62 : len > 110 ? 0.72 : len > 80 ? 0.83 : len > 55 ? 0.92 : 1;
+  };
+
+  // ดวงเดียว — ใช้ทั้งโหมดความร้อนและตาราง A4 จะได้ไม่มีทางเพี้ยนกันเอง
+  const AddrLabel = ({ c, cls }) => {
+    const f = fitOf(c);
+    return (
+      <div className={cls}>
+        {showSender && companyInfo?.name && (
+          <div className="ad-sender" style={{ fontSize: `${mmSmall}mm` }}>
+            ผู้ส่ง: {companyInfo.name}{companyInfo.phone ? ` โทร ${companyInfo.phone}` : ""}
+          </div>
+        )}
+        <div className="ad-body">
+          <div className="ad-to" style={{ fontSize: `${mmSmall}mm` }}>ผู้รับ</div>
+          <div className="ad-name" style={{ fontSize: `${(mmName * f).toFixed(2)}mm` }}>{c.name}</div>
+          {showAddr && c.address && (
+            <div className="ad-addr" style={{ fontSize: `${(mmAddr * f).toFixed(2)}mm` }}>{c.address}</div>
+          )}
+        </div>
+        {showPhone && c.phone && (
+          <div className="ad-phone" style={{ fontSize: `${(mmPhone * f).toFixed(2)}mm` }}>โทร. {c.phone}</div>
+        )}
+      </div>
+    );
+  };
+
   const addrList = useMemo(() => {
     const out = [];
     addrIds.forEach(id => {
@@ -399,54 +440,33 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
       {/* 📮 Print area — สติกเกอร์ที่อยู่ (วาดนอกจอ ให้ printElementById ไปหยิบ) */}
       <div style={{ position: "fixed", left: -99999, top: 0, width: 794 }}>
         <div id="address-sticker-area" style={{ background: "white", padding: addrLayout.thermal ? 0 : "8mm", fontFamily: "'Sarabun',sans-serif", color: "#000" }}>
+          {/* 📐 ตัวหนังสือผูกกับ "ขนาดดวง" ไม่ใช่ px คงที่
+              ดวง 100×150 ใหญ่กว่าดวง 99×38 เกือบ 4 เท่า ใช้ px ชุดเดียวกันแล้ว
+              ดวงใหญ่จะมีตัวหนังสือกระจุกอยู่กลางแผ่น เหลือขาวรอบ ๆ เกือบ 80% —
+              คนขนส่งอ่านยากทั้งที่มีที่ให้พิมพ์เต็มไปหมด */}
           <style>{`
             .ad-grid { display: grid; grid-template-columns: repeat(${addrLayout.cols}, 1fr); gap: 3mm; }
-            .ad-cell { border: 1px dashed #cbd5e1; border-radius: 3px; padding: 3mm; box-sizing: border-box;
-                       height: ${addrLayout.h}mm; overflow: hidden; display: flex; flex-direction: column; justify-content: center; }
+            .ad-cell { border: 1px dashed #cbd5e1; border-radius: 3px; padding: ${addrPad}mm; box-sizing: border-box;
+                       height: ${addrLayout.h}mm; overflow: hidden; display: flex; flex-direction: column; }
             /* โหมดความร้อน: 1 ดวง = 1 หน้า ไม่ใช่ตาราง */
-            .ad-thermal { width: ${addrLayout.w}mm; height: ${addrLayout.h}mm; padding: 4mm; box-sizing: border-box;
-                          display: flex; flex-direction: column; justify-content: center; overflow: hidden;
+            .ad-thermal { width: ${addrLayout.w}mm; height: ${addrLayout.h}mm; padding: ${addrPad}mm; box-sizing: border-box;
+                          display: flex; flex-direction: column; overflow: hidden;
                           page-break-after: always; background: #fff; }
             .ad-thermal:last-child { page-break-after: auto; }
-            .ad-sender { font-size: 9px; color: #334155; border-bottom: 1px solid #cbd5e1; padding-bottom: 1mm; margin-bottom: 1.5mm; line-height: 1.3; }
-            .ad-to { font-size: 9px; color: #64748b; letter-spacing: .04em; }
-            .ad-name { font-size: 14px; font-weight: 800; line-height: 1.25; margin-bottom: 0.8mm; }
-            .ad-addr { font-size: 11px; line-height: 1.4; }
-            .ad-phone { font-size: 12px; font-weight: 700; font-family: monospace; margin-top: 1mm; }
-            .ad-thermal .ad-name { font-size: 19px; }
-            .ad-thermal .ad-addr { font-size: 15px; }
-            .ad-thermal .ad-phone { font-size: 17px; }
+            /* ตัวกลางกินที่ที่เหลือทั้งหมด — ผู้ส่งอยู่บนสุด เบอร์อยู่ล่างสุด ที่อยู่อยู่ตรงกลางเต็มพื้นที่ */
+            .ad-body { flex: 1; display: flex; flex-direction: column; justify-content: center; min-height: 0; overflow: hidden; }
+            .ad-sender { color: #000; border-bottom: 1px solid #000; padding-bottom: 1mm; margin-bottom: 1.5mm; line-height: 1.3; }
+            .ad-to { color: #000; letter-spacing: .06em; font-weight: 700; }
+            .ad-name { font-weight: 800; line-height: 1.2; margin: 0.6mm 0 1.2mm; }
+            .ad-addr { line-height: 1.45; }
+            .ad-phone { font-weight: 800; font-family: monospace; margin-top: 1.5mm; }
             @media print { .ad-cell { border: none; } }
           `}</style>
           {addrLayout.thermal ? (
-            addrList.map((c, i) => (
-              <div key={i} className="ad-thermal">
-                {showSender && companyInfo?.name && (
-                  <div className="ad-sender">
-                    ผู้ส่ง: {companyInfo.name}{companyInfo.phone ? ` โทร ${companyInfo.phone}` : ""}
-                  </div>
-                )}
-                <div className="ad-to">ผู้รับ</div>
-                <div className="ad-name">{c.name}</div>
-                {showAddr && c.address && <div className="ad-addr">{c.address}</div>}
-                {showPhone && c.phone && <div className="ad-phone">โทร. {c.phone}</div>}
-              </div>
-            ))
+            addrList.map((c, i) => <AddrLabel key={i} c={c} cls="ad-thermal"/>)
           ) : (
             <div className="ad-grid">
-              {addrList.map((c, i) => (
-                <div key={i} className="ad-cell">
-                  {showSender && companyInfo?.name && (
-                    <div className="ad-sender">
-                      ผู้ส่ง: {companyInfo.name}{companyInfo.phone ? ` โทร ${companyInfo.phone}` : ""}
-                    </div>
-                  )}
-                  <div className="ad-to">ผู้รับ</div>
-                  <div className="ad-name">{c.name}</div>
-                  {showAddr && c.address && <div className="ad-addr">{c.address}</div>}
-                  {showPhone && c.phone && <div className="ad-phone">โทร. {c.phone}</div>}
-                </div>
-              ))}
+              {addrList.map((c, i) => <AddrLabel key={i} c={c} cls="ad-cell"/>)}
             </div>
           )}
         </div>
