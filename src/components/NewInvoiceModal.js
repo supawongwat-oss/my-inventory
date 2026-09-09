@@ -1,5 +1,5 @@
 import React from "react";
-import { T, SIZE_GROUPS, PRESET_COLORS, splitSizesIntoRows, sizeRank, getPriceForSize } from "../theme";
+import { T, SIZE_GROUPS, PRESET_COLORS, splitSizesIntoRows, sizeRank, canonSize, getPriceForSize } from "../theme";
 import { Modal, MHead, BtnPrimary, BtnGhost, BtnDanger } from "./ui";
 import { compressImage } from "../utils/imageCompress";
 import { uploadImage, deleteFile } from "../utils/upload";
@@ -164,7 +164,8 @@ function JobImagesPanel({ invoiceForm, setInvoiceForm }) {
 // เด็ก 6-12 = กลุ่มเดียว, S-XL = กลุ่มเดียว, 2XL/3XL/4XL... = แยกกลุ่มละไซส์ (ไล่ขึ้นไปไม่จำกัด)
 const GROUP_LABEL = (key, fallback) => (SIZE_GROUPS.find(g => g.key === key)?.label) || fallback;
 const priceTierOf = (sz) => {
-  const s = String(sz || "").trim().toUpperCase();
+  // canonSize ก่อน — ไม่งั้น "XS"/"SS" ที่แปลว่าไซส์ 12 จะแตกเป็นคนละช่องราคา
+  const s = canonSize(sz).toUpperCase();
   if (!s) return { key: "__nosize", label: "ไม่ระบุไซส์", rank: 999 };
   if (/^\d+$/.test(s)) {
     // ตัวเลข ≤ 20 = ไซส์เด็ก (6-12) | มากกว่านั้นคือไซส์รองเท้า → แยกเป็นของตัวเอง

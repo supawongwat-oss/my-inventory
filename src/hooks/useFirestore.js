@@ -87,7 +87,7 @@ export function useFirestore(activeTab = "") {
   const [catalogCapped, setCatalogCapped] = useState(false);
   const [attendance, setAttendance] = useState([]);
   const [payrollRuns, setPayrollRuns] = useState([]);
-  const [customSizes, setCustomSizes] = useState({ apparel: [], shoe: [] }); // 📏 ไซส์ที่ผู้ใช้เพิ่มเอง
+  const [customSizes, setCustomSizes] = useState({ apparel: [], shoe: [], aliases: {} }); // 📏 ไซส์ที่ผู้ใช้เพิ่มเอง + ชื่อเรียกอื่น
   const [pendingMixSales, setPendingMixSales] = useState([]); // 🕐 ขายคละที่รอระบุสี/ไซส์
   const [loading, setLoading] = useState(true);
   // 🚀 หน่วงโหลดข้อมูลหนัก (ผลิต/บิล/ลูกค้า ฯลฯ) ให้หน้าแรก (login/dashboard) ขึ้นก่อน
@@ -369,7 +369,7 @@ export function useFirestore(activeTab = "") {
     const unsub = onSnapshot(doc(db, "settings", "sizes"), snap => {
       if (snap.exists()) {
         const d = snap.data();
-        setCustomSizes({ apparel: d.apparel || [], shoe: d.shoe || [] });
+        setCustomSizes({ apparel: d.apparel || [], shoe: d.shoe || [], aliases: d.aliases || {} });
       }
     }, ()=>{});
     return () => unsub();

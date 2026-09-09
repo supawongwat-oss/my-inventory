@@ -63,18 +63,58 @@ export function isProductionSizeCapped(customerSize, offset) {
 // helper: คืน array ของไซส์ที่เหมาะกับ item (ตาม sizeType)
 export const getSizesFor = (item) => (item && item.sizeType === "shoe") ? SHOE_SIZES : SIZES;
 
+// 🔤 ชื่อเรียกอื่นของไซส์ — ตั้งครั้งเดียวที่ ⚙️ ตั้งค่า → 📏 จัดการไซส์
+//
+// ที่ร้านเรียกไซส์เดียวกันหลายชื่อ: งานโปโล ไซส์ 12 ลูกค้าเขียนมาเป็น "XS" บ้าง "SS" บ้าง
+// ถ้าปล่อยให้เป็นคนละสตริง ระบบนับเป็นคนละไซส์ทั้งระบบ:
+//   · สต๊อกแยกเป็นคนละช่อง ของกระจาย
+//   · getPriceForSize หา salePrices["XS"] ไม่เจอ → ตกไปใช้ราคากลางของรุ่น ไม่ใช่ราคากลุ่มเด็ก
+//   · sizeRank ดัน XS/SS ไปท้ายตาราง ห่างจาก 12
+//   · รับคืน/รอบแพ็ค จับคู่บรรทัดกับบิลไม่ได้เพราะสตริงไม่ตรง
+//
+// เก็บเป็น registry ระดับโมดูล เพราะ sizeRank / sizeGroupKey / getPriceForSize เป็นฟังก์ชัน
+// บริสุทธิ์ที่ถูกเรียกจากทั่วทั้งแอป ส่ง map เข้าไปทีละจุดไม่ไหว — และนี่เป็นเรื่อง "แปลชื่อ"
+// ล้วน ๆ ไม่ใช่สถานะธุรกิจ · App.js เรียก setSizeAliases ตอนโหลด settings/sizes
+let SIZE_ALIASES = {};   // { "XS": "12", "SS": "12" } — คีย์เก็บเป็นตัวใหญ่เสมอ
+export const setSizeAliases = (map) => {
+  const next = {};
+  Object.entries(map || {}).forEach(([k, v]) => {
+    const from = String(k || "").trim().toUpperCase();
+    const to = String(v || "").trim();
+    // กันชี้กลับหาตัวเอง ซึ่งจะทำให้ canonSize วนไม่จบถ้าเผลอไปต่อสายทีหลัง
+    if (from && to && from !== to.toUpperCase()) next[from] = to;
+  });
+  SIZE_ALIASES = next;
+};
+export const getSizeAliases = () => ({ ...SIZE_ALIASES });
+
+// 📏 ทำไซส์ให้เหลือรูปเดียว — ใช้ก่อนเทียบ/จัดกลุ่ม/คีย์สต๊อกทุกครั้ง
+//   1. ตัดช่องว่างหัวท้ายและช่องว่างซ้ำ
+//   2. รูปแบบที่รู้จัก (ตัวเลข / NXL / S,M,L) ทำเป็นตัวใหญ่
+//      — ในบิลจริงมี 5xL, 4xL, 4xl, 5xl, 6xl ปนอยู่แล้ว ซึ่งกลายเป็นคนละไซส์กับ 5XL/4XL/6XL
+//   3. แปลชื่อเรียกอื่นเป็นไซส์จริง (XS → 12)
+//   ไซส์ที่ตั้งชื่อเอง (ฟรีไซส์, รอบอก 40) ไม่แตะตัวพิมพ์ เพราะชื่อเป็นของผู้ใช้
+export const canonSize = (sz) => {
+  const raw = String(sz ?? "").trim().replace(/\s+/g, " ");
+  if (!raw) return "";
+  const u = raw.toUpperCase();
+  const shaped = (/^\d+$/.test(u) || /^\d*XL$/.test(u) || /^[SML]$/.test(u)) ? u : raw;
+  return SIZE_ALIASES[shaped.toUpperCase()] || shaped;
+};
+
 // 🔧 รวมไซส์มาตรฐาน + ไซส์ที่ผู้ใช้เพิ่มเอง (custom) แล้วเรียงลำดับให้ถูก
 // base = SIZES หรือ SHOE_SIZES, extra = array ไซส์ที่เพิ่มจาก settings/sizes
 export const mergeSizes = (base, extra = []) => {
-  const seen = new Set(base.map(s => String(s).toUpperCase()));
+  // เทียบด้วย canonSize — "SS" ที่เป็นชื่อเรียกอื่นของ "12" ต้องไม่โผล่มาเป็นอีกช่องหนึ่ง
+  const seen = new Set(base.map(s => canonSize(s).toUpperCase()));
   const add = [];
   (extra || []).forEach(s => {
     const v = String(s || "").trim();
     if (!v) return;
-    const k = v.toUpperCase();
+    const k = canonSize(v).toUpperCase();
     if (seen.has(k)) return; // ซ้ำกับ base หรือกับตัวที่เพิ่งเพิ่มไป
     seen.add(k);             // ⚠️ ต้องจำไว้ด้วย ไม่งั้น extra ที่ซ้ำกันเองจะหลุดเข้ามาซ้ำ
-    add.push(v);
+    add.push(canonSize(v));
   });
   return [...base, ...add].sort(compareSizes);
 };
@@ -90,7 +130,8 @@ export const SIZE_GROUPS = [
 ];
 
 export const sizeGroupKey = (sz) => {
-  const g = SIZE_GROUPS.find(g => g.sizes.includes(sz));
+  const c = canonSize(sz);
+  const g = SIZE_GROUPS.find(g => g.sizes.includes(c));
   return g ? g.key : null;
 };
 
@@ -101,7 +142,8 @@ export const sizeGroupKey = (sz) => {
 // ไซส์อื่นๆ ที่พิมพ์เองไม่ตรง pattern → 900 + alphabetical
 export const sizeRank = (sz) => {
   if (!sz) return 999;
-  const s = String(sz).trim().toUpperCase();
+  // ผ่าน canonSize ก่อน — "XS" ต้องได้อันดับเดียวกับ "12" ไม่งั้นไปโผล่ท้ายตาราง
+  const s = canonSize(sz).toUpperCase();
   // kids/numeric
   if (/^\d+$/.test(s)) return 100 + Math.min(49, Number(s));
   // standard adult
@@ -173,7 +215,11 @@ export const priceRowsForSizes = (sizes = [], bySize = false) => {
 export const getPriceForSize = (col, sz) => {
   if (!col) return 0;
   const sp = col.salePrices || {};
-  // ราคาที่ตั้งไว้ตรงตัวไซส์ก่อน (รองรับไซส์นอกมาตรฐาน เช่น SS / 37 / ฟรีไซส์)
+  // ราคาที่ตั้งไว้ตรงตัวไซส์ก่อน (รองรับไซส์นอกมาตรฐาน เช่น 37 / ฟรีไซส์)
+  //   ลองชื่อจริงก่อนชื่อที่กรอกมา — ถ้า "SS" เป็นชื่อเรียกอื่นของ "12" ต้องได้ราคาของ 12
+  //   แล้วค่อยลองสตริงดิบ เผื่อของเก่าที่เคยตั้งราคาไว้ด้วยชื่อเรียกอื่นตรง ๆ
+  const cz = canonSize(sz);
+  if (cz && sp[cz] != null && sp[cz] !== "") return Number(sp[cz]) || 0;
   if (sz && sp[sz] != null && sp[sz] !== "") return Number(sp[sz]) || 0;
   const k = sizeGroupKey(sz);
   if (k && sp[k] != null && sp[k] !== "") return Number(sp[k]) || 0;

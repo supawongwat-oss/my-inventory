@@ -9,6 +9,8 @@
 //   จับคู่แล้ว  → รู้บิลแล้ว คิดยอดลดหนี้และคืนสต็อกเรียบร้อย
 //   ยกเลิก      → รับผิด/ตีกลับ
 
+import { canonSize } from "../theme";
+
 export const RETURN_STATUSES = ["รอจับคู่บิล", "จับคู่แล้ว", "ยกเลิก"];
 
 // 🔍 สภาพของ เป็นคนละเส้นกับเรื่องเงิน
@@ -64,14 +66,14 @@ export const norm = (s) => String(s || "").normalize("NFC").toLowerCase().replac
 export const lineKey = (it) => [
   norm(it?.clothingId || it?.clothingName),
   norm(it?.colorName),
-  norm(it?.size),
+  norm(canonSize(it?.size)),   // "XS" กับ "12" คือไซส์เดียวกัน ต้องจับคู่กับบรรทัดในบิลได้
 ].join("|");
 
 // กุญแจสำรอง — เทียบด้วย "ชื่อรุ่น" ล้วน ไม่สนใจ id
 export const nameLineKey = (it) => [
   norm(it?.clothingName || it?.description),
   norm(it?.colorName),
-  norm(it?.size),
+  norm(canonSize(it?.size)),
 ].join("|");
 
 // 🔗 แปลง "บรรทัดที่กรอกในใบรับคืน" → "กุญแจของบรรทัดในบิลใบนั้น"
