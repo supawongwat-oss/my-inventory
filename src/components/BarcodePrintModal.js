@@ -1,5 +1,5 @@
 // 🏷️ Print Barcode Stickers — ปริ้น barcode หลายๆ ใบใน 1 หน้า A4
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useLayoutEffect } from "react";
 // 🚀 html2pdf.js (~400KB) → lazy load เฉพาะตอนกดปุ่ม PDF
 import { T } from "../theme";
 import { Modal, MHead, BtnPrimary, BtnGhost } from "./ui";
@@ -51,6 +51,8 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
   //    ที่อยู่ในทะเบียนส่วนใหญ่สั้นมาก ("ขอนแก่น" · "โบ๊เบ๊") ถ้าไม่มีหัวข้อกำกับ
   //    จะอ่านติดกับชื่อร้านเป็นก้อนเดียว แยกไม่ออกว่าอันไหนชื่ออันไหนที่อยู่
   const [showKeys, setShowKeys] = useState(true);
+  // ✍️ ช่องจดหน้ากล่อง — กินที่ว่างที่เหลือ ไม่งั้นดวง 100×150 เหลือว่างครึ่งแผ่น
+  const [showNote, setShowNote] = useState(true);
 
   // รวม products + clothing ที่มี barcode
   const allItems = useMemo(() => {
@@ -98,58 +100,85 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
   const addrH = addrLayout.h, addrW = addrLayout.w;
   const addrPad = Math.max(2, Math.min(6, Math.min(addrH, addrW) * 0.045));
 
-  const fitSizes = (c) => {
-    const usableW = addrW - addrPad * 2;
-    const usableH = addrH - addrPad * 2;
-    const name = String(c?.name || "") || "x";
-    // ช่องว่างที่จะเขียนมือก็กินที่เท่าบรรทัดจริง — คิดเผื่อไว้ ไม่งั้นดวงที่ข้อมูลไม่ครบจะตัวโตผิดปกติ
-    const addr = String(c?.address || "") || "xxxxxxxxxxxxxxxxxxxxxxxx";
-    const phone = String(c?.phone || "") || "xxxxxxxxxx";
-    const hasSender = showSender && !!companyInfo?.name;
-    for (let s = 18; s >= 2.6; s -= 0.2) {
-      const nameS = s, addrS = s * 0.62, phoneS = s * 0.70;
-      const smallS = Math.max(2.2, Math.min(4.6, s * 0.30));
-      const keyW = showKeys ? smallS * 3.6 + 1.5 : 0;
-      const lines = (txt, fs) => Math.max(1, Math.ceil((txt.length * fs * 0.5) / Math.max(8, usableW - keyW)));
-      let h = 0;
-      if (hasSender) h += smallS * 1.35 + 2.5;                       // แถบผู้ส่ง + เส้นคั่น
-      h += smallS * 1.35;                                            // คำว่า "ผู้รับ"
-      h += lines(name, nameS) * nameS * 1.2 + 1;
-      if (showAddr) h += lines(addr, addrS) * addrS * 1.45 + 1;
-      if (showPhone) h += lines(phone, phoneS) * phoneS * 1.35 + 1.5;
-      if (h <= usableH) return { nameS, addrS, phoneS, smallS };
-    }
-    return { nameS: 2.6, addrS: 2.2, phoneS: 2.3, smallS: 2.2 };
+  // ขนาดตั้งต้นคิดจาก "ความกว้าง" ของดวง — ความกว้างเป็นตัวจำกัดว่าตัวหนังสือโตได้แค่ไหน
+  // ก่อนจะตกบรรทัด (ความสูงไม่ได้บังคับอะไร นอกจากว่าจะใส่ได้กี่บรรทัด)
+  //
+  // ⚠️ ห้ามไล่ขยายจนเต็มพื้นที่ — เคยทำแล้วได้ชื่อร้านตัวเบ้อเริ่มตกบรรทัดกลางคำ
+  //    ("กล้วย / สปอร์ต") และเบอร์โทรขาดเป็นสองท่อน อ่านยากกว่าเดิม
+  //    ป้ายพัสดุต้องอ่านง่ายในระยะเอื้อมมือ ไม่ใช่ใหญ่ที่สุดเท่าที่จะใหญ่ได้
+  const baseName = Math.max(3.2, Math.min(9.5, addrW * 0.085));
+  const sizes = {
+    name: baseName,
+    addr: baseName * 0.62,
+    phone: baseName * 0.72,
+    small: Math.max(2.2, Math.min(3.6, baseName * 0.34)),
   };
 
   // ดวงเดียว — ใช้ทั้งโหมดความร้อนและตาราง A4 จะได้ไม่มีทางเพี้ยนกันเอง
   const AddrLabel = ({ c, cls }) => {
-    const { nameS, addrS, phoneS, smallS } = fitSizes(c);
+    const ref = useRef(null);
+
+    // 📏 ให้เบราว์เซอร์วัดเอง แล้วหดเฉพาะเท่าที่จำเป็น
+    //
+    //    เดิมเดาว่าที่อยู่จะตกกี่บรรทัดจาก "จำนวนตัวอักษร × 0.5 เท่าของขนาดฟอนต์"
+    //    ซึ่งเดาพลาดเยอะกับภาษาไทย (สระบน-ล่างไม่กินความกว้าง แต่ตัวหนาและตัวเลขกินมากกว่านั้น)
+    //    ผลคือเลือกขนาดที่ล้นดวงแล้วโดนตัดหายท้ายแผ่น
+    //
+    //    ของจริงอยู่ใน DOM อยู่แล้ว วัดตรง ๆ ไม่ต้องเดา — หดทีละ 4% จนไม่ล้น
+    useLayoutEffect(() => {
+      const el = ref.current;
+      if (!el) return;
+      const note = el.querySelector(".ad-note");
+      if (note) note.style.display = "";
+      let s = 1;
+      el.style.setProperty("--s", "1");
+      let guard = 0;
+      while (el.scrollHeight > el.clientHeight + 1 && s > 0.35 && guard++ < 40) {
+        s -= 0.04;
+        el.style.setProperty("--s", s.toFixed(3));
+      }
+      // ช่องหมายเหตุที่เหลือความสูงนิดเดียวดูเหมือนขีดพลาด — ตัดทิ้งไปเลยดีกว่า
+      if (note && note.clientHeight < 26) note.style.display = "none";
+    });
+
     // บรรทัดหนึ่ง = หัวข้อ + ค่า · ไม่มีค่า → เส้นประไว้เขียนมือ
     //
     // ลูกค้า 254 จาก 260 รายยังไม่มีที่อยู่ครบ ปริ้นออกมาแล้วเขียนเติมหน้างานได้เลย
     // ดีกว่าปล่อยว่างเปล่าแล้วต้องกลับมาปริ้นใหม่ทีหลัง
-    const Row = ({ k, v, mm, bold, mono }) => (
-      <div className="ad-row" style={{ fontSize: `${mm}mm` }}>
-        {showKeys && <span className="ad-key" style={{ fontSize: `${smallS.toFixed(2)}mm`, minWidth: `${(smallS * 3.6).toFixed(1)}mm` }}>{k}</span>}
+    const Row = ({ k, v, varName, bold, mono, nowrap }) => (
+      <div className="ad-row" style={{ fontSize: `calc(var(--${varName}) * var(--s))` }}>
+        {showKeys && <span className="ad-key">{k}</span>}
         {v
-          ? <span style={{ fontWeight: bold ? 800 : 400, fontFamily: mono ? "monospace" : "inherit" }}>{v}</span>
+          ? <span style={{ fontWeight: bold ? 800 : 400, fontFamily: mono ? "monospace" : "inherit",
+              whiteSpace: nowrap ? "nowrap" : "normal" }}>{v}</span>
           : <span className="ad-blank"/>}
       </div>
     );
     return (
-      <div className={cls}>
+      <div className={cls} ref={ref} style={{
+        "--name": `${sizes.name.toFixed(2)}mm`,
+        "--addr": `${sizes.addr.toFixed(2)}mm`,
+        "--phone": `${sizes.phone.toFixed(2)}mm`,
+        "--small": `${sizes.small.toFixed(2)}mm`,
+        "--s": 1,
+      }}>
         {showSender && companyInfo?.name && (
-          <div className="ad-sender" style={{ fontSize: `${smallS.toFixed(2)}mm` }}>
+          <div className="ad-sender">
             ผู้ส่ง: {companyInfo.name}{companyInfo.phone ? ` โทร ${companyInfo.phone}` : ""}
           </div>
         )}
         <div className="ad-body">
-          <div className="ad-to" style={{ fontSize: `${smallS.toFixed(2)}mm` }}>ผู้รับ</div>
-          <Row k="ชื่อ" v={c.name} mm={nameS.toFixed(2)} bold/>
-          {showAddr && <Row k="ที่อยู่" v={c.address} mm={addrS.toFixed(2)}/>}
+          <div className="ad-to">ผู้รับ</div>
+          <Row k="ชื่อ" v={c.name} varName="name" bold/>
+          {showAddr && <Row k="ที่อยู่" v={c.address} varName="addr"/>}
+          {/* เบอร์โทรห้ามตกบรรทัด — ขาดเป็นสองท่อนแล้วคนขนส่งกดผิด
+              และต้องอยู่ติดที่อยู่เป็นก้อนเดียว ไม่ใช่ปักไว้ก้นแผ่นแล้วมีช่องว่างคั่นกลาง */}
+          {showPhone && <Row k="เบอร์" v={c.phone} varName="phone" bold mono nowrap/>}
         </div>
-        {showPhone && <Row k="เบอร์" v={c.phone} mm={phoneS.toFixed(2)} bold mono/>}
+        {/* ✍️ ที่เหลือด้านล่างทำเป็นช่องจดของหน้ากล่อง — ดวง 100×150 ใส่แค่ชื่อ-ที่อยู่-เบอร์
+            แล้วเหลือว่างครึ่งแผ่น ปล่อยว่างเปล่าดูเหมือนพิมพ์พลาด
+            ให้คนแพ็คจดจำนวนกล่อง/ของข้างในไว้ตรงนี้ได้เลย */}
+        {showNote && <div className="ad-note"><span>หมายเหตุ</span></div>}
       </div>
     );
   };
@@ -312,6 +341,11 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
                 title="ขึ้นหัวข้อ ชื่อ: / ที่อยู่: / เบอร์: หน้าแต่ละบรรทัด · ช่องที่ยังไม่มีข้อมูลจะเป็นเส้นประให้เขียนมือ">
                 <input type="checkbox" checked={showKeys} onChange={e => setShowKeys(e.target.checked)} style={{ accentColor: T.accent }}/>
                 หัวข้อกำกับ (ชื่อ: / ที่อยู่: / เบอร์:)
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: T.text, cursor: "pointer" }}
+                title="กินที่ว่างที่เหลือของดวง ไว้ให้คนแพ็คจดจำนวนกล่อง/ของข้างใน">
+                <input type="checkbox" checked={showNote} onChange={e => setShowNote(e.target.checked)} style={{ accentColor: T.accent }}/>
+                ช่องหมายเหตุ (เขียนมือ)
               </label>
             </div>
           </div>
@@ -501,13 +535,25 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
                           page-break-after: always; background: #fff; }
             .ad-thermal:last-child { page-break-after: auto; }
             /* ตัวกลางกินที่ที่เหลือทั้งหมด — ผู้ส่งอยู่บนสุด เบอร์อยู่ล่างสุด ที่อยู่อยู่ตรงกลางเต็มพื้นที่ */
-            .ad-body { flex: 1; display: flex; flex-direction: column; justify-content: center; min-height: 0; overflow: hidden; }
-            .ad-sender { color: #000; border-bottom: 1px solid #000; padding-bottom: 1mm; margin-bottom: 1.5mm; line-height: 1.3; }
-            .ad-to { color: #000; letter-spacing: .06em; font-weight: 700; }
+            /* ชิดบนเป็นก้อนเดียว — จัดกึ่งกลางแนวตั้งแล้วเนื้อหาลอยอยู่กลางแผ่น ดูเหมือนวางผิดที่
+               ⚠️ ห้ามใส่ overflow:hidden ตรงนี้ — ถ้าซ่อนไว้ ข้อความจะโดนตัดเงียบ ๆ
+                  แล้วตัววัดข้างนอกจะเห็นว่า "พอดี" ทั้งที่หายไปครึ่งหนึ่ง (เจอมาแล้วกับดวง 99×38) */
+            .ad-body { display: flex; flex-direction: column; flex: 0 0 auto; }
+            /* ช่องหมายเหตุยุบตัวก่อนเสมอ — ที่ว่างหมดเมื่อไรค่อยไปหดตัวหนังสือ */
+            .ad-note { flex: 1 1 0; min-height: 0; margin-top: 2.5mm; border: 1px dashed #000; border-radius: 1mm;
+                       padding: 1.5mm 2mm; font-size: calc(var(--small) * var(--s)); font-weight: 700; overflow: hidden; }
+            .ad-sender { color: #000; border-bottom: 1px solid #000; padding-bottom: 1mm; margin-bottom: 2mm; line-height: 1.3;
+                         font-size: calc(var(--small) * var(--s)); }
+            .ad-to { color: #000; letter-spacing: .08em; font-weight: 700; margin-bottom: 1mm;
+                     font-size: calc(var(--small) * var(--s)); }
             /* หัวข้อกำกับอยู่คอลัมน์ซ้ายความกว้างคงที่ ค่าอยู่ขวา — เรียงเป็นแนวเดียวกันทั้งดวง
                ถ้าปล่อยให้ไหลตามความยาวหัวข้อ ("ชื่อ" กับ "ที่อยู่" ยาวไม่เท่ากัน) ค่าจะเหลื่อมกันอ่านยาก */
-            .ad-row { display: flex; align-items: baseline; gap: 1.5mm; line-height: 1.35; margin-bottom: 1mm; }
-            .ad-key { flex: 0 0 auto; font-weight: 700; }
+            /* หัวข้อกำกับอยู่คอลัมน์ซ้าย กว้างคงที่ ค่าอยู่ขวา — เรียงเป็นแนวเดียวกันทั้งดวง
+               ถ้าปล่อยให้ไหลตามความยาวหัวข้อ ("ชื่อ" กับ "ที่อยู่" ยาวไม่เท่ากัน) ค่าจะเหลื่อมกันอ่านยาก */
+            .ad-row { display: flex; align-items: baseline; gap: 1.8mm; line-height: 1.3; margin-bottom: 2mm; }
+            .ad-row:last-child { margin-bottom: 0; }
+            .ad-key { flex: 0 0 auto; font-weight: 700; font-size: calc(var(--small) * var(--s));
+                      min-width: calc(var(--small) * var(--s) * 3.6); }
             .ad-key::after { content: ":"; }
             /* ช่องที่ยังไม่มีข้อมูล — เส้นประให้เขียนมือ ไม่ใช่ปล่อยว่าง */
             .ad-blank { flex: 1; border-bottom: 1px dashed #000; align-self: flex-end; height: 1.1em; }
