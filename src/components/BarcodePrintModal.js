@@ -47,6 +47,10 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
   const [showPhone, setShowPhone] = useState(true);
   const [showAddr, setShowAddr] = useState(true);
   const [showSender, setShowSender] = useState(false);
+  // 🏷️ หัวข้อกำกับหน้าแต่ละบรรทัด (ชื่อ / ที่อยู่ / เบอร์)
+  //    ที่อยู่ในทะเบียนส่วนใหญ่สั้นมาก ("ขอนแก่น" · "โบ๊เบ๊") ถ้าไม่มีหัวข้อกำกับ
+  //    จะอ่านติดกับชื่อร้านเป็นก้อนเดียว แยกไม่ออกว่าอันไหนชื่ออันไหนที่อยู่
+  const [showKeys, setShowKeys] = useState(true);
 
   // รวม products + clothing ที่มี barcode
   const allItems = useMemo(() => {
@@ -101,6 +105,18 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
   // ดวงเดียว — ใช้ทั้งโหมดความร้อนและตาราง A4 จะได้ไม่มีทางเพี้ยนกันเอง
   const AddrLabel = ({ c, cls }) => {
     const f = fitOf(c);
+    // บรรทัดหนึ่ง = หัวข้อ + ค่า · ไม่มีค่า → เส้นประไว้เขียนมือ
+    //
+    // ลูกค้า 254 จาก 260 รายยังไม่มีที่อยู่ครบ ปริ้นออกมาแล้วเขียนเติมหน้างานได้เลย
+    // ดีกว่าปล่อยว่างเปล่าแล้วต้องกลับมาปริ้นใหม่ทีหลัง
+    const Row = ({ k, v, mm, bold, mono }) => (
+      <div className="ad-row" style={{ fontSize: `${mm}mm` }}>
+        {showKeys && <span className="ad-key" style={{ fontSize: `${mmSmall}mm` }}>{k}</span>}
+        {v
+          ? <span style={{ fontWeight: bold ? 800 : 400, fontFamily: mono ? "monospace" : "inherit" }}>{v}</span>
+          : <span className="ad-blank"/>}
+      </div>
+    );
     return (
       <div className={cls}>
         {showSender && companyInfo?.name && (
@@ -110,14 +126,10 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
         )}
         <div className="ad-body">
           <div className="ad-to" style={{ fontSize: `${mmSmall}mm` }}>ผู้รับ</div>
-          <div className="ad-name" style={{ fontSize: `${(mmName * f).toFixed(2)}mm` }}>{c.name}</div>
-          {showAddr && c.address && (
-            <div className="ad-addr" style={{ fontSize: `${(mmAddr * f).toFixed(2)}mm` }}>{c.address}</div>
-          )}
+          <Row k="ชื่อ" v={c.name} mm={(mmName * f).toFixed(2)} bold/>
+          {showAddr && <Row k="ที่อยู่" v={c.address} mm={(mmAddr * f).toFixed(2)}/>}
         </div>
-        {showPhone && c.phone && (
-          <div className="ad-phone" style={{ fontSize: `${(mmPhone * f).toFixed(2)}mm` }}>โทร. {c.phone}</div>
-        )}
+        {showPhone && <Row k="เบอร์" v={c.phone} mm={(mmPhone * f).toFixed(2)} bold mono/>}
       </div>
     );
   };
@@ -265,6 +277,11 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
                 title="ใส่ชื่อ/เบอร์ร้านไว้มุมบน เผื่อพัสดุตีกลับ">
                 <input type="checkbox" checked={showSender} onChange={e => setShowSender(e.target.checked)} style={{ accentColor: T.accent }}/>
                 ผู้ส่ง (ชื่อร้าน)
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: T.text, cursor: "pointer" }}
+                title="ขึ้นหัวข้อ ชื่อ: / ที่อยู่: / เบอร์: หน้าแต่ละบรรทัด · ช่องที่ยังไม่มีข้อมูลจะเป็นเส้นประให้เขียนมือ">
+                <input type="checkbox" checked={showKeys} onChange={e => setShowKeys(e.target.checked)} style={{ accentColor: T.accent }}/>
+                หัวข้อกำกับ (ชื่อ: / ที่อยู่: / เบอร์:)
               </label>
             </div>
           </div>
@@ -457,9 +474,14 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
             .ad-body { flex: 1; display: flex; flex-direction: column; justify-content: center; min-height: 0; overflow: hidden; }
             .ad-sender { color: #000; border-bottom: 1px solid #000; padding-bottom: 1mm; margin-bottom: 1.5mm; line-height: 1.3; }
             .ad-to { color: #000; letter-spacing: .06em; font-weight: 700; }
-            .ad-name { font-weight: 800; line-height: 1.2; margin: 0.6mm 0 1.2mm; }
-            .ad-addr { line-height: 1.45; }
-            .ad-phone { font-weight: 800; font-family: monospace; margin-top: 1.5mm; }
+            /* หัวข้อกำกับอยู่คอลัมน์ซ้ายความกว้างคงที่ ค่าอยู่ขวา — เรียงเป็นแนวเดียวกันทั้งดวง
+               ถ้าปล่อยให้ไหลตามความยาวหัวข้อ ("ชื่อ" กับ "ที่อยู่" ยาวไม่เท่ากัน) ค่าจะเหลื่อมกันอ่านยาก */
+            .ad-row { display: flex; align-items: baseline; gap: 1.5mm; line-height: 1.35; margin-bottom: 1mm; }
+            .ad-key { flex: 0 0 auto; min-width: ${(mmSmall * 3.4).toFixed(1)}mm; font-weight: 700; }
+            .ad-key::after { content: ":"; }
+            /* ช่องที่ยังไม่มีข้อมูล — เส้นประให้เขียนมือ ไม่ใช่ปล่อยว่าง */
+            .ad-blank { flex: 1; border-bottom: 1px dashed #000; align-self: flex-end; height: 1.1em; }
+            .ad-phone { margin-top: 1.5mm; }
             @media print { .ad-cell { border: none; } }
           `}</style>
           {addrLayout.thermal ? (
