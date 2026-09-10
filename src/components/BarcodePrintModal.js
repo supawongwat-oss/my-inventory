@@ -53,6 +53,17 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
   const [showKeys, setShowKeys] = useState(true);
   // ✍️ ช่องจดหน้ากล่อง — กินที่ว่างที่เหลือ ไม่งั้นดวง 100×150 เหลือว่างครึ่งแผ่น
   const [showNote, setShowNote] = useState(true);
+  const [showBox, setShowBox] = useState(true);       // 📦 กล่องที่ N / ทั้งหมด
+  // 💬 ข้อความประจำของร้าน — พิมพ์ครั้งเดียวแล้วขึ้นทุกดวง
+  //    เก็บลงเครื่องไว้ ไม่งั้นต้องพิมพ์ใหม่ทุกครั้งที่เปิดหน้าต่าง
+  //    (เครื่องแพ็คมักเป็นเครื่องเดิม เก็บระดับเครื่องพอ ไม่ต้องขึ้น Firestore)
+  const [shopNote, setShopNote] = useState(() => {
+    try { return localStorage.getItem("cpu.parcelNote") || ""; } catch { return ""; }
+  });
+  const setShopNoteSaved = (v) => {
+    setShopNote(v);
+    try { localStorage.setItem("cpu.parcelNote", v); } catch { /* โหมดส่วนตัว/ปิด storage — ไม่ต้องพัง */ }
+  };
 
   // รวม products + clothing ที่มี barcode
   const allItems = useMemo(() => {
@@ -118,7 +129,7 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
   };
 
   // ดวงเดียว — ใช้ทั้งโหมดความร้อนและตาราง A4 จะได้ไม่มีทางเพี้ยนกันเอง
-  const AddrLabel = ({ c, cls }) => {
+  const AddrLabel = ({ c, cls, boxNo, boxTotal }) => {
     const ref = useRef(null);
 
     // 📏 ให้เบราว์เซอร์วัดเอง แล้วหดเฉพาะเท่าที่จำเป็น
@@ -178,10 +189,27 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
               และต้องอยู่ติดที่อยู่เป็นก้อนเดียว ไม่ใช่ปักไว้ก้นแผ่นแล้วมีช่องว่างคั่นกลาง */}
           {showPhone && <Row k="เบอร์" v={c.phone} varName="phone" bold mono nowrap/>}
         </div>
-        {/* ✍️ ที่เหลือด้านล่างทำเป็นช่องจดของหน้ากล่อง — ดวง 100×150 ใส่แค่ชื่อ-ที่อยู่-เบอร์
-            แล้วเหลือว่างครึ่งแผ่น ปล่อยว่างเปล่าดูเหมือนพิมพ์พลาด
-            ให้คนแพ็คจดจำนวนกล่อง/ของข้างในไว้ตรงนี้ได้เลย */}
-        {showNote && <div className="ad-note"><span>หมายเหตุ</span></div>}
+        {/* 📦 กล่องที่เท่าไรจากทั้งหมดกี่กล่อง
+            งานใหญ่ส่งหลายกล่อง ถ้าไม่มีเลขกำกับ ลูกค้าบอกว่าของไม่ครบก็เถียงกันไม่ออก
+            ตั้งจำนวนดวงเป็นจำนวนกล่อง → ใส่เลขให้อัตโนมัติ 1/5, 2/5, ...
+            ดวงเดียว = ยังไม่รู้ว่าจะกี่กล่อง เว้นเส้นประให้เขียนมือแทน */}
+        {showBox && (
+          <div className="ad-box">
+            <span className="ad-key">กล่องที่</span>
+            {boxTotal > 1
+              ? <b className="ad-boxno">{boxNo} / {boxTotal}</b>
+              : <><span className="ad-blank" style={{ maxWidth: "18mm" }}/><span style={{ padding: "0 1.5mm" }}>/</span><span className="ad-blank" style={{ maxWidth: "18mm" }}/></>}
+          </div>
+        )}
+        {/* ✍️ ที่เหลือด้านล่าง — ข้อความประจำของร้าน แล้วต่อด้วยที่ว่างให้จดมือ
+            ดวง 100×150 ใส่แค่ชื่อ-ที่อยู่-เบอร์ แล้วเหลือว่างครึ่งแผ่น
+            ปล่อยว่างเปล่าดูเหมือนพิมพ์พลาด */}
+        {(showNote || (shopNote || "").trim()) && (
+          <div className="ad-note">
+            {(shopNote || "").trim() && <div className="ad-shopnote">{shopNote}</div>}
+            {showNote && <span>หมายเหตุ</span>}
+          </div>
+        )}
       </div>
     );
   };
@@ -191,8 +219,9 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
     addrIds.forEach(id => {
       const c = customers.find(x => x.id === id);
       if (!c) return;
+      // จำนวนดวงของลูกค้ารายนี้ = จำนวนกล่องที่จะส่ง → ใช้เป็นเลขกล่องได้เลย
       const n = Math.max(1, addrCopies[id] || 1);
-      for (let i = 0; i < n; i++) out.push(c);
+      for (let i = 0; i < n; i++) out.push({ c, boxNo: i + 1, boxTotal: n });
     });
     return out;
   }, [addrIds, addrCopies, customers]);
@@ -346,10 +375,41 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
                 หัวข้อกำกับ (ชื่อ: / ที่อยู่: / เบอร์:)
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: T.text, cursor: "pointer" }}
+                title="ตั้งจำนวนดวงเท่าจำนวนกล่อง → ใส่เลขให้เอง 1/5, 2/5, … · ดวงเดียวจะเว้นเส้นประให้เขียนมือ">
+                <input type="checkbox" checked={showBox} onChange={e => setShowBox(e.target.checked)} style={{ accentColor: T.accent }}/>
+                กล่องที่ __ / __
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: T.text, cursor: "pointer" }}
                 title="กินที่ว่างที่เหลือของดวง ไว้ให้คนแพ็คจดจำนวนกล่อง/ของข้างใน">
                 <input type="checkbox" checked={showNote} onChange={e => setShowNote(e.target.checked)} style={{ accentColor: T.accent }}/>
                 ช่องหมายเหตุ (เขียนมือ)
               </label>
+            </div>
+          </div>
+
+          {/* 💬 ข้อความประจำของร้าน — ขึ้นทุกดวง จำไว้ในเครื่องนี้ ไม่ต้องพิมพ์ใหม่ทุกครั้ง */}
+          <div style={{ marginBottom: 12, padding: 12, background: T.card, border: `1px solid ${T.border}`, borderRadius: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+              <label style={{ fontSize: 11, color: T.muted, fontWeight: 600 }}>💬 ข้อความประจำของร้าน (ขึ้นทุกดวง)</label>
+              {companyInfo?.phone && !shopNote.trim() && (
+                <button type="button"
+                  onClick={() => setShopNoteSaved(`กรุณาตรวจสินค้าก่อนเซ็นรับ · มีปัญหาโทร ${companyInfo.phone}`)}
+                  style={{ padding: "3px 9px", borderRadius: 6, border: `1px solid ${T.border}`, background: "white", color: T.accent, cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
+                  ใช้ข้อความตัวอย่าง
+                </button>
+              )}
+              {shopNote.trim() && (
+                <button type="button" onClick={() => setShopNoteSaved("")}
+                  style={{ marginLeft: "auto", padding: "3px 9px", borderRadius: 6, border: `1px solid ${T.border}`, background: "white", color: T.sub, cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
+                  ล้าง
+                </button>
+              )}
+            </div>
+            <textarea value={shopNote} onChange={e => setShopNoteSaved(e.target.value)} rows={2}
+              placeholder="เช่น กรุณาตรวจสินค้าก่อนเซ็นรับ · มีปัญหาโทร 08x-xxx-xxxx"
+              style={{ width: "100%", boxSizing: "border-box", background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 8, padding: "8px 11px", fontFamily: "'Sarabun',sans-serif", fontSize: 12.5, outline: "none", resize: "vertical", lineHeight: 1.5 }}/>
+            <div style={{ fontSize: 10, color: T.muted, marginTop: 5 }}>
+              จำไว้ในเครื่องนี้ — เปิดหน้าต่างครั้งหน้าไม่ต้องพิมพ์ใหม่ · เว้นว่างไว้ = ไม่ขึ้นบนสติกเกอร์
             </div>
           </div>
 
@@ -549,9 +609,16 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
             /* ⚠️ ห้ามใส่ overflow:hidden ตรงนี้ — ถ้าซ่อนไว้ ข้อความจะโดนตัดเงียบ ๆ
                   แล้วตัววัดข้างนอกจะเห็นว่า "พอดี" ทั้งที่หายไปครึ่งหนึ่ง (เจอมาแล้วกับดวง 99×38) */
             .ad-body { display: flex; flex-direction: column; flex: 0 0 auto; padding: ${addrPad}mm; }
+            /* 📦 แถวเลขกล่อง — สูงคงที่ ไม่ยุบ เพราะเป็นข้อมูลที่ต้องอ่านออกเสมอ */
+            .ad-box { flex: 0 0 auto; display: flex; align-items: baseline; gap: 1.8mm;
+                      border-top: 0.35mm dashed #000; padding: 1.4mm ${addrPad}mm;
+                      font-size: calc(var(--small) * var(--s)); }
+            .ad-boxno { font-family: monospace; font-weight: 800; font-size: calc(var(--phone) * var(--s)); }
             /* ช่องหมายเหตุยุบตัวก่อนเสมอ — ที่ว่างหมดเมื่อไรค่อยไปหดตัวหนังสือ */
             .ad-note { flex: 1 1 0; min-height: 0; border-top: 0.35mm dashed #000; padding: 1.2mm ${addrPad}mm;
                        font-size: calc(var(--small) * var(--s)); font-weight: 700; overflow: hidden; }
+            /* ข้อความประจำร้าน — ตัวเบากว่าหัวข้อ ไม่ให้ไปแย่งสายตากับที่อยู่ */
+            .ad-shopnote { font-weight: 400; line-height: 1.35; margin-bottom: 1.2mm; white-space: pre-wrap; }
 
             /* หัวข้อกำกับอยู่คอลัมน์ซ้าย กว้างคงที่ ค่าอยู่ขวา — เรียงเป็นแนวเดียวกันทั้งดวง
                ถ้าปล่อยให้ไหลตามความยาวหัวข้อ ("ชื่อ" กับ "ที่อยู่" ยาวไม่เท่ากัน) ค่าจะเหลื่อมกันอ่านยาก */
@@ -565,10 +632,10 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
             .ad-phone { margin-top: 1.5mm; }
           `}</style>
           {addrLayout.thermal ? (
-            addrList.map((c, i) => <AddrLabel key={i} c={c} cls="ad-thermal"/>)
+            addrList.map((x, i) => <AddrLabel key={i} c={x.c} boxNo={x.boxNo} boxTotal={x.boxTotal} cls="ad-thermal"/>)
           ) : (
             <div className="ad-grid">
-              {addrList.map((c, i) => <AddrLabel key={i} c={c} cls="ad-cell"/>)}
+              {addrList.map((x, i) => <AddrLabel key={i} c={x.c} boxNo={x.boxNo} boxTotal={x.boxTotal} cls="ad-cell"/>)}
             </div>
           )}
         </div>
