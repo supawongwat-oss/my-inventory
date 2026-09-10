@@ -189,18 +189,6 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
               และต้องอยู่ติดที่อยู่เป็นก้อนเดียว ไม่ใช่ปักไว้ก้นแผ่นแล้วมีช่องว่างคั่นกลาง */}
           {showPhone && <Row k="เบอร์" v={c.phone} varName="phone" bold mono nowrap/>}
         </div>
-        {/* 📦 กล่องที่เท่าไรจากทั้งหมดกี่กล่อง
-            งานใหญ่ส่งหลายกล่อง ถ้าไม่มีเลขกำกับ ลูกค้าบอกว่าของไม่ครบก็เถียงกันไม่ออก
-            ตั้งจำนวนดวงเป็นจำนวนกล่อง → ใส่เลขให้อัตโนมัติ 1/5, 2/5, ...
-            ดวงเดียว = ยังไม่รู้ว่าจะกี่กล่อง เว้นเส้นประให้เขียนมือแทน */}
-        {showBox && (
-          <div className="ad-box">
-            <span className="ad-key">กล่องที่</span>
-            {boxTotal > 1
-              ? <b className="ad-boxno">{boxNo} / {boxTotal}</b>
-              : <><span className="ad-blank" style={{ maxWidth: "18mm" }}/><span style={{ padding: "0 1.5mm" }}>/</span><span className="ad-blank" style={{ maxWidth: "18mm" }}/></>}
-          </div>
-        )}
         {/* ✍️ ที่เหลือด้านล่าง — ข้อความประจำของร้าน แล้วต่อด้วยที่ว่างให้จดมือ
             ดวง 100×150 ใส่แค่ชื่อ-ที่อยู่-เบอร์ แล้วเหลือว่างครึ่งแผ่น
             ปล่อยว่างเปล่าดูเหมือนพิมพ์พลาด */}
@@ -208,6 +196,16 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
           <div className="ad-note">
             {(shopNote || "").trim() && <div className="ad-shopnote">{shopNote}</div>}
             {showNote && <span>หมายเหตุ</span>}
+          </div>
+        )}
+        {/* 📦 กล่องที่เท่าไรจากทั้งหมดกี่กล่อง — อยู่ล่างสุดของดวงเสมอ
+            งานใหญ่ส่งหลายกล่อง ถ้าไม่มีเลขกำกับ ลูกค้าบอกว่าของไม่ครบก็เถียงกันไม่ออก
+            ตั้งจำนวนดวงเป็นจำนวนกล่อง → ใส่เลขให้อัตโนมัติ 1/5, 2/5, ...
+            ส่งกล่องเดียวก็พิมพ์ 1/1 ไปเลย อ่านแล้วจบในตัว ไม่ต้องมีใครมาเขียนเติม */}
+        {showBox && (
+          <div className="ad-box">
+            <span className="ad-key">กล่องที่</span>
+            <b className="ad-boxno">{boxNo} / {boxTotal}</b>
           </div>
         )}
       </div>
@@ -375,9 +373,9 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
                 หัวข้อกำกับ (ชื่อ: / ที่อยู่: / เบอร์:)
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: T.text, cursor: "pointer" }}
-                title="ตั้งจำนวนดวงเท่าจำนวนกล่อง → ใส่เลขให้เอง 1/5, 2/5, … · ดวงเดียวจะเว้นเส้นประให้เขียนมือ">
+                title="อยู่ล่างสุดของดวง · ตั้งจำนวนดวงเท่าจำนวนกล่อง → ใส่เลขให้เอง 1/5, 2/5, … · ส่งกล่องเดียวขึ้น 1/1">
                 <input type="checkbox" checked={showBox} onChange={e => setShowBox(e.target.checked)} style={{ accentColor: T.accent }}/>
-                กล่องที่ __ / __
+                กล่องที่ 1 / 1
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: T.text, cursor: "pointer" }}
                 title="กินที่ว่างที่เหลือของดวง ไว้ให้คนแพ็คจดจำนวนกล่อง/ของข้างใน">
@@ -609,8 +607,9 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
             /* ⚠️ ห้ามใส่ overflow:hidden ตรงนี้ — ถ้าซ่อนไว้ ข้อความจะโดนตัดเงียบ ๆ
                   แล้วตัววัดข้างนอกจะเห็นว่า "พอดี" ทั้งที่หายไปครึ่งหนึ่ง (เจอมาแล้วกับดวง 99×38) */
             .ad-body { display: flex; flex-direction: column; flex: 0 0 auto; padding: ${addrPad}mm; }
-            /* 📦 แถวเลขกล่อง — สูงคงที่ ไม่ยุบ เพราะเป็นข้อมูลที่ต้องอ่านออกเสมอ */
-            .ad-box { flex: 0 0 auto; display: flex; align-items: baseline; gap: 1.8mm;
+            /* 📦 แถวเลขกล่อง — สูงคงที่ ไม่ยุบ เพราะเป็นข้อมูลที่ต้องอ่านออกเสมอ
+               margin-top:auto ดันตัวเองลงล่างสุด เผื่อกรณีปิดช่องหมายเหตุแล้วไม่มีอะไรมาดันให้ */
+            .ad-box { flex: 0 0 auto; margin-top: auto; display: flex; align-items: baseline; gap: 1.8mm;
                       border-top: 0.35mm dashed #000; padding: 1.4mm ${addrPad}mm;
                       font-size: calc(var(--small) * var(--s)); }
             .ad-boxno { font-family: monospace; font-weight: 800; font-size: calc(var(--phone) * var(--s)); }
