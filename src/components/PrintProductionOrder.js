@@ -46,6 +46,16 @@ export default function PrintProductionOrder({ order, companyInfo = {}, onClose,
             const cols = n <= 1 ? 1 : (n === 2 ? 2 : 3);
             return (
               <div style={{padding:"10px 14px",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,marginBottom:10}}>
+                {/* 👤 ชื่อลูกค้า — งาน custom สั่งเฉพาะราย ใบที่หน้าโรงงานถืออยู่ต้องบอกได้ว่างานของใคร
+                    ไม่งั้นต้องกลับไปเปิดระบบเทียบเลข CUS ทุกครั้งที่ตามงาน
+                    ใบสั่งผลิตจากคลัง (PRD) ไม่มีลูกค้า — ผลิตเข้าสต๊อก ไม่ต้องขึ้นหัวข้อเปล่า ๆ */}
+                {order.customerName && (
+                  <div style={{display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap",marginBottom:8,paddingBottom:7,borderBottom:"1px dashed #cbd5e1"}}>
+                    <span style={{fontSize:10,color:"#3b5b8b",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em"}}>ลูกค้า</span>
+                    <span style={{fontSize:17,fontWeight:800,color:"#1e293b"}}>{order.customerName}</span>
+                    {order.customerPhone && <span style={{fontSize:12,color:"#475569",fontFamily:"monospace"}}>โทร {order.customerPhone}</span>}
+                  </div>
+                )}
                 <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:n>0?10:0}}>
                   <div style={{flex:1}}>
                     <div style={{fontSize:10,color:"#3b5b8b",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>รุ่นสินค้า</div>
