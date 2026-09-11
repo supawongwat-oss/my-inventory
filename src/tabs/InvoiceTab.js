@@ -1,5 +1,6 @@
 import React from "react";
 import LoadRangeBar from "../components/LoadRangeBar";
+import { fetchInvoicesForPeriod } from "../utils/fetchInvoices";
 import { invoiceItemsText, matchesTokens, returnSummaryOf, returnsItemsText } from "../utils/returns";
 import { duplicateGroups } from "../utils/dupInvoice";
 import { BillingBadge } from "../components/ui";
@@ -42,6 +43,29 @@ const getPaidPct = (inv) => {
 
 const norm = (s) => String(s || "").normalize("NFC").toLowerCase().replace(/\s+/g, " ").trim();
 
+// 📅 เดือนของบิล = เดือนตาม "วันที่บนหน้าบิล" (date) ไม่ใช่วันที่กดบันทึก (createdAt)
+//    บิลลงวันที่ 31/08 ที่คีย์เข้าจริงวันที่ 5/09 ต้องอยู่เดือน ส.ค. — ใบวางบิลก็นับแบบนี้
+//    ทำเลขเดือนเป็น 2 หลักเสมอ ทั้งฝั่งบิลและฝั่งที่เลือก ("8" กับ "08" ต้องเท่ากัน)
+const monthKeyOf = (inv) => {
+  const p = String(inv?.date || "").slice(0, 10).split("/");
+  return p.length >= 3 && p[1] && p[2] ? `${String(Number(p[1])).padStart(2, "0")}/${p[2].slice(0, 4)}` : "";
+};
+const monthKeyLabel = (mk) => {
+  const [mm, yyyy] = String(mk).split("/");
+  return `${THAI_MONTHS[Number(mm)] || mm} ${yyyy}`;
+};
+// เดือนย้อนหลังจากเดือนนี้ — ใช้ทำปุ่มเลือกเดือน
+const recentMonths = (n) => {
+  const out = [];
+  const d = new Date();
+  d.setDate(1);
+  for (let i = 0; i < n; i++) {
+    out.push(`${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`);
+    d.setMonth(d.getMonth() - 1);
+  }
+  return out;
+};
+
 export default function InvoiceTab({
   invoices, role,
   statements = [],        // ใช้บอกว่าบิลใบไหนถูกวางบิลไปแล้ว
@@ -65,9 +89,54 @@ export default function InvoiceTab({
   returns = [],
   customers = [],
 }) {
+  // 🗓️ ดูทีละเดือน
+  //
+  //    ดึงบิลของเดือนนั้นมาเอง (fetchInvoicesForPeriod) — ไม่ไปขยับกองที่โหลดค้าง (invoicesRange)
+  //    เพราะกองนั้นไม่ได้มีไว้ให้หน้ารายการอย่างเดียว: ออกเลขบิลสำรองใช้ "เลขสูงสุด+1 จากกองนี้"
+  //    ถ้าตั้งกองให้เป็นเดือนเก่า บิลวันนี้หลุดจากกอง → เลขสำรองชนกันได้ และด่านราคาเพี้ยนตาม
+  //    (หลักใน CLAUDE.md: กองที่โหลดค้างมีไว้ให้งานประจำวัน ที่เหลือไปขอเอง)
+  const [pickMonth, setPickMonth] = React.useState("");            // "08/2026" · "" = ดูตามช่วงวันที่ปกติ
+  const [monthData, setMonthData] = React.useState(null);          // { invoices, at, capped }
+  const [monthLoading, setMonthLoading] = React.useState(false);
+  const [monthErr, setMonthErr] = React.useState("");
+  const monthReq = React.useRef(0);   // กันผลของเดือนที่กดก่อนหน้า (ดึงช้า) มาทับเดือนที่เพิ่งกด
+
+  const loadMonth = React.useCallback(async (mk) => {
+    const id = ++monthReq.current;
+    setMonthErr("");
+    if (!mk) { setMonthData(null); setMonthLoading(false); return; }
+    setMonthLoading(true);
+    const [mm, yyyy] = mk.split("/").map(Number);
+    try {
+      // ส่งขอบเดือนจริง — ตัวดึงเผื่อหัวท้าย 30 วันตาม createdAt ให้เอง แล้วเรากรองด้วย date อีกชั้น
+      const r = await fetchInvoicesForPeriod(new Date(yyyy, mm - 1, 1), new Date(yyyy, mm, 0));
+      if (id !== monthReq.current) return;
+      setMonthData({ invoices: r.invoices, at: r.at, capped: r.capped });
+    } catch (e) {
+      if (id !== monthReq.current) return;
+      setMonthErr(e?.message || String(e));
+      setMonthData(null);
+    } finally {
+      if (id === monthReq.current) setMonthLoading(false);
+    }
+  }, []);
+  const choosePickMonth = (mk) => { setPickMonth(mk); loadMonth(mk); };
+
+  // 📋 ชุดบิลที่หน้าจอนี้ใช้ทั้งหมด — รายการ ตัวนับสถานะ และปุ่มทำหลายใบ ต้องมาจากชุดเดียวกัน
+  //    (ถ้าปุ่ม "เลือก → ยกเลิก" ไปหาจากกองที่โหลดค้าง บิลที่มีแค่ในเดือนที่ดึงมาจะถูกข้ามเงียบ ๆ)
+  //    ตัวที่ดึงมาเป็นภาพนิ่ง — ถ้าบิลใบเดียวกันอยู่ในกองสดด้วย ให้กองสดชนะ
+  //    กดชำระ/ยกเลิกแล้วสถานะขยับทันที และบิลที่เพิ่งออกวันนี้โผล่ในเดือนนี้เองโดยไม่ต้องดึงใหม่
+  const src = React.useMemo(() => {
+    if (!pickMonth) return invoices;
+    const byId = new Map();
+    (monthData?.invoices || []).forEach(i => byId.set(i.id, i));
+    invoices.forEach(i => byId.set(i.id, i));
+    return [...byId.values()].filter(i => monthKeyOf(i) === pickMonth);
+  }, [pickMonth, monthData, invoices]);
+
   // 📜 วาดทีละหน้า — รีเซ็ตเมื่อเปลี่ยนคำค้น/สถานะ/ชุดข้อมูล
   const [shown, setShown] = React.useState(PAGE_SIZE);
-  React.useEffect(() => { setShown(PAGE_SIZE); }, [invoiceSearch, invoiceStatusFilter, invoices.length]);
+  React.useEffect(() => { setShown(PAGE_SIZE); }, [invoiceSearch, invoiceStatusFilter, src.length, pickMonth]);
 
   // ⌨️ ช่องค้นหาเก็บค่าไว้ในหน้านี้เอง แล้วค่อยส่งต่อหลังหยุดพิมพ์ 250ms
   // เดิมค่าอยู่ที่ App — พิมพ์ 1 ตัวอักษร App วาดใหม่ทั้งหน้า + กรองบิลใหม่ทั้งหมด
@@ -87,9 +156,9 @@ export default function InvoiceTab({
   // เดิมวนทั้งกองบิล 4 รอบ (ปุ่มละรอบ) ทุกครั้งที่ re-render
   const statusCounts = React.useMemo(() => {
     const m = {};
-    invoices.forEach(x => { const s = x.status || "ออกแล้ว"; m[s] = (m[s] || 0) + 1; });
+    src.forEach(x => { const s = x.status || "ออกแล้ว"; m[s] = (m[s] || 0) + 1; });
     return m;
-  }, [invoices]);
+  }, [src]);
 
   return (
     <div style={{ animation: "fadeUp 0.4s ease" }}>
@@ -117,10 +186,55 @@ export default function InvoiceTab({
       </div>
 
       {/* 📅 บอกให้ชัดว่ากำลังดูบิลช่วงไหน — บิลเก่ากว่านี้ยังอยู่ครบ แค่ยังไม่ได้โหลด */}
-      {setInvoicesRange && (
+      {setInvoicesRange && !pickMonth && (
         <LoadRangeBar label="กำลังดูบิล" range={invoicesRange} setRange={setInvoicesRange}
           capped={invoicesCapped} count={invoices.length} />
       )}
+
+      {/* 🗓️ เลือกดูทีละเดือน — นับตามวันที่บนหน้าบิล */}
+      {(() => {
+        const months = recentMonths(24);
+        const chips = months.slice(0, 4);
+        const chip = (on) => ({
+          padding: "4px 12px", borderRadius: 14, cursor: "pointer", fontSize: 11.5, fontFamily: "'Sarabun',sans-serif",
+          border: `1px solid ${on ? T.accent : T.border}`, background: on ? "rgba(59,91,139,0.14)" : "white",
+          color: on ? T.accent : T.sub, fontWeight: on ? 700 : 500,
+        });
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 12,
+            padding: pickMonth ? "8px 14px" : 0, borderRadius: 9,
+            background: pickMonth ? "rgba(59,91,139,0.06)" : "transparent", border: pickMonth ? `1px solid ${T.border}` : "none" }}>
+            <span style={{ fontSize: 11.5, color: T.sub, fontWeight: 600 }}>🗓️ ดูทีละเดือน:</span>
+            {chips.map(mk => (
+              <button key={mk} onClick={() => choosePickMonth(pickMonth === mk ? "" : mk)} style={chip(pickMonth === mk)}>
+                {monthKeyLabel(mk)}
+              </button>
+            ))}
+            <select value={chips.includes(pickMonth) ? "" : pickMonth} onChange={e => choosePickMonth(e.target.value)}
+              style={{ ...chip(!!pickMonth && !chips.includes(pickMonth)), paddingRight: 6, outline: "none" }}>
+              <option value="">เดือนอื่น…</option>
+              {months.slice(4).map(mk => <option key={mk} value={mk}>{monthKeyLabel(mk)}</option>)}
+            </select>
+            {pickMonth && (
+              <>
+                <span style={{ fontSize: 11.5, color: T.sub, marginLeft: 4 }}>
+                  {monthLoading
+                    ? "⏳ กำลังดึงบิลของเดือนนี้…"
+                    : monthErr
+                      ? <span style={{ color: T.red }}>ดึงไม่สำเร็จ: {monthErr}</span>
+                      : <>กำลังดู <b>{monthKeyLabel(pickMonth)}</b> ({src.length.toLocaleString("th-TH")} ใบ · ตามวันที่บนบิล)</>}
+                </span>
+                {monthData?.capped && <b style={{ fontSize: 11, color: T.amber }}>⚠️ บิลเยอะเกินกว่าจะดึงหมด</b>}
+                <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                  <button onClick={() => loadMonth(pickMonth)} disabled={monthLoading} title="ดึงบิลของเดือนนี้ใหม่"
+                    style={{ ...chip(false), opacity: monthLoading ? 0.5 : 1 }}>↻ ดึงใหม่</button>
+                  <button onClick={() => choosePickMonth("")} title="กลับไปดูตามช่วงวันที่ที่โหลดไว้" style={chip(false)}>✕ ออกจากดูรายเดือน</button>
+                </span>
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {/* 🔍 ค้นหาบิล */}
       <div style={{ marginBottom: 12, position: "relative" }}>
@@ -132,7 +246,7 @@ export default function InvoiceTab({
 
       {/* 🔗 แถบรวมบิล (ลอย) */}
       {selectedInvoices.size > 0 && (() => {
-        const sel = invoices.filter(i => selectedInvoices.has(i.id));
+        const sel = src.filter(i => selectedInvoices.has(i.id));
         const cname = sel[0]?.customerName;
         const sameCustomer = sel.every(i => i.customerName === cname);
         const total = sel.reduce((s, i) => s + (i.total || 0), 0);
@@ -158,11 +272,13 @@ export default function InvoiceTab({
         );
       })()}
 
-      {invoices.length === 0 ? (
+      {(pickMonth && monthLoading && src.length === 0) ? (
+        <div style={{ textAlign: "center", padding: 50, color: T.muted, fontSize: 13 }}>⏳ กำลังดึงบิลของ {monthKeyLabel(pickMonth)}…</div>
+      ) : src.length === 0 ? (
         <div style={{ textAlign: "center", padding: 60, background: T.card, borderRadius: 16, border: `1px solid ${T.border}` }}>
           <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.3 }}>🧾</div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: T.accent, marginBottom: 6 }}>ยังไม่มีบิล</div>
-          <div style={{ fontSize: 11, color: T.muted }}>กด "＋ ออกบิลใหม่" เพื่อเริ่มต้น</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: T.accent, marginBottom: 6 }}>{pickMonth ? `ไม่มีบิลในเดือน ${monthKeyLabel(pickMonth)}` : "ยังไม่มีบิล"}</div>
+          <div style={{ fontSize: 11, color: T.muted }}>{pickMonth ? "นับตามวันที่บนหน้าบิล" : 'กด "＋ ออกบิลใหม่" เพื่อเริ่มต้น'}</div>
         </div>
       ) : (() => {
         const q = norm(invoiceSearch);
@@ -175,8 +291,8 @@ export default function InvoiceTab({
           if (!st || (st.status || "") === "ยกเลิก") return;
           (st.invoiceIds || []).forEach(id => { if (!stmtMap.has(id)) stmtMap.set(id, st); });
         });
-        const dupMap = duplicateGroups(invoices);
-        let fInv = invoiceStatusFilter === "ทั้งหมด" ? invoices : invoices.filter(x => (x.status || "ออกแล้ว") === invoiceStatusFilter);
+        const dupMap = duplicateGroups(src);
+        let fInv = invoiceStatusFilter === "ทั้งหมด" ? src : src.filter(x => (x.status || "ออกแล้ว") === invoiceStatusFilter);
         if (q) fInv = fInv.filter(inv =>
           norm(inv.customerName).includes(q)
           || norm(inv.customerPhone).includes(q)
@@ -191,7 +307,11 @@ export default function InvoiceTab({
         if (fInv.length === 0) return (
           <div style={{ textAlign: "center", padding: 40, color: T.muted, fontSize: 13 }}>
             {q ? `ไม่พบบิลที่ตรงกับ "${invoiceSearch}"` : "ไม่พบบิลตามสถานะนี้"}
-            {q && <div style={{ marginTop: 8, fontSize: 12, color: T.amber }}>ค้นเฉพาะบิลในช่วงที่โหลดมาเท่านั้น — ขยายช่วงวันที่ด้านบน หรือใช้ 🔎 ค้นหาทั้งระบบ</div>}
+            {q && <div style={{ marginTop: 8, fontSize: 12, color: T.amber }}>
+              {pickMonth
+                ? `ค้นเฉพาะบิลในเดือน ${monthKeyLabel(pickMonth)} — กด ✕ ออกจากดูรายเดือน หรือเลือกเดือนอื่น`
+                : "ค้นเฉพาะบิลในช่วงที่โหลดมาเท่านั้น — ขยายช่วงวันที่ด้านบน หรือใช้ 🔎 ค้นหาทั้งระบบ"}
+            </div>}
           </div>
         );
 
