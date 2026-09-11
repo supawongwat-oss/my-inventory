@@ -14,7 +14,7 @@
 import React from "react";
 import { T } from "../theme";
 import { CardBox } from "../components/ui";
-import { groupRun, totalOf, runTotalValue, findByBarcode, keyOf, shortOf, missingOf } from "../utils/packRun";
+import { groupRun, totalOf, runTotalValue, findByBarcode, keyOf, shortOf, missingOf, STOCK_SHORT_ENABLED } from "../utils/packRun";
 import PackMissingModal from "../components/PackMissingModal";
 
 const money = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 });
@@ -551,7 +551,7 @@ export default function PackRunTab({
           <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 8 }}>รอบที่ปิดแล้ว ({closed.length})</div>
           {/* ⏳ สรุปของที่ส่งไปแล้วแต่ยังตัดสต๊อกไม่ได้ — คลังยังกรอกไม่ครบตอนปิดรอบ
               กรอกคลัง/นับสต๊อกเสร็จเมื่อไร กดปุ่มเดียวตามตัดทุกรอบ */}
-          {shortRuns.length > 0 && (
+          {STOCK_SHORT_ENABLED && shortRuns.length > 0 && (
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 12px", marginBottom: 8, borderRadius: 9,
               background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.35)", fontSize: 12, color: "#92400e" }}>
               <span>⏳ ส่งไปแล้วแต่ยังตัดสต๊อกไม่ได้ <b>{shortRuns.length}</b> รอบ รวม <b>{shortTotal.toLocaleString("th-TH")}</b> ชิ้น
@@ -575,13 +575,13 @@ export default function PackRunTab({
                 ? <span style={{ color: T.accent }}>🧾 {r.invoiceNo}</span>
                 : <span style={{ color: T.amber }}>ยังไม่ออกบิล</span>}
               {!r.stockCut && <span title="ของจัดแล้วแต่ยังไม่หักออกจากคลัง" style={{ padding: "1px 8px", borderRadius: 9, fontSize: 10, fontWeight: 700, background: "rgba(217,119,6,0.12)", color: "#b45309", border: "1px solid rgba(217,119,6,0.3)" }}>🔓 ยังไม่ตัดสต็อก</span>}
-              {r.stockCut && shortOf(r) > 0 && <span title="ตอนตัดสต๊อก ของในคลังไม่พอ — ส่วนนี้ยังไม่ได้หักออก รับของเข้าคลังแล้วกดตัดส่วนที่ค้าง" style={{ padding: "1px 8px", borderRadius: 9, fontSize: 10, fontWeight: 700, background: "rgba(217,119,6,0.12)", color: "#b45309", border: "1px solid rgba(217,119,6,0.3)" }}>⏳ ค้างตัด {shortOf(r).toLocaleString("th-TH")} ชิ้น</span>}
+              {STOCK_SHORT_ENABLED && r.stockCut && shortOf(r) > 0 && <span title="ตอนตัดสต๊อก ของในคลังไม่พอ — ส่วนนี้ยังไม่ได้หักออก รับของเข้าคลังแล้วกดตัดส่วนที่ค้าง" style={{ padding: "1px 8px", borderRadius: 9, fontSize: 10, fontWeight: 700, background: "rgba(217,119,6,0.12)", color: "#b45309", border: "1px solid rgba(217,119,6,0.3)" }}>⏳ ค้างตัด {shortOf(r).toLocaleString("th-TH")} ชิ้น</span>}
               {missingOf(r) > 0 && <span title="ตัดออกจากรอบเพราะจัดของแล้วหาไม่เจอ — ไม่อยู่ในบิล" style={{ padding: "1px 8px", borderRadius: 9, fontSize: 10, fontWeight: 700, background: "rgba(220,38,38,0.08)", color: "#b91c1c", border: "1px solid rgba(220,38,38,0.3)" }}>🚫 ไม่เจอ {missingOf(r).toLocaleString("th-TH")} ชิ้น</span>}
               <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
                 <Btn onClick={() => onPrintPickList?.(r)} style={{ padding: "3px 10px", fontSize: 11 }}>🖨️</Btn>
                 {canEdit && !r.stockCut && <Btn onClick={() => onCutStock?.(r)} title="หักยอดรอบนี้ออกจากคลังตอนนี้"
                   style={{ padding: "3px 10px", fontSize: 11, color: "#b45309", borderColor: "rgba(217,119,6,0.45)", background: "rgba(217,119,6,0.08)", fontWeight: 700 }}>✂️ ตัดสต็อกตอนนี้</Btn>}
-                {canEdit && r.stockCut && shortOf(r) > 0 && onCutShort && <Btn onClick={() => onCutShort(r)} title="ตัดส่วนที่ค้างเท่าที่ตอนนี้มีในคลัง"
+                {STOCK_SHORT_ENABLED && canEdit && r.stockCut && shortOf(r) > 0 && onCutShort && <Btn onClick={() => onCutShort(r)} title="ตัดส่วนที่ค้างเท่าที่ตอนนี้มีในคลัง"
                   style={{ padding: "3px 10px", fontSize: 11, color: "#b45309", borderColor: "rgba(217,119,6,0.45)", background: "rgba(217,119,6,0.08)", fontWeight: 700 }}>✂️ ตัดส่วนที่ค้าง</Btn>}
                 {/* ออกบิลแล้วห้าม — บิลออกไปแล้วตามยอดเดิม ต้องไปแก้ที่บิล */}
                 {canEdit && !r.invoiceNo && onMarkMissing && totalOf(r) > 0 && <Btn onClick={() => setMissingRunId(r.id)} title="ติ๊กของที่หยิบไม่เจอ ตัดออกจากรอบ — ไม่ไปอยู่ในบิล"

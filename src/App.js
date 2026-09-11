@@ -21,7 +21,7 @@ import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiR
 import { reserveDocNo } from "./utils/docNumber";
 import { isEquipmentModel, splitItemsByGroup, GROUP_LABEL } from "./utils/billGroup";
 import { fetchInvoicesOfCustomer } from "./utils/fetchInvoices";
-import { runToItems, groupRun, totalOf, runStockLines, runTakenItems, runShortItems, shortOf, planMissing } from "./utils/packRun";
+import { runToItems, groupRun, totalOf, runStockLines, runTakenItems, runShortItems, shortOf, planMissing, STOCK_SHORT_ENABLED } from "./utils/packRun";
 import { withSearchKeys, withCustomerSearchKeys } from "./utils/searchKeys";
 
 // 🚀 Code splitting — tabs โหลดเฉพาะตอนคลิกใช้งาน (ลด first-load bundle)
@@ -2728,7 +2728,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   const handleClosePackRun = async (run, cutStock = true) => {
     const total = Object.values(run.counts || {}).reduce((s, v) => s + (Number(v) || 0), 0);
     if (total <= 0) { alert("รอบนี้ยังไม่มีของ — ยังปิดไม่ได้"); return; }
-    const willShort = cutStock ? previewPackRunShort(runStockLines(run)) : 0;
+    const willShort = (STOCK_SHORT_ENABLED && cutStock) ? previewPackRunShort(runStockLines(run)) : 0;
     const NLx = String.fromCharCode(10);
     const msg = [
       `ปิดรอบ ${run.runNo} · ${run.customerName}?`, "",
@@ -2850,7 +2850,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   const handleCutPackRunStock = async (run) => {
     if (!run || run.stockCut) return;
     const total = Object.values(run.counts || {}).reduce((s, v) => s + (Number(v) || 0), 0);
-    const willShort = previewPackRunShort(runStockLines(run));
+    const willShort = STOCK_SHORT_ENABLED ? previewPackRunShort(runStockLines(run)) : 0;
     const NL = String.fromCharCode(10);
     if (!window.confirm(`ตัดสต๊อกรอบ ${run.runNo}?` + NL + NL +
       `${total.toLocaleString("th-TH")} ชิ้น จะถูกหักออกจากคลังตอนนี้` +
