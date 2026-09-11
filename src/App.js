@@ -21,7 +21,7 @@ import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiR
 import { reserveDocNo } from "./utils/docNumber";
 import { isEquipmentModel, splitItemsByGroup, GROUP_LABEL } from "./utils/billGroup";
 import { fetchInvoicesOfCustomer } from "./utils/fetchInvoices";
-import { runToItems, groupRun, totalOf, runStockLines, runTakenItems, runShortItems, shortOf } from "./utils/packRun";
+import { runToItems, groupRun, totalOf, runStockLines, runTakenItems, runShortItems, shortOf, planMissing } from "./utils/packRun";
 import { withSearchKeys, withCustomerSearchKeys } from "./utils/searchKeys";
 
 // 🚀 Code splitting — tabs โหลดเฉพาะตอนคลิกใช้งาน (ลด first-load bundle)
@@ -2922,6 +2922,88 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     alert(`ตัดส่วนที่ค้างเสร็จ ${done} รอบ` + NL +
       `ตัดได้ ${took.toLocaleString("th-TH")} ชิ้น` + (left > 0 ? ` · ยังค้าง ${left.toLocaleString("th-TH")} ชิ้น (ของในระบบยังไม่พอ)` : " · ครบทุกรอบแล้ว"));
   };
+  // 🚫 ของไม่เจอตอนจัด — ตัดออกจากรอบ บิลที่ออกจากรอบจะไม่มีของพวกนี้
+  //
+  //    บิลรอบแพ็คสร้างจาก counts ตรง ๆ (runToItems) ถ้าหยิบไม่เจอแล้วไม่ตัดออก
+  //    ลูกค้าโดนเก็บเงินของที่ไม่ได้ส่ง · เดิมต้องให้ admin เปิดรอบกลับมาแก้ ซึ่งคนจัดของทำเองไม่ได้
+  //
+  //    ใช้ increment ทุกช่อง — รอบที่ยังเปิดอยู่มีคนแตะ +1 จากโต๊ะอื่นพร้อมกันได้ ห้ามเขียนทับทั้ง map
+  //    และอ่านรอบล่าสุดจาก Firestore ก่อนคิด ไม่ใช่จากภาพในจอ — กันตัดเกินยอดที่มีจริง
+  const handleMarkPackMissing = async (runIn, marks) => {
+    if (!runIn?.id) return false;
+    const NL = String.fromCharCode(10);
+    let live;
+    try {
+      const snap = await getDoc(doc(db, "packRuns", runIn.id));
+      if (!snap.exists()) { alert("ไม่พบรอบนี้แล้ว — อาจถูกลบไป"); return false; }
+      live = { ...snap.data(), id: snap.id };
+    } catch (e) { alert("อ่านรอบล่าสุดไม่สำเร็จ: " + (e?.message || e)); return false; }
+    if (live.invoiceNo) {
+      alert(`รอบนี้ออกบิล ${live.invoiceNo} ไปแล้ว — ตัดรายการที่นี่ไม่ได้` + NL + "ของที่ไม่ได้ส่งต้องไปแก้ที่บิลแทน");
+      return false;
+    }
+    const plan = planMissing(live, marks);
+    if (plan.total <= 0) return false;
+
+    const args = [];
+    const lp = live.lastPick?.counts || {};
+    for (const l of plan.lines) {
+      args.push(new FieldPath("counts", l.key), increment(-l.n));
+      args.push(new FieldPath("missing", l.key), increment(l.n));
+      if (l.owedPart > 0) args.push(new FieldPath("stockShort", l.key), increment(-l.owedPart));
+      // ใบหยิบของที่พิมพ์ไปแล้วจำยอดไว้ — หักตามด้วย ไม่งั้นแถบเตือน "ยอดลดลงหลังพิมพ์" จะเด้ง
+      // ทั้งที่คนหยิบเป็นคนตัดออกเอง
+      const lpHave = Number(lp[l.key]) || 0;
+      if (lpHave > 0) args.push(new FieldPath("lastPick", "counts", l.key), increment(-Math.min(lpHave, l.n)));
+    }
+    if (plan.owedTotal > 0) args.push("stockShortQty", increment(-plan.owedTotal));
+    if (live.status === "ปิดแล้ว") args.push("totalQty", increment(-plan.total));
+    // บัญชีคุม — ใครตัดอะไรออกเมื่อไร และต้องคืนสต๊อกเท่าไร (ถ้าคืนพลาดยังตามคืนเองได้)
+    args.push(new FieldPath("missingLog", `m${Date.now()}`), {
+      at: now(), by: user.name, qty: plan.total, restored: plan.restoreTotal,
+      lines: plan.lines.map(l => ({ key: l.key, n: l.n, restore: l.restorePart, name: `${l.clothingName} / ${l.colorName} / ${l.size}` })),
+    });
+    try {
+      await updateDoc(doc(db, "packRuns", live.id), ...args);
+    } catch (e) { alert("บันทึกไม่สำเร็จ: " + (e?.message || e) + NL + "ยังไม่ได้ตัดอะไรออก"); return false; }
+
+    // ของที่ระบบหักไปแล้วแต่ไม่ได้ส่งจริง → คืนเข้าคลัง
+    //   ทำหลังบันทึกรอบ เพราะรอบคือที่มาของยอดในบิล ต้องถูกก่อน
+    //   ถ้าคืนพลาด ยังมี missingLog บอกไว้ว่าต้องคืนอะไรเท่าไร
+    if (plan.restoreTotal > 0) {
+      try {
+        const by = new Map();
+        plan.lines.filter(l => l.restorePart > 0 && l.clothingId && l.colorIdx != null).forEach(l => {
+          if (!by.has(l.clothingId)) by.set(l.clothingId, []);
+          by.get(l.clothingId).push(l);
+        });
+        for (const [clothingId, ls] of by) {
+          const { moves } = await applyStockDeltas(db, clothingId, ls.map(l => ({ colorIdx: l.colorIdx, size: l.size, delta: l.restorePart })));
+          for (const m of moves) {
+            const l = ls.find(x => x.colorIdx === m.colorIdx && x.size === m.size) || {};
+            await addDoc(collection(db, "transactions"), {
+              type: "รับ", code: clothingId,
+              name: `${l.clothingName || ""} / ${m.colorName || l.colorName || ""} / ${m.size}`,
+              qty: m.delta, by: user.name, date: now(),
+              note: `คืนสต๊อก ของไม่เจอตอนจัด ไม่ได้ส่ง ${live.runNo} · ${live.customerName}`,
+              stockAffected: true, stockBefore: m.before, stockAfter: m.after,
+              createdAt: serverTimestamp(), category: "เสื้อผ้า",
+            });
+          }
+        }
+      } catch (e) {
+        alert("ตัดรายการออกจากรอบแล้ว (บิลจะไม่มีของพวกนี้) แต่คืนสต๊อกไม่สำเร็จ: " + (e?.message || e) + NL +
+          `ต้องคืนเข้าคลังเอง ${plan.restoreTotal} ชิ้น`);
+      }
+    }
+    logAudit(user, {
+      action: AUDIT_ACTIONS.UPDATE, collection: "packRuns", targetId: live.id,
+      targetLabel: `${live.runNo} · ${live.customerName}`,
+      note: `ของไม่เจอ ตัดออก ${plan.total} ชิ้น` + (plan.restoreTotal > 0 ? ` · คืนสต๊อก ${plan.restoreTotal}` : ""),
+    });
+    return true;
+  };
+
   const handleReopenPackRun = async (run) => {
     if (run.invoiceNo) { alert("รอบนี้ออกบิลไปแล้ว เปิดกลับไม่ได้ — ถ้าต้องแก้ ให้แก้ที่บิลแทน"); return; }
     const takenTotal = run.stockCut ? runTakenItems(run).reduce((a, l) => a + l.qty, 0) : 0;
@@ -5002,6 +5084,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               onCutStock={handleCutPackRunStock}
               onCutShort={handleCutPackRunShort}
               onCutAllShort={handleCutAllPackRunShort}
+              onMarkMissing={handleMarkPackMissing}
               onReopenRun={handleReopenPackRun}
               onCancelRun={handleCancelPackRun}
               onDeleteRun={handleDeletePackRun}

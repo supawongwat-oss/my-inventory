@@ -14,7 +14,8 @@
 import React from "react";
 import { T } from "../theme";
 import { CardBox } from "../components/ui";
-import { groupRun, totalOf, runTotalValue, findByBarcode, keyOf, shortOf } from "../utils/packRun";
+import { groupRun, totalOf, runTotalValue, findByBarcode, keyOf, shortOf, missingOf } from "../utils/packRun";
+import PackMissingModal from "../components/PackMissingModal";
 
 const money = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 });
 const colorOf = (col) => col?.colorHex || col?.hex || "#ccc";
@@ -23,6 +24,7 @@ export default function PackRunTab({
   packRuns = [], customers = [], clothingItems = [], sizesFor, user, role = {},
   onOpenRun, onBump, onCloseRun, onCutStock, onReopenRun, onCancelRun, onDeleteRun, onBillRun, onPrintPickList,
   onCutShort, onCutAllShort,   // ⏳ ตามตัดส่วนที่ค้าง (คลังยังไม่ครบตอนปิดรอบ)
+  onMarkMissing,               // 🚫 ของไม่เจอตอนจัด → ตัดออกจากรอบ ไม่ไปอยู่ในบิล
   openingInvoice = false,   // 🔒 เพิ่งกดไป กำลังเปิดหน้าออกบิล — ปิดปุ่มกันแตะซ้ำตอนเครื่องช้า
   onBulkImport, onUndoImport, onManageAliases,
 }) {
@@ -54,6 +56,10 @@ export default function PackRunTab({
   //    ไม่งั้นรอบเก่าที่เลื่อนพ้นจอไปจะค้างตัดอยู่โดยไม่มีใครเห็น
   const shortRuns = React.useMemo(() => closed.filter(r => r.stockCut && shortOf(r) > 0), [closed]);
   const shortTotal = React.useMemo(() => shortRuns.reduce((a, r) => a + shortOf(r), 0), [shortRuns]);
+  // 🚫 รอบที่กำลังติ๊กของไม่เจอ — เก็บแค่ id แล้วหาจากกองสดทุกครั้ง
+  //    ยอดในหน้าต่างจะได้ขยับตามที่โต๊ะอื่นแตะเพิ่ม ไม่ใช่ค้างเป็นภาพตอนเปิด
+  const [missingRunId, setMissingRunId] = React.useState(null);
+  const missingRun = missingRunId ? packRuns.find(r => r.id === missingRunId) : null;
   const run = React.useMemo(() => open.find(r => r.customerId === custId) || null, [open, custId]);
 
   // 📊 หลังพิมพ์ใบหยิบของแล้ว ยอดขยับไปเท่าไหร่
@@ -468,9 +474,24 @@ export default function PackRunTab({
 
           <CardBox style={{ marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>ยอดสะสมในรอบ</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>
+                ยอดสะสมในรอบ
+                {missingOf(run) > 0 && (
+                  <span title="ตัดออกจากรอบเพราะจัดของแล้วหาไม่เจอ — ไม่อยู่ในบิล"
+                    style={{ marginLeft: 8, padding: "1px 8px", borderRadius: 9, fontSize: 10, fontWeight: 700, background: "rgba(220,38,38,0.08)", color: "#b91c1c", border: "1px solid rgba(220,38,38,0.3)" }}>
+                    🚫 ตัดออกแล้ว {missingOf(run).toLocaleString("th-TH")} ชิ้น
+                  </span>
+                )}
+              </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <Btn onClick={() => onPrintPickList?.(run)}>🖨️ ใบหยิบของ</Btn>
+                {/* 🚫 จัดของแล้วหาไม่เจอ — ตัดออกจากรอบตรงหน้าชั้นได้เลย บิลจะไม่มีของพวกนี้ */}
+                {canEdit && onMarkMissing && totalOf(run) > 0 && (
+                  <Btn onClick={() => setMissingRunId(run.id)} title="ติ๊กของที่หยิบไม่เจอ ตัดออกจากรอบ — ไม่ไปอยู่ในบิล"
+                    style={{ color: "#dc2626", borderColor: "rgba(220,38,38,0.4)", background: "rgba(220,38,38,0.05)", fontWeight: 700 }}>
+                    🚫 ของไม่เจอ
+                  </Btn>
+                )}
                 {/* 🔓 จัดของเสร็จแล้วแต่ยังไม่อยากให้ตัวเลขสต๊อกขยับ — เหมือนใบสั่งของ
                     ของบางรอบต้องรอตรวจ/รอส่งจริงก่อน ค่อยตัดทีหลังได้ */}
                 {canEdit && <Btn onClick={() => onCloseRun(run, false)} title="ปิดรอบไว้ก่อน ค่อยตัดสต็อกทีหลัง">
@@ -517,6 +538,14 @@ export default function PackRunTab({
         </>
       )}
 
+      {missingRun && (
+        <PackMissingModal
+          run={missingRun}
+          onSave={(marks) => onMarkMissing(missingRun, marks)}
+          onClose={() => setMissingRunId(null)}
+        />
+      )}
+
       {closed.length > 0 && (
         <CardBox>
           <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 8 }}>รอบที่ปิดแล้ว ({closed.length})</div>
@@ -547,12 +576,16 @@ export default function PackRunTab({
                 : <span style={{ color: T.amber }}>ยังไม่ออกบิล</span>}
               {!r.stockCut && <span title="ของจัดแล้วแต่ยังไม่หักออกจากคลัง" style={{ padding: "1px 8px", borderRadius: 9, fontSize: 10, fontWeight: 700, background: "rgba(217,119,6,0.12)", color: "#b45309", border: "1px solid rgba(217,119,6,0.3)" }}>🔓 ยังไม่ตัดสต็อก</span>}
               {r.stockCut && shortOf(r) > 0 && <span title="ตอนตัดสต๊อก ของในคลังไม่พอ — ส่วนนี้ยังไม่ได้หักออก รับของเข้าคลังแล้วกดตัดส่วนที่ค้าง" style={{ padding: "1px 8px", borderRadius: 9, fontSize: 10, fontWeight: 700, background: "rgba(217,119,6,0.12)", color: "#b45309", border: "1px solid rgba(217,119,6,0.3)" }}>⏳ ค้างตัด {shortOf(r).toLocaleString("th-TH")} ชิ้น</span>}
+              {missingOf(r) > 0 && <span title="ตัดออกจากรอบเพราะจัดของแล้วหาไม่เจอ — ไม่อยู่ในบิล" style={{ padding: "1px 8px", borderRadius: 9, fontSize: 10, fontWeight: 700, background: "rgba(220,38,38,0.08)", color: "#b91c1c", border: "1px solid rgba(220,38,38,0.3)" }}>🚫 ไม่เจอ {missingOf(r).toLocaleString("th-TH")} ชิ้น</span>}
               <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
                 <Btn onClick={() => onPrintPickList?.(r)} style={{ padding: "3px 10px", fontSize: 11 }}>🖨️</Btn>
                 {canEdit && !r.stockCut && <Btn onClick={() => onCutStock?.(r)} title="หักยอดรอบนี้ออกจากคลังตอนนี้"
                   style={{ padding: "3px 10px", fontSize: 11, color: "#b45309", borderColor: "rgba(217,119,6,0.45)", background: "rgba(217,119,6,0.08)", fontWeight: 700 }}>✂️ ตัดสต็อกตอนนี้</Btn>}
                 {canEdit && r.stockCut && shortOf(r) > 0 && onCutShort && <Btn onClick={() => onCutShort(r)} title="ตัดส่วนที่ค้างเท่าที่ตอนนี้มีในคลัง"
                   style={{ padding: "3px 10px", fontSize: 11, color: "#b45309", borderColor: "rgba(217,119,6,0.45)", background: "rgba(217,119,6,0.08)", fontWeight: 700 }}>✂️ ตัดส่วนที่ค้าง</Btn>}
+                {/* ออกบิลแล้วห้าม — บิลออกไปแล้วตามยอดเดิม ต้องไปแก้ที่บิล */}
+                {canEdit && !r.invoiceNo && onMarkMissing && totalOf(r) > 0 && <Btn onClick={() => setMissingRunId(r.id)} title="ติ๊กของที่หยิบไม่เจอ ตัดออกจากรอบ — ไม่ไปอยู่ในบิล"
+                  style={{ padding: "3px 10px", fontSize: 11, color: "#dc2626", borderColor: "rgba(220,38,38,0.4)", background: "rgba(220,38,38,0.05)", fontWeight: 700 }}>🚫 ของไม่เจอ</Btn>}
                 {canEdit && !r.invoiceNo && <Btn onClick={() => onBillRun(r)} disabled={openingInvoice} style={{ padding: "3px 10px", fontSize: 11, color: T.accent, borderColor: "rgba(59,91,139,0.4)", opacity: openingInvoice ? 0.5 : 1, cursor: openingInvoice ? "wait" : "pointer" }}>🧾 ออกบิล</Btn>}
                 {user?.role === "admin" && !r.invoiceNo && <Btn onClick={() => onReopenRun(r)} style={{ padding: "3px 10px", fontSize: 11 }} title="เปิดรอบกลับมาแก้ (คืนสต็อกที่ตัดไป)">↩️ เปิดกลับ</Btn>}
                 {/* 🗑️ ล้างรอบทดสอบ — ถ้ารอบนี้ออกบิลไปแล้ว ตัวจัดการจะเช็คให้ว่าบิลถูกยกเลิกหรือยัง

@@ -136,3 +136,37 @@ export const runTakenItems = (run) => splitRun(run).taken;
 // ที่ยังค้างตัด
 export const runShortItems = (run) => splitRun(run).owed;
 export const shortOf = (run) => splitRun(run).owed.reduce((a, x) => a + x.qty, 0);
+
+// 🚫 ของไม่เจอตอนจัด — วางแผนว่าตัดออกจากรอบแล้วต้องขยับอะไรบ้าง
+//
+//    บิลรอบแพ็คสร้างจาก counts ตรง ๆ ของที่ตัดออกจาก counts จึงไม่ไปอยู่ในบิล
+//    ส่วนสต๊อก ถ้ารอบนี้ตัดสต๊อกไปแล้ว ต้องแยกให้ถูกว่าชิ้นที่ไม่ได้ส่ง "เคยหักออกจากคลังหรือยัง":
+//      · กินส่วนที่ค้างตัด (stockShort) ก่อน — ส่วนนั้นยังไม่เคยหักออก ไม่ต้องคืน
+//      · ที่เหลือคือของที่ระบบหักไปแล้วแต่ไม่ได้ส่งจริง → ต้องคืนเข้าคลัง
+//    ทำแบบนี้ (หักไปแล้ว + ค้างตัด) = ยอดที่ส่งจริงเสมอ
+//
+//    marks = { key ใน counts: จำนวนที่ไม่เจอ } → จำกัดไม่เกินยอดในรอบ ติดลบ/ไม่ใช่ตัวเลขข้ามทิ้ง
+export function planMissing(run, marks = {}) {
+  const counts = run?.counts || {};
+  const short = run?.stockShort || {};
+  const meta = run?.meta || {};
+  const lines = [];
+  Object.entries(marks || {}).forEach(([key, raw]) => {
+    const have = num(counts[key]);
+    const n = Math.min(have, Math.max(0, Math.floor(num(raw))));
+    if (n <= 0) return;
+    const owedPart = run?.stockCut ? Math.min(n, Math.max(0, num(short[key]))) : 0;
+    const restorePart = run?.stockCut ? n - owedPart : 0;
+    const m = meta[key] || {};
+    lines.push({
+      key, n, owedPart, restorePart,
+      clothingId: m.clothingId || "", clothingName: m.clothingName || "",
+      colorIdx: m.colorIdx ?? null, colorName: m.colorName || "", size: m.size || "",
+    });
+  });
+  const sum = (f) => lines.reduce((a, l) => a + l[f], 0);
+  return { lines, total: sum("n"), owedTotal: sum("owedPart"), restoreTotal: sum("restorePart") };
+}
+
+// รวมที่เคยตัดออกเพราะหาไม่เจอ (ไว้โชว์ป้าย)
+export const missingOf = (run) => Object.values(run?.missing || {}).reduce((a, v) => a + num(v), 0);
