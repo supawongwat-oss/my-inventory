@@ -14,7 +14,7 @@
 import React from "react";
 import { T } from "../theme";
 import { CardBox } from "../components/ui";
-import { groupRun, totalOf, runTotalValue, findByBarcode, keyOf } from "../utils/packRun";
+import { groupRun, totalOf, runTotalValue, findByBarcode, keyOf, shortOf } from "../utils/packRun";
 
 const money = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 });
 const colorOf = (col) => col?.colorHex || col?.hex || "#ccc";
@@ -22,6 +22,7 @@ const colorOf = (col) => col?.colorHex || col?.hex || "#ccc";
 export default function PackRunTab({
   packRuns = [], customers = [], clothingItems = [], sizesFor, user, role = {},
   onOpenRun, onBump, onCloseRun, onCutStock, onReopenRun, onCancelRun, onDeleteRun, onBillRun, onPrintPickList,
+  onCutShort, onCutAllShort,   // ⏳ ตามตัดส่วนที่ค้าง (คลังยังไม่ครบตอนปิดรอบ)
   openingInvoice = false,   // 🔒 เพิ่งกดไป กำลังเปิดหน้าออกบิล — ปิดปุ่มกันแตะซ้ำตอนเครื่องช้า
   onBulkImport, onUndoImport, onManageAliases,
 }) {
@@ -49,6 +50,10 @@ export default function PackRunTab({
 
   const open = React.useMemo(() => packRuns.filter(r => r.status !== "ปิดแล้ว"), [packRuns]);
   const closed = React.useMemo(() => packRuns.filter(r => r.status === "ปิดแล้ว"), [packRuns]);
+  // ⏳ รอบที่ตัดสต๊อกได้ไม่ครบ — นับจากทุกรอบที่ปิด ไม่ใช่แค่ 30 แถวที่แสดง
+  //    ไม่งั้นรอบเก่าที่เลื่อนพ้นจอไปจะค้างตัดอยู่โดยไม่มีใครเห็น
+  const shortRuns = React.useMemo(() => closed.filter(r => r.stockCut && shortOf(r) > 0), [closed]);
+  const shortTotal = React.useMemo(() => shortRuns.reduce((a, r) => a + shortOf(r), 0), [shortRuns]);
   const run = React.useMemo(() => open.find(r => r.customerId === custId) || null, [open, custId]);
 
   // 📊 หลังพิมพ์ใบหยิบของแล้ว ยอดขยับไปเท่าไหร่
@@ -515,6 +520,21 @@ export default function PackRunTab({
       {closed.length > 0 && (
         <CardBox>
           <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 8 }}>รอบที่ปิดแล้ว ({closed.length})</div>
+          {/* ⏳ สรุปของที่ส่งไปแล้วแต่ยังตัดสต๊อกไม่ได้ — คลังยังกรอกไม่ครบตอนปิดรอบ
+              กรอกคลัง/นับสต๊อกเสร็จเมื่อไร กดปุ่มเดียวตามตัดทุกรอบ */}
+          {shortRuns.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 12px", marginBottom: 8, borderRadius: 9,
+              background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.35)", fontSize: 12, color: "#92400e" }}>
+              <span>⏳ ส่งไปแล้วแต่ยังตัดสต๊อกไม่ได้ <b>{shortRuns.length}</b> รอบ รวม <b>{shortTotal.toLocaleString("th-TH")}</b> ชิ้น
+                <span style={{ color: T.muted, marginLeft: 6 }}>(ของในคลังไม่พอตอนปิดรอบ)</span></span>
+              {canEdit && onCutAllShort && (
+                <Btn onClick={() => onCutAllShort()} title="ไล่ตัดจากรอบเก่าไปใหม่ เท่าที่ตอนนี้มีในคลัง ที่ยังไม่พอจะค้างต่อ"
+                  style={{ marginLeft: "auto", padding: "4px 12px", fontSize: 11.5, fontWeight: 700, color: "white", background: "#d97706", border: "none" }}>
+                  ✂️ ตัดส่วนที่ค้างทั้งหมด
+                </Btn>
+              )}
+            </div>
+          )}
           {closed.slice(0, 30).map(r => (
             <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${T.border}`, flexWrap: "wrap", fontSize: 12 }}>
               <span style={{ fontFamily: "monospace", fontWeight: 700, color: T.accent }}>{r.runNo}</span>
@@ -526,10 +546,13 @@ export default function PackRunTab({
                 ? <span style={{ color: T.accent }}>🧾 {r.invoiceNo}</span>
                 : <span style={{ color: T.amber }}>ยังไม่ออกบิล</span>}
               {!r.stockCut && <span title="ของจัดแล้วแต่ยังไม่หักออกจากคลัง" style={{ padding: "1px 8px", borderRadius: 9, fontSize: 10, fontWeight: 700, background: "rgba(217,119,6,0.12)", color: "#b45309", border: "1px solid rgba(217,119,6,0.3)" }}>🔓 ยังไม่ตัดสต็อก</span>}
+              {r.stockCut && shortOf(r) > 0 && <span title="ตอนตัดสต๊อก ของในคลังไม่พอ — ส่วนนี้ยังไม่ได้หักออก รับของเข้าคลังแล้วกดตัดส่วนที่ค้าง" style={{ padding: "1px 8px", borderRadius: 9, fontSize: 10, fontWeight: 700, background: "rgba(217,119,6,0.12)", color: "#b45309", border: "1px solid rgba(217,119,6,0.3)" }}>⏳ ค้างตัด {shortOf(r).toLocaleString("th-TH")} ชิ้น</span>}
               <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
                 <Btn onClick={() => onPrintPickList?.(r)} style={{ padding: "3px 10px", fontSize: 11 }}>🖨️</Btn>
                 {canEdit && !r.stockCut && <Btn onClick={() => onCutStock?.(r)} title="หักยอดรอบนี้ออกจากคลังตอนนี้"
                   style={{ padding: "3px 10px", fontSize: 11, color: "#b45309", borderColor: "rgba(217,119,6,0.45)", background: "rgba(217,119,6,0.08)", fontWeight: 700 }}>✂️ ตัดสต็อกตอนนี้</Btn>}
+                {canEdit && r.stockCut && shortOf(r) > 0 && onCutShort && <Btn onClick={() => onCutShort(r)} title="ตัดส่วนที่ค้างเท่าที่ตอนนี้มีในคลัง"
+                  style={{ padding: "3px 10px", fontSize: 11, color: "#b45309", borderColor: "rgba(217,119,6,0.45)", background: "rgba(217,119,6,0.08)", fontWeight: 700 }}>✂️ ตัดส่วนที่ค้าง</Btn>}
                 {canEdit && !r.invoiceNo && <Btn onClick={() => onBillRun(r)} disabled={openingInvoice} style={{ padding: "3px 10px", fontSize: 11, color: T.accent, borderColor: "rgba(59,91,139,0.4)", opacity: openingInvoice ? 0.5 : 1, cursor: openingInvoice ? "wait" : "pointer" }}>🧾 ออกบิล</Btn>}
                 {user?.role === "admin" && !r.invoiceNo && <Btn onClick={() => onReopenRun(r)} style={{ padding: "3px 10px", fontSize: 11 }} title="เปิดรอบกลับมาแก้ (คืนสต็อกที่ตัดไป)">↩️ เปิดกลับ</Btn>}
                 {/* 🗑️ ล้างรอบทดสอบ — ถ้ารอบนี้ออกบิลไปแล้ว ตัวจัดการจะเช็คให้ว่าบิลถูกยกเลิกหรือยัง

@@ -67,3 +67,49 @@ export async function applyStockDeltas(db, clothingId, deltas = []) {
 // ข้อความบอกว่าขาดอะไรบ้าง — ใช้ตอนโชว์ให้พนักงานอ่านหน้างาน
 export const shortStockText = (short = []) =>
   short.map(s => `• ${s.colorName || "(ไม่ทราบสี)"} ${s.size}: มีอยู่ ${s.have} แต่จะจ่าย ${s.want}`).join(String.fromCharCode(10));
+
+// ✂️ ตัด "เท่าที่มี" แล้วคืนส่วนที่ตัดไม่ได้ออกมา — สำหรับรอบแพ็ค
+//
+// ต่างจาก applyStockDeltas ที่ของไม่พอแล้วหยุดทั้งก้อน:
+//   รอบแพ็คส่งของออกจากร้านไปแล้วจริง หยุดไม่ได้เปลี่ยนความจริง
+//   และตอนนี้คลังยังกรอกไม่ครบ ระบบจึง "ขาด" แทบทุกรอบ ทั้งที่ของมีอยู่บนชั้น
+// จึงตัดเท่าที่ระบบมี แล้วส่งส่วนที่เหลือกลับไปให้ผู้เรียกจดไว้ตัดทีหลัง
+//
+// ⚠️ ห้ามทิ้งส่วนที่ขาดเงียบ ๆ — ของเดิม Math.max(0, …) ตัดเหลือ 0 แล้วลืมที่เหลือ
+//    สมุดจดว่าจ่าย 25 แต่สต๊อกลดจริงแค่ 10 อีก 15 หายจากบัญชีโดยไม่มีใครรู้
+//
+// wants = [{ key, colorIdx, colorName, size, qty, ... }] → results = [{ ...want, taken, short, before, after }]
+export function computeTakeUpTo(colorsIn = [], wants = []) {
+  const colors = colorsIn.map(c => ({ ...c, stock: { ...(c.stock || {}) } }));
+  const results = wants.map(w => {
+    const want = Math.max(0, Number(w.qty) || 0);
+    const c = colors[w.colorIdx];
+    // สีหายหรือลำดับสีถูกสลับ — colorIdx ชี้ไปสีอื่นแล้ว ตัดไม่ได้ ไม่งั้นไปหักสีที่ไม่ได้ส่ง
+    if (!c || (w.colorName && c.colorName && c.colorName !== w.colorName)) {
+      return { ...w, want, taken: 0, short: want, before: null, after: null, reason: "สีในคลังเปลี่ยนไป" };
+    }
+    const before = Number(c.stock[w.size]) || 0;
+    const taken = Math.min(want, Math.max(0, before));
+    c.stock[w.size] = before - taken;
+    return { ...w, want, taken, short: want - taken, before, after: before - taken };
+  });
+  return { colors, results };
+}
+
+export async function takeStockUpTo(db, clothingId, wants = []) {
+  if (!clothingId || wants.length === 0) return { results: [] };
+  return runTransaction(db, async (tx) => {
+    const ref = doc(db, "clothing", clothingId);
+    const snap = await tx.get(ref);
+    if (!snap.exists()) {
+      // รุ่นถูกลบไปแล้ว — ค้างไว้ทั้งหมด ดีกว่าหายเงียบ
+      return { results: wants.map(w => {
+        const want = Math.max(0, Number(w.qty) || 0);
+        return { ...w, want, taken: 0, short: want, before: null, after: null, reason: "ไม่พบรุ่นนี้ในคลัง" };
+      }) };
+    }
+    const { colors, results } = computeTakeUpTo(snap.data().colors || [], wants);
+    if (results.some(r => r.taken > 0)) tx.update(ref, { colors });
+    return { results };
+  });
+}

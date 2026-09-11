@@ -103,3 +103,36 @@ export function findByBarcode(clothingItems = [], code) {
   }
   return null;
 }
+
+// 📉 ส่วนที่ตัดสต๊อกไม่ได้ตอนปิดรอบ — คลังยังกรอกไม่ครบ ระบบจึงมีของน้อยกว่าที่ส่งจริง
+//    stockShort: { key เดียวกับ counts: จำนวนที่ยังค้างตัด }
+//    ไล่จาก counts ด้วย key ของมันเอง ไม่ประกอบ key ใหม่จาก meta — ประกอบเองแล้วพลาดนิดเดียว
+//    (colorIdx 0 กับ "" / ไซส์มีช่องว่าง) จะจับคู่ไม่ติดแล้วคืนสต๊อกผิดช่อง
+const splitRun = (run) => {
+  const short = run?.stockShort || {};
+  const all = [], taken = [], owed = [];
+  Object.entries(run?.counts || {}).forEach(([key, q]) => {
+    const qty = num(q);
+    if (qty <= 0) return;
+    const m = (run.meta || {})[key] || {};
+    const base = {
+      key, clothingId: m.clothingId || "", clothingName: m.clothingName || "",
+      colorIdx: m.colorIdx ?? null, colorName: m.colorName || "", size: m.size || "",
+    };
+    const s = Math.min(qty, Math.max(0, num(short[key])));
+    all.push({ ...base, qty });
+    if (qty - s > 0) taken.push({ ...base, qty: qty - s });
+    if (s > 0) owed.push({ ...base, qty: s });
+  });
+  return { all, taken, owed };
+};
+
+// ทุกบรรทัดของรอบ (ใช้ตอนตัดครั้งแรก)
+export const runStockLines = (run) => splitRun(run).all;
+// ที่ "ออกจากคลังไปแล้วจริง" = ยอดรอบ − ส่วนที่ค้าง
+//   ใช้ตอนคืนสต๊อก (เปิดรอบกลับ / ลบรอบ) — คืนเต็มยอดทั้งที่ตัดไปได้แค่บางส่วน
+//   ของที่ไม่เคยออกจากคลังจะเด้งเข้ามาเป็นของผี
+export const runTakenItems = (run) => splitRun(run).taken;
+// ที่ยังค้างตัด
+export const runShortItems = (run) => splitRun(run).owed;
+export const shortOf = (run) => splitRun(run).owed.reduce((a, x) => a + x.qty, 0);

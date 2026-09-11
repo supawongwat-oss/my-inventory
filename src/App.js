@@ -15,13 +15,13 @@ import { logAudit, AUDIT_ACTIONS } from "./utils/audit";
 import { PRINT_FONT_SCALE, INVOICE_FONT_SCALE, scaleFontInElement, printElementById, printInvoiceCopies, downloadInvoicePdf } from "./utils/print";
 import { PAYMENT_METHODS, docTypeLabel, docTypeLabelEn, itemLineTotal, calcInvoice, getPaidTotal, getRemaining, getPaidPct, ownedImagePathsOf, suspiciousPriceLines, typicalBillTotal, oddBillTotal, priceCeilingFromHistory } from "./utils/invoice";
 import { compressImage } from "./utils/imageCompress";
-import { applyStockDeltas, shortStockText } from "./utils/stockTx";
+import { applyStockDeltas, shortStockText, takeStockUpTo, computeTakeUpTo } from "./utils/stockTx";
 import { uploadImage, deleteFile } from "./utils/upload";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiRegion";
 import { reserveDocNo } from "./utils/docNumber";
 import { isEquipmentModel, splitItemsByGroup, GROUP_LABEL } from "./utils/billGroup";
 import { fetchInvoicesOfCustomer } from "./utils/fetchInvoices";
-import { runToItems, groupRun, totalOf } from "./utils/packRun";
+import { runToItems, groupRun, totalOf, runStockLines, runTakenItems, runShortItems, shortOf } from "./utils/packRun";
 import { withSearchKeys, withCustomerSearchKeys } from "./utils/searchKeys";
 
 // 🚀 Code splitting — tabs โหลดเฉพาะตอนคลิกใช้งาน (ลด first-load bundle)
@@ -2498,36 +2498,87 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   };
 
   // ตัด/คืนสต็อกของทั้งรอบ — sign = -1 ตัด, +1 คืน
-  const applyPackRunStock = async (run, sign, reason) => {
-    const items = runToItems(run);
+  // ✂️ ตัดสต๊อกรอบแพ็ค "เท่าที่ระบบมี" แล้วคืนส่วนที่ตัดไม่ได้ออกมาให้จดไว้
+  //
+  //    ตอนนี้คลังยังกรอกไม่ครบ ระบบจึงมีของน้อยกว่าที่ส่งจริงแทบทุกรอบ
+  //    แต่ของออกจากร้านไปแล้ว หยุดไม่ได้ — ต้องส่งของได้ก่อน แล้วค่อยตามตัดทีหลัง
+  //
+  //    ของเดิมตัดแบบ Math.max(0, …) บนภาพที่ค้างในจอ แล้วเขียนทับทั้งก้อน:
+  //      · ส่วนที่ขาดหายเงียบ ๆ สมุดจดว่าจ่าย 25 แต่สต๊อกลดจริงแค่ 10
+  //      · มีคนรับ/จ่ายรุ่นเดียวกันพร้อมกัน ของเขาเด้งกลับ
+  //    ตอนนี้ตัดใน transaction (อ่านของจริงตอนเขียน) และคืนส่วนที่ขาดกลับมาเป็น { key: จำนวน }
+  const cutPackRunLines = async (run, lines, reason) => {
+    const short = {};
     const byClothing = new Map();
-    for (const it of items) {
-      if (it.colorIdx == null) continue;
-      if (!clothingItems.find(c => c.id === it.clothingId)) continue;
-      if (!byClothing.has(it.clothingId)) byClothing.set(it.clothingId, []);
-      byClothing.get(it.clothingId).push(it);
+    for (const ln of lines) {
+      // ไม่รู้ว่าเป็นรุ่น/สีไหนในคลัง — ตัดมั่วไม่ได้ ค้างไว้ทั้งบรรทัด
+      if (!ln.clothingId || ln.colorIdx == null) { short[ln.key] = ln.qty; continue; }
+      if (!byClothing.has(ln.clothingId)) byClothing.set(ln.clothingId, []);
+      byClothing.get(ln.clothingId).push(ln);
     }
-    for (const [clothingId, its] of byClothing) {
-      const item = clothingItems.find(c => c.id === clothingId);
-      const newColors = (item.colors || []).map((c, i) => {
-        const mine = its.filter(x => x.colorIdx === i);
-        if (!mine.length) return c;
-        const stock = { ...(c.stock || {}) };
-        for (const x of mine) stock[x.size] = Math.max(0, (Number(stock[x.size]) || 0) + sign * (Number(x.qty) || 0));
-        return { ...c, stock };
-      });
-      await updateDoc(doc(db, "clothing", clothingId), { colors: newColors });
+    let takenQty = 0;
+    for (const [clothingId, lns] of byClothing) {
+      const { results } = await takeStockUpTo(db, clothingId, lns);
+      for (const r of results) {
+        takenQty += r.taken;
+        if (r.short > 0) short[r.key] = r.short;
+        // จดทุกบรรทัด แม้ตัดไม่ได้เลย — ต้องมีร่องรอยว่ารอบนี้เคยพยายามตัดและขาดเท่าไร
+        await addDoc(collection(db, "transactions"), {
+          type: "จ่าย", code: clothingId,
+          name: `${r.clothingName} / ${r.colorName} / ${r.size}`,
+          qty: r.taken, by: user.name, date: now(),
+          note: `${reason} ${run.runNo} · ${run.customerName}` +
+            (r.short > 0 ? ` (ขาด ${r.short} — ค้างตัดทีหลัง${r.reason ? ` · ${r.reason}` : ""})` : ""),
+          stockAffected: r.taken > 0,
+          ...(r.before != null ? { stockBefore: r.before, stockAfter: r.after } : {}),
+          createdAt: serverTimestamp(), category: "เสื้อผ้า",
+        });
+      }
     }
-    for (const it of items) {
-      await addDoc(collection(db, "transactions"), {
-        type: sign < 0 ? "จ่าย" : "รับ", code: it.clothingId,
-        name: `${it.clothingName} / ${it.colorName} / ${it.size}`,
-        qty: Number(it.qty) || 0, by: user.name, date: now(),
-        note: `${reason} ${run.runNo} · ${run.customerName}`,
-        stockAffected: it.colorIdx != null && !!clothingItems.find(c => c.id === it.clothingId),
-        createdAt: serverTimestamp(), category: "เสื้อผ้า",
-      });
+    const shortQty = Object.values(short).reduce((a, v) => a + (Number(v) || 0), 0);
+    return { short, takenQty, shortQty };
+  };
+
+  // 🔎 ประมาณก่อนกดยืนยันว่าจะค้างกี่ชิ้น — คิดจากภาพในจอ แค่ให้คนตัดสินใจ
+  //    ตัวเลขจริงคิดใหม่ใน transaction ตอนตัด
+  const previewPackRunShort = (lines) => {
+    let short = 0;
+    const by = new Map();
+    lines.forEach(l => { if (!by.has(l.clothingId)) by.set(l.clothingId, []); by.get(l.clothingId).push(l); });
+    for (const [cid, lns] of by) {
+      const item = clothingItems.find(c => c.id === cid);
+      if (!item) { short += lns.reduce((a, l) => a + l.qty, 0); continue; }
+      short += computeTakeUpTo(item.colors || [], lns).results.reduce((a, r) => a + r.short, 0);
     }
+    return short;
+  };
+
+  // ↩️ คืนสต๊อก "เฉพาะส่วนที่ตัดไปจริง"
+  //    ส่วนที่ค้างไม่เคยออกจากคลัง — ถ้าคืนเต็มยอดรอบ ของที่ไม่มีอยู่จริงจะเด้งเข้าคลัง
+  const restorePackRunStock = async (run, reason) => {
+    const lines = runTakenItems(run);
+    const byClothing = new Map();
+    for (const ln of lines) {
+      if (!ln.clothingId || ln.colorIdx == null) continue;
+      if (!clothingItems.find(c => c.id === ln.clothingId)) continue;
+      if (!byClothing.has(ln.clothingId)) byClothing.set(ln.clothingId, []);
+      byClothing.get(ln.clothingId).push(ln);
+    }
+    for (const [clothingId, lns] of byClothing) {
+      const { moves } = await applyStockDeltas(db, clothingId, lns.map(l => ({ colorIdx: l.colorIdx, size: l.size, delta: l.qty })));
+      for (const m of moves) {
+        const ln = lns.find(l => l.colorIdx === m.colorIdx && l.size === m.size) || {};
+        await addDoc(collection(db, "transactions"), {
+          type: "รับ", code: clothingId,
+          name: `${ln.clothingName || ""} / ${m.colorName || ln.colorName || ""} / ${m.size}`,
+          qty: m.delta, by: user.name, date: now(),
+          note: `${reason} ${run.runNo} · ${run.customerName}`,
+          stockAffected: true, stockBefore: m.before, stockAfter: m.after,
+          createdAt: serverTimestamp(), category: "เสื้อผ้า",
+        });
+      }
+    }
+    return lines.reduce((a, l) => a + l.qty, 0);
   };
 
   // 📥 ลงรายการทั้งชุดเข้ารอบ — เขียนครั้งเดียวด้วย increment หลายช่องพร้อมกัน
@@ -2677,6 +2728,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   const handleClosePackRun = async (run, cutStock = true) => {
     const total = Object.values(run.counts || {}).reduce((s, v) => s + (Number(v) || 0), 0);
     if (total <= 0) { alert("รอบนี้ยังไม่มีของ — ยังปิดไม่ได้"); return; }
+    const willShort = cutStock ? previewPackRunShort(runStockLines(run)) : 0;
     const NLx = String.fromCharCode(10);
     const msg = [
       `ปิดรอบ ${run.runNo} · ${run.customerName}?`, "",
@@ -2684,17 +2736,25 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       cutStock
         ? "จะตัดสต๊อกทั้งรอบทีเดียวตอนนี้"
         : "ยังไม่ตัดสต๊อก — ค่อยกดตัดทีหลังได้ที่รายการรอบที่ปิดแล้ว",
+      ...(cutStock && willShort > 0
+        ? ["", `⚠️ ของในระบบไม่พอประมาณ ${willShort.toLocaleString("th-TH")} ชิ้น`,
+            "ตัดเท่าที่มี ส่วนที่ขาดจะค้างไว้ — รับของเข้าคลังแล้วค่อยกด ✂️ ตัดส่วนที่ค้าง"]
+        : []),
       "", "ปิดแล้วออกบิลใบเดียวจากรอบนี้ได้เลย",
     ].join(NLx);
     if (!window.confirm(msg)) return;
-    if (cutStock) await applyPackRunStock(run, -1, "ตัดสต๊อกรอบแพ็ค");
+    const cut = cutStock
+      ? await cutPackRunLines(run, runStockLines(run), "ตัดสต๊อกรอบแพ็ค")
+      : { short: {}, shortQty: 0 };
     await updateDoc(doc(db, "packRuns", run.id), {
       status: "ปิดแล้ว", closedBy: user.name, closedAt: now(), totalQty: total, stockCut: !!cutStock,
+      stockShort: cut.short, stockShortQty: cut.shortQty,
     });
     logAudit(user, {
       action: AUDIT_ACTIONS.UPDATE, collection: "packRuns", targetId: run.id,
       targetLabel: `${run.runNo} · ${run.customerName}`,
-      note: `ปิดรอบ ${total} ชิ้น${cutStock ? " + ตัดสต๊อก" : " (ยังไม่ตัดสต๊อก)"}`,
+      note: `ปิดรอบ ${total} ชิ้น${cutStock ? " + ตัดสต๊อก" : " (ยังไม่ตัดสต๊อก)"}` +
+        (cut.shortQty > 0 ? ` · ค้างตัด ${cut.shortQty} ชิ้น` : ""),
     });
   };
 
@@ -2734,8 +2794,10 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     }
 
     const total = Object.values(run.counts || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+    // คืนเฉพาะที่ตัดออกไปจริง — ส่วนที่ค้างตัดไม่เคยออกจากคลัง
+    const takenTotal = run.stockCut ? total - shortOf(run) : 0;
     const backLine = run.stockCut
-      ? NL + `⚠️ รอบนี้ตัดสต๊อกไปแล้ว — จะคืนของ ${total.toLocaleString("th-TH")} ชิ้นกลับเข้าคลังก่อนลบ`
+      ? NL + `⚠️ รอบนี้ตัดสต๊อกไปแล้ว — จะคืนของ ${takenTotal.toLocaleString("th-TH")} ชิ้นกลับเข้าคลังก่อนลบ`
       : NL + "รอบนี้ยังไม่ได้ตัดสต๊อก — คลังไม่กระทบ";
     if (!window.confirm(
       `ลบรอบแพ็ค ${run.runNo} · ${run.customerName} ทิ้งถาวร?` + NL +
@@ -2747,7 +2809,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
     // คืนสต๊อกให้เสร็จก่อนลบเสมอ — ถ้าลบสำเร็จแต่คืนพลาด จะไม่เหลือข้อมูลให้คืนทีหลังเลย
     if (run.stockCut) {
-      try { await applyPackRunStock(run, +1, `คืนสต๊อก ลบรอบแพ็ค ${run.runNo}`); }
+      try { await restorePackRunStock(run, "คืนสต๊อก ลบรอบแพ็ค"); }
       catch (e) { alert("คืนสต๊อกไม่สำเร็จ: " + (e?.message || e) + NL + "ยังไม่ได้ลบรอบ"); return; }
     }
     try {
@@ -2788,22 +2850,91 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   const handleCutPackRunStock = async (run) => {
     if (!run || run.stockCut) return;
     const total = Object.values(run.counts || {}).reduce((s, v) => s + (Number(v) || 0), 0);
-    if (!window.confirm(`ตัดสต๊อกรอบ ${run.runNo}?` + String.fromCharCode(10, 10) +
-      `${total.toLocaleString("th-TH")} ชิ้น จะถูกหักออกจากคลังตอนนี้`)) return;
-    await applyPackRunStock(run, -1, "ตัดสต๊อกรอบแพ็ค (ตัดทีหลัง)");
-    await updateDoc(doc(db, "packRuns", run.id), { stockCut: true, stockCutBy: user.name, stockCutAt: now() });
+    const willShort = previewPackRunShort(runStockLines(run));
+    const NL = String.fromCharCode(10);
+    if (!window.confirm(`ตัดสต๊อกรอบ ${run.runNo}?` + NL + NL +
+      `${total.toLocaleString("th-TH")} ชิ้น จะถูกหักออกจากคลังตอนนี้` +
+      (willShort > 0
+        ? NL + NL + `⚠️ ของในระบบไม่พอประมาณ ${willShort.toLocaleString("th-TH")} ชิ้น` + NL +
+          "ตัดเท่าที่มี ส่วนที่ขาดจะค้างไว้ — รับของเข้าคลังแล้วค่อยกด ✂️ ตัดส่วนที่ค้าง"
+        : ""))) return;
+    const cut = await cutPackRunLines(run, runStockLines(run), "ตัดสต๊อกรอบแพ็ค (ตัดทีหลัง)");
+    await updateDoc(doc(db, "packRuns", run.id), {
+      stockCut: true, stockCutBy: user.name, stockCutAt: now(),
+      stockShort: cut.short, stockShortQty: cut.shortQty,
+    });
     logAudit(user, {
       action: AUDIT_ACTIONS.UPDATE, collection: "packRuns", targetId: run.id,
       targetLabel: `${run.runNo} · ${run.customerName}`,
-      note: `ตัดสต๊อกภายหลัง ${total} ชิ้น`,
+      note: `ตัดสต๊อกภายหลัง ${cut.takenQty} ชิ้น` + (cut.shortQty > 0 ? ` · ค้างตัด ${cut.shortQty} ชิ้น` : ""),
     });
+  };
+
+  // ⏳ ตามตัด "ส่วนที่ค้าง" ของรอบเดียว — หลังรับของเข้าคลังแล้ว
+  //    ตัดได้เท่าไรตัดเท่านั้น ที่ยังไม่พอก็ค้างต่อ ไม่หาย
+  const cutPackRunShortOnce = async (run) => {
+    const cut = await cutPackRunLines(run, runShortItems(run), "ตัดสต๊อกรอบแพ็ค (ส่วนที่ค้าง)");
+    await updateDoc(doc(db, "packRuns", run.id), { stockShort: cut.short, stockShortQty: cut.shortQty });
+    logAudit(user, {
+      action: AUDIT_ACTIONS.UPDATE, collection: "packRuns", targetId: run.id,
+      targetLabel: `${run.runNo} · ${run.customerName}`,
+      note: `ตัดส่วนที่ค้าง ${cut.takenQty} ชิ้น` + (cut.shortQty > 0 ? ` · ยังค้าง ${cut.shortQty} ชิ้น` : " · ครบแล้ว"),
+    });
+    return cut;
+  };
+
+  const handleCutPackRunShort = async (run) => {
+    const owe = shortOf(run);
+    if (!run || owe <= 0) return;
+    const NL = String.fromCharCode(10);
+    if (!window.confirm(`ตัดส่วนที่ค้างของรอบ ${run.runNo} · ${run.customerName}?` + NL + NL +
+      `ค้างอยู่ ${owe.toLocaleString("th-TH")} ชิ้น — ระบบจะตัดเท่าที่ตอนนี้มีในคลัง` + NL +
+      "ที่ยังไม่พอจะค้างต่อ ไม่หาย")) return;
+    const cut = await cutPackRunShortOnce(run);
+    alert(cut.shortQty > 0
+      ? `ตัดได้ ${cut.takenQty.toLocaleString("th-TH")} ชิ้น · ยังค้าง ${cut.shortQty.toLocaleString("th-TH")} ชิ้น` + NL + "ของในระบบยังไม่พอ — รับเข้าคลังเพิ่มแล้วกดอีกครั้ง"
+      : `ตัดครบแล้ว ${cut.takenQty.toLocaleString("th-TH")} ชิ้น`);
+  };
+
+  // ⏳ ตามตัดส่วนที่ค้าง "ทุกรอบ" ทีเดียว — หลังกรอกคลัง/นับสต๊อกเสร็จ
+  //    วันหนึ่งมี 6-7 รอบ ค้างทุกรอบเพราะคลังยังไม่ครบ ถ้าต้องไล่กดทีละรอบ
+  //    พอถึงวันที่กรอกคลังเสร็จจะมีเป็นสิบ ๆ รอบ คนจะไม่กดแล้วสต๊อกก็เพี้ยนต่อ
+  //    ไล่จากรอบเก่าไปใหม่ (เลขรอบเรียงตามเวลา) — ของที่ส่งก่อนควรกินสต๊อกก่อน
+  const handleCutAllPackRunShort = async () => {
+    const pending = packRuns
+      .filter(r => r.status === "ปิดแล้ว" && r.stockCut && shortOf(r) > 0)
+      .sort((a, b) => String(a.runNo || "").localeCompare(String(b.runNo || "")));
+    if (!pending.length) return;
+    const owe = pending.reduce((a, r) => a + shortOf(r), 0);
+    const NL = String.fromCharCode(10);
+    if (!window.confirm(`ตัดส่วนที่ค้างทั้งหมด ${pending.length} รอบ รวม ${owe.toLocaleString("th-TH")} ชิ้น?` + NL + NL +
+      "ไล่จากรอบเก่าไปใหม่ ตัดเท่าที่ตอนนี้มีในคลัง ที่ยังไม่พอจะค้างต่อ ไม่หาย")) return;
+    let took = 0, left = 0, done = 0;
+    for (const r of pending) {
+      try {
+        const cut = await cutPackRunShortOnce(r);
+        took += cut.takenQty; left += cut.shortQty; done++;
+      } catch (e) {
+        alert(`หยุดที่รอบ ${r.runNo}: ${e?.message || e}` + NL + `ทำไปแล้ว ${done} รอบ ตัดได้ ${took} ชิ้น`);
+        return;
+      }
+    }
+    alert(`ตัดส่วนที่ค้างเสร็จ ${done} รอบ` + NL +
+      `ตัดได้ ${took.toLocaleString("th-TH")} ชิ้น` + (left > 0 ? ` · ยังค้าง ${left.toLocaleString("th-TH")} ชิ้น (ของในระบบยังไม่พอ)` : " · ครบทุกรอบแล้ว"));
   };
   const handleReopenPackRun = async (run) => {
     if (run.invoiceNo) { alert("รอบนี้ออกบิลไปแล้ว เปิดกลับไม่ได้ — ถ้าต้องแก้ ให้แก้ที่บิลแทน"); return; }
+    const takenTotal = run.stockCut ? runTakenItems(run).reduce((a, l) => a + l.qty, 0) : 0;
     if (!window.confirm(`เปิดรอบ ${run.runNo} กลับมาแก้?` + String.fromCharCode(10, 10) +
-      (run.stockCut ? "สต๊อกที่ตัดไปตอนปิดรอบจะถูกคืนกลับให้" : "รอบนี้ยังไม่ได้ตัดสต๊อก — คลังไม่กระทบ"))) return;
-    if (run.stockCut) await applyPackRunStock(run, +1, "คืนสต๊อก เปิดรอบแพ็คกลับ");
-    await updateDoc(doc(db, "packRuns", run.id), { status: "เปิดอยู่", stockCut: false, reopenedBy: user.name, reopenedAt: now() });
+      (run.stockCut
+        ? `สต๊อกที่ตัดไปจริง ${takenTotal.toLocaleString("th-TH")} ชิ้นจะถูกคืนกลับให้` +
+          (shortOf(run) > 0 ? ` (ส่วนที่ค้างตัด ${shortOf(run)} ชิ้นไม่เคยออกจากคลัง ไม่ต้องคืน)` : "")
+        : "รอบนี้ยังไม่ได้ตัดสต๊อก — คลังไม่กระทบ"))) return;
+    if (run.stockCut) await restorePackRunStock(run, "คืนสต๊อก เปิดรอบแพ็คกลับ");
+    await updateDoc(doc(db, "packRuns", run.id), {
+      status: "เปิดอยู่", stockCut: false, stockShort: {}, stockShortQty: 0,
+      reopenedBy: user.name, reopenedAt: now(),
+    });
   };
 
   // ปิดรอบแล้ว → ออกบิลใบเดียวจากยอดทั้งรอบ (เปิดฟอร์มให้ ยังไม่บันทึกเอง)
@@ -4869,6 +5000,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               onBump={handleBumpPackRun}
               onCloseRun={handleClosePackRun}
               onCutStock={handleCutPackRunStock}
+              onCutShort={handleCutPackRunShort}
+              onCutAllShort={handleCutAllPackRunShort}
               onReopenRun={handleReopenPackRun}
               onCancelRun={handleCancelPackRun}
               onDeleteRun={handleDeletePackRun}
