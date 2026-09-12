@@ -88,12 +88,23 @@ export function installCrashHandlers() {
   //      · เครื่อง sleep — ช่องว่างจะเป็นนาที ๆ ตัดทิ้งด้วยเพดาน 120 วิ
   let last = Date.now();
   let printing = false;
-  window.addEventListener("beforeprint", () => { printing = true; });
-  window.addEventListener("afterprint", () => { printing = false; last = Date.now(); });
+  let printingSince = 0;
+  const stopPrinting = () => { printing = false; last = Date.now(); };
+  window.addEventListener("beforeprint", () => { printing = true; printingSince = Date.now(); });
+  window.addEventListener("afterprint", stopPrinting);
+  // ⚠️ afterprint ไม่ยิงเสมอไป — เคสจริง: เครื่องพิมพ์ไม่ได้เปิด กดยกเลิกตอนหน้าตัวอย่างยังไม่เสร็จ
+  //    ถ้าพึ่ง afterprint ทางเดียว ธงนี้จะค้างเป็น true แล้วตัวจับอาการค้างตายไปทั้ง session
+  //    จึงปลดธงด้วยทางอื่นด้วย: เลิกอยู่ในโหมดพิมพ์ · หน้าต่างได้โฟกัสกลับ · และเพดานเวลา
+  try {
+    window.matchMedia("print").addEventListener("change", (e) => { if (!e.matches) stopPrinting(); });
+  } catch { /* เบราว์เซอร์เก่า */ }
+  window.addEventListener("focus", () => { if (printing) stopPrinting(); });
   document.addEventListener("visibilitychange", () => { last = Date.now(); });
   setInterval(() => {
     const gap = Date.now() - last;
     last = Date.now();
+    // กล่องพิมพ์เปิดค้างเกิน 3 นาทีถือว่าไม่ปกติ ปลดธงเองกันตัวจับตายค้าง
+    if (printing && Date.now() - printingSince > 180000) stopPrinting();
     if (printing || document.hidden) return;
     if (gap > 6000 && gap < 120000) {
       recordCrash("freeze", { msg: `หน้าค้างไม่ตอบสนอง ${Math.round(gap / 1000)} วินาที` });

@@ -104,6 +104,41 @@ export const scaleFontInElement = (root, factor = PRINT_FONT_SCALE) => {
 //    บวก padding ในตัวเอกสารเอง — แต่ padding มีผลแค่จุดที่เนื้อหาเริ่ม (หน้าแรก) เท่านั้น
 //    หน้า 2 เป็นต้นไปจึงได้แค่ขอบกระดาษ ทำให้ชิดบนกว่าหน้าแรก
 //    แก้โดยย้ายระยะบนทั้งหมดไปไว้ที่ @page margin-top → ทุกหน้าเว้นเท่ากัน
+// 🧯 กู้หน้าจอกลับมาให้ได้เสมอหลังกล่องพิมพ์ปิด
+//
+// ตอนพิมพ์ ทุกอย่างใน <body> ถูกซ่อนด้วย display:none แล้วเอาเอกสารที่จะพิมพ์ขึ้นแทน
+// ถ้าไม่มีอะไรมาคืนค่า หน้าจอจะว่างเปล่า กดอะไรไม่ได้เลย — ดูเหมือนโปรแกรมค้าง
+//
+// เดิมพึ่ง afterprint ทางเดียว มีตัวสำรองที่ 60 วินาที
+// เคสจริงที่เจอ: เครื่องพิมพ์ยังไม่เปิด → Windows ค้นหาเครื่องพิมพ์ค้าง → กดยกเลิกตอนที่
+// หน้าตัวอย่างพิมพ์ยังตั้งต้นไม่เสร็จ → Chrome ไม่ยิง afterprint → หน้าจอว่างไป 60 วินาทีเต็ม
+//
+// จึงดักหลายทาง ใครถึงก่อนก็ได้ (cleanup กันเรียกซ้ำด้วย done อยู่แล้ว):
+//   · afterprint                 — ทางปกติ
+//   · เลิกอยู่ในโหมดพิมพ์         — matchMedia("print") เปลี่ยนกลับเป็น false
+//   · หน้าต่างได้โฟกัสกลับมา      — กล่องพิมพ์ปิดแล้วแน่นอน (ตัวที่ช่วยเคสกดยกเลิก)
+//   · กด Esc                     — ทางออกสุดท้ายให้คนกดเองถ้ายังค้าง
+const bindPrintCleanup = (cleanup) => {
+  const onKey = (e) => { if (e.key === "Escape") finish(); };
+  const onFocus = () => setTimeout(finish, 200);
+  const mq = typeof window.matchMedia === "function" ? window.matchMedia("print") : null;
+  const onMq = (e) => { if (!e.matches) finish(); };
+  let armed = false;
+  function finish() {
+    window.removeEventListener("afterprint", finish);
+    window.removeEventListener("focus", onFocus);
+    document.removeEventListener("keydown", onKey, true);
+    try { mq?.removeEventListener?.("change", onMq); } catch (err) { /* เบราว์เซอร์เก่า */ }
+    cleanup();
+  }
+  window.addEventListener("afterprint", finish);
+  document.addEventListener("keydown", onKey, true);
+  try { mq?.addEventListener?.("change", onMq); } catch (err) { /* เบราว์เซอร์เก่า */ }
+  // ⚠️ ดักโฟกัสได้ "หลัง" สั่งพิมพ์ไปแล้วเท่านั้น — ถ้าดักตั้งแต่แรก โฟกัสที่เด้งกลับ
+  //    จากการกดปุ่มพิมพ์เองจะไปสั่งเก็บกวาดตั้งแต่ยังไม่ทันได้พิมพ์
+  return () => { if (!armed) { armed = true; window.addEventListener("focus", onFocus); } };
+};
+
 export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10mm", fontScale = PRINT_FONT_SCALE, pageMarginTop = null, pageMarginBottom = null) => {
   const el = document.getElementById(id);
   if (!el) return;
@@ -314,7 +349,7 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
     document.body.style.background = prevBody.background;
     window.removeEventListener("afterprint", cleanup);
   };
-  window.addEventListener("afterprint", cleanup);
+  const armPrintFocus = bindPrintCleanup(cleanup);
 
   const imgs = Array.from(root.querySelectorAll("img"));
   const waitImgs = Promise.all(imgs.map(im =>
@@ -327,7 +362,9 @@ export const printElementById = (id, pageSize = "A4 portrait", pageMargin = "10m
   Promise.all([waitImgs, fontsReady]).then(() => {
     setTimeout(() => {
       try { window.print(); } catch (e) { console.warn("[print] failed:", e); }
-      // เผื่อ afterprint ไม่ยิง (บางมือถือ) — เก็บกวาดหลัง 60 วิ
+      armPrintFocus();
+      // ตัวสำรองสุดท้าย เผื่อไม่มีสัญญาณไหนมาเลย — ไม่ลดให้สั้นกว่านี้
+      // เพราะบนแท็บเล็ตคนอาจค้างอยู่ในกล่องพิมพ์นาน เก็บกวาดก่อนจะได้กระดาษเปล่า
       setTimeout(cleanup, 60000);
     }, 120);
   });
@@ -516,13 +553,17 @@ export const printInvoiceCopies = (id, labels = ["ใบส่งของ/ใ�
     document.body.style.background = prevBody2.background;
     window.removeEventListener("afterprint", cleanup);
   };
-  window.addEventListener("afterprint", cleanup);
+  const armPrintFocus2 = bindPrintCleanup(cleanup);
 
   const imgs = Array.from(root.querySelectorAll("img"));
   const waitImgs = Promise.all(imgs.map(im => (im.complete && im.naturalWidth > 0) ? Promise.resolve() : new Promise(res => { im.onload = res; im.onerror = res; setTimeout(res, 3000); })));
   const fontsReady = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
   Promise.all([waitImgs, fontsReady]).then(() => {
-    setTimeout(() => { try { window.print(); } catch (e) {} setTimeout(cleanup, 60000); }, 120);
+    setTimeout(() => {
+      try { window.print(); } catch (e) { console.warn("[print] failed:", e); }
+      armPrintFocus2();
+      setTimeout(cleanup, 60000);
+    }, 120);
   });
 };
 
