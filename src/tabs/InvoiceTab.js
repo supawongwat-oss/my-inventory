@@ -83,6 +83,7 @@ export default function InvoiceTab({
   handleUpdateInvoiceStatus,
   handleConvertQuotation,
   handleUnmergeInvoice,
+  canVoidInvoice = false,  // 🔒 ยกเลิก/ลบบิล — admin/manager ตามตำแหน่ง ไม่ใช่สวิตช์ canDelete รายคน
   handleEditInvoice,
   handleDeleteInvoice, handleCancelInvoice, handleRejectCancel, user,
   handleBulkCancelInvoices, handleBulkDeleteInvoices,
@@ -261,9 +262,9 @@ export default function InvoiceTab({
             {/* 🚫 / 🗑 ย้ายมาไว้ตรงนี้ — เดิมกองอยู่ท้ายทุกแถว 5 ปุ่ม จิ้มผิดง่ายและอ่านตารางยาก */}
             <button onClick={() => handleBulkCancelInvoices?.(sel)}
               style={{ padding: "8px 14px", borderRadius: 9, border: "1px solid rgba(217,119,6,0.4)", background: "rgba(217,119,6,0.1)", color: "#b45309", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Sarabun',sans-serif" }}>
-              {role.canDelete ? "🚫 ยกเลิกบิล" : "🙋 ขอยกเลิก"}
+              {canVoidInvoice ? "🚫 ยกเลิกบิล" : "🙋 ขอยกเลิก"}
             </button>
-            {role.canDelete && (
+            {canVoidInvoice && (
               <button onClick={() => handleBulkDeleteInvoices?.(sel)}
                 style={{ padding: "8px 12px", borderRadius: 9, border: "1px solid rgba(185,74,72,0.35)", background: "rgba(185,74,72,0.08)", color: T.red, cursor: "pointer", fontSize: 13, fontFamily: "'Sarabun',sans-serif" }}>🗑 ลบ</button>
             )}
@@ -489,13 +490,13 @@ export default function InvoiceTab({
                                       {inv.convertedTo && (
                                         <span title={`แปลงเป็น ${inv.convertedTo.invoiceNo} แล้ว`} style={{ padding: "4px 6px", borderRadius: 7, background: "rgba(58,122,82,0.06)", color: T.green, fontSize: 10, fontFamily: "'Sarabun',sans-serif" }}>✓ แปลงแล้ว</span>
                                       )}
-                                      {inv.mergedFrom?.length > 0 && role.canDelete && (
+                                      {inv.mergedFrom?.length > 0 && canVoidInvoice && (
                                         <button onClick={() => handleUnmergeInvoice(inv)} title="ยกเลิกการรวม — คืนบิลเดิม" style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(184,134,0,0.3)", background: "rgba(184,134,0,0.08)", color: T.amber, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>🔓</button>
                                       )}
                                       {role.canIssueInvoice !== false && <button onClick={() => handleEditInvoice(inv)} title="แก้ไข" style={{ padding: "4px 7px", borderRadius: 7, border: "1px solid rgba(184,134,0,0.3)", background: "rgba(184,134,0,0.08)", color: T.amber, cursor: "pointer", fontSize: 11, fontFamily: "'Sarabun',sans-serif" }}>✏️</button>}
                                       {/* ปุ่ม 🚫 ยกเลิก / 🗑 ลบ ย้ายไปแถบเลือกด้านล่างแล้ว
                                           ติ๊กแถวที่ต้องการ แล้วสั่งทีเดียว — แถวนี้เหลือปุ่มที่ใช้บ่อยจริง */}
-                                      {inv.cancelRequest && (role.canDelete ? (
+                                      {inv.cancelRequest && (canVoidInvoice ? (
                                         <>
                                           <span title={`${inv.cancelRequest.by} ขอเมื่อ ${inv.cancelRequest.at}${inv.cancelRequest.reason ? ` — ${inv.cancelRequest.reason}` : ""}`}
                                             style={{ padding: "3px 7px", borderRadius: 7, background: "rgba(217,119,6,0.12)", color: "#b45309", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>

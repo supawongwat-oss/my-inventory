@@ -714,6 +714,16 @@ export default function App() {
   // ผสาน permission ของ role กับ override ต่อคน (user.permissions)
   const role = user ? { ...ROLES[user.role], ...(user.permissions||{}) } : null;
 
+  // 🔒 ยกเลิก/ลบบิล — ดูจาก "ตำแหน่ง" เท่านั้น ห้ามอ่านจาก role.canDelete
+  //
+  //    role ข้างบนรวม user.permissions ที่เปิดปิดรายคนได้ในหน้าจัดการผู้ใช้
+  //    เคสจริง 14/09/2569: บัญชีพนักงานถูกเปิด canDelete ไว้ → ลบบิล INV6909-0069 ดาวกีฬา ได้
+  //    เจ้าของร้านกำหนดว่า บิลใบไหนก็ตาม ยกเลิกหรือลบได้เฉพาะ admin กับ manager
+  //    ไม่มีข้อยกเว้นรายคน — สวิตช์ canDelete ของพนักงานยังคุมอย่างอื่นได้ แต่ไม่ถึงบิล
+  //
+  //    พนักงานยังกด "🙋 ขอยกเลิก" ได้ — เป็นแค่คำขอเก็บไว้ในบิล บิลไม่ขยับจนกว่า admin/manager อนุมัติ
+  const canVoidInvoice = user?.role === "admin" || user?.role === "manager";
+
   const now = () => {
     const d = new Date();
     return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
@@ -3705,6 +3715,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   // 🔗 ยกเลิกการรวม — ปลด flag ออกจากบิลเดิม + ลบบิลรวม
   const handleUnmergeInvoice = async (mergedInv) => {
     if (!mergedInv?.mergedFrom?.length) return;
+    // 🔒 ยกเลิกการรวม = ลบบิลรวมทิ้ง — เดิมไม่เช็คสิทธิ์เลย กันแค่ซ่อนปุ่ม
+    if (!canVoidInvoice) { alert("ยกเลิกการรวมบิลได้เฉพาะผู้ดูแลระบบและผู้จัดการ — เพราะบิลรวมจะถูกลบ"); return; }
     if (!window.confirm(`ยกเลิกการรวมบิล ${mergedInv.invoiceNo}?\n\nบิลเดิม ${mergedInv.mergedFrom.length} ใบจะกลับมาแสดง และบิลรวมนี้จะถูกลบ`)) return;
     try {
       for (const src of mergedInv.mergedFrom) {
@@ -3850,10 +3862,9 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   const handleDeleteInvoice = async (inv) => {
     if (!inv) return;
 
-    // 🔒 ลบบิลได้เฉพาะ admin/manager
-    //    เดิมกันด้วยการซ่อนปุ่มอย่างเดียว ซึ่งกันได้แค่ "มองไม่เห็น"
-    //    ตัวฟังก์ชันเองไม่เคยตรวจสิทธิ์ — เช็คซ้ำตรงนี้ให้ตรงกับที่ประกาศไว้ใน ROLES
-    if (!role?.canDelete) { alert("ลบบิลได้เฉพาะผู้ดูแลระบบและผู้จัดการ"); return; }
+    // 🔒 ลบบิลได้เฉพาะ admin/manager ตามตำแหน่ง (canVoidInvoice)
+    //    เดิมเช็ค role.canDelete ซึ่งเปิดรายคนได้ — พนักงานที่ถูกเปิดไว้จึงลบบิลได้
+    if (!canVoidInvoice) { alert("ลบบิลได้เฉพาะผู้ดูแลระบบและผู้จัดการ"); return; }
 
     // 🔐 บิลที่เก็บเงินแล้ว = admin เท่านั้น
     //    เงินเข้าไปแล้ว การลบทิ้งทำให้ยอดรับกับเอกสารไม่ตรงกัน และไล่ย้อนไม่ได้ว่าเคยมีบิลนี้
@@ -4171,7 +4182,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     if (!inv) return;
     if ((inv.status || "") === "ยกเลิก") { alert("บิลนี้ยกเลิกไปแล้ว"); return; }
 
-    const canDecide = !!role?.canDelete;   // admin + manager
+    const canDecide = canVoidInvoice;   // admin + manager ตามตำแหน่ง — สวิตช์รายคนไม่มีผล
     if (!canDecide) {
       if (inv.cancelRequest) { alert("ส่งคำขอยกเลิกไปแล้ว รออนุมัติอยู่"); return; }
       const reason = window.prompt(`ขอยกเลิกบิล ${inv.invoiceNo}` +
@@ -4206,7 +4217,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
   // ปฏิเสธคำขอยกเลิกของ staff
   const handleRejectCancel = async (inv) => {
-    if (!inv?.cancelRequest || !role?.canDelete) return;
+    if (!inv?.cancelRequest || !canVoidInvoice) return;
     if (!window.confirm(`ไม่อนุมัติคำขอยกเลิกบิล ${inv.invoiceNo} ของ ${inv.cancelRequest.by}?`)) return;
     await updateDoc(doc(db, "invoices", inv.id), { cancelRequest: null });
     logAudit(user, {
@@ -4223,7 +4234,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     if (!targets.length) { alert("บิลที่เลือกยกเลิกไปแล้วทั้งหมด"); return; }
 
     // staff → ยื่นคำขอทีเดียวทั้งชุด
-    if (!role?.canDelete) {
+    if (!canVoidInvoice) {
       const pending = targets.filter(i => !i.cancelRequest);
       if (!pending.length) { alert("ส่งคำขอไปแล้วทั้งหมด รออนุมัติอยู่"); return; }
       const reason = window.prompt(`ขอยกเลิก ${pending.length} บิล` + NLx + NLx + "เหตุผล (ให้ผู้อนุมัติอ่าน):", "");
@@ -4266,7 +4277,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
   const handleBulkDeleteInvoices = async (list = []) => {
     const NLx = String.fromCharCode(10);
-    if (!role?.canDelete) { alert("ลบบิลได้เฉพาะผู้ดูแลระบบและผู้จัดการ"); return; }
+    if (!canVoidInvoice) { alert("ลบบิลได้เฉพาะผู้ดูแลระบบและผู้จัดการ"); return; }
     // คัดใบที่ลบไม่ได้ออกก่อน แล้วบอกเหตุผล — ดีกว่าลบไปครึ่งหนึ่งแล้วเงียบ
     const paidBlocked = list.filter(i => (i.status || "") === "ชำระแล้ว" && user?.role !== "admin");
     const stmtBlocked = list.filter(i => (statements || []).some(st =>
@@ -4292,6 +4303,8 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
 
   // ลบจริงโดยไม่ถามซ้ำ — ใช้จากการลบหลายใบ (ตัวถามอยู่ชั้นบนแล้ว)
   const handleDeleteInvoiceSilent = async (inv) => {
+    // ตัวเรียกชั้นบนเช็คแล้ว แต่ฟังก์ชันที่ลบบิลต้องกันตัวเองด้วย — วันหน้ามีคนเรียกจากที่อื่นจะได้ไม่หลุด
+    if (!canVoidInvoice) throw new Error("ลบบิลได้เฉพาะผู้ดูแลระบบและผู้จัดการ");
     const ownedImgs = ownedImagePathsOf(inv);
     await deleteDoc(doc(db, "invoices", inv.id));
     if (ownedImgs.length) {
@@ -5133,6 +5146,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               handleUpdateInvoiceStatus={handleUpdateInvoiceStatus}
               handleConvertQuotation={handleConvertQuotation}
               handleUnmergeInvoice={handleUnmergeInvoice}
+              canVoidInvoice={canVoidInvoice}
               handleEditInvoice={handleEditInvoice}
               handleDeleteInvoice={handleDeleteInvoice}
               handleCancelInvoice={handleCancelInvoice}
