@@ -3465,12 +3465,13 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
     const dups = [...new Map(parts.flatMap(p => findDuplicateInvoices(dupPool, {
       customerId: invoiceForm.customerId, customerName: invoiceForm.customerName,
       total: calcOf(p).total, date: docDateStr,
+      items: p.items || [],   // เทียบรายการด้วย — ร้านที่ขายราคาเดียวทุกชิ้น ยอดตรงกันได้ทั้งที่ของคนละชุด
     })).map(d => [d.id || d.invoiceNo, d])).values()];
     if (dups.length > 0) {
       const lines = dups.slice(0, 5).map(d => `  • ${d.invoiceNo} · ${(d.date || "").split(" ")[0]} · ฿${(Number(d.total) || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}`);
       const NLx = String.fromCharCode(10);
       const ok = window.confirm([
-        `เคยออกบิลยอดนี้ให้ ${invoiceForm.customerName} ไปแล้ว ${dups.length} ใบ`, "",
+        `เคยออกบิลรายการเดียวกันทุกบรรทัด ยอดเท่ากัน ให้ ${invoiceForm.customerName} ไปแล้ว ${dups.length} ใบ`, "",
         ...lines,
         dups.length > 5 ? `  … และอีก ${dups.length - 5} ใบ` : "", "",
         "ออกอีกใบ = ลูกค้าจะโดนเก็บเงิน 2 รอบ", "",

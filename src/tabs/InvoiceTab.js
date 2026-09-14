@@ -429,9 +429,9 @@ export default function InvoiceTab({
                                           );
                                         })()}
                                         {dupMap.has(inv.id) && (
-                                          <span title={`ยอดเท่ากับ: ${dupMap.get(inv.id).map(o => `${o.invoiceNo} (${(o.date || "").split(" ")[0]})`).join(", ")}\nตรวจว่าออกซ้ำหรือไม่ — ถ้าซ้ำให้ยกเลิกใบที่เกิน`}
+                                          <span title={`รายการสินค้าและยอดเหมือนกันทุกบรรทัดกับ: ${dupMap.get(inv.id).map(o => `${o.invoiceNo} (${(o.date || "").split(" ")[0]})`).join(", ")}\nตรวจว่าออกซ้ำหรือไม่ — ถ้าซ้ำให้ยกเลิกใบที่เกิน`}
                                             style={{ padding: "1px 6px", fontSize: 9, background: "rgba(185,74,72,0.15)", color: T.red, borderRadius: 5, fontWeight: 700, cursor: "help" }}>
-                                            🔁 ยอดซ้ำ ×{dupMap.get(inv.id).length + 1}
+                                            🔁 บิลซ้ำ ×{dupMap.get(inv.id).length + 1}
                                           </span>
                                         )}
                                       </div>
