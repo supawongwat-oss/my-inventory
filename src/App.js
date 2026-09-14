@@ -55,6 +55,7 @@ const BackupRestore = lazy(() => import("./components/BackupRestore"));
 // 🧹 ล้างพื้นที่ Storage — ใช้นาน ๆ ครั้ง โหลดเฉพาะตอนเปิดแท็บ
 const StorageCleanup = lazy(() => import("./components/StorageCleanup"));
 const EmbeddedImageMigrator = lazy(() => import("./components/EmbeddedImageMigrator"));
+const RestoreDeletedInvoices = lazy(() => import("./components/RestoreDeletedInvoices"));
 const DuplicateOrderCleanup = lazy(() => import("./components/DuplicateOrderCleanup"));
 const OrderLinkBackfill = lazy(() => import("./components/OrderLinkBackfill"));
 const TransactionsTab = lazy(() => import("./tabs/TransactionsTab"));
@@ -6428,11 +6429,16 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           )}
 
           {settingsTab==="backup"&&user.role==="admin"&&(
-            <BackupRestore
-              projectId={(typeof process !== "undefined" && process.env && process.env.REACT_APP_FB_PROJECT_ID) || "cpu-erp"}
-              user={user}
-              role={role}
-            />
+            <>
+              <BackupRestore
+                projectId={(typeof process !== "undefined" && process.env && process.env.REACT_APP_FB_PROJECT_ID) || "cpu-erp"}
+                user={user}
+                role={role}
+              />
+              {/* ♻️ กู้บิลที่ถูกลบทีละใบ — อยู่ข้างปุ่มกู้คืนทั้งระบบโดยตั้งใจ คนที่มาหาทางกู้จะเจอตัวนี้ก่อน
+                  ปุ่มด้านบนย้อนทุกอย่างหลังเวลาสำรอง ห้ามใช้เอาบิลใบเดียวคืน */}
+              <RestoreDeletedInvoices user={user} role={role}/>
+            </>
           )}
 
           {settingsTab==="dupes"&&user.role==="admin"&&(
