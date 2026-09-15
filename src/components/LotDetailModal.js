@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Modal, MHead, BtnPrimary, BtnGhost, BtnDanger, Toast } from "./ui";
 import { consumeMaterialsForOrder, stockFinishedForLot as stockFinishedForLotUtil } from "../utils/productionEffects";
-import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, onSnapshot, query, where, documentId, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, where, documentId, serverTimestamp, runTransaction } from "firebase/firestore";
 import { db } from "../firebase";
 import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import {
@@ -10,6 +10,7 @@ import {
   getMachineForCurrentStage,
   estimateRolls, ROLL_CAPACITY, packIntoRolls, nextLotId, summarizeRollNos,
   lotItemKey, lotItemDeltas, balanceTargets, applyDeltasToLot, isLeftoverLot,
+  newLotRev, STALE_LOTS_MSG,
 } from "../utils/productionLots";
 import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
 import { TEAMS_DOC, getStageList, getStageTeams, teamInfo } from "../utils/stageTeams";
@@ -137,13 +138,30 @@ export default function LotDetailModal({
     });
     const newItems = Array.from(merged.values());
     const newTotalQty = newItems.reduce((s, it) => s + it.qty, 0);
-    await updateDoc(doc(db, collectionName, order.id), {
-      lots: newLots,
-      items: newItems,
-      totalQty: newTotalQty,
-      ...extras,
-      lastLotUpdate: serverTimestamp(),
+    // 🔒 เขียนเมื่อ "ยังเป็นเวอร์ชันเดียวกับที่หน้าต่างนี้เห็น" เท่านั้น
+    //    ใครแก้ล็อตไประหว่างนั้น (เครื่องอื่น / ลากบนกระดาน) เลขจะไม่ตรง → ไม่เขียน ไม่ทับของเขา
+    const ref = doc(db, collectionName, order.id);
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new Error("ไม่พบใบสั่งผลิตนี้แล้ว — อาจถูกลบหรือเก็บเข้าประวัติ");
+      if ((snap.data().lotRev || "") !== (order.lotRev || "")) throw Object.assign(new Error(STALE_LOTS_MSG), { code: "STALE_LOTS" });
+      tx.update(ref, {
+        lots: newLots,
+        items: newItems,
+        totalQty: newTotalQty,
+        ...extras,
+        lotRev: newLotRev(),
+        lastLotUpdate: serverTimestamp(),
+      });
     });
+  };
+
+  // 🔒 ตรวจเวอร์ชันก่อนทำอะไรที่ย้อนไม่ได้ (บวกสต๊อก / ตัดวัตถุดิบ)
+  //    ถ้ารอไปเจอตอนเขียนล็อต สต๊อกถูกบวกไปแล้วแต่ล็อตไม่ขยับ → กดซ้ำ = สต๊อกบวกสองรอบ
+  const ensureFreshLots = async () => {
+    const snap = await getDoc(doc(db, collectionName, order.id));
+    if (!snap.exists()) throw new Error("ไม่พบใบสั่งผลิตนี้แล้ว — อาจถูกลบหรือเก็บเข้าประวัติ");
+    if ((snap.data().lotRev || "") !== (order.lotRev || "")) throw Object.assign(new Error(STALE_LOTS_MSG), { code: "STALE_LOTS" });
   };
 
   // ── side effects (ใช้ util กลางเดียวกับ KanbanBoard — กันตัดสต๊อกไม่ตรงกัน) ──
@@ -178,6 +196,7 @@ export default function LotDetailModal({
     )) return;
     setBusy(true);
     try {
+      await ensureFreshLots();
       const clothing = clothingItems.find(c => c.id === order.clothingId);
       // เพิ่ม stock ตาม takes — ข้ามถ้า autoStock ปิด (แต่ยังลงบันทึกยอดให้)
       if (clothing) {
@@ -246,6 +265,7 @@ export default function LotDetailModal({
     }
     setBusy(true);
     try {
+      await ensureFreshLots();
       // consume materials ครั้งแรกที่ใบนี้ออกจาก "พิมพ์ลาย" (ระดับใบ ไม่ใช่ล็อต)
       const needsConsume = !isCustom && lot.status === "พิมพ์ลาย" && !order.materialsConsumed;
       if (needsConsume) await consumeMaterials();

@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { doc, setDoc, updateDoc, deleteDoc, onSnapshot } from "firebase/firestore";
+import { doc, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
-import { PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot, moveLot, getMachineForCurrentStage, nextLotId, summarizeRollNos, nowStr } from "../utils/productionLots";
+import { PRODUCTION_STEPS, STATUS_COLORS, getLots, totalQtyOfLot, moveLot, getMachineForCurrentStage, nextLotId, summarizeRollNos, nowStr, newLotRev } from "../utils/productionLots";
+import { logAudit, AUDIT_ACTIONS } from "../utils/audit";
 import { consumeMaterialsForOrder, stockFinishedForLot } from "../utils/productionEffects";
 import LotDetailModal from "./LotDetailModal";
 
@@ -16,7 +17,26 @@ export default function KanbanBoard({
   printElementById, companyInfo = {},
 }) {
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState(null); // { order, lotIdx }
+  // 🔎 ล็อตที่เปิดดูอยู่ — เก็บแค่ "รหัส" ไม่เก็บตัวใบสั่ง
+  //
+  //    เดิมเก็บ { order: lot.orderRef, lotIdx } = ภาพข้อมูล ณ ตอนกดเปิด แล้วหน้าต่างใช้ภาพนั้นไปจนปิด
+  //    ทุกปุ่มในหน้าต่างเขียนล็อตทั้งก้อนจากภาพนี้ — กดสองปุ่มติดกัน ปุ่มที่สองทับผลของปุ่มแรก
+  //    เคสจริง 15/09/2569 PRD6908-0009: แก้ L17 +693 สำเร็จ → กด "→ เย็บ" → +693 หาย
+  //
+  //    หาล็อตจาก lotId ไม่ใช่ลำดับ — แบ่งม้วน/รวมล็อตแล้วลำดับขยับ ลำดับเดิมจะชี้ผิดล็อต
+  const [selected, setSelected] = useState(null); // { orderId, collection, lotId }
+  const selectedLive = useMemo(() => {
+    if (!selected) return null;
+    const o = orders.find(x => x.id === selected.orderId && (x.__collection || defaultCollection) === selected.collection);
+    if (!o) return null;
+    const idx = getLots(o).findIndex(l => l.lotId === selected.lotId);
+    return idx >= 0 ? { order: o, lotIdx: idx } : null;
+  }, [selected, orders, defaultCollection]);
+  const openLot = (lot) => setSelected({
+    orderId: lot.orderId,
+    collection: lot.orderRef?.__collection || defaultCollection,
+    lotId: lot.lotId,
+  });
   const [collapsed, setCollapsed] = useState({});
   const [compact, setCompact] = useState(false); // 🗜️ ย่อการ์ดทั้งบอร์ด
   const [columnOrder, setColumnOrder] = useState(PRODUCTION_STEPS);
@@ -160,7 +180,17 @@ export default function KanbanBoard({
             }];
           }
         }
-        await updateDoc(doc(db, collectionName, orderRef.id), { lots: newLots, ...(needsConsume ? { materialsConsumed: true } : {}) });
+        // ขยับเลขเวอร์ชันด้วย — หน้าต่างล็อตที่เปิดค้างไว้จะรู้ว่าข้อมูลเปลี่ยน แล้วไม่เขียนทับ
+        await updateDoc(doc(db, collectionName, orderRef.id), {
+          lots: newLots, lotRev: newLotRev(), lastLotUpdate: serverTimestamp(),
+          ...(needsConsume ? { materialsConsumed: true } : {}),
+        });
+        // เดิมลากการ์ดไม่ลงประวัติเลย — ล็อตย้ายขั้นได้โดยไม่มีร่องรอยว่าใครทำ
+        logAudit(user, {
+          action: AUDIT_ACTIONS.PRODUCTION_STATUS, collection: collectionName, targetId: orderRef.id,
+          targetLabel: `${orderRef.prodNo || orderRef.orderNo || orderRef.id} · ${lot.lotId}`,
+          note: `${lot.status} → ${targetStatus} (ลากบนกระดาน)`,
+        });
       }
     } catch (e) {
       console.error("[kanban] move failed:", e);
@@ -399,7 +429,7 @@ export default function KanbanBoard({
                   ) : col.map(lot => (
                     <KanbanCard key={`${lot.orderId}-${lot.lotId}`} lot={lot} compact={compact}
                       overrideColor={orderColorByProdNo.get(lot.prodNo || lot.orderId)}
-                      onClick={() => setSelected({ order: lot.orderRef, lotIdx: lot.lotIdx })}
+                      onClick={() => openLot(lot)}
                       onDragStart={()=>setDraggingLot(lot)}
                       onDragEnd={()=>{ setDraggingLot(null); setDragOverStatus(null); }}
                       isDragging={draggingLot && draggingLot.orderId === lot.orderId && draggingLot.lotId === lot.lotId}
@@ -420,7 +450,7 @@ export default function KanbanBoard({
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:6,overflowY:"auto",flex:1}}>
               {cancelledLots.map(lot => (
-                <KanbanCard key={`${lot.orderId}-${lot.lotId}`} lot={lot} overrideColor={orderColorByProdNo.get(lot.prodNo || lot.orderId)} onClick={() => setSelected({ order: lot.orderRef, lotIdx: lot.lotIdx })}/>
+                <KanbanCard key={`${lot.orderId}-${lot.lotId}`} lot={lot} overrideColor={orderColorByProdNo.get(lot.prodNo || lot.orderId)} onClick={() => openLot(lot)}/>
               ))}
             </div>
           </div>
@@ -428,17 +458,17 @@ export default function KanbanBoard({
       </div>
 
       {/* Detail modal */}
-      {selected && (
+      {selected && selectedLive && (
         <LotDetailModal
-          order={selected.order}
-          lotIdx={selected.lotIdx}
+          order={selectedLive.order}
+          lotIdx={selectedLive.lotIdx}
           user={user}
           role={role}
           products={products}
           clothingItems={clothingItems}
           employees={employees}
-          collectionName={selected.order.__collection || defaultCollection}
-          isCustom={selected.order.__isCustom ?? defaultIsCustom}
+          collectionName={selectedLive.order.__collection || defaultCollection}
+          isCustom={selectedLive.order.__isCustom ?? defaultIsCustom}
           steps={columnOrder}
           printElementById={printElementById}
           companyInfo={companyInfo}

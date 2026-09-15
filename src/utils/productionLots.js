@@ -290,3 +290,14 @@ export function applyDeltasToLot(lots = [], editedIdx, editedItems = [], targetI
     .filter((_, i) => !(i === editedIdx && editedRemoved) && !(i === targetIdx && targetRemoved));
   return { lots: out, short, editedRemoved, targetRemoved };
 }
+
+// 🔢 เลขเวอร์ชันของ lots — ขยับทุกครั้งที่เขียนล็อตทั้งก้อน
+//
+// ล็อตเก็บเป็นอาเรย์ในเอกสารเดียว เขียนทีไรเขียนทั้งก้อน — ใครถือภาพเก่าแล้วเขียน = ทับของคนอื่นเงียบ ๆ
+// เคสจริง 15/09/2569 PRD6908-0009: หน้าต่างล็อตถือภาพตอนเปิด แก้ L17 +693 สำเร็จ
+// แล้วกด "→ เย็บ" ในหน้าต่างเดิม → คำนวณจากภาพเก่า เขียนทับ → +693 หายอีกรอบ
+//
+// ใช้ค่าที่สร้างฝั่งเครื่อง ไม่ใช่ serverTimestamp — snapshot ของเราเองจะเห็นค่านี้ทันที
+// (serverTimestamp ช่วงรอเซิร์ฟเวอร์ตอบเป็น null → กดปุ่มถัดไปเร็ว ๆ จะโดนกันทั้งที่ไม่มีใครแก้)
+export const newLotRev = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+export const STALE_LOTS_MSG = "ข้อมูลล็อตถูกแก้จากที่อื่นระหว่างที่เปิดหน้าต่างนี้อยู่ — ยังไม่ได้บันทึกอะไร ปิดหน้าต่างแล้วเปิดใหม่";
