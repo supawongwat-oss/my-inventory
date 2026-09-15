@@ -100,6 +100,19 @@ export function installCrashHandlers() {
   } catch { /* เบราว์เซอร์เก่า */ }
   window.addEventListener("focus", () => { if (printing) stopPrinting(); });
   document.addEventListener("visibilitychange", () => { last = Date.now(); });
+
+  // 💬 กล่อง alert / confirm / prompt หยุดหน้าไว้จนกว่าคนจะกดตกลง — ไม่ใช่อาการค้าง
+  //    เคสจริง 15/09/2569: บันทึก "ค้าง 8 วินาที" หน้า STOCK หน่วยความจำแค่ 22 MB
+  //    หน้านั้นมีกล่องยืนยันรับ/จ่ายของ คนอ่าน 8 วินาทีแล้วกด ตัวจับนับเป็นค้างทั้งที่ไม่ใช่
+  //    ห่อทั้งสามตัวไว้ แล้วตั้งเวลาใหม่ทันทีที่กล่องปิด (finally รันก่อน timer ที่รอคิวอยู่เสมอ)
+  ["alert", "confirm", "prompt"].forEach((name) => {
+    const orig = window[name];
+    if (typeof orig !== "function") return;
+    window[name] = function (...args) {
+      try { return orig.apply(window, args); }
+      finally { last = Date.now(); }
+    };
+  });
   setInterval(() => {
     const gap = Date.now() - last;
     last = Date.now();
