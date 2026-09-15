@@ -212,3 +212,81 @@ export function canMoveTo(currentStatus, targetStatus, role, steps = PRODUCTION_
   if (ti < 0) return false;
   return true;
 }
+
+// ── ⚖️ แก้รายการในล็อต แล้วยอดต้องไปอยู่ที่ไหนสักแห่ง ──
+//
+// persistLots คำนวณ order.items / totalQty ใหม่จากล็อตทุกครั้ง — ล็อตคือที่มาของยอดสั่งผลิต
+// ในระบบไม่มียอดสั่งเดิมเก็บแยกไว้ ดังนั้นแก้ล็อตหนึ่งให้ลดลง = ยอดสั่งผลิตทั้งใบลดตามเงียบ ๆ
+//
+// เคสจริง 15/09/2569 PRD6908-0009: แบ่งม้วนแล้วกรอก ฟ้า/L 1,200 ผิด (ที่ถูก 507)
+// กดแก้เป็น 507 → 693 ตัวไม่กลับเข้าล็อตใหญ่ (เหลือจาก…) ยอดทั้งใบหายจาก 45,000 เป็น 44,307
+// ของ 693 ตัวยังอยู่ในกองที่ยังไม่พิมพ์จริง ๆ แต่ระบบลืมไปแล้ว
+//
+// ตัวช่วยชุดนี้หาส่วนต่างรายบรรทัด แล้วย้ายไปคืน/ดึงกับล็อตอื่นในการเขียนครั้งเดียว
+
+const trimS = (v) => String(v ?? "").trim();
+// กุญแจเดียวกับที่ persistLots / รวมล็อต ใช้ — ตัดช่องว่างด้วย ไม่งั้นบรรทัดเดิมกับที่แก้
+// (ตัวแก้ trim ให้) จะกลายเป็นคนละบรรทัด แล้วได้ส่วนต่าง +/− ผี
+export const lotItemKey = (it) => [
+  trimS(it?.colorIdx), trimS(it?.colorName), trimS(it?.colorHex),
+  trimS(it?.size), trimS(it?.variant), trimS(it?.productionSize),
+].join("|");
+
+// ส่วนต่างรายบรรทัด (หลัง − ก่อน) → [{ key, delta, tpl }]  · tpl = แบบบรรทัดไว้สร้างบรรทัดใหม่ในล็อตปลายทาง
+export function lotItemDeltas(before = [], after = []) {
+  const m = new Map();
+  const add = (it, sign) => {
+    const q = Number(it?.qty) || 0;
+    if (!q) return;
+    const k = lotItemKey(it);
+    const cur = m.get(k) || { key: k, delta: 0, tpl: it };
+    cur.delta += sign * q;
+    if (sign > 0) cur.tpl = it;
+    m.set(k, cur);
+  };
+  before.forEach(it => add(it, -1));
+  after.forEach(it => add(it, +1));
+  return [...m.values()].filter(d => d.delta !== 0);
+}
+
+// ล็อตใหญ่ที่เหลือจากการแบ่งม้วน/แยกล็อต — ประวัติแรกขึ้นต้นว่า "เหลือจาก"
+export const isLeftoverLot = (l) => /^เหลือจาก/.test(String(l?.statusHistory?.[0]?.status || ""));
+
+// ล็อตที่คืน/ดึงยอดด้วยได้
+//   ไม่ใช่ล็อตที่แก้ · ไม่ยกเลิก · ยังไม่เข้าคลัง (เข้าคลังแล้วแตะยอดจะทำให้สต๊อกไม่ตรง)
+//   ค่าเริ่มต้น = ล็อตใหญ่ "เหลือจาก…" ตัวล่าสุด (ของที่ยังไม่แบ่งอยู่ที่นั่น) ไม่มีก็ล็อตที่ใหญ่ที่สุด
+export function balanceTargets(lots = [], editedIdx) {
+  const ok = lots.map((_, i) => i).filter(i =>
+    i !== editedIdx && lots[i] && (lots[i].status || "") !== "ยกเลิก" && !lots[i].finishedStocked);
+  if (!ok.length) return { options: [], def: null };
+  const leftovers = ok.filter(i => isLeftoverLot(lots[i]));
+  const def = leftovers.length
+    ? leftovers[leftovers.length - 1]
+    : ok.reduce((b, i) => (totalQtyOfLot(lots[i]) > totalQtyOfLot(lots[b]) ? i : b), ok[0]);
+  return { options: ok, def };
+}
+
+// ย้ายส่วนต่างไปที่ล็อตปลายทาง — ล็อตที่แก้ลด → ปลายทางเพิ่ม · ล็อตที่แก้เพิ่ม → ปลายทางลด
+// ปลายทางมีไม่พอให้ดึง → คืน short ไม่แตะอะไรเลย (ห้ามดึงจนติดลบ)
+// ล็อตที่เหลือ 0 ทุกบรรทัดถูกเอาออก — ล็อตเปล่าไม่มีความหมายและทำให้การ์ดรก
+export function applyDeltasToLot(lots = [], editedIdx, editedItems = [], targetIdx, deltas = []) {
+  const target = lots[targetIdx];
+  const items = (target?.items || []).map(it => ({ ...it, qty: Number(it.qty) || 0 }));
+  const short = [];
+  deltas.forEach(d => {
+    const i = items.findIndex(it => lotItemKey(it) === d.key);
+    const have = i >= 0 ? items[i].qty : 0;
+    const next = have - d.delta;
+    if (next < 0) { short.push({ key: d.key, tpl: d.tpl, need: d.delta, have }); return; }
+    if (i >= 0) items[i].qty = next;
+    else if (next > 0) { const { qty, ...rest } = d.tpl; items.push({ ...rest, qty: next }); }
+  });
+  if (short.length) return { lots, short, editedRemoved: false, targetRemoved: false };
+  const targetItems = items.filter(it => it.qty > 0);
+  const editedRemoved = editedItems.length === 0;
+  const targetRemoved = targetItems.length === 0;
+  const out = lots
+    .map((l, i) => (i === editedIdx ? { ...l, items: editedItems } : i === targetIdx ? { ...l, items: targetItems } : l))
+    .filter((_, i) => !(i === editedIdx && editedRemoved) && !(i === targetIdx && targetRemoved));
+  return { lots: out, short, editedRemoved, targetRemoved };
+}

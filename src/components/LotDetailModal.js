@@ -9,6 +9,7 @@ import {
   moveLot, splitLot, addLotNote, nextStep, canMoveTo, removeLot, nowStr,
   getMachineForCurrentStage,
   estimateRolls, ROLL_CAPACITY, packIntoRolls, nextLotId, summarizeRollNos,
+  lotItemKey, lotItemDeltas, balanceTargets, applyDeltasToLot, isLeftoverLot,
 } from "../utils/productionLots";
 import { compressImage, dataUrlSizeKB } from "../utils/imageCompress";
 import { TEAMS_DOC, getStageList, getStageTeams, teamInfo } from "../utils/stageTeams";
@@ -45,6 +46,9 @@ export default function LotDetailModal({
   const [lightbox, setLightbox] = useState(null);    // dataUrl
   const [editMode, setEditMode] = useState(false);
   const [editItems, setEditItems] = useState([]);
+  // ⚖️ ยอดที่เปลี่ยนตอนแก้ล็อต — "move" = คืน/ดึงกับล็อตอื่น (ยอดสั่งผลิตคงเดิม) · "order" = แก้ยอดทั้งใบ
+  const [balMode, setBalMode] = useState("move");
+  const [balTarget, setBalTarget] = useState(null);
   const [editMachine, setEditMachine] = useState(false);
   const [machineVal, setMachineVal] = useState("");
   const [rollVal, setRollVal] = useState("");
@@ -362,34 +366,66 @@ export default function LotDetailModal({
   // ── edit lot items (admin/manager) ──
   const startEdit = () => {
     setEditItems((lot.items || []).map(it => ({ ...it, qty: String(it.qty) })));
+    // ล็อตทั่วไป (ม้วน) แก้ยอด = ของย้ายกับกองใหญ่ · ถ้าแก้ตัวกองใหญ่เอง ส่วนใหญ่คือแก้ยอดทั้งใบ
+    // (เช่น คืนยอดที่เคยหายไป) จึงตั้งค่าเริ่มต้นต่างกัน — คนเปลี่ยนเองได้ก่อนกดบันทึก
+    const bt = balanceTargets(lots, lotIdx);
+    setBalTarget(bt.def);
+    setBalMode(bt.def != null && !isLeftoverLot(lot) ? "move" : "order");
     setEditMode(true);
   };
   const cancelEdit = () => { setEditMode(false); setEditItems([]); };
+  // normalize: qty เป็นเลข, trim ฟิลด์ string, ตัดแถวที่ qty <= 0
+  const cleanEditItems = (arr) => (arr || [])
+    .map(it => ({
+      ...it,
+      colorName: (it.colorName || "").trim(),
+      size: (it.size || "").trim(),
+      variant: (it.variant || "").trim(),
+      productionSize: (it.productionSize || "").trim(),
+      qty: Math.max(0, Number(it.qty) || 0),
+    }))
+    .filter(it => it.qty > 0);
+  const lineLabel = (it) => [it?.colorName, it?.variant, it?.productionSize || it?.size].filter(Boolean).join(" / ");
   const saveEdit = async () => {
     if (busy) return;
-    // normalize: qty เป็นเลข, trim ฟิลด์ string, ตัดแถวที่ qty <= 0
-    const cleaned = editItems
-      .map(it => ({
-        ...it,
-        colorName: (it.colorName || "").trim(),
-        size: (it.size || "").trim(),
-        variant: (it.variant || "").trim(),
-        productionSize: (it.productionSize || "").trim(),
-        qty: Math.max(0, Number(it.qty) || 0),
-      }))
-      .filter(it => it.qty > 0);
-    if (cleaned.length === 0) {
-      // อนุญาตให้ "ลบทุกรายการในล็อตนี้" → ล็อตจะถูกลบไป
-      if (!window.confirm("ทุกรายการในล็อตนี้มีจำนวน 0 — ลบทั้งล็อตเลยไหม?")) return;
+    const cleaned = cleanEditItems(editItems);
+    const NL = String.fromCharCode(10);
+    const deltas = lotItemDeltas(lot.items || [], cleaned);
+    const net = deltas.reduce((a, d) => a + d.delta, 0);
+    const orderTotal = lots.reduce((a, l) => a + totalQtyOfLot(l), 0);
+    const bt = balanceTargets(lots, lotIdx);
+    const useMove = deltas.length > 0 && balMode === "move" && bt.options.includes(balTarget);
+    const target = useMove ? lots[balTarget] : null;
+
+    let newLots;
+    let moved = null;
+    if (useMove) {
+      const r = applyDeltasToLot(lots, lotIdx, cleaned, balTarget, deltas);
+      if (r.short.length) {
+        alert(`ล็อต ${target.lotId} มีไม่พอให้ดึงมาเพิ่ม` + NL + NL +
+          r.short.map(x => `• ${lineLabel(x.tpl)}: ต้องการ ${fmtInt(x.need)} · มีอยู่ ${fmtInt(x.have)}`).join(NL) + NL + NL +
+          "เลือกล็อตอื่น หรือเลือก \"แก้ยอดสั่งผลิตทั้งใบ\" ถ้ายอดเดิมผิดตั้งแต่แรก");
+        return;
+      }
+      if (cleaned.length === 0 && !window.confirm(`ทุกรายการในล็อตนี้เป็น 0 — ล็อตนี้จะถูกลบ และของทั้งหมดคืนเข้าล็อต ${target.lotId}`)) return;
+      newLots = r.lots;
+      moved = { lotId: target.lotId, r };
+    } else {
+      if (cleaned.length === 0 && !window.confirm("ทุกรายการในล็อตนี้มีจำนวน 0 — ลบทั้งล็อตเลยไหม?")) return;
+      // ⚠️ ไม่ย้ายกับล็อตอื่น = ยอดสั่งผลิตทั้งใบเปลี่ยนตาม — ต้องให้เห็นตัวเลขก่อนกด
+      //    ของเดิมเปลี่ยนเงียบ ๆ จนยอดทั้งใบหายไป 693 ตัวโดยไม่มีใครรู้
+      if (net !== 0 && !window.confirm(
+        `ยอดสั่งผลิตทั้งใบจะ${net < 0 ? "ลด" : "เพิ่ม"}จาก ${fmtInt(orderTotal)} เป็น ${fmtInt(orderTotal + net)} ตัว` + NL + NL +
+        (bt.options.length
+          ? "ถ้าแค่กรอกผิดในล็อตนี้ และของส่วนต่างยังอยู่ในกองอื่น ให้กดยกเลิก แล้วเลือก \"ย้ายส่วนต่างกับล็อต\""
+          : "ใบนี้ไม่มีล็อตอื่นให้คืนยอด") + NL + NL + "ยืนยัน?"
+      )) return;
+      newLots = cleaned.length === 0
+        ? lots.filter((_, i) => i !== lotIdx)
+        : lots.map((l, i) => i === lotIdx ? { ...l, items: cleaned } : l);
     }
     setBusy(true);
     try {
-      let newLots;
-      if (cleaned.length === 0) {
-        newLots = lots.filter((_, i) => i !== lotIdx);
-      } else {
-        newLots = lots.map((l, i) => i === lotIdx ? { ...l, items: cleaned } : l);
-      }
       await persistLots(newLots);
       const beforeTotal = (lot.items || []).reduce((s,i)=>s+(Number(i.qty)||0), 0);
       const afterTotal = cleaned.reduce((s,i)=>s+i.qty, 0);
@@ -398,11 +434,16 @@ export default function LotDetailModal({
         collection: collectionName,
         targetId: order.id,
         targetLabel: `${order.prodNo} · ${lot.lotId}`,
-        note: `แก้ไขรายการล็อต (${cleaned.length} รายการ, ${afterTotal} ตัว · เปลี่ยนจาก ${beforeTotal} → ${afterTotal})`,
+        note: `แก้ไขรายการล็อต (${cleaned.length} รายการ, ${afterTotal} ตัว · เปลี่ยนจาก ${beforeTotal} → ${afterTotal})` +
+          (moved
+            ? ` · ส่วนต่างย้ายกับล็อต ${moved.lotId} (${deltas.map(d => `${lineLabel(d.tpl)} ${d.delta > 0 ? "+" : ""}${d.delta}`).join(", ")}) · ยอดสั่งผลิตคงเดิม ${orderTotal}`
+            : (net !== 0 ? ` · ยอดสั่งผลิตทั้งใบ ${orderTotal} → ${orderTotal + net}` : "")),
       });
       setToast(cleaned.length === 0
-        ? "ลบล็อตสำเร็จ"
-        : `บันทึกสำเร็จ · ${beforeTotal} → ${afterTotal} ตัว${beforeTotal !== afterTotal ? ` (${afterTotal > beforeTotal ? "+" : ""}${afterTotal - beforeTotal})` : ""}`);
+        ? (moved ? `ลบล็อตแล้ว · ของคืนเข้าล็อต ${moved.lotId}` : "ลบล็อตสำเร็จ")
+        : moved
+          ? `บันทึกแล้ว · ส่วนต่างย้ายกับล็อต ${moved.lotId} · ยอดสั่งผลิตคงเดิม ${fmtInt(orderTotal)} ตัว`
+          : `บันทึกสำเร็จ · ${beforeTotal} → ${afterTotal} ตัว${beforeTotal !== afterTotal ? ` (${afterTotal > beforeTotal ? "+" : ""}${afterTotal - beforeTotal})` : ""}`);
       setEditMode(false);
       if (cleaned.length === 0 && onClose) setTimeout(onClose, 800);
     } catch (e) {
@@ -845,8 +886,87 @@ export default function LotDetailModal({
                   <button onClick={() => removeEditItem(idx)} style={{padding:"4px 6px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:5,color:T.red,fontSize:11,cursor:"pointer"}}>✕</button>
                 </div>
               ))}
-              <button onClick={addEditItem} style={{padding:"6px 12px",background:"rgba(22,163,74,0.08)",border:"1px solid rgba(22,163,74,0.3)",borderRadius:6,color:T.green,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>+ เพิ่มรายการ</button>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                <button onClick={addEditItem} style={{padding:"6px 12px",background:"rgba(22,163,74,0.08)",border:"1px solid rgba(22,163,74,0.3)",borderRadius:6,color:T.green,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>+ เพิ่มรายการ</button>
+                {/* ＋ เพิ่มจากบรรทัดที่มีอยู่แล้วในใบนี้ — ปุ่มเพิ่มเปล่าตั้งสีเป็น colorIdx 0 / #999
+                    ถ้าพิมพ์ "ฟ้า / L" เองจะได้กุญแจคนละตัวกับ ฟ้า/L จริง → ใบสั่งมี ฟ้า/L สองบรรทัด
+                    เลือกจากรายการนี้แทนจะได้สี/ไซส์ครบทุกช่องตรงกับของเดิม */}
+                {(() => {
+                  const inEdit = new Set(editItems.map(lotItemKey));
+                  const known = new Map();
+                  lots.forEach(l => (l.items || []).forEach(it => {
+                    const k = lotItemKey(it);
+                    if (!inEdit.has(k) && !known.has(k)) known.set(k, it);
+                  }));
+                  if (!known.size) return null;
+                  return (
+                    <select value="" onChange={e => {
+                      const it = known.get(e.target.value);
+                      if (!it) return;
+                      const { qty, ...rest } = it;
+                      setEditItems(prev => [...prev, { ...rest, qty: "1" }]);
+                    }}
+                      style={{padding:"5px 8px",background:"white",border:"1px solid rgba(22,163,74,0.3)",borderRadius:6,color:T.green,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",outline:"none"}}>
+                      <option value="">＋ เพิ่มจากรายการในใบนี้…</option>
+                      {[...known.entries()].map(([k, it]) => <option key={k} value={k}>{lineLabel(it)}</option>)}
+                    </select>
+                  );
+                })()}
+              </div>
             </div>
+            {(() => {
+              const deltas = lotItemDeltas(lot.items || [], cleanEditItems(editItems));
+              if (!deltas.length) return null;
+              const net = deltas.reduce((a, d) => a + d.delta, 0);
+              const orderTotal = lots.reduce((a, l) => a + totalQtyOfLot(l), 0);
+              const bt = balanceTargets(lots, lotIdx);
+              const mode = bt.options.length ? balMode : "order";
+              const radio = (on) => ({ display:"flex", gap:8, alignItems:"flex-start", padding:"7px 9px", borderRadius:7, cursor:"pointer",
+                border:`1px solid ${on ? "rgba(59,91,139,0.45)" : T.border}`, background: on ? "rgba(59,91,139,0.07)" : "white" });
+              return (
+                <div style={{marginBottom:10,padding:10,borderRadius:9,background:"rgba(217,119,6,0.06)",border:"1px solid rgba(217,119,6,0.35)"}}>
+                  <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:6}}>⚖️ ยอดในล็อตนี้เปลี่ยน — ส่วนต่างต้องไปอยู่ที่ไหน?</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                    {deltas.map(d => (
+                      <span key={d.key} style={{padding:"2px 9px",borderRadius:10,fontSize:11.5,fontWeight:700,fontFamily:"monospace",
+                        background: d.delta < 0 ? "rgba(220,38,38,0.08)" : "rgba(22,163,74,0.08)", color: d.delta < 0 ? T.red : T.green}}>
+                        {lineLabel(d.tpl)} {d.delta > 0 ? "+" : ""}{fmtInt(d.delta)}
+                      </span>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    {bt.options.length > 0 && (
+                      <label style={radio(mode === "move")}>
+                        <input type="radio" checked={mode === "move"} onChange={() => setBalMode("move")} style={{marginTop:3}}/>
+                        <span style={{fontSize:12,color:T.text,lineHeight:1.6}}>
+                          <b>ย้ายส่วนต่างกับล็อต</b>{" "}
+                          <select value={balTarget ?? ""} onChange={e => { setBalTarget(Number(e.target.value)); setBalMode("move"); }}
+                            style={{padding:"2px 6px",borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:"inherit"}}>
+                            {bt.options.map(i => (
+                              <option key={i} value={i}>
+                                {lots[i].lotId}{lots[i].rollNo ? ` · ม้วน ${lots[i].rollNo}` : ""}{isLeftoverLot(lots[i]) ? " · กองใหญ่ (เหลือ)" : ""} · {fmtInt(totalQtyOfLot(lots[i]))} ตัว · {lots[i].status}
+                              </option>
+                            ))}
+                          </select>
+                          <br/>
+                          <span style={{fontSize:11,color:T.sub}}>
+                            ลดตรงนี้ = คืนเข้าล็อตนั้น · เพิ่มตรงนี้ = ดึงมาจากล็อตนั้น · <b>ยอดสั่งผลิตทั้งใบคงเดิม {fmtInt(orderTotal)} ตัว</b>
+                          </span>
+                        </span>
+                      </label>
+                    )}
+                    <label style={radio(mode === "order")}>
+                      <input type="radio" checked={mode === "order"} onChange={() => setBalMode("order")} style={{marginTop:3}}/>
+                      <span style={{fontSize:12,color:T.text,lineHeight:1.6}}>
+                        <b>แก้ยอดสั่งผลิตทั้งใบ</b>: {fmtInt(orderTotal)} → <b style={{color: net < 0 ? T.red : T.green}}>{fmtInt(orderTotal + net)}</b> ตัว
+                        <br/>
+                        <span style={{fontSize:11,color:T.sub}}>ใช้เมื่อยอดสั่งผลิตผิดตั้งแต่แรก หรือคืนยอดที่เคยหายไปจากการแก้ครั้งก่อน</span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{display:"flex",gap:6}}>
               <BtnGhost onClick={cancelEdit} disabled={busy} style={{flex:1,fontSize:12,padding:"6px"}}>ยกเลิก</BtnGhost>
               <BtnPrimary onClick={saveEdit} disabled={busy} style={{flex:2,fontSize:12,padding:"6px"}}>{busy ? "กำลังบันทึก..." : "💾 บันทึกรายการ (สี · ไซส์ · จำนวน)"}</BtnPrimary>
