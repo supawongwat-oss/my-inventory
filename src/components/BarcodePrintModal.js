@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useLayoutEffect } from "react";
 import { T } from "../theme";
 import { Modal, MHead, BtnPrimary, BtnGhost } from "./ui";
 import { BarcodeDisplay } from "./ui";
+import CustomOrderStickers from "./CustomOrderStickers";
 
 // layout presets (col x row per A4)
 const LAYOUTS = [
@@ -307,11 +308,11 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
   return (
     <Modal onClose={onClose} w={1000}>
       <MHead title="🏷️ ปริ้นสติกเกอร์"
-        sub={tab === "address" ? "เลือกลูกค้า + จำนวน → ปริ้นแปะกล่องพัสดุ" : "เลือกสินค้า + จำนวน → ปริ้นออกมาตัดติด"}
+        sub={tab === "custom" ? "เลือกงาน custom → ปริ้นแปะถุง/กล่องงาน" : tab === "address" ? "เลือกลูกค้า + จำนวน → ปริ้นแปะกล่องพัสดุ" : "เลือกสินค้า + จำนวน → ปริ้นออกมาตัดติด"}
         onClose={onClose} color={T.accent}/>
 
       <div style={{ display: "flex", gap: 4, background: "#eef2f7", borderRadius: 8, padding: 3, marginBottom: 14 }}>
-        {[{ id: "barcode", l: "🏷️ บาร์โค้ดสินค้า" }, { id: "address", l: "📮 ที่อยู่ลูกค้า" }].map(t => (
+        {[{ id: "barcode", l: "🏷️ บาร์โค้ดสินค้า" }, { id: "address", l: "📮 ที่อยู่ลูกค้า" }, { id: "custom", l: "🎨 งาน custom" }].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ flex: 1, padding: "7px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 700, fontFamily: "inherit",
               background: tab === t.id ? "white" : "transparent", color: tab === t.id ? T.accent : T.sub,
@@ -321,7 +322,9 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
         ))}
       </div>
 
-      {tab === "address" ? (
+      {tab === "custom" ? (
+        <CustomOrderStickers printElementById={printElementById} onClose={onClose}/>
+      ) : tab === "address" ? (
         <>
           {/* ── ตั้งค่าสติกเกอร์ที่อยู่ ── */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14, padding: 12, background: T.card, border: `1px solid ${T.border}`, borderRadius: 10 }}>
