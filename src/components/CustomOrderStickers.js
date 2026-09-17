@@ -44,14 +44,26 @@ function StickerLabel({ o, qty, lay, showImg, showNote, className }) {
   const portrait = lay.h >= lay.w;
 
   // 📏 ขยายตัวหนังสือให้เต็มดวง แล้วหดลงทีละนิดจนไม่ล้น — ชื่องาน/รายละเอียดยาวสั้นต่างกันมาก เดาสูตรตายตัวไม่ได้
-  //    เริ่มที่ 1.8 เท่า: งานข้อมูลน้อยจะได้ไม่เหลือที่ว่างครึ่งดวง · เผื่อขอบล่าง 3px ไม่ให้เส้นสุดท้ายชิดขอบ
+  //    เริ่มที่ 1.8 เท่า: งานข้อมูลน้อยจะได้ไม่เหลือที่ว่างครึ่งดวง
   //    (หลักเดียวกับสติกเกอร์ที่อยู่: วัดของจริงใน DOM ไม่เดาจากจำนวนตัวอักษร)
+  //
+  //    ⚠️ วัดจาก "ขอบล่างของช่องสุดท้าย" เทียบ "ขอบในของกรอบ" — ห้ามใช้ scrollHeight > clientHeight - เผื่อ
+  //       ตอนไม่ล้น scrollHeight เท่ากับ clientHeight พอดี เงื่อนไขนั้นจึงจริงเสมอ → หดจนเล็กสุดทุกดวง
+  //       (เคยพลาดแบบนี้ 17/09/2569 ตัวหนังสือเล็กเท่ามดทั้งที่ดวงว่างครึ่งหนึ่ง)
   useLayoutEffect(() => {
     const el = bodyRef.current;
     if (!el) return;
+    const overflows = () => {
+      const last = el.lastElementChild;
+      if (!last) return false;
+      const box = el.getBoundingClientRect();
+      const pad = parseFloat(getComputedStyle(el).paddingBottom) || 0;
+      return last.getBoundingClientRect().bottom > box.bottom - pad + 0.5
+          || el.scrollWidth > el.clientWidth + 1;
+    };
     let s = 1.8, guard = 0;
     el.style.setProperty("--s", "1.8");
-    while (el.scrollHeight > el.clientHeight - 3 && s > 0.4 && guard++ < 60) {
+    while (overflows() && s > 0.4 && guard++ < 60) {
       s -= 0.04;
       el.style.setProperty("--s", s.toFixed(3));
     }
