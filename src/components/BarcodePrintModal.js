@@ -1,5 +1,6 @@
 // 🏷️ Print Barcode Stickers — ปริ้น barcode หลายๆ ใบใน 1 หน้า A4
-import { useState, useMemo, useRef, useLayoutEffect } from "react";
+import { useState, useMemo, useRef, useLayoutEffect, memo } from "react";
+import { fitScale, whenFontsReady } from "../utils/fitText";
 // 📄 PDF วาดทีละหน้าด้วย utils/stickerPdf.js (โหลด html2canvas/jspdf เฉพาะตอนกดปุ่ม PDF)
 import { T } from "../theme";
 import { Modal, MHead, BtnPrimary, BtnGhost } from "./ui";
@@ -24,6 +25,115 @@ const ADDR_LAYOUTS = [
   { key: "a4-1x5", cols: 1, rows: 5, label: "1×5 (5 ดวง / A4 — ใหญ่มาก)", w: 190, h: 54 },
   { key: "thermal", thermal: true, cols: 1, rows: 1, label: "🔥 สติกเกอร์ความร้อน — ตั้งขนาดเอง", w: 100, h: 150 },
 ];
+
+// 📮 ดวงสติกเกอร์ที่อยู่ — ใช้ทั้งโหมดความร้อนและตาราง A4 จะได้ไม่มีทางเพี้ยนกันเอง
+//
+// ⚠️ ต้องอยู่นอก BarcodePrintModal — เดิมประกาศไว้ข้างใน ทุกครั้งที่หน้าต่าง render (ติ๊กลูกค้า / พิมพ์ค้นหา)
+//    React เห็นเป็น component ใหม่ → ถอดทุกดวงแล้วสร้างใหม่ → วัดขนาดตัวหนังสือใหม่ทุกดวงทุกคลิก
+//    เลือก 261 ราย = วัดหลายพันครั้งต่อคลิก (สงสัยว่าเป็นต้นเหตุ "หน้าค้าง 17 วินาที" 17/09/2569 16:20)
+const AddrLabel = memo(function AddrLabel({ c, cls, boxNo, boxTotal, cfg }) {
+  const ref = useRef(null);
+  const { sizes, addrTall, showKeys, showAddr, showPhone, showNote, showBox, shopNote, sender } = cfg;
+
+  // 📏 ให้เบราว์เซอร์วัดเอง แล้วหดเฉพาะเท่าที่จำเป็น
+  //
+  //    เดิมเดาว่าที่อยู่จะตกกี่บรรทัดจาก "จำนวนตัวอักษร × 0.5 เท่าของขนาดฟอนต์"
+  //    ซึ่งเดาพลาดเยอะกับภาษาไทย (สระบน-ล่างไม่กินความกว้าง แต่ตัวหนาและตัวเลขกินมากกว่านั้น)
+  //    ผลคือเลือกขนาดที่ล้นดวงแล้วโดนตัดหายท้ายแผ่น — ของจริงอยู่ใน DOM อยู่แล้ว วัดตรง ๆ ไม่ต้องเดา
+  //
+  //    ดวงสูง (100×150) ลองขยายได้ถึง 1.5 เท่า — ขนาดตั้งต้นทำให้ครึ่งล่างว่างโล่ง
+  //    แต่ขยายได้เฉพาะเมื่อ: ชื่อไม่ตกบรรทัดเพิ่ม (เคยได้ "กล้วย / สปอร์ต") · เบอร์ไม่ล้นขอบ
+  //    · ช่องหมายเหตุยังเหลือที่เขียนมือ ≥ 22% ของดวง
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const fit = () => {
+      const note = el.querySelector(".ad-note");
+      if (note) note.style.display = "";
+      const nameEl = el.querySelector(".ad-name");
+      const phoneEl = el.querySelector(".ad-phone");
+      const bodyEl = el.querySelector(".ad-body");
+      const linesOf = () => {
+        if (!nameEl) return 1;
+        const lh = parseFloat(getComputedStyle(nameEl).lineHeight) || 1;
+        return Math.round(nameEl.getBoundingClientRect().height / lh);
+      };
+      el.style.setProperty("--s", "1");
+      const nameLines = linesOf();
+      const tooBig = (s) => el.scrollHeight > el.clientHeight + 1 || (s > 1 && (
+        linesOf() > nameLines
+        || (phoneEl && bodyEl && phoneEl.getBoundingClientRect().right > bodyEl.getBoundingClientRect().right + 0.5)
+        || (showNote && note && note.clientHeight < el.clientHeight * 0.22)
+      ));
+      fitScale(el, tooBig, { max: addrTall ? 1.5 : 1, min: 0.35 });
+      // ช่องหมายเหตุที่เหลือความสูงนิดเดียวดูเหมือนขีดพลาด — ตัดทิ้งไปเลยดีกว่า
+      if (note && note.clientHeight < 26) note.style.display = "none";
+    };
+    fit();
+    return whenFontsReady(fit);
+  }, [c, boxNo, boxTotal, cfg, addrTall, showNote]);
+
+  // ไม่มีค่า → เส้นประไว้เขียนมือ
+  //   ลูกค้า 254 จาก 260 รายยังไม่มีที่อยู่ครบ ปริ้นออกมาแล้วเขียนเติมหน้างานได้เลย
+  //   ดีกว่าปล่อยว่างเปล่าแล้วต้องกลับมาปริ้นใหม่ทีหลัง
+  const val = (v) => String(v || "").trim();
+  const blank = <span className="ad-blank"/>;
+  return (
+    <div className={cls} ref={ref} style={{
+      "--name": `${sizes.name.toFixed(2)}mm`,
+      "--addr": `${sizes.addr.toFixed(2)}mm`,
+      "--phone": `${sizes.phone.toFixed(2)}mm`,
+      "--small": `${sizes.small.toFixed(2)}mm`,
+      "--s": 1,
+    }}>
+      <div className="ad-head"><span>ผู้รับ</span><span className="ad-head-en">TO</span></div>
+      <div className="ad-body">
+        <div className="ad-name">{val(c.name) || blank}</div>
+        {/* ดวงสูง: หัวข้อ "ที่อยู่" อยู่บนค่า อ่านสบาย · ดวงเตี้ย: อยู่ซ้ายบรรทัดเดียวกัน ไม่กินความสูง */}
+        {showAddr && (
+          <div className={`ad-addr ${addrTall ? "" : "ad-inline"}`}>
+            {showKeys && <div className="ad-cap">ที่อยู่</div>}
+            {val(c.address) ? <div>{val(c.address)}</div> : blank}
+          </div>
+        )}
+        {/* เบอร์โทรต้องอยู่ติดที่อยู่เป็นก้อนเดียว ไม่ใช่ปักไว้ก้นแผ่นแล้วมีช่องว่างคั่นกลาง */}
+        {showPhone && (
+          <div className="ad-phone">
+            {showKeys && <span className="ad-cap">โทร</span>}
+            {val(c.phone) ? <b>{val(c.phone)}</b> : blank}
+          </div>
+        )}
+      </div>
+      {/* ✍️ ที่เหลือ — ข้อความประจำของร้าน แล้วต่อด้วยที่ว่างให้จดมือ
+          ดวง 100×150 ใส่แค่ชื่อ-ที่อยู่-เบอร์ แล้วเหลือว่างครึ่งแผ่น ปล่อยว่างเปล่าดูเหมือนพิมพ์พลาด */}
+      {(showNote || (shopNote || "").trim()) && (
+        <div className="ad-note">
+          {(shopNote || "").trim() && <div className="ad-shopnote">{shopNote}</div>}
+          {showNote && <div className="ad-cap">หมายเหตุ</div>}
+          {/* เส้นให้เขียนมือ — วาดเกินไว้ ส่วนที่ล้นช่องถูกตัดเอง (ไม่ใช้ gradient เพราะ PDF วาดไม่ออก) */}
+          {showNote && <div className="ad-lines">{Array.from({ length: 12 }, (_, i) => <div key={i}/>)}</div>}
+        </div>
+      )}
+      {/* 📦 แถบท้าย: ผู้ส่ง (ถ้าเปิด) ซ้าย · กล่องที่ N / ทั้งหมด ขวา — อยู่ล่างสุดของดวงเสมอ
+          งานใหญ่ส่งหลายกล่อง ถ้าไม่มีเลขกำกับ ลูกค้าบอกว่าของไม่ครบก็เถียงกันไม่ออก
+          ตั้งจำนวนดวงเป็นจำนวนกล่อง → ใส่เลขให้อัตโนมัติ 1/5, 2/5, ... · ส่งกล่องเดียวก็ 1/1 */}
+      {(showBox || sender) && (
+        <div className="ad-foot">
+          {sender && (
+            <span className="ad-sender">
+              จาก <b>{sender.name}</b>{sender.phone ? ` · ${sender.phone}` : ""}
+            </span>
+          )}
+          {showBox && (
+            <span className="ad-box">
+              กล่องที่ <b className="ad-boxno">{boxNo} / {boxTotal}</b>
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
 
 export default function BarcodePrintModal({ mode = null, preselectIds = [], products = [], clothingItems = [], customers = [], companyInfo = null, onClose, printElementById }) {
   // 🏷️ = บาร์โค้ดติดสินค้า · 📮 = ที่อยู่ลูกค้าติดกล่องพัสดุ
@@ -134,114 +244,14 @@ export default function BarcodePrintModal({ mode = null, preselectIds = [], prod
     small: Math.max(2.2, Math.min(3.6, baseName * 0.34)),
   };
 
-  // ดวงเดียว — ใช้ทั้งโหมดความร้อนและตาราง A4 จะได้ไม่มีทางเพี้ยนกันเอง
-  const AddrLabel = ({ c, cls, boxNo, boxTotal }) => {
-    const ref = useRef(null);
-
-    // 📏 ให้เบราว์เซอร์วัดเอง แล้วหดเฉพาะเท่าที่จำเป็น
-    //
-    //    เดิมเดาว่าที่อยู่จะตกกี่บรรทัดจาก "จำนวนตัวอักษร × 0.5 เท่าของขนาดฟอนต์"
-    //    ซึ่งเดาพลาดเยอะกับภาษาไทย (สระบน-ล่างไม่กินความกว้าง แต่ตัวหนาและตัวเลขกินมากกว่านั้น)
-    //    ผลคือเลือกขนาดที่ล้นดวงแล้วโดนตัดหายท้ายแผ่น
-    //
-    //    ของจริงอยู่ใน DOM อยู่แล้ว วัดตรง ๆ ไม่ต้องเดา — หดทีละ 4% จนไม่ล้น
-    //
-    //    ดวงสูง (100×150) เริ่มที่ 1.5 เท่าแล้วค่อยหด — ขนาดตั้งต้นทำให้ครึ่งล่างว่างโล่ง
-    //    แต่ขยายได้เฉพาะเมื่อ: ชื่อไม่ตกบรรทัดเพิ่ม (เคยได้ "กล้วย / สปอร์ต") · เบอร์ไม่ล้นขอบ
-    //    · ช่องหมายเหตุยังเหลือที่เขียนมือ ≥ 22% ของดวง
-    useLayoutEffect(() => {
-      const el = ref.current;
-      if (!el) return;
-      const note = el.querySelector(".ad-note");
-      if (note) note.style.display = "";
-      const nameEl = el.querySelector(".ad-name");
-      const phoneEl = el.querySelector(".ad-phone");
-      const bodyEl = el.querySelector(".ad-body");
-      const linesOf = () => {
-        if (!nameEl) return 1;
-        const lh = parseFloat(getComputedStyle(nameEl).lineHeight) || 1;
-        return Math.round(nameEl.getBoundingClientRect().height / lh);
-      };
-      el.style.setProperty("--s", "1");
-      const nameLines = linesOf();
-      const tooBig = (s) => el.scrollHeight > el.clientHeight + 1 || (s > 1 && (
-        linesOf() > nameLines
-        || (phoneEl && bodyEl && phoneEl.getBoundingClientRect().right > bodyEl.getBoundingClientRect().right + 0.5)
-        || (showNote && note && note.clientHeight < el.clientHeight * 0.22)
-      ));
-      let s = addrTall ? 1.5 : 1;
-      el.style.setProperty("--s", String(s));
-      let guard = 0;
-      while (tooBig(s) && s > 0.35 && guard++ < 60) {
-        s -= 0.04;
-        el.style.setProperty("--s", s.toFixed(3));
-      }
-      // ช่องหมายเหตุที่เหลือความสูงนิดเดียวดูเหมือนขีดพลาด — ตัดทิ้งไปเลยดีกว่า
-      if (note && note.clientHeight < 26) note.style.display = "none";
-    });
-
-    // ไม่มีค่า → เส้นประไว้เขียนมือ
-    //   ลูกค้า 254 จาก 260 รายยังไม่มีที่อยู่ครบ ปริ้นออกมาแล้วเขียนเติมหน้างานได้เลย
-    //   ดีกว่าปล่อยว่างเปล่าแล้วต้องกลับมาปริ้นใหม่ทีหลัง
-    const val = (v) => String(v || "").trim();
-    const blank = <span className="ad-blank"/>;
-    const sender = showSender && companyInfo?.name;
-    return (
-      <div className={cls} ref={ref} style={{
-        "--name": `${sizes.name.toFixed(2)}mm`,
-        "--addr": `${sizes.addr.toFixed(2)}mm`,
-        "--phone": `${sizes.phone.toFixed(2)}mm`,
-        "--small": `${sizes.small.toFixed(2)}mm`,
-        "--s": 1,
-      }}>
-        <div className="ad-head"><span>ผู้รับ</span><span className="ad-head-en">TO</span></div>
-        <div className="ad-body">
-          <div className="ad-name">{val(c.name) || blank}</div>
-          {/* ดวงสูง: หัวข้อ "ที่อยู่" อยู่บนค่า อ่านสบาย · ดวงเตี้ย: อยู่ซ้ายบรรทัดเดียวกัน ไม่กินความสูง */}
-          {showAddr && (
-            <div className={`ad-addr ${addrTall ? "" : "ad-inline"}`}>
-              {showKeys && <div className="ad-cap">ที่อยู่</div>}
-              {val(c.address) ? <div>{val(c.address)}</div> : blank}
-            </div>
-          )}
-          {/* เบอร์โทรต้องอยู่ติดที่อยู่เป็นก้อนเดียว ไม่ใช่ปักไว้ก้นแผ่นแล้วมีช่องว่างคั่นกลาง */}
-          {showPhone && (
-            <div className="ad-phone">
-              {showKeys && <span className="ad-cap">โทร</span>}
-              {val(c.phone) ? <b>{val(c.phone)}</b> : blank}
-            </div>
-          )}
-        </div>
-        {/* ✍️ ที่เหลือ — ข้อความประจำของร้าน แล้วต่อด้วยที่ว่างให้จดมือ
-            ดวง 100×150 ใส่แค่ชื่อ-ที่อยู่-เบอร์ แล้วเหลือว่างครึ่งแผ่น ปล่อยว่างเปล่าดูเหมือนพิมพ์พลาด */}
-        {(showNote || (shopNote || "").trim()) && (
-          <div className="ad-note">
-            {(shopNote || "").trim() && <div className="ad-shopnote">{shopNote}</div>}
-            {showNote && <div className="ad-cap">หมายเหตุ</div>}
-            {/* เส้นให้เขียนมือ — วาดเกินไว้ ส่วนที่ล้นช่องถูกตัดเอง (ไม่ใช้ gradient เพราะ PDF วาดไม่ออก) */}
-            {showNote && <div className="ad-lines">{Array.from({ length: 12 }, (_, i) => <div key={i}/>)}</div>}
-          </div>
-        )}
-        {/* 📦 แถบท้าย: ผู้ส่ง (ถ้าเปิด) ซ้าย · กล่องที่ N / ทั้งหมด ขวา — อยู่ล่างสุดของดวงเสมอ
-            งานใหญ่ส่งหลายกล่อง ถ้าไม่มีเลขกำกับ ลูกค้าบอกว่าของไม่ครบก็เถียงกันไม่ออก
-            ตั้งจำนวนดวงเป็นจำนวนกล่อง → ใส่เลขให้อัตโนมัติ 1/5, 2/5, ... · ส่งกล่องเดียวก็ 1/1 */}
-        {(showBox || sender) && (
-          <div className="ad-foot">
-            {sender && (
-              <span className="ad-sender">
-                จาก <b>{companyInfo.name}</b>{companyInfo.phone ? ` · ${companyInfo.phone}` : ""}
-              </span>
-            )}
-            {showBox && (
-              <span className="ad-box">
-                กล่องที่ <b className="ad-boxno">{boxNo} / {boxTotal}</b>
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
+  // ตั้งค่าที่ทุกดวงใช้ร่วมกัน — รวมเป็นก้อนเดียวแล้ว memo ไว้
+  //   ดวงจะวัดขนาดตัวหนังสือใหม่ก็ต่อเมื่อก้อนนี้หรือข้อมูลลูกค้าของดวงนั้นเปลี่ยนเท่านั้น
+  const addrCfg = useMemo(() => ({
+    sizes, addrTall, showKeys, showAddr, showPhone, showNote, showBox, shopNote,
+    sender: showSender && companyInfo?.name ? { name: companyInfo.name, phone: companyInfo.phone || "" } : null,
+    w: addrW, h: addrH,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [baseName, addrTall, showKeys, showAddr, showPhone, showNote, showBox, shopNote, showSender, companyInfo?.name, companyInfo?.phone, addrW, addrH]);
 
   const addrList = useMemo(() => {
     const out = [];
@@ -681,10 +691,10 @@ export default function BarcodePrintModal({ mode = null, preselectIds = [], prod
             .ad-lines div { height: calc(var(--addr) * 1.75 * var(--s)); border-bottom: 0.25mm dotted #000; }
           `}</style>
           {addrLayout.thermal ? (
-            addrList.map((x, i) => <AddrLabel key={i} c={x.c} boxNo={x.boxNo} boxTotal={x.boxTotal} cls="ad-thermal"/>)
+            addrList.map((x, i) => <AddrLabel key={i} c={x.c} boxNo={x.boxNo} boxTotal={x.boxTotal} cls="ad-thermal" cfg={addrCfg}/>)
           ) : (
             <div className="ad-grid">
-              {addrList.map((x, i) => <AddrLabel key={i} c={x.c} boxNo={x.boxNo} boxTotal={x.boxTotal} cls="ad-cell"/>)}
+              {addrList.map((x, i) => <AddrLabel key={i} c={x.c} boxNo={x.boxNo} boxTotal={x.boxTotal} cls="ad-cell" cfg={addrCfg}/>)}
             </div>
           )}
         </div>

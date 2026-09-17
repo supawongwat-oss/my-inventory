@@ -11,6 +11,7 @@ import { db } from "../firebase";
 import { T } from "../theme";
 import { BtnPrimary, BtnGhost } from "./ui";
 import { stickerAreaToPdf } from "../utils/stickerPdf";
+import { fitScale, whenFontsReady } from "../utils/fitText";
 
 const LAYOUTS = [
   { key: "thermal", thermal: true, cols: 1, rows: 1, label: "🔥 สติกเกอร์ความร้อน — ตั้งขนาดเอง", w: 100, h: 150 },
@@ -44,7 +45,7 @@ function StickerLabel({ o, qty, lay, showImg, showNote, className }) {
   const note = showNote ? String(o?.note || "").trim() : "";
   const portrait = lay.h >= lay.w;
 
-  // 📏 ขยายตัวหนังสือให้เต็มดวง แล้วหดลงทีละนิดจนไม่ล้น — ชื่องาน/รายละเอียดยาวสั้นต่างกันมาก เดาสูตรตายตัวไม่ได้
+  // 📏 ขยายตัวหนังสือให้เต็มดวง แล้วหาขนาดใหญ่สุดที่ไม่ล้น (แบ่งครึ่ง — utils/fitText.js) — ชื่องาน/รายละเอียดยาวสั้นต่างกันมาก เดาสูตรตายตัวไม่ได้
   //    เริ่มที่ 1.8 เท่า: งานข้อมูลน้อยจะได้ไม่เหลือที่ว่างครึ่งดวง
   //    (หลักเดียวกับสติกเกอร์ที่อยู่: วัดของจริงใน DOM ไม่เดาจากจำนวนตัวอักษร)
   //
@@ -54,21 +55,22 @@ function StickerLabel({ o, qty, lay, showImg, showNote, className }) {
   useLayoutEffect(() => {
     const el = bodyRef.current;
     if (!el) return;
-    const overflows = () => {
-      const last = el.lastElementChild;
-      if (!last) return false;
-      const box = el.getBoundingClientRect();
-      const pad = parseFloat(getComputedStyle(el).paddingBottom) || 0;
-      return last.getBoundingClientRect().bottom > box.bottom - pad + 0.5
-          || el.scrollWidth > el.clientWidth + 1;
+    const fit = () => {
+      const overflows = () => {
+        const last = el.lastElementChild;
+        if (!last) return false;
+        const box = el.getBoundingClientRect();
+        const pad = parseFloat(getComputedStyle(el).paddingBottom) || 0;
+        return last.getBoundingClientRect().bottom > box.bottom - pad + 0.5
+            || el.scrollWidth > el.clientWidth + 1;
+      };
+      fitScale(el, overflows, { max: 1.8, min: 0.4 });
     };
-    let s = 1.8, guard = 0;
-    el.style.setProperty("--s", "1.8");
-    while (overflows() && s > 0.4 && guard++ < 60) {
-      s -= 0.04;
-      el.style.setProperty("--s", s.toFixed(3));
-    }
-  });
+    fit();
+    return whenFontsReady(fit);
+    // วัดใหม่เฉพาะเมื่อข้อมูลบนดวงหรือขนาดดวงเปลี่ยน — วัดทุก render ทำหน้าค้างเมื่อเลือกหลายงาน
+    //   (lay เป็นก้อนใหม่ทุก render จึงใช้ค่า w/h แทนตัวก้อน)
+  }, [o, qty, lay.w, lay.h, showImg, showNote, img, note]);
 
   // หน่วยตัวหนังสือผูกกับความกว้างส่วนข้อความ (ดวงนอนเหลือให้ข้อความ ~60%) — ดวงเล็กใหญ่หน้าตาเหมือนกัน
   const textW = portrait ? lay.w : lay.w * 0.6;
