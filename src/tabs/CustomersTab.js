@@ -18,6 +18,7 @@ export default function CustomersTab({
   customerSearch, setCustomerSearch,
   setShowImportCustomers, setShowNewCustomer,
   setProfileCustomer, setEditingCustomer,
+  onPrintAddressStickers,   // 📮 สติกเกอร์ชื่อ/ที่อยู่/เบอร์ แปะกล่องพัสดุ
 }) {
   // ⌨️ ค่าที่กำลังพิมพ์เก็บไว้ในหน้านี้ ส่งขึ้น App หลังหยุดพิมพ์ 250ms
   // เดิมค่าอยู่ที่ App → กดคีย์ทีนึง App วาดใหม่ทั้งหน้า แล้วแกะที่อยู่ลูกค้าใหม่ทุกคน
@@ -109,6 +110,8 @@ export default function CustomersTab({
           )}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          {onPrintAddressStickers && <button onClick={onPrintAddressStickers} title="ปริ้นสติกเกอร์ชื่อ ที่อยู่ เบอร์ลูกค้า แปะกล่องพัสดุ"
+            style={{ padding: "8px 14px", borderRadius: 9, border: `1px solid ${T.border}`, cursor: "pointer", background: "rgba(59,91,139,0.06)", color: T.accent, fontSize: 12, fontWeight: 600, fontFamily: "'Sarabun',sans-serif" }}>📮 ปริ้นสติกเกอร์ที่อยู่</button>}
           {role.canAdd && <button onClick={() => setShowImportCustomers(true)} style={{ padding: "8px 14px", borderRadius: 9, border: `1px solid ${T.border}`, cursor: "pointer", background: "rgba(59,91,139,0.06)", color: T.accent, fontSize: 12, fontWeight: 600, fontFamily: "'Sarabun',sans-serif" }}>📥 นำเข้า Excel</button>}
           <button onClick={() => setShowNewCustomer(true)} style={{ padding: "8px 18px", borderRadius: 9, border: "none", cursor: "pointer", background: "linear-gradient(135deg,#3b5b8b,#3b5b8b)", color: "white", fontSize: 12, fontWeight: 600, fontFamily: "'Sarabun',sans-serif", boxShadow: "0 4px 14px rgba(59,91,139,0.3)" }}>＋ เพิ่มลูกค้าใหม่</button>
         </div>

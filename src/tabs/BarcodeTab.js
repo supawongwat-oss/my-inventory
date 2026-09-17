@@ -20,7 +20,7 @@ export default function BarcodeTab({
           <input ref={barcodeInputRef} value={barcodeSearch} onChange={e => setBarcodeSearch(e.target.value)} onKeyDown={e => e.key === "Enter" && handleBarcodeSearch()} placeholder="สแกนหรือพิมพ์บาร์โค้ด / รหัสสินค้า..." autoFocus
             style={{ flex: 1, minWidth: 200, background: T.input, border: `1px solid ${T.inputBorder}`, color: T.text, borderRadius: 8, padding: "9px 12px", fontFamily: "'Sarabun',sans-serif", fontSize: 13, outline: "none" }} />
           <button onClick={() => setShowScanner(true)} style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid rgba(124,58,237,0.3)", background: "rgba(124,58,237,0.1)", color: "#7c3aed", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "'Sarabun',sans-serif" }}>📸 สแกนกล้อง</button>
-          <button onClick={() => setShowBarcodePrint(true)} style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid rgba(58,122,82,0.3)", background: "rgba(58,122,82,0.1)", color: T.green, cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "'Sarabun',sans-serif" }}>🏷️ ปริ้น sticker</button>
+          <button onClick={() => setShowBarcodePrint(true)} style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid rgba(58,122,82,0.3)", background: "rgba(58,122,82,0.1)", color: T.green, cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "'Sarabun',sans-serif" }}>🏷️ ปริ้นสติกเกอร์บาร์โค้ด</button>
           <BtnPrimary onClick={handleBarcodeSearch}>ค้นหา</BtnPrimary>
         </div>
         <div style={{ fontSize: 11, color: T.muted, marginTop: 8 }}>💡 กด Enter หลังสแกนบาร์โค้ดจากเครื่องสแกน · หรือกด <b>📸 สแกนกล้อง</b> เพื่อใช้กล้องมือถือ/Webcam</div>

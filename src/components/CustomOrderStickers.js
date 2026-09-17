@@ -80,12 +80,13 @@ const toDataUrl = async (src) => {
   });
 };
 
-export default function CustomOrderStickers({ printElementById, onClose }) {
+export default function CustomOrderStickers({ printElementById, onClose, preselectIds = [] }) {
   const [orders, setOrders] = useState(null);
   const [loadErr, setLoadErr] = useState("");
   const [search, setSearch] = useState("");
   const [showAll, setShowAll] = useState(false);          // รวมงานที่เก็บประวัติ/ยกเลิกแล้ว
-  const [ids, setIds] = useState(() => new Set());
+  // ติ๊กงานไว้ในหน้า custom แล้วกดปริ้น → เลือกให้เลย ไม่ต้องค้นหาซ้ำ
+  const [ids, setIds] = useState(() => new Set(preselectIds || []));
   const [qtys, setQtys] = useState({});                   // จำนวนบนป้าย (ค่าเริ่มต้น = ยอดทั้งใบ)
   const [copies, setCopies] = useState({});
   const [layoutKey, setLayoutKey] = useState("thermal");

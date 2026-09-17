@@ -614,7 +614,11 @@ export default function App() {
   const [newCatName, setNewCatName] = useState("");
   const [barcodeSearch, setBarcodeSearch] = useState("");
   const [showScanner, setShowScanner] = useState(false); // โหมดสแกนกล้อง
-  const [showBarcodePrint, setShowBarcodePrint] = useState(false); // ปริ้น barcode stickers
+  // 🏷️ หน้าต่างปริ้นสติกเกอร์ — เปิดทีละโหมดจากหน้าของเรื่องนั้น
+  //    false = ปิด · true/"barcode" = หน้าบาร์โค้ด · "address" = หน้าลูกค้า · "custom" = หน้า custom
+  //    เดิมรวมสามอย่างเป็นแท็บในหน้าบาร์โค้ดที่เดียว คนหาสติกเกอร์ลูกค้า/งาน custom ไม่เจอ
+  const [showBarcodePrint, setShowBarcodePrint] = useState(false);
+  const [stickerPreselect, setStickerPreselect] = useState([]);   // ใบ custom ที่ติ๊กไว้ก่อนกดปริ้น
   const [showTxScanner, setShowTxScanner] = useState(false); // สแกนใน Tx modal
   const [inventoryTab, setInventoryTab] = useState("clothing"); // "clothing" | "sports" | "general"
   const [clothingTxModal, setClothingTxModal] = useState(null); // {item, colorIdx, size}
@@ -5174,6 +5178,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               role={role}
               printElementById={printElementById}
               openingInvoice={openingInvoice}
+              onPrintCustomStickers={(ids) => { setStickerPreselect(ids || []); setShowBarcodePrint("custom"); }}
               onCreateInvoiceFromCustom={(orders)=>openInvoiceOnce(()=>{
                 if (!orders?.length) return;
                 // 🚫 กันออกบิลซ้ำจากใบ custom เดิม
@@ -5302,6 +5307,7 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
               customerSearch={customerSearch} setCustomerSearch={setCustomerSearch}
               setShowImportCustomers={setShowImportCustomers} setShowNewCustomer={setShowNewCustomer}
               setProfileCustomer={setProfileCustomer} setEditingCustomer={setEditingCustomer}
+              onPrintAddressStickers={() => setShowBarcodePrint("address")}
             />
           )}
 
@@ -7706,11 +7712,13 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       {/* ── Print Barcode Stickers Modal ── */}
       {showBarcodePrint && (
         <BarcodePrintModal
+          mode={showBarcodePrint === true ? "barcode" : showBarcodePrint}
+          preselectIds={stickerPreselect}
           products={products}
           clothingItems={clothingItems}
           customers={customers}
           companyInfo={companyInfo}
-          onClose={() => setShowBarcodePrint(false)}
+          onClose={() => { setShowBarcodePrint(false); setStickerPreselect([]); }}
           printElementById={printElementById}
         />
       )}

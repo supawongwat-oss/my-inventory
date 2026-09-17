@@ -38,7 +38,7 @@ function parseThaiDate(s) {
   return new Date(`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`);
 }
 
-export default function ProductionTab({ productionOrders=[], customOrders=[], boms=[], products=[], clothingItems=[], customers=[], employees=[], companyInfo={}, user, role, printElementById, onCreateInvoiceFromCustom, openingInvoice = false }) {
+export default function ProductionTab({ productionOrders=[], customOrders=[], boms=[], products=[], clothingItems=[], customers=[], employees=[], companyInfo={}, user, role, printElementById, onCreateInvoiceFromCustom, openingInvoice = false, onPrintCustomStickers }) {
   const [subTab, setSubTab] = useState("kanban"); // kanban | orders | custom | bom
   // ทะเบียนลูกค้าแบบค้นด้วยรหัส — ใช้อ่านประเภทการเก็บเงินมาโชว์บนการ์ด
   const custById = useMemo(() => new Map(customers.map(c => [c.id, c])), [customers]);
@@ -435,6 +435,14 @@ export default function ProductionTab({ productionOrders=[], customOrders=[], bo
                 <button onClick={runMigrateImages} disabled={migrating} title="ย้ายรูป custom order เก่าขึ้น Storage (ทำครั้งเดียว)"
                   style={{padding:"8px 12px",borderRadius:9,border:`1px solid ${T.border}`,cursor:migrating?"wait":"pointer",background:"rgba(59,91,139,0.06)",color:T.accent,fontSize:11,fontWeight:600,fontFamily:"'Sarabun',sans-serif"}}>
                   {migrating ? `☁️ ${migrateMsg||"กำลังย้าย..."}` : "☁️ ย้ายรูปเก่าขึ้น Storage"}
+                </button>
+              )}
+              {/* 🏷️ สติกเกอร์แปะถุง/กล่องงาน — ติ๊กงานไว้ก่อน หน้าต่างจะเลือกงานพวกนั้นให้เลย */}
+              {onPrintCustomStickers && (
+                <button onClick={() => onPrintCustomStickers([...selectedCustom])}
+                  title="ปริ้นสติกเกอร์งาน custom (รูป · ชื่องาน · เจ้าของ · จำนวน · หมายเหตุ)"
+                  style={{padding:"8px 14px",borderRadius:9,border:"1px solid rgba(217,119,6,0.4)",cursor:"pointer",background:"rgba(217,119,6,0.08)",color:"#b45309",fontSize:12,fontWeight:700,fontFamily:"'Sarabun',sans-serif"}}>
+                  🏷️ ปริ้นสติกเกอร์{selectedCustom.size > 0 ? ` (${selectedCustom.size})` : ""}
                 </button>
               )}
               {role?.canProduction && (

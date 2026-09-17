@@ -24,11 +24,13 @@ const ADDR_LAYOUTS = [
   { key: "thermal", thermal: true, cols: 1, rows: 1, label: "🔥 สติกเกอร์ความร้อน — ตั้งขนาดเอง", w: 100, h: 150 },
 ];
 
-export default function BarcodePrintModal({ products = [], clothingItems = [], customers = [], companyInfo = null, onClose, printElementById }) {
+export default function BarcodePrintModal({ mode = null, preselectIds = [], products = [], clothingItems = [], customers = [], companyInfo = null, onClose, printElementById }) {
   // 🏷️ = บาร์โค้ดติดสินค้า · 📮 = ที่อยู่ลูกค้าติดกล่องพัสดุ
   //    อยู่หน้าต่างเดียวกันเพราะเป็นงาน "ปริ้นสติกเกอร์" เหมือนกัน ใช้เครื่องเดียวกัน
   //    แต่แยกรายการที่เลือกและ layout กันคนละชุด — สลับโหมดแล้วของที่เลือกไว้ต้องไม่หาย
-  const [tab, setTab] = useState("barcode");
+  // mode มาจากหน้าที่กดเปิด (บาร์โค้ด / ลูกค้า / custom) → ล็อกโหมดนั้น ไม่โชว์แถบแท็บ
+  //   ไม่ส่ง mode มา → โชว์แท็บครบเหมือนเดิม
+  const [tab, setTab] = useState(mode || "barcode");
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [search, setSearch] = useState("");
   const [layoutKey, setLayoutKey] = useState("3x10");
@@ -307,11 +309,11 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
 
   return (
     <Modal onClose={onClose} w={1000}>
-      <MHead title="🏷️ ปริ้นสติกเกอร์"
+      <MHead title={mode === "custom" ? "🎨 ปริ้นสติกเกอร์งาน custom" : mode === "address" ? "📮 ปริ้นสติกเกอร์ที่อยู่ลูกค้า" : mode === "barcode" ? "🏷️ ปริ้นสติกเกอร์บาร์โค้ด" : "🏷️ ปริ้นสติกเกอร์"}
         sub={tab === "custom" ? "เลือกงาน custom → ปริ้นแปะถุง/กล่องงาน" : tab === "address" ? "เลือกลูกค้า + จำนวน → ปริ้นแปะกล่องพัสดุ" : "เลือกสินค้า + จำนวน → ปริ้นออกมาตัดติด"}
         onClose={onClose} color={T.accent}/>
 
-      <div style={{ display: "flex", gap: 4, background: "#eef2f7", borderRadius: 8, padding: 3, marginBottom: 14 }}>
+      {!mode && <div style={{ display: "flex", gap: 4, background: "#eef2f7", borderRadius: 8, padding: 3, marginBottom: 14 }}>
         {[{ id: "barcode", l: "🏷️ บาร์โค้ดสินค้า" }, { id: "address", l: "📮 ที่อยู่ลูกค้า" }, { id: "custom", l: "🎨 งาน custom" }].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ flex: 1, padding: "7px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 700, fontFamily: "inherit",
@@ -320,10 +322,10 @@ export default function BarcodePrintModal({ products = [], clothingItems = [], c
             {t.l}
           </button>
         ))}
-      </div>
+      </div>}
 
       {tab === "custom" ? (
-        <CustomOrderStickers printElementById={printElementById} onClose={onClose}/>
+        <CustomOrderStickers printElementById={printElementById} onClose={onClose} preselectIds={preselectIds}/>
       ) : tab === "address" ? (
         <>
           {/* ── ตั้งค่าสติกเกอร์ที่อยู่ ── */}
