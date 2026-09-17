@@ -1404,7 +1404,10 @@ function RollSplitModal({ lot, lots = [], lotIdx, busy, setNo = "", clothingName
   }));
 
   // ── โหมดกรอกเอง ──
-  const [mRolls, setMRolls] = useState([{ jobLabel: "", rows: [{ itemIdx: "", qty: "" }] }]);
+  // 👕 ชื่อม้วนตั้งต้นด้วยชื่อรุ่น (+ ชุด ถ้ามี) — เดิมเป็นช่องว่าง ต้องพิมพ์ชื่อรุ่นเองทุกม้วน
+  //    แก้ต่อได้ตามปกติ เช่นเติม "แขนสั้น · พิมพ์วันที่ ..."
+  const defaultJobLabel = [clothingName, setNo].map(x => String(x || "").trim()).filter(Boolean).join(" ");
+  const [mRolls, setMRolls] = useState([{ jobLabel: defaultJobLabel, rows: [{ itemIdx: "", qty: "" }] }]);
   const setMRollField = (ri, patch) => setMRolls(prev => prev.map((roll, i) => i !== ri ? roll : { ...roll, ...patch }));
   const setMRow = (ri, rowi, patch) => setMRolls(prev => prev.map((roll, i) => i !== ri ? roll : { ...roll, rows: roll.rows.map((row, j) => j === rowi ? { ...row, ...patch } : row) }));
   const addMRow = (ri) => setMRolls(prev => prev.map((roll, i) => i !== ri ? roll : { ...roll, rows: [...roll.rows, { itemIdx: "", qty: "" }] }));
@@ -1418,7 +1421,12 @@ function RollSplitModal({ lot, lots = [], lotIdx, busy, setNo = "", clothingName
     [arr[rowi], arr[ni]] = [arr[ni], arr[rowi]];
     return { ...roll, rows: arr };
   }));
-  const addRoll = () => setMRolls(prev => [...prev, { jobLabel: "", rows: [{ itemIdx: "", qty: "" }] }]);
+  // ม้วนถัดไปใช้ชื่อเดียวกับม้วนก่อนหน้าในรอบนี้ — แบ่งพร้อมกันคือพิมพ์ชุดเดียวกันวันเดียวกัน
+  //    ม้วนก่อนหน้ายังว่างอยู่ค่อยถอยไปใช้ชื่อรุ่น
+  const addRoll = () => setMRolls(prev => {
+    const last = String(prev[prev.length - 1]?.jobLabel || "").trim();
+    return [...prev, { jobLabel: last || defaultJobLabel, rows: [{ itemIdx: "", qty: "" }] }];
+  });
   // 🖱️ คลิกช่องในตาราง "คงเหลือ" → เพิ่มแถวเข้าม้วนล่าสุด (ตามลำดับคลิก)
   const clickCellToLastRoll = (itemIdx, defaultQty) => {
     if (itemIdx == null || itemIdx < 0) return;
