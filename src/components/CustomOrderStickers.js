@@ -10,6 +10,7 @@ import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
 import { db } from "../firebase";
 import { T } from "../theme";
 import { BtnPrimary, BtnGhost } from "./ui";
+import { stickerAreaToPdf } from "../utils/stickerPdf";
 
 const LAYOUTS = [
   { key: "thermal", thermal: true, cols: 1, rows: 1, label: "🔥 สติกเกอร์ความร้อน — ตั้งขนาดเอง", w: 100, h: 150 },
@@ -143,7 +144,7 @@ export default function CustomOrderStickers({ printElementById, onClose, presele
   const [thermalH, setThermalH] = useState(150);
   const [showImg, setShowImg] = useState(true);
   const [showNote, setShowNote] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState("");   // "" = ว่าง · "3/20" = กำลังทำหน้าที่เท่าไร
 
   useEffect(() => {
     let alive = true;
@@ -198,36 +199,35 @@ export default function CustomOrderStickers({ printElementById, onClose, presele
     if (!printList.length) { alert("เลือกงานอย่างน้อย 1 ใบ"); return; }
     const el = document.getElementById("custom-sticker-area");
     if (!el || busy) return;
-    setBusy(true);
+    setBusy("…");
     try {
-      const clone = el.cloneNode(true);
-      const imgs = Array.from(clone.querySelectorAll("img"));
+      // รูปแปลงครั้งเดียวต่อไฟล์ — งานเดียวพิมพ์หลายดวง ไม่ต้องโหลดซ้ำทุกหน้า
       let failed = 0;
       const cache = new Map();
-      for (const im of imgs) {
-        const src = im.getAttribute("src");
-        if (!src || src.startsWith("data:")) continue;
-        try {
-          if (!cache.has(src)) cache.set(src, await toDataUrl(src));
-          im.setAttribute("src", cache.get(src));
-        } catch { failed++; }
-      }
-      const { default: html2pdf } = await import("html2pdf.js");
-      await html2pdf().set({
-        margin: 0,
+      // วาดทีละหน้า — วาดรวดเดียวแล้วหั่น ล้นกระดาษบนแท็บเล็ตเมื่อเลือกหลายดวง (ดู utils/stickerPdf.js)
+      await stickerAreaToPdf(el, {
+        thermal: !!lay.thermal, w: lay.w, h: lay.h,
+        itemSelector: lay.thermal ? ".cs-thermal" : ".cs-cell",
+        gridSelector: ".cs-grid",
+        perPage: lay.cols * lay.rows, rows: lay.rows,
         filename: lay.thermal ? `custom-${printList.length}x-${lay.w}x${lay.h}mm.pdf` : `custom-${printList.length}x-A4.pdf`,
-        image: { type: "jpeg", quality: 0.95 },
-        html2canvas: { scale: 3, useCORS: true, backgroundColor: "#ffffff" },
-        jsPDF: lay.thermal
-          ? { unit: "mm", format: [lay.w, lay.h], orientation: lay.w > lay.h ? "landscape" : "portrait" }
-          : { unit: "mm", format: "a4", orientation: "portrait" },
-        pagebreak: { mode: ["css", "legacy"] },
-      }).from(clone).save();
+        onProgress: (d, t) => setBusy(`${d}/${t}`),
+        prepare: async (page) => {
+          for (const im of Array.from(page.querySelectorAll("img"))) {
+            const src = im.getAttribute("src");
+            if (!src || src.startsWith("data:")) continue;
+            try {
+              if (!cache.has(src)) cache.set(src, toDataUrl(src));
+              im.setAttribute("src", await cache.get(src));
+            } catch { failed++; }
+          }
+        },
+      });
       if (failed) alert(`PDF สร้างแล้ว แต่รูป ${failed} รูปดึงมาใส่ไม่ได้ (เซิร์ฟเวอร์รูปไม่อนุญาต)\nถ้าต้องการรูปครบ ให้ใช้ปุ่ม 🖨️ พิมพ์ แทน`);
     } catch (e) {
       alert("สร้าง PDF ไม่สำเร็จ: " + (e?.message || e));
     } finally {
-      setBusy(false);
+      setBusy("");
     }
   };
 
@@ -332,7 +332,7 @@ export default function CustomOrderStickers({ printElementById, onClose, presele
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <BtnGhost onClick={onClose}>ปิด</BtnGhost>
           <BtnGhost onClick={handlePdf} disabled={!printList.length || busy} style={{ color: "#dc2626", borderColor: "rgba(220,38,38,0.35)" }}>
-            {busy ? "กำลังทำ PDF…" : `📥 PDF (${printList.length})`}
+            {busy ? `กำลังทำ PDF ${busy}` : `📥 PDF (${printList.length})`}
           </BtnGhost>
           <BtnPrimary onClick={handlePrint} disabled={!printList.length}>🖨️ พิมพ์ ({printList.length})</BtnPrimary>
         </div>

@@ -1,10 +1,11 @@
 // 🏷️ Print Barcode Stickers — ปริ้น barcode หลายๆ ใบใน 1 หน้า A4
 import { useState, useMemo, useRef, useLayoutEffect } from "react";
-// 🚀 html2pdf.js (~400KB) → lazy load เฉพาะตอนกดปุ่ม PDF
+// 📄 PDF วาดทีละหน้าด้วย utils/stickerPdf.js (โหลด html2canvas/jspdf เฉพาะตอนกดปุ่ม PDF)
 import { T } from "../theme";
 import { Modal, MHead, BtnPrimary, BtnGhost } from "./ui";
 import { BarcodeDisplay } from "./ui";
 import CustomOrderStickers from "./CustomOrderStickers";
+import { stickerAreaToPdf } from "../utils/stickerPdf";
 
 // layout presets (col x row per A4)
 const LAYOUTS = [
@@ -39,6 +40,7 @@ export default function BarcodePrintModal({ mode = null, preselectIds = [], prod
   const [copies, setCopies] = useState({}); // {productId: count}
   const [thermalW, setThermalW] = useState(60); // mm
   const [thermalH, setThermalH] = useState(40); // mm
+  const [pdfBusy, setPdfBusy] = useState("");     // "" = ว่าง · "3/20" = กำลังทำหน้าที่เท่าไร
 
   // ── โหมดที่อยู่ลูกค้า ──
   const [addrIds, setAddrIds] = useState(new Set());
@@ -319,18 +321,23 @@ export default function BarcodePrintModal({ mode = null, preselectIds = [], prod
     const filename = lay.thermal
       ? `${stem}-${list.length}x-${w}x${h}mm.pdf`
       : `${stem}-${list.length}x-A4.pdf`;
-    // 🚀 lazy import html2pdf.js (~400KB) เฉพาะตอนกด PDF
-    const { default: html2pdf } = await import("html2pdf.js");
-    html2pdf().set({
-      margin: 0,
-      filename,
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: { scale: 4, useCORS: true, backgroundColor: "#ffffff" },
-      jsPDF: lay.thermal
-        ? { unit: "mm", format: [w, h], orientation: w > h ? "landscape" : "portrait" }
-        : { unit: "mm", format: "a4", orientation: "portrait" },
-      pagebreak: { mode: ["css", "legacy"] }
-    }).from(el.cloneNode(true)).save();
+    if (pdfBusy) return;
+    // วาดทีละหน้า — วาดรวดเดียวแล้วหั่น ล้นกระดาษบนแท็บเล็ตเมื่อเลือกหลายดวง (ดู utils/stickerPdf.js)
+    setPdfBusy("…");
+    try {
+      await stickerAreaToPdf(el, {
+        thermal: !!lay.thermal, w: lay.thermal ? w : lay.w, h: lay.thermal ? h : lay.h,
+        itemSelector: isAddr ? (lay.thermal ? ".ad-thermal" : ".ad-cell") : (lay.thermal ? ".bc-thermal" : ".bc-cell"),
+        gridSelector: isAddr ? ".ad-grid" : ".bc-grid",
+        perPage: lay.cols * lay.rows, rows: lay.rows,
+        filename,
+        onProgress: (d, t) => setPdfBusy(`${d}/${t}`),
+      });
+    } catch (e) {
+      alert("สร้าง PDF ไม่สำเร็จ: " + (e?.message || e));
+    } finally {
+      setPdfBusy("");
+    }
   };
 
   return (
@@ -504,8 +511,8 @@ export default function BarcodePrintModal({ mode = null, preselectIds = [], prod
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <BtnGhost onClick={onClose}>ปิด</BtnGhost>
-              <BtnGhost onClick={handleDownloadPdf} disabled={addrList.length === 0} style={{ color: "#dc2626", borderColor: "rgba(220,38,38,0.35)" }}>
-                📥 PDF ({addrList.length})
+              <BtnGhost onClick={handleDownloadPdf} disabled={addrList.length === 0 || !!pdfBusy} style={{ color: "#dc2626", borderColor: "rgba(220,38,38,0.35)" }}>
+                {pdfBusy ? `กำลังทำ PDF ${pdfBusy}` : `📥 PDF (${addrList.length})`}
               </BtnGhost>
               <BtnPrimary onClick={handlePrint} disabled={addrList.length === 0}>🖨️ พิมพ์ ({addrList.length})</BtnPrimary>
             </div>
@@ -600,8 +607,8 @@ export default function BarcodePrintModal({ mode = null, preselectIds = [], prod
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <BtnGhost onClick={onClose}>ปิด</BtnGhost>
-          <BtnGhost onClick={handleDownloadPdf} disabled={printList.length === 0} style={{ color: "#dc2626", borderColor: "rgba(220,38,38,0.35)" }}>
-            📥 PDF{layout.thermal ? " (สำหรับแอป Aimo)" : ""} ({printList.length})
+          <BtnGhost onClick={handleDownloadPdf} disabled={printList.length === 0 || !!pdfBusy} style={{ color: "#dc2626", borderColor: "rgba(220,38,38,0.35)" }}>
+            {pdfBusy ? `กำลังทำ PDF ${pdfBusy}` : <>📥 PDF{layout.thermal ? " (สำหรับแอป Aimo)" : ""} ({printList.length})</>}
           </BtnGhost>
           <BtnPrimary onClick={handlePrint} disabled={printList.length === 0}>🖨️ พิมพ์ ({printList.length})</BtnPrimary>
         </div>
