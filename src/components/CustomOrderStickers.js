@@ -1,4 +1,4 @@
-// 🎨 สติกเกอร์งาน custom — รูป · ชื่องาน · เจ้าของ · จำนวนตัว · หมายเหตุ
+// 🎨 สติกเกอร์งาน custom — รูป · ชื่อ · ลูกค้า · จำนวนตัว · ชนิดผ้า · รายละเอียดงาน · คอ (+หมายเหตุ)
 //
 // ไว้แปะถุง/กล่องงานสั่งทำ ให้หยิบถูกงานโดยไม่ต้องเปิดใบสั่งผลิต
 // แยกไฟล์จากสติกเกอร์ที่อยู่ เพราะตัวนั้นมีกลไกย่อตัวหนังสือ/เลขกล่องของตัวเองซับซ้อนอยู่แล้ว
@@ -23,44 +23,81 @@ const fmt = (n) => Number(n || 0).toLocaleString("th-TH");
 const firstImage = (o) => (o?.clothingImages || []).map(i => i?.dataUrl).find(Boolean) || o?.clothingImage || "";
 const jobOf = (o) => String(o?.clothingName || o?.jobDescription || "").trim() || "-";
 
+// ช่องข้อมูล "หัวข้อเล็กบน · ค่าตัวหนาล่าง" — ค่าว่างเว้นเส้นประไว้ให้เขียนมือเติมได้
+function Field({ k, v, className = "" }) {
+  const val = String(v || "").trim();
+  return (
+    <div className={`cs-f ${className}`}>
+      <div className="cs-cap">{k}</div>
+      {val ? <div className="cs-val">{val}</div> : <div className="cs-blank"/>}
+    </div>
+  );
+}
+
 // ดวงเดียว — ใช้ทั้งโหมดความร้อนและตาราง A4
+//   หัวข้อครบตามแบบฟอร์มที่ร้านเขียนมือ: ชื่อ · ลูกค้า · จำนวนตัว · ชนิดผ้า · รายละเอียดงาน · คอ
+//   จัดตามความสำคัญตอนหยิบงาน: ชื่องาน + จำนวนตัวใหญ่สุด มองจากระยะไกลได้ · ที่เหลือเป็นช่องย่อย
 function StickerLabel({ o, qty, lay, showImg, showNote, className }) {
   const bodyRef = useRef(null);
   const img = showImg ? firstImage(o) : "";
   const note = showNote ? String(o?.note || "").trim() : "";
   const portrait = lay.h >= lay.w;
 
-  // 📏 หดตัวหนังสือเท่าที่จำเป็นจนไม่ล้น — ชื่องาน/หมายเหตุยาวสั้นต่างกันมาก เดาสูตรตายตัวไม่ได้
+  // 📏 ขยายตัวหนังสือให้เต็มดวง แล้วหดลงทีละนิดจนไม่ล้น — ชื่องาน/รายละเอียดยาวสั้นต่างกันมาก เดาสูตรตายตัวไม่ได้
+  //    เริ่มที่ 1.8 เท่า: งานข้อมูลน้อยจะได้ไม่เหลือที่ว่างครึ่งดวง · เผื่อขอบล่าง 3px ไม่ให้เส้นสุดท้ายชิดขอบ
   //    (หลักเดียวกับสติกเกอร์ที่อยู่: วัดของจริงใน DOM ไม่เดาจากจำนวนตัวอักษร)
   useLayoutEffect(() => {
     const el = bodyRef.current;
     if (!el) return;
-    let s = 1, guard = 0;
-    el.style.setProperty("--s", "1");
-    while (el.scrollHeight > el.clientHeight + 1 && s > 0.4 && guard++ < 40) {
+    let s = 1.8, guard = 0;
+    el.style.setProperty("--s", "1.8");
+    while (el.scrollHeight > el.clientHeight - 3 && s > 0.4 && guard++ < 60) {
       s -= 0.04;
       el.style.setProperty("--s", s.toFixed(3));
     }
   });
 
-  // ขนาดตั้งต้นผูกกับความกว้างดวง (ดวงนอนเหลือที่ให้ข้อความแค่ ~60% ของความกว้าง)
+  // หน่วยตัวหนังสือผูกกับความกว้างส่วนข้อความ (ดวงนอนเหลือให้ข้อความ ~60%) — ดวงเล็กใหญ่หน้าตาเหมือนกัน
   const textW = portrait ? lay.w : lay.w * 0.6;
-  const base = Math.max(3, Math.min(9, textW * 0.085));
+  const u = Math.max(0.35, Math.min(1.1, textW / 100));
+  const blank = "\u00a0";
+  const head = (
+    <div className="cs-head">
+      <span className="cs-no">{o?.prodNo || ""}</span>
+      <span className="cs-tag">งาน CUSTOM</span>
+    </div>
+  );
   return (
-    <div className={className} style={{ flexDirection: portrait ? "column" : "row" }}>
+    <div className={className} style={{ flexDirection: portrait ? "column" : "row", "--u": `${u.toFixed(3)}mm` }}>
+      {portrait && head}
       {img && (
         <div className={portrait ? "cs-img cs-img-p" : "cs-img cs-img-l"}>
           <img src={img} alt=""/>
         </div>
       )}
-      <div className="cs-body" ref={bodyRef} style={{
-        "--job": `${base.toFixed(2)}mm`, "--qty": `${(base * 1.15).toFixed(2)}mm`,
-        "--txt": `${(base * 0.62).toFixed(2)}mm`, "--sm": `${Math.max(2.2, base * 0.38).toFixed(2)}mm`, "--s": 1,
-      }}>
-        <div className="cs-job">{jobOf(o)}</div>
-        <div className="cs-line"><span className="cs-key">เจ้าของ</span><b>{String(o?.customerName || "").trim() || "-"}</b></div>
-        <div className="cs-qty">{fmt(qty)} <span>ตัว</span></div>
-        {note && <div className="cs-note"><span className="cs-key">หมายเหตุ</span>{note}</div>}
+      <div className="cs-col">
+        {!portrait && head}
+        <div className="cs-body" ref={bodyRef} style={{ "--s": 1 }}>
+          <div className="cs-hero">
+            <div className="cs-who">
+              <div className="cs-cap">ชื่อ</div>
+              <div className="cs-name">{String(o?.clothingName || "").trim() || blank}</div>
+              <div className="cs-cap cs-cap2">ลูกค้า</div>
+              <div className="cs-cust">{String(o?.customerName || "").trim() || blank}</div>
+            </div>
+            <div className="cs-qtybox">
+              <div className="cs-qcap">จำนวนตัว</div>
+              <div className="cs-qn">{qty ? fmt(qty) : blank}</div>
+              <div className="cs-qu">ตัว</div>
+            </div>
+          </div>
+          <div className="cs-pair">
+            <Field k="ชนิดผ้า" v={o?.fabricType}/>
+            <Field k="คอ" v={o?.collarType}/>
+          </div>
+          <Field k="รายละเอียดงาน" v={o?.jobDescription}/>
+          {note && <Field k="หมายเหตุ" v={note} className="cs-note"/>}
+        </div>
       </div>
     </div>
   );
@@ -116,7 +153,7 @@ export default function CustomOrderStickers({ printElementById, onClose, presele
     const q = norm(search);
     return (orders || [])
       .filter(o => showAll || (!o.archived && (o.status || "") !== "ยกเลิก"))
-      .filter(o => !q || norm([o.prodNo, o.customerName, o.clothingName, o.jobDescription, o.note].join(" ")).includes(q));
+      .filter(o => !q || norm([o.prodNo, o.customerName, o.clothingName, o.jobDescription, o.fabricType, o.collarType, o.note].join(" ")).includes(q));
   }, [orders, search, showAll]);
 
   const qtyOf = (o) => (qtys[o.id] != null ? Number(qtys[o.id]) || 0 : Number(o.totalQty) || 0);
@@ -295,23 +332,43 @@ export default function CustomOrderStickers({ printElementById, onClose, presele
           <style>{`
             .cs-grid { display: grid; grid-template-columns: repeat(${lay.cols}, 1fr); gap: 3mm; }
             .cs-cell, .cs-thermal { box-sizing: border-box; overflow: hidden; display: flex; background: #fff; color: #000;
-                                    border: 0.6mm solid #000; border-radius: 1mm; }
+                                    border: 0.5mm solid #000; border-radius: 2.5mm; }
             .cs-cell { height: ${lay.h}mm; }
             .cs-thermal { width: ${lay.w}mm; height: ${lay.h}mm; page-break-after: always; }
             .cs-thermal:last-child { page-break-after: auto; }
+            .cs-cell *, .cs-thermal * { box-sizing: border-box; }
+            /* แถบหัวดำ — เลขใบไว้ค้นกลับในระบบ */
+            .cs-head { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 2mm;
+                       background: #000; color: #fff; padding: calc(var(--u) * 1.4) calc(var(--u) * 3.2); }
+            .cs-no { font-size: calc(var(--u) * 3.3); font-weight: 700; letter-spacing: 0.02em; }
+            .cs-tag { font-size: calc(var(--u) * 2.7); font-weight: 700; letter-spacing: 0.08em; }
             /* รูปกินที่คงที่ ไม่ขึ้นกับขนาดไฟล์รูป — ข้อความจะได้คำนวณพื้นที่ได้แน่นอน */
-            .cs-img { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; background: #fff; }
+            .cs-img { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; background: #fff; padding: 2mm; }
             .cs-img img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
-            .cs-img-p { height: 45%; width: 100%; border-bottom: 0.35mm dashed #000; padding: 1.5mm; box-sizing: border-box; }
-            .cs-img-l { width: 40%; height: 100%; border-right: 0.35mm dashed #000; padding: 1.5mm; box-sizing: border-box; }
+            .cs-img-p { height: 40%; width: 100%; border-bottom: 0.4mm solid #000; }
+            .cs-img-l { width: 40%; height: 100%; border-right: 0.4mm solid #000; }
+            .cs-col { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
             /* ⚠️ ห้าม overflow:hidden ที่ตัวข้อความ — ต้องให้ล้นออกมาวัดได้ ไม่งั้นตัววัดเห็นว่าพอดีทั้งที่โดนตัด */
-            .cs-body { flex: 1 1 0; min-height: 0; min-width: 0; padding: 2.5mm 3mm; display: flex; flex-direction: column; gap: 1.2mm; }
-            .cs-job { font-size: calc(var(--job) * var(--s)); font-weight: 800; line-height: 1.2; word-break: break-word; }
-            .cs-line { font-size: calc(var(--txt) * var(--s)); line-height: 1.3; }
-            .cs-key { font-size: calc(var(--sm) * var(--s)); font-weight: 700; color: #334155; margin-right: 1.5mm; }
-            .cs-qty { font-size: calc(var(--qty) * var(--s)); font-weight: 800; font-family: monospace; line-height: 1.1; }
-            .cs-qty span { font-size: calc(var(--txt) * var(--s)); font-family: 'Sarabun', sans-serif; }
-            .cs-note { font-size: calc(var(--sm) * var(--s)); line-height: 1.35; border-top: 0.3mm dashed #94a3b8; padding-top: 1mm; word-break: break-word; }
+            .cs-body { flex: 1 1 0; min-height: 0; min-width: 0; padding: calc(var(--u) * 3) calc(var(--u) * 3.2);
+                       display: flex; flex-direction: column; gap: calc(var(--u) * 2.6 * var(--s)); }
+            .cs-cap { font-size: calc(var(--u) * 2.7 * var(--s)); font-weight: 600; color: #475569; line-height: 1.35; }
+            .cs-cap2 { margin-top: calc(var(--u) * 1.4 * var(--s)); }
+            .cs-hero { display: flex; gap: calc(var(--u) * 2.5); align-items: stretch; }
+            .cs-who { flex: 1 1 0; min-width: 0; }
+            .cs-name { font-size: calc(var(--u) * 7.6 * var(--s)); font-weight: 800; line-height: 1.12; word-break: break-word; }
+            .cs-cust { font-size: calc(var(--u) * 4.8 * var(--s)); font-weight: 700; line-height: 1.2; word-break: break-word; }
+            /* จำนวนตัวกลับสีดำ — เห็นก่อนอย่างอื่น นับของเทียบป้ายได้ทันที */
+            .cs-qtybox { flex: 0 0 auto; min-width: calc(var(--u) * 24); background: #000; color: #fff; border-radius: 2mm;
+                         padding: calc(var(--u) * 1.6) calc(var(--u) * 2.6); display: flex; flex-direction: column;
+                         align-items: center; justify-content: center; text-align: center; }
+            .cs-qcap { font-size: calc(var(--u) * 2.4 * var(--s)); font-weight: 600; line-height: 1.35; }
+            .cs-qn { font-size: calc(var(--u) * 8.4 * var(--s)); font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; }
+            .cs-qu { font-size: calc(var(--u) * 3.2 * var(--s)); font-weight: 700; line-height: 1.1; }
+            .cs-pair { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 3); }
+            .cs-f { border-top: 0.3mm solid #000; padding-top: calc(var(--u) * 1.2 * var(--s)); min-width: 0; }
+            .cs-val { font-size: calc(var(--u) * 4.2 * var(--s)); font-weight: 700; line-height: 1.35; word-break: break-word; }
+            .cs-blank { height: calc(var(--u) * 5.2 * var(--s)); border-bottom: 0.3mm dotted #000; }
+            .cs-note .cs-val { font-size: calc(var(--u) * 3.4 * var(--s)); font-weight: 600; }
           `}</style>
           {lay.thermal ? (
             printList.map((x, i) => <StickerLabel key={i} o={x.o} qty={x.qty} lay={lay} showImg={showImg} showNote={showNote} className="cs-thermal"/>)
