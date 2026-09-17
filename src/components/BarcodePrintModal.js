@@ -112,6 +112,7 @@ export default function BarcodePrintModal({ mode = null, preselectIds = [], prod
   //    ประมาณความกว้างตัวอักษรไทยที่ ~0.5 เท่าของขนาดฟอนต์ (Sarabun) เผื่อไว้นิดหน่อย
   //    ต่อให้ประมาณพลาด ดวงก็ยัง overflow:hidden อยู่ ไม่ทำให้หน้าอื่นเพี้ยน
   const addrH = addrLayout.h, addrW = addrLayout.w;
+  const addrTall = addrH >= 60;   // 100×150 / 150×100 → หัวข้อบนค่า · ดวง A4 38/54mm → หัวข้อซ้าย
   const addrPad = Math.max(2, Math.min(6, Math.min(addrH, addrW) * 0.045));
   // กรอบนอกหนาตามขนาดดวง — ดวงเล็ก 99×38 ใช้ 0.9mm เท่าดวงใหญ่แล้วกรอบกินเนื้อที่
   // จนตัวหนังสือต้องหดเพิ่มโดยไม่จำเป็น
@@ -142,15 +143,34 @@ export default function BarcodePrintModal({ mode = null, preselectIds = [], prod
     //    ผลคือเลือกขนาดที่ล้นดวงแล้วโดนตัดหายท้ายแผ่น
     //
     //    ของจริงอยู่ใน DOM อยู่แล้ว วัดตรง ๆ ไม่ต้องเดา — หดทีละ 4% จนไม่ล้น
+    //
+    //    ดวงสูง (100×150) เริ่มที่ 1.5 เท่าแล้วค่อยหด — ขนาดตั้งต้นทำให้ครึ่งล่างว่างโล่ง
+    //    แต่ขยายได้เฉพาะเมื่อ: ชื่อไม่ตกบรรทัดเพิ่ม (เคยได้ "กล้วย / สปอร์ต") · เบอร์ไม่ล้นขอบ
+    //    · ช่องหมายเหตุยังเหลือที่เขียนมือ ≥ 22% ของดวง
     useLayoutEffect(() => {
       const el = ref.current;
       if (!el) return;
       const note = el.querySelector(".ad-note");
       if (note) note.style.display = "";
-      let s = 1;
+      const nameEl = el.querySelector(".ad-name");
+      const phoneEl = el.querySelector(".ad-phone");
+      const bodyEl = el.querySelector(".ad-body");
+      const linesOf = () => {
+        if (!nameEl) return 1;
+        const lh = parseFloat(getComputedStyle(nameEl).lineHeight) || 1;
+        return Math.round(nameEl.getBoundingClientRect().height / lh);
+      };
       el.style.setProperty("--s", "1");
+      const nameLines = linesOf();
+      const tooBig = (s) => el.scrollHeight > el.clientHeight + 1 || (s > 1 && (
+        linesOf() > nameLines
+        || (phoneEl && bodyEl && phoneEl.getBoundingClientRect().right > bodyEl.getBoundingClientRect().right + 0.5)
+        || (showNote && note && note.clientHeight < el.clientHeight * 0.22)
+      ));
+      let s = addrTall ? 1.5 : 1;
+      el.style.setProperty("--s", String(s));
       let guard = 0;
-      while (el.scrollHeight > el.clientHeight + 1 && s > 0.35 && guard++ < 40) {
+      while (tooBig(s) && s > 0.35 && guard++ < 60) {
         s -= 0.04;
         el.style.setProperty("--s", s.toFixed(3));
       }
@@ -158,19 +178,12 @@ export default function BarcodePrintModal({ mode = null, preselectIds = [], prod
       if (note && note.clientHeight < 26) note.style.display = "none";
     });
 
-    // บรรทัดหนึ่ง = หัวข้อ + ค่า · ไม่มีค่า → เส้นประไว้เขียนมือ
-    //
-    // ลูกค้า 254 จาก 260 รายยังไม่มีที่อยู่ครบ ปริ้นออกมาแล้วเขียนเติมหน้างานได้เลย
-    // ดีกว่าปล่อยว่างเปล่าแล้วต้องกลับมาปริ้นใหม่ทีหลัง
-    const Row = ({ k, v, varName, bold, mono, nowrap }) => (
-      <div className="ad-row" style={{ fontSize: `calc(var(--${varName}) * var(--s))` }}>
-        {showKeys && <span className="ad-key">{k}</span>}
-        {v
-          ? <span style={{ fontWeight: bold ? 800 : 400, fontFamily: mono ? "monospace" : "inherit",
-              whiteSpace: nowrap ? "nowrap" : "normal" }}>{v}</span>
-          : <span className="ad-blank"/>}
-      </div>
-    );
+    // ไม่มีค่า → เส้นประไว้เขียนมือ
+    //   ลูกค้า 254 จาก 260 รายยังไม่มีที่อยู่ครบ ปริ้นออกมาแล้วเขียนเติมหน้างานได้เลย
+    //   ดีกว่าปล่อยว่างเปล่าแล้วต้องกลับมาปริ้นใหม่ทีหลัง
+    const val = (v) => String(v || "").trim();
+    const blank = <span className="ad-blank"/>;
+    const sender = showSender && companyInfo?.name;
     return (
       <div className={cls} ref={ref} style={{
         "--name": `${sizes.name.toFixed(2)}mm`,
@@ -179,36 +192,49 @@ export default function BarcodePrintModal({ mode = null, preselectIds = [], prod
         "--small": `${sizes.small.toFixed(2)}mm`,
         "--s": 1,
       }}>
-        {showSender && companyInfo?.name && (
-          <div className="ad-sender">
-            ผู้ส่ง: {companyInfo.name}{companyInfo.phone ? ` โทร ${companyInfo.phone}` : ""}
-          </div>
-        )}
-        <div className="ad-to">ผู้รับ</div>
+        <div className="ad-head"><span>ผู้รับ</span><span className="ad-head-en">TO</span></div>
         <div className="ad-body">
-          <Row k="ชื่อ" v={c.name} varName="name" bold/>
-          {showAddr && <Row k="ที่อยู่" v={c.address} varName="addr"/>}
-          {/* เบอร์โทรห้ามตกบรรทัด — ขาดเป็นสองท่อนแล้วคนขนส่งกดผิด
-              และต้องอยู่ติดที่อยู่เป็นก้อนเดียว ไม่ใช่ปักไว้ก้นแผ่นแล้วมีช่องว่างคั่นกลาง */}
-          {showPhone && <Row k="เบอร์" v={c.phone} varName="phone" bold mono nowrap/>}
+          <div className="ad-name">{val(c.name) || blank}</div>
+          {/* ดวงสูง: หัวข้อ "ที่อยู่" อยู่บนค่า อ่านสบาย · ดวงเตี้ย: อยู่ซ้ายบรรทัดเดียวกัน ไม่กินความสูง */}
+          {showAddr && (
+            <div className={`ad-addr ${addrTall ? "" : "ad-inline"}`}>
+              {showKeys && <div className="ad-cap">ที่อยู่</div>}
+              {val(c.address) ? <div>{val(c.address)}</div> : blank}
+            </div>
+          )}
+          {/* เบอร์โทรต้องอยู่ติดที่อยู่เป็นก้อนเดียว ไม่ใช่ปักไว้ก้นแผ่นแล้วมีช่องว่างคั่นกลาง */}
+          {showPhone && (
+            <div className="ad-phone">
+              {showKeys && <span className="ad-cap">โทร</span>}
+              {val(c.phone) ? <b>{val(c.phone)}</b> : blank}
+            </div>
+          )}
         </div>
-        {/* ✍️ ที่เหลือด้านล่าง — ข้อความประจำของร้าน แล้วต่อด้วยที่ว่างให้จดมือ
-            ดวง 100×150 ใส่แค่ชื่อ-ที่อยู่-เบอร์ แล้วเหลือว่างครึ่งแผ่น
-            ปล่อยว่างเปล่าดูเหมือนพิมพ์พลาด */}
+        {/* ✍️ ที่เหลือ — ข้อความประจำของร้าน แล้วต่อด้วยที่ว่างให้จดมือ
+            ดวง 100×150 ใส่แค่ชื่อ-ที่อยู่-เบอร์ แล้วเหลือว่างครึ่งแผ่น ปล่อยว่างเปล่าดูเหมือนพิมพ์พลาด */}
         {(showNote || (shopNote || "").trim()) && (
           <div className="ad-note">
             {(shopNote || "").trim() && <div className="ad-shopnote">{shopNote}</div>}
-            {showNote && <span>หมายเหตุ</span>}
+            {showNote && <div className="ad-cap">หมายเหตุ</div>}
+            {/* เส้นให้เขียนมือ — วาดเกินไว้ ส่วนที่ล้นช่องถูกตัดเอง (ไม่ใช้ gradient เพราะ PDF วาดไม่ออก) */}
+            {showNote && <div className="ad-lines">{Array.from({ length: 12 }, (_, i) => <div key={i}/>)}</div>}
           </div>
         )}
-        {/* 📦 กล่องที่เท่าไรจากทั้งหมดกี่กล่อง — อยู่ล่างสุดของดวงเสมอ
+        {/* 📦 แถบท้าย: ผู้ส่ง (ถ้าเปิด) ซ้าย · กล่องที่ N / ทั้งหมด ขวา — อยู่ล่างสุดของดวงเสมอ
             งานใหญ่ส่งหลายกล่อง ถ้าไม่มีเลขกำกับ ลูกค้าบอกว่าของไม่ครบก็เถียงกันไม่ออก
-            ตั้งจำนวนดวงเป็นจำนวนกล่อง → ใส่เลขให้อัตโนมัติ 1/5, 2/5, ...
-            ส่งกล่องเดียวก็พิมพ์ 1/1 ไปเลย อ่านแล้วจบในตัว ไม่ต้องมีใครมาเขียนเติม */}
-        {showBox && (
-          <div className="ad-box">
-            <span className="ad-key">กล่องที่</span>
-            <b className="ad-boxno">{boxNo} / {boxTotal}</b>
+            ตั้งจำนวนดวงเป็นจำนวนกล่อง → ใส่เลขให้อัตโนมัติ 1/5, 2/5, ... · ส่งกล่องเดียวก็ 1/1 */}
+        {(showBox || sender) && (
+          <div className="ad-foot">
+            {sender && (
+              <span className="ad-sender">
+                จาก <b>{companyInfo.name}</b>{companyInfo.phone ? ` · ${companyInfo.phone}` : ""}
+              </span>
+            )}
+            {showBox && (
+              <span className="ad-box">
+                กล่องที่ <b className="ad-boxno">{boxNo} / {boxTotal}</b>
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -593,47 +619,59 @@ export default function BarcodePrintModal({ mode = null, preselectIds = [], prod
               คนขนส่งอ่านยากทั้งที่มีที่ให้พิมพ์เต็มไปหมด */}
           <style>{`
             .ad-grid { display: grid; grid-template-columns: repeat(${addrLayout.cols}, 1fr); gap: 3mm; }
-            /* 🔲 กรอบนอกหนา / เส้นแบ่งข้างในเป็นเส้นประ
-               กรอบนอกหนาไว้ให้เห็นขอบป้ายชัดตอนแปะบนกล่องน้ำตาล
-               ส่วนเส้นแบ่งข้างในถ้าหนาเท่ากันจะแย่งสายตากับตัวหนังสือ ใช้เส้นประจึงเบากว่า
-               แต่ยังบอกได้ว่าแต่ละส่วนจบตรงไหน */
+            /* 🔲 กรอบนอกหนา มุมมน — เห็นขอบป้ายชัดตอนแปะบนกล่องน้ำตาล
+               หน้าตาชุดเดียวกับสติกเกอร์งาน custom: แถบหัวดำ · หัวข้อเล็กสีเทา · ข้อมูลสำคัญกลับสีดำ */
             .ad-cell, .ad-thermal { box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column;
-                                    background: #fff; color: #000; border: ${addrBorder.toFixed(2)}mm solid #000; border-radius: 1mm; }
+                                    background: #fff; color: #000; border: ${addrBorder.toFixed(2)}mm solid #000; border-radius: 2.5mm; }
+            .ad-cell *, .ad-thermal * { box-sizing: border-box; }
             .ad-cell { height: ${addrLayout.h}mm; }
             /* โหมดความร้อน: 1 ดวง = 1 หน้า ไม่ใช่ตาราง */
             .ad-thermal { width: ${addrLayout.w}mm; height: ${addrLayout.h}mm; page-break-after: always; }
             .ad-thermal:last-child { page-break-after: auto; }
 
-            /* แต่ละส่วนมีเส้นคั่นของตัวเอง — ผู้ส่ง / ผู้รับ / หมายเหตุ แยกกันชัดในแวบเดียว */
-            .ad-sender { padding: ${addrPad}mm; border-bottom: 0.35mm dashed #000; line-height: 1.3;
-                         font-size: calc(var(--small) * var(--s)); }
-            .ad-to { padding: 0.9mm ${addrPad}mm; border-bottom: 0.35mm dashed #000; font-weight: 800;
-                     letter-spacing: .1em; font-size: calc(var(--small) * var(--s)); }
+            /* แถบหัวดำ "ผู้รับ" — คนขนส่งหาชื่อผู้รับเจอในแวบแรก */
+            .ad-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 2mm;
+                       background: #000; color: #fff; padding: calc(var(--small) * 0.35 * var(--s)) ${addrPad}mm;
+                       font-size: calc(var(--small) * var(--s)); font-weight: 800; letter-spacing: .06em; line-height: 1.3; }
+            .ad-head-en { font-weight: 700; letter-spacing: .18em; }
             /* ⚠️ ห้ามใส่ overflow:hidden ตรงนี้ — ถ้าซ่อนไว้ ข้อความจะโดนตัดเงียบ ๆ
                   แล้วตัววัดข้างนอกจะเห็นว่า "พอดี" ทั้งที่หายไปครึ่งหนึ่ง (เจอมาแล้วกับดวง 99×38) */
-            .ad-body { display: flex; flex-direction: column; flex: 0 0 auto; padding: ${addrPad}mm; }
-            /* 📦 แถวเลขกล่อง — สูงคงที่ ไม่ยุบ เพราะเป็นข้อมูลที่ต้องอ่านออกเสมอ
-               margin-top:auto ดันตัวเองลงล่างสุด เผื่อกรณีปิดช่องหมายเหตุแล้วไม่มีอะไรมาดันให้ */
-            .ad-box { flex: 0 0 auto; margin-top: auto; display: flex; align-items: baseline; gap: 1.8mm;
-                      border-top: 0.35mm dashed #000; padding: 1.4mm ${addrPad}mm;
-                      font-size: calc(var(--small) * var(--s)); }
-            .ad-boxno { font-family: monospace; font-weight: 800; font-size: calc(var(--phone) * var(--s)); }
-            /* ช่องหมายเหตุยุบตัวก่อนเสมอ — ที่ว่างหมดเมื่อไรค่อยไปหดตัวหนังสือ */
-            .ad-note { flex: 1 1 0; min-height: 0; border-top: 0.35mm dashed #000; padding: 1.2mm ${addrPad}mm;
-                       font-size: calc(var(--small) * var(--s)); font-weight: 700; overflow: hidden; }
-            /* ข้อความประจำร้าน — ตัวเบากว่าหัวข้อ ไม่ให้ไปแย่งสายตากับที่อยู่ */
-            .ad-shopnote { font-weight: 400; line-height: 1.35; margin-bottom: 1.2mm; white-space: pre-wrap; }
-
-            /* หัวข้อกำกับอยู่คอลัมน์ซ้าย กว้างคงที่ ค่าอยู่ขวา — เรียงเป็นแนวเดียวกันทั้งดวง
-               ถ้าปล่อยให้ไหลตามความยาวหัวข้อ ("ชื่อ" กับ "ที่อยู่" ยาวไม่เท่ากัน) ค่าจะเหลื่อมกันอ่านยาก */
-            .ad-row { display: flex; align-items: baseline; gap: 1.8mm; line-height: 1.3; margin-bottom: 2mm; }
-            .ad-row:last-child { margin-bottom: 0; }
-            .ad-key { flex: 0 0 auto; font-weight: 700; font-size: calc(var(--small) * var(--s));
-                      min-width: calc(var(--small) * var(--s) * 3.6); }
-            .ad-key::after { content: ":"; }
+            .ad-body { display: flex; flex-direction: column; flex: 0 0 auto; padding: ${addrPad * 0.8}mm ${addrPad}mm ${addrPad * 0.9}mm;
+                       gap: calc(var(--small) * 0.5 * var(--s)); }
+            .ad-name { font-size: calc(var(--name) * var(--s)); font-weight: 800; line-height: 1.18; }
+            .ad-cap { font-size: calc(var(--small) * var(--s)); font-weight: 700; color: #475569; line-height: 1.3; }
+            .ad-addr { font-size: calc(var(--addr) * var(--s)); line-height: 1.35; border-top: 0.3mm solid #000;
+                       padding-top: calc(var(--small) * 0.45 * var(--s)); }
+            /* ดวงเตี้ย (A4 38/54mm) — หัวข้ออยู่ซ้ายบรรทัดเดียวกับค่า ไม่กินความสูงเพิ่ม */
+            .ad-inline { display: flex; align-items: baseline; gap: 1.6mm; }
+            .ad-inline .ad-cap { flex: 0 0 auto; }
+            /* เบอร์โทรกลับสีดำ — ต้องอ่านออกก่อนอย่างอื่น · ห้ามตกบรรทัด ขาดเป็นสองท่อนแล้วคนขนส่งกดผิด */
+            .ad-phone { align-self: flex-start; display: inline-flex; align-items: baseline; gap: 2mm; white-space: nowrap;
+                        background: #000; color: #fff; border-radius: 1.6mm; margin-top: calc(var(--small) * 0.3 * var(--s));
+                        padding: calc(var(--small) * 0.25 * var(--s)) calc(var(--small) * 0.9 * var(--s)); }
+            .ad-phone .ad-cap { color: #fff; }
+            .ad-phone b { font-size: calc(var(--phone) * var(--s)); font-weight: 800; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
             /* ช่องที่ยังไม่มีข้อมูล — เส้นประให้เขียนมือ ไม่ใช่ปล่อยว่าง */
-            .ad-blank { flex: 1; border-bottom: 1px dashed #000; align-self: flex-end; height: 1.1em; }
-            .ad-phone { margin-top: 1.5mm; }
+            .ad-blank { display: block; flex: 1; min-width: 20mm; height: 1.25em; border-bottom: 0.3mm dotted #000; }
+            .ad-phone .ad-blank { border-bottom-color: #fff; min-width: 30mm; }
+            /* ช่องหมายเหตุยุบตัวก่อนเสมอ — ที่ว่างหมดเมื่อไรค่อยไปหดตัวหนังสือ */
+            .ad-note { flex: 1 1 0; min-height: 0; overflow: hidden; margin: 0 ${addrPad}mm; border-top: 0.35mm dashed #000;
+                       padding: calc(var(--small) * 0.5 * var(--s)) 0; font-size: calc(var(--small) * var(--s)); }
+            /* ข้อความประจำร้าน — กรอบบาง ตัวเบา ไม่แย่งสายตากับที่อยู่ */
+            .ad-shopnote { font-weight: 600; line-height: 1.4; white-space: pre-wrap; border: 0.3mm solid #000; border-radius: 1.4mm;
+                           padding: calc(var(--small) * 0.35 * var(--s)) calc(var(--small) * 0.6 * var(--s));
+                           margin-bottom: calc(var(--small) * 0.6 * var(--s)); }
+            /* 📦 แถบท้าย — ผู้ส่งซ้าย · กล่องที่ขวา · สูงคงที่ ไม่ยุบ
+               margin-top:auto ดันตัวเองลงล่างสุด เผื่อกรณีปิดช่องหมายเหตุแล้วไม่มีอะไรมาดันให้ */
+            .ad-foot { flex: 0 0 auto; margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 2mm;
+                       border-top: 0.45mm solid #000; padding: calc(var(--small) * 0.35 * var(--s)) ${addrPad}mm;
+                       font-size: calc(var(--small) * var(--s)); line-height: 1.3; }
+            .ad-sender { min-width: 0; line-height: 1.25; }   /* ตกบรรทัดได้ — ตัดท้ายแล้วเบอร์ร้านหาย พัสดุตีกลับโทรหาไม่ได้ */
+            .ad-sender b { font-weight: 700; }
+            .ad-box { flex: 0 0 auto; margin-left: auto; display: flex; align-items: center; gap: 1.6mm; font-weight: 700; }
+            .ad-boxno { font-weight: 800; font-size: calc(var(--phone) * 0.9 * var(--s)); border: 0.4mm solid #000; border-radius: 1.4mm;
+                        padding: 0 calc(var(--small) * 0.7 * var(--s)); line-height: 1.25; font-variant-numeric: tabular-nums; }
+            .ad-lines div { height: calc(var(--addr) * 1.75 * var(--s)); border-bottom: 0.25mm dotted #000; }
           `}</style>
           {addrLayout.thermal ? (
             addrList.map((x, i) => <AddrLabel key={i} c={x.c} boxNo={x.boxNo} boxTotal={x.boxTotal} cls="ad-thermal"/>)
