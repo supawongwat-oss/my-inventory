@@ -1,4 +1,4 @@
-// 🎨 สติกเกอร์งาน custom — รูป · ชื่อ · ลูกค้า · จำนวนตัว · ชนิดผ้า · รายละเอียดงาน · คอ (+หมายเหตุ)
+// 🎨 สติกเกอร์งาน custom — ชื่อ · ลูกค้า · จำนวนตัว · ชนิดผ้า · รายละเอียดงาน · คอ (+หมายเหตุ)
 //
 // ไว้แปะถุง/กล่องงานสั่งทำ ให้หยิบถูกงานโดยไม่ต้องเปิดใบสั่งผลิต
 // แยกไฟล์จากสติกเกอร์ที่อยู่ เพราะตัวนั้นมีกลไกย่อตัวหนังสือ/เลขกล่องของตัวเองซับซ้อนอยู่แล้ว
@@ -39,11 +39,12 @@ function Field({ k, v, className = "" }) {
 // ดวงเดียว — ใช้ทั้งโหมดความร้อนและตาราง A4
 //   หัวข้อครบตามแบบฟอร์มที่ร้านเขียนมือ: ชื่อ · ลูกค้า · จำนวนตัว · ชนิดผ้า · รายละเอียดงาน · คอ
 //   จัดตามความสำคัญตอนหยิบงาน: ชื่องาน + จำนวนตัวใหญ่สุด มองจากระยะไกลได้ · ที่เหลือเป็นช่องย่อย
-function StickerLabel({ o, qty, lay, showImg, showNote, className }) {
+//
+//   🚫 ไม่ใส่รูปแล้ว (19/09/2569) — รูปพื้นทึบกินหมึก/หัวพิมพ์ความร้อนหนัก เครื่องพิมพ์เริ่มมีปัญหา
+//      ดูงานจากชื่อ + เลขใบก็หยิบถูกอยู่แล้ว รูปยังดูได้ในรายการเลือกงานบนจอ
+function StickerLabel({ o, qty, lay, showNote, className }) {
   const bodyRef = useRef(null);
-  const img = showImg ? firstImage(o) : "";
   const note = showNote ? String(o?.note || "").trim() : "";
-  const portrait = lay.h >= lay.w;
 
   // 📏 ขยายตัวหนังสือให้เต็มดวง แล้วหาขนาดใหญ่สุดที่ไม่ล้น (แบ่งครึ่ง — utils/fitText.js) — ชื่องาน/รายละเอียดยาวสั้นต่างกันมาก เดาสูตรตายตัวไม่ได้
   //    เริ่มที่ 1.8 เท่า: งานข้อมูลน้อยจะได้ไม่เหลือที่ว่างครึ่งดวง
@@ -70,11 +71,10 @@ function StickerLabel({ o, qty, lay, showImg, showNote, className }) {
     return whenFontsReady(fit);
     // วัดใหม่เฉพาะเมื่อข้อมูลบนดวงหรือขนาดดวงเปลี่ยน — วัดทุก render ทำหน้าค้างเมื่อเลือกหลายงาน
     //   (lay เป็นก้อนใหม่ทุก render จึงใช้ค่า w/h แทนตัวก้อน)
-  }, [o, qty, lay.w, lay.h, showImg, showNote, img, note]);
+  }, [o, qty, lay.w, lay.h, showNote, note]);
 
-  // หน่วยตัวหนังสือผูกกับความกว้างส่วนข้อความ (ดวงนอนเหลือให้ข้อความ ~60%) — ดวงเล็กใหญ่หน้าตาเหมือนกัน
-  const textW = portrait ? lay.w : lay.w * 0.6;
-  const u = Math.max(0.35, Math.min(1.1, textW / 100));
+  // หน่วยตัวหนังสือผูกกับความกว้างดวง — ดวงเล็กใหญ่หน้าตาเหมือนกัน (ดวงนอนเตี้ย ตัววัดด้านบนหดให้เอง)
+  const u = Math.max(0.35, Math.min(1.1, lay.w / 100));
   const blank = "\u00a0";
   const head = (
     <div className="cs-head">
@@ -83,15 +83,9 @@ function StickerLabel({ o, qty, lay, showImg, showNote, className }) {
     </div>
   );
   return (
-    <div className={className} style={{ flexDirection: portrait ? "column" : "row", "--u": `${u.toFixed(3)}mm` }}>
-      {portrait && head}
-      {img && (
-        <div className={portrait ? "cs-img cs-img-p" : "cs-img cs-img-l"}>
-          <img src={img} alt=""/>
-        </div>
-      )}
+    <div className={className} style={{ flexDirection: "column", "--u": `${u.toFixed(3)}mm` }}>
       <div className="cs-col">
-        {!portrait && head}
+        {head}
         <div className="cs-body" ref={bodyRef} style={{ "--s": 1 }}>
           <div className="cs-hero">
             <div className="cs-who">
@@ -118,20 +112,6 @@ function StickerLabel({ o, qty, lay, showImg, showNote, className }) {
   );
 }
 
-// แปลงรูปเป็น dataURL ก่อนทำ PDF — html2canvas วาดรูปข้ามโดเมนไม่ได้ถ้าไม่ผ่าน CORS
-// ลิงก์ Storage บางโปรเจกต์ไม่ได้เปิด CORS ไว้ ลองแล้วไม่ได้ก็ต้องบอกคนใช้ ห้ามปล่อยให้ได้ PDF รูปหายเงียบ ๆ
-const toDataUrl = async (src) => {
-  const res = await fetch(src, { mode: "cors" });
-  if (!res.ok) throw new Error(String(res.status));
-  const blob = await res.blob();
-  return await new Promise((ok, bad) => {
-    const r = new FileReader();
-    r.onload = () => ok(r.result);
-    r.onerror = bad;
-    r.readAsDataURL(blob);
-  });
-};
-
 export default function CustomOrderStickers({ printElementById, onClose, preselectIds = [] }) {
   const [orders, setOrders] = useState(null);
   const [loadErr, setLoadErr] = useState("");
@@ -144,7 +124,6 @@ export default function CustomOrderStickers({ printElementById, onClose, presele
   const [layoutKey, setLayoutKey] = useState("thermal");
   const [thermalW, setThermalW] = useState(100);
   const [thermalH, setThermalH] = useState(150);
-  const [showImg, setShowImg] = useState(true);
   const [showNote, setShowNote] = useState(true);
   const [busy, setBusy] = useState("");   // "" = ว่าง · "3/20" = กำลังทำหน้าที่เท่าไร
 
@@ -203,9 +182,6 @@ export default function CustomOrderStickers({ printElementById, onClose, presele
     if (!el || busy) return;
     setBusy("…");
     try {
-      // รูปแปลงครั้งเดียวต่อไฟล์ — งานเดียวพิมพ์หลายดวง ไม่ต้องโหลดซ้ำทุกหน้า
-      let failed = 0;
-      const cache = new Map();
       // วาดทีละหน้า — วาดรวดเดียวแล้วหั่น ล้นกระดาษบนแท็บเล็ตเมื่อเลือกหลายดวง (ดู utils/stickerPdf.js)
       await stickerAreaToPdf(el, {
         thermal: !!lay.thermal, w: lay.w, h: lay.h,
@@ -214,18 +190,7 @@ export default function CustomOrderStickers({ printElementById, onClose, presele
         perPage: lay.cols * lay.rows, rows: lay.rows,
         filename: lay.thermal ? `custom-${printList.length}x-${lay.w}x${lay.h}mm.pdf` : `custom-${printList.length}x-A4.pdf`,
         onProgress: (d, t) => setBusy(`${d}/${t}`),
-        prepare: async (page) => {
-          for (const im of Array.from(page.querySelectorAll("img"))) {
-            const src = im.getAttribute("src");
-            if (!src || src.startsWith("data:")) continue;
-            try {
-              if (!cache.has(src)) cache.set(src, toDataUrl(src));
-              im.setAttribute("src", await cache.get(src));
-            } catch { failed++; }
-          }
-        },
       });
-      if (failed) alert(`PDF สร้างแล้ว แต่รูป ${failed} รูปดึงมาใส่ไม่ได้ (เซิร์ฟเวอร์รูปไม่อนุญาต)\nถ้าต้องการรูปครบ ให้ใช้ปุ่ม 🖨️ พิมพ์ แทน`);
     } catch (e) {
       alert("สร้าง PDF ไม่สำเร็จ: " + (e?.message || e));
     } finally {
@@ -250,14 +215,10 @@ export default function CustomOrderStickers({ printElementById, onClose, presele
               <input type="number" min="20" max="250" value={thermalW} onChange={e => setThermalW(e.target.value)} style={{ ...input, width: 70, padding: "5px 8px", fontSize: 12, textAlign: "center", fontFamily: "monospace" }}/>
               <span style={{ color: T.muted, fontSize: 12 }}>×</span>
               <input type="number" min="20" max="250" value={thermalH} onChange={e => setThermalH(e.target.value)} style={{ ...input, width: 70, padding: "5px 8px", fontSize: 12, textAlign: "center", fontFamily: "monospace" }}/>
-              <span style={{ fontSize: 11, color: T.muted }}>ตั้ง = รูปบน · นอน = รูปซ้าย</span>
             </div>
           )}
         </div>
         <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: T.text, cursor: "pointer" }}>
-            <input type="checkbox" checked={showImg} onChange={e => setShowImg(e.target.checked)} style={{ accentColor: T.accent }}/> รูป
-          </label>
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: T.text, cursor: "pointer" }}>
             <input type="checkbox" checked={showNote} onChange={e => setShowNote(e.target.checked)} style={{ accentColor: T.accent }}/> หมายเหตุ
           </label>
@@ -356,11 +317,6 @@ export default function CustomOrderStickers({ printElementById, onClose, presele
                        background: #000; color: #fff; padding: calc(var(--u) * 1.4) calc(var(--u) * 3.2); }
             .cs-no { font-size: calc(var(--u) * 3.3); font-weight: 700; letter-spacing: 0.02em; }
             .cs-tag { font-size: calc(var(--u) * 2.7); font-weight: 700; letter-spacing: 0.08em; }
-            /* รูปกินที่คงที่ ไม่ขึ้นกับขนาดไฟล์รูป — ข้อความจะได้คำนวณพื้นที่ได้แน่นอน */
-            .cs-img { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; background: #fff; padding: 2mm; }
-            .cs-img img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
-            .cs-img-p { height: 40%; width: 100%; border-bottom: 0.4mm solid #000; }
-            .cs-img-l { width: 40%; height: 100%; border-right: 0.4mm solid #000; }
             .cs-col { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
             /* ⚠️ ห้าม overflow:hidden ที่ตัวข้อความ — ต้องให้ล้นออกมาวัดได้ ไม่งั้นตัววัดเห็นว่าพอดีทั้งที่โดนตัด */
             .cs-body { flex: 1 1 0; min-height: 0; min-width: 0; padding: calc(var(--u) * 3) calc(var(--u) * 3.2);
@@ -385,10 +341,10 @@ export default function CustomOrderStickers({ printElementById, onClose, presele
             .cs-note .cs-val { font-size: calc(var(--u) * 3.4 * var(--s)); font-weight: 600; }
           `}</style>
           {lay.thermal ? (
-            printList.map((x, i) => <StickerLabel key={i} o={x.o} qty={x.qty} lay={lay} showImg={showImg} showNote={showNote} className="cs-thermal"/>)
+            printList.map((x, i) => <StickerLabel key={i} o={x.o} qty={x.qty} lay={lay} showNote={showNote} className="cs-thermal"/>)
           ) : (
             <div className="cs-grid">
-              {printList.map((x, i) => <StickerLabel key={i} o={x.o} qty={x.qty} lay={lay} showImg={showImg} showNote={showNote} className="cs-cell"/>)}
+              {printList.map((x, i) => <StickerLabel key={i} o={x.o} qty={x.qty} lay={lay} showNote={showNote} className="cs-cell"/>)}
             </div>
           )}
         </div>
