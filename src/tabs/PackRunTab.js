@@ -14,7 +14,8 @@
 import React from "react";
 import { T } from "../theme";
 import { CardBox } from "../components/ui";
-import { groupRun, totalOf, runTotalValue, findByBarcode, keyOf, shortOf, missingOf, STOCK_SHORT_ENABLED } from "../utils/packRun";
+import { groupRun, totalOf, runTotalValue, findByBarcode, keyOf, shortOf, missingOf, splitCountsByGroup, packGroupOfKey, STOCK_SHORT_ENABLED } from "../utils/packRun";
+import { makeGroupOf, APPAREL, EQUIPMENT, GROUP_LABEL, GROUP_ICON } from "../utils/billGroup";
 import PackMissingModal from "../components/PackMissingModal";
 
 const money = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 });
@@ -64,21 +65,37 @@ export default function PackRunTab({
 
   // 📊 หลังพิมพ์ใบหยิบของแล้ว ยอดขยับไปเท่าไหร่
   //    เทียบยอดปัจจุบันกับยอดที่จดไว้ตอนพิมพ์ (lastPick.counts)
+  //
+  //    🏐 พิมพ์แยกหมวดได้ — หมวดที่ยังไม่เคยพิมพ์ใบหยิบ (lastPick.groups ไม่มี) ไม่นับเป็น "ของเพิ่ม"
+  //    ไม่งั้นพิมพ์ใบเสื้อผ้าเสร็จ อุปกรณ์ทั้งกองจะเด้งเป็นของเพิ่ม แล้วใบเสริมพิมพ์หัวผิด
+  //    แยกไว้เป็น notPrinted ให้เตือนอีกแบบแทน
+  const groupOf = React.useMemo(() => makeGroupOf(clothingItems), [clothingItems]);
+  const runGroups = React.useMemo(
+    () => (run ? splitCountsByGroup(run.counts, run, groupOf) : {}),
+    [run, groupOf]
+  );
+  const mixed = !!(runGroups[APPAREL] && runGroups[EQUIPMENT]);
   const pickDelta = React.useMemo(() => {
     const prev = run?.lastPick?.counts;
     if (!prev) return null;
+    const printed = run.lastPick.groups; // ไม่มี = ใบเก่า พิมพ์รวมทั้งรอบ
+    const gOf = packGroupOfKey(run, groupOf);
+    const seen = (k) => !printed || !!printed[gOf(k)];
     const cur = run.counts || {};
     const add = {};
     let addQty = 0, lessCount = 0;
     Object.keys(cur).forEach(k => {
+      if (!seen(k)) return;
       const d = (Number(cur[k]) || 0) - (Number(prev[k]) || 0);
       if (d > 0) { add[k] = d; addQty += d; }
       else if (d < 0) lessCount++;
     });
     // รายการที่หายไปจากรอบทั้งอัน (ถอนออก) ก็นับว่ายอดลด
-    Object.keys(prev).forEach(k => { if (!(k in cur) && (Number(prev[k]) || 0) > 0) lessCount++; });
-    return { add, addQty, lessCount };
-  }, [run]);
+    Object.keys(prev).forEach(k => { if (seen(k) && !(k in cur) && (Number(prev[k]) || 0) > 0) lessCount++; });
+    const addBy = splitCountsByGroup(add, run, groupOf);
+    const notPrinted = printed ? [APPAREL, EQUIPMENT].filter(g => !printed[g] && runGroups[g]) : [];
+    return { add, addQty, lessCount, addBy, notPrinted };
+  }, [run, groupOf, runGroups]);
 
   // 👥 ลูกค้าแพ็คมีแค่ไม่กี่เจ้า แต่ในระบบมีลูกค้าเป็นร้อย
   //    เดิมเป็น <select> ที่เทลูกค้าทุกคนลงมา ไม่มีช่องค้นหา → หาเจ้าที่ต้องการไม่เจอ
@@ -446,25 +463,48 @@ export default function PackRunTab({
           {/* 🖨️ พิมพ์ใบหยิบของไปแล้ว แล้วมีของเพิ่มเข้ามาอีก
               ใบที่ถืออยู่ในมือเก่ากว่าความจริง หยิบตามใบอย่างเดียวจะขาด
               แล้วตอนปิดรอบระบบตัดสต๊อกและออกบิลตามยอดจริง = เก็บเงินของที่ไม่ได้ส่ง */}
-          {pickDelta && (pickDelta.addQty > 0 || pickDelta.lessCount > 0) && (
+          {pickDelta && (pickDelta.addQty > 0 || pickDelta.lessCount > 0 || pickDelta.notPrinted.length > 0) && (
             <div style={{ padding: "10px 14px", marginBottom: 12, borderRadius: 10,
               background: "rgba(217,119,6,0.10)", border: "1px solid rgba(217,119,6,0.45)" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>
-                ⚠️ พิมพ์ใบหยิบของไปแล้วเมื่อ {run.lastPick?.at || "-"} — หลังจากนั้นยอดเปลี่ยน
+                {pickDelta.addQty > 0 || pickDelta.lessCount > 0
+                  ? <>⚠️ พิมพ์ใบหยิบของไปแล้วเมื่อ {run.lastPick?.at || "-"} — หลังจากนั้นยอดเปลี่ยน</>
+                  : <>⚠️ พิมพ์ใบหยิบของไปไม่ครบทุกหมวด</>}
               </div>
               <div style={{ fontSize: 12, color: "#92400e", marginTop: 3 }}>
                 {pickDelta.addQty > 0 && <>มีของเพิ่มอีก <b>{pickDelta.addQty}</b> ชิ้น</>}
                 {pickDelta.addQty > 0 && pickDelta.lessCount > 0 && " · "}
                 {pickDelta.lessCount > 0 && <>มี <b>{pickDelta.lessCount}</b> รายการที่ยอดลดลง (ต้องเทียบกับใบเดิมเอง)</>}
+                {/* หมวดที่ยังไม่เคยพิมพ์ — ลืมพิมพ์ = ของหมวดนั้นไม่ถูกหยิบ แต่บิลยังเก็บเงินเต็มรอบ */}
+                {pickDelta.notPrinted.map(g => (
+                  <div key={g}>ยังไม่ได้พิมพ์ใบหยิบ{GROUP_LABEL[g]} ({runGroups[g]?.qty || 0} ชิ้น)</div>
+                ))}
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                {pickDelta.addQty > 0 && (
-                  <Btn onClick={() => onPrintPickList?.(run, pickDelta.add)}
-                    title="พิมพ์เฉพาะของที่เพิ่มเข้ามาหลังใบก่อน — เอาไปหยิบเพิ่มโดยไม่ต้องไล่ทั้งรอบใหม่"
+                {pickDelta.notPrinted.map(g => (
+                  <Btn key={`np-${g}`} onClick={() => onPrintPickList?.(run, null, g)}
                     style={{ background: "#d97706", color: "white", border: "none", fontWeight: 700, fontSize: 12 }}>
-                    🖨️ ใบหยิบของ (เฉพาะที่เพิ่ม {pickDelta.addQty} ชิ้น)
+                    {GROUP_ICON[g]} พิมพ์ใบหยิบ{GROUP_LABEL[g]}
                   </Btn>
-                )}
+                ))}
+                {/* ของเพิ่มอยู่หมวดเดียว → ส่งหมวดไปด้วย ระบบจะจดว่าพิมพ์แค่หมวดนั้น
+                    ถ้าส่งแบบรวม ระบบจะนึกว่าอีกหมวดที่ยังไม่พิมพ์ถูกพิมพ์ไปแล้ว */}
+                {pickDelta.addQty > 0 && (() => {
+                  const gs = Object.keys(pickDelta.addBy);
+                  return (
+                    <Btn onClick={() => onPrintPickList?.(run, pickDelta.add, gs.length === 1 ? gs[0] : undefined)}
+                      title="พิมพ์เฉพาะของที่เพิ่มเข้ามาหลังใบก่อน — เอาไปหยิบเพิ่มโดยไม่ต้องไล่ทั้งรอบใหม่"
+                      style={{ background: "#d97706", color: "white", border: "none", fontWeight: 700, fontSize: 12 }}>
+                      🖨️ ใบหยิบของ (เฉพาะที่เพิ่ม {pickDelta.addQty} ชิ้น)
+                    </Btn>
+                  );
+                })()}
+                {/* ของเพิ่มปนสองหมวด → ให้พิมพ์แยกหมวดได้ด้วย สำหรับคนที่หยิบแยกโซน */}
+                {Object.keys(pickDelta.addBy).length > 1 && [APPAREL, EQUIPMENT].map(g => (
+                  <Btn key={`add-${g}`} onClick={() => onPrintPickList?.(run, pickDelta.addBy[g].counts, g)} style={{ fontSize: 12 }}>
+                    {GROUP_ICON[g]} เฉพาะที่เพิ่ม — {GROUP_LABEL[g]} {pickDelta.addBy[g].qty} ชิ้น
+                  </Btn>
+                ))}
                 <Btn onClick={() => onPrintPickList?.(run)} style={{ fontSize: 12 }}>
                   🖨️ พิมพ์ทั้งรอบใหม่
                 </Btn>
@@ -485,6 +525,12 @@ export default function PackRunTab({
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <Btn onClick={() => onPrintPickList?.(run)}>🖨️ ใบหยิบของ</Btn>
+                {/* 🏐 เสื้อผ้ากับอุปกรณ์อยู่คนละโซน — พิมพ์แยกให้คนหยิบแต่ละโซน บิลยังออกใบเดียวทั้งรอบ */}
+                {mixed && [APPAREL, EQUIPMENT].map(g => (
+                  <Btn key={g} onClick={() => onPrintPickList?.(run, null, g)} title={`พิมพ์ใบหยิบเฉพาะ${GROUP_LABEL[g]} — บิลยังออกรวมใบเดียว`}>
+                    {GROUP_ICON[g]} {GROUP_LABEL[g]} {runGroups[g].qty}
+                  </Btn>
+                ))}
                 {/* 🚫 จัดของแล้วหาไม่เจอ — ตัดออกจากรอบตรงหน้าชั้นได้เลย บิลจะไม่มีของพวกนี้ */}
                 {canEdit && onMarkMissing && totalOf(run) > 0 && (
                   <Btn onClick={() => setMissingRunId(run.id)} title="ติ๊กของที่หยิบไม่เจอ ตัดออกจากรอบ — ไม่ไปอยู่ในบิล"
@@ -579,6 +625,13 @@ export default function PackRunTab({
               {missingOf(r) > 0 && <span title="ตัดออกจากรอบเพราะจัดของแล้วหาไม่เจอ — ไม่อยู่ในบิล" style={{ padding: "1px 8px", borderRadius: 9, fontSize: 10, fontWeight: 700, background: "rgba(220,38,38,0.08)", color: "#b91c1c", border: "1px solid rgba(220,38,38,0.3)" }}>🚫 ไม่เจอ {missingOf(r).toLocaleString("th-TH")} ชิ้น</span>}
               <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
                 <Btn onClick={() => onPrintPickList?.(r)} style={{ padding: "3px 10px", fontSize: 11 }}>🖨️</Btn>
+                {(() => {
+                  const gs = splitCountsByGroup(r.counts, r, groupOf);
+                  return gs[APPAREL] && gs[EQUIPMENT] ? [APPAREL, EQUIPMENT].map(g => (
+                    <Btn key={g} onClick={() => onPrintPickList?.(r, null, g)} title={`พิมพ์ใบหยิบเฉพาะ${GROUP_LABEL[g]}`}
+                      style={{ padding: "3px 10px", fontSize: 11 }}>🖨️{GROUP_ICON[g]}</Btn>
+                  )) : null;
+                })()}
                 {canEdit && !r.stockCut && <Btn onClick={() => onCutStock?.(r)} title="หักยอดรอบนี้ออกจากคลังตอนนี้"
                   style={{ padding: "3px 10px", fontSize: 11, color: "#b45309", borderColor: "rgba(217,119,6,0.45)", background: "rgba(217,119,6,0.08)", fontWeight: 700 }}>✂️ ตัดสต็อกตอนนี้</Btn>}
                 {STOCK_SHORT_ENABLED && canEdit && r.stockCut && shortOf(r) > 0 && onCutShort && <Btn onClick={() => onCutShort(r)} title="ตัดส่วนที่ค้างเท่าที่ตอนนี้มีในคลัง"

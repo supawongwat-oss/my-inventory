@@ -19,9 +19,9 @@ import { applyStockDeltas, shortStockText, takeStockUpTo, computeTakeUpTo } from
 import { uploadImage, deleteFile } from "./utils/upload";
 import { REGIONS, detectRegion, detectProvince, regionMeta } from "./utils/thaiRegion";
 import { reserveDocNo } from "./utils/docNumber";
-import { isEquipmentModel, splitItemsByGroup, GROUP_LABEL } from "./utils/billGroup";
+import { isEquipmentModel, splitItemsByGroup, makeGroupOf, GROUP_LABEL, GROUP_ICON, APPAREL, EQUIPMENT } from "./utils/billGroup";
 import { fetchInvoicesOfCustomer } from "./utils/fetchInvoices";
-import { runToItems, groupRun, totalOf, runStockLines, runTakenItems, runShortItems, shortOf, planMissing, STOCK_SHORT_ENABLED } from "./utils/packRun";
+import { runToItems, groupRun, totalOf, runStockLines, runTakenItems, runShortItems, shortOf, planMissing, packGroupOfKey, STOCK_SHORT_ENABLED } from "./utils/packRun";
 import { withSearchKeys, withCustomerSearchKeys } from "./utils/searchKeys";
 
 // 🚀 Code splitting — tabs โหลดเฉพาะตอนคลิกใช้งาน (ลด first-load bundle)
@@ -2453,14 +2453,42 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
   // เก็บยอด ณ ตอนพิมพ์ไว้ เพื่อบอกได้ว่า "หลังพิมพ์มีของเพิ่มอะไรบ้าง"
   //
   // partial = ยอดเฉพาะส่วนที่เพิ่ม (ใบเสริม) · ไม่ส่ง = พิมพ์ทั้งรอบ
-  const handlePrintPickList = async (run, partial) => {
+  // group   = "apparel" / "equipment" พิมพ์เฉพาะหมวดนั้น · ไม่ส่ง = ทุกหมวดรวมใบเดียว
+  //
+  // 🏐 พิมพ์แยกหมวดแล้วต้องจำ "เฉพาะหมวดที่พิมพ์" — ถ้าจดยอดทั้งรอบตอนพิมพ์ใบเสื้อผ้า
+  //    ระบบจะเข้าใจว่าอุปกรณ์หยิบไปแล้ว ของที่เพิ่มเข้ามาทีหลังก็เตือนไม่ครบ
+  //    จึงเก็บ lastPick.groups ว่าหมวดไหนพิมพ์แล้ว และเขียนทับ counts เฉพาะ key ของหมวดนั้น
+  //    ใบเก่าที่ไม่มี groups = เคยพิมพ์รวมทั้งรอบ ถือว่าพิมพ์ครบทุกหมวด
+  const handlePrintPickList = async (run, partial, group) => {
     if (!run) return;
-    setPrintPackRun(partial ? { ...run, counts: partial, __partial: true, __since: run.lastPick?.at || "" } : run);
     const live = packRuns.find(r => r.id === run.id) || run;
+    const gOf = packGroupOfKey(live, makeGroupOf(clothingItems));
+    const inGroup = (k) => !group || gOf(k) === group;
+    const pick = Object.fromEntries(Object.entries(partial || run.counts || {}).filter(([k]) => inGroup(k)));
+    if (!Object.values(pick).some(q => Number(q) > 0)) { alert("ไม่มีของในหมวดนี้"); return; }
+    // อีกหมวดยังมีของในรอบ → หัวใบต้องบอกว่าต้องหยิบคู่กับอีกใบ ไม่งั้นหยิบใบเดียวแล้วของขาด
+    const otherQty = group
+      ? Object.entries(live.counts || {}).reduce((s, [k, q]) => s + (gOf(k) !== group ? Number(q) || 0 : 0), 0)
+      : 0;
+    setPrintPackRun({
+      ...run, counts: pick,
+      __partial: !!partial, __since: run.lastPick?.at || "",
+      __group: group || null, __otherQty: otherQty,
+    });
+    const prevLp = live.lastPick;
+    let counts, groups;
+    if (!group) {
+      counts = live.counts || {};
+      groups = { [APPAREL]: true, [EQUIPMENT]: true };
+    } else {
+      counts = Object.fromEntries(Object.entries(prevLp?.counts || {}).filter(([k]) => !inGroup(k)));
+      Object.entries(live.counts || {}).forEach(([k, q]) => { if (inGroup(k)) counts[k] = q; });
+      groups = { ...(prevLp ? (prevLp.groups || { [APPAREL]: true, [EQUIPMENT]: true }) : {}), [group]: true };
+    }
     try {
       // จดยอดปัจจุบันเสมอ แม้เป็นใบเสริม — ครั้งถัดไปจะได้นับต่อจากจุดนี้
       await updateDoc(doc(db, "packRuns", run.id), {
-        lastPick: { at: now(), by: user.name, counts: live.counts || {} },
+        lastPick: { at: now(), by: user.name, counts, groups },
       });
     } catch (e) { console.warn("[packRun] จดเวลาพิมพ์ใบหยิบของไม่สำเร็จ:", e?.message || e); }
   };
@@ -3053,6 +3081,9 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
       note: `รอบแพ็ค ${run.runNo} · ${items.reduce((s, i) => s + i.qty, 0)} ชิ้น`,
       packRunId: run.id,
       mergedFromOrderIds: [],
+      // รอบแพ็คออกบิลใบเดียวทั้งรอบเสมอ แม้ใบหยิบของจะพิมพ์แยกเสื้อผ้า/อุปกรณ์
+      // ตั้งตรงนี้กันค่าที่ค้างมาจากฟอร์มบิลก่อนหน้า (...f) — ยังติ๊กแยกเองในฟอร์มได้ถ้าต้องการจริง
+      splitEquipment: false,
     }));
     setShowNewInvoice(true);
     setActiveTab("invoice");
@@ -6271,9 +6302,15 @@ ${skipRestock ? "ℹ️ ใบนี้ยังไม่ได้ตัดส�
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",borderBottom:"2px solid #000",paddingBottom:6,marginBottom:10}}>
             <div>
               <div style={{fontSize:18,fontWeight:800}}>
-                ใบหยิบของ{printPackRun.__partial ? " (เฉพาะที่เพิ่มทีหลัง)" : ""}
+                ใบหยิบของ{printPackRun.__group ? ` — ${GROUP_ICON[printPackRun.__group]} ${GROUP_LABEL[printPackRun.__group]}` : ""}{printPackRun.__partial ? " (เฉพาะที่เพิ่มทีหลัง)" : ""}
               </div>
               <div style={{fontSize:13,fontWeight:700}}>{printPackRun.customerName}</div>
+              {/* ใบแยกหมวดต้องบอกว่ายังมีอีกหมวด — บิลออกรวมทั้งรอบ หยิบใบเดียวแล้วส่งไม่ครบจะเก็บเงินเกินของที่ส่ง */}
+              {printPackRun.__group && printPackRun.__otherQty > 0 && (
+                <div style={{fontSize:11,fontWeight:700,border:"1px solid #000",padding:"2px 6px",marginTop:4,display:"inline-block"}}>
+                  ⚠️ รอบนี้ยังมี{GROUP_LABEL[printPackRun.__group === EQUIPMENT ? APPAREL : EQUIPMENT]}อีก {printPackRun.__otherQty} ชิ้น อยู่อีกใบ — ต้องหยิบคู่กัน
+                </div>
+              )}
               {/* ใบเสริมต้องบอกให้ชัดว่าไม่ใช่ทั้งรอบ ไม่งั้นเผลอหยิบตามใบนี้ใบเดียวแล้วขาด */}
               {printPackRun.__partial && (
                 <div style={{fontSize:11,fontWeight:700,border:"1px solid #000",padding:"2px 6px",marginTop:4,display:"inline-block"}}>

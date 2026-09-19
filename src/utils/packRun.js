@@ -26,6 +26,29 @@ const num = (v) => Number(v) || 0;
 export const totalOf = (run) =>
   Object.values(run?.counts || {}).reduce((s, v) => s + num(v), 0);
 
+// 🏐 แยกตัวนับในรอบเป็น เสื้อผ้า / อุปกรณ์กีฬา — ใช้กับใบหยิบของเท่านั้น
+//    เสื้อผ้ากับอุปกรณ์เก็บคนละโซนในโกดัง คนหยิบจึงอยากได้ใบแยกกัน
+//    แต่บิลยังออกใบเดียวทั้งรอบเหมือนเดิม — ตัวนี้ไม่แตะ counts ในเอกสาร แค่คัดตอนพิมพ์
+//    groupOf มาจาก makeGroupOf() ใน billGroup.js ตัวเดียวกับหน้าออกบิล ให้หมวดตรงกันทุกที่
+//    meta ไม่มี (ของเก่ามาก) → ถอยไปใช้ clothingId จากหัว key
+export const packGroupOfKey = (run, groupOf) => (k) => {
+  const m = run?.meta?.[k] || {};
+  return groupOf({ clothingId: m.clothingId || String(k).split("|")[0], clothingName: m.clothingName });
+};
+
+export function splitCountsByGroup(counts, run, groupOf) {
+  const gOf = packGroupOfKey(run, groupOf);
+  const out = {};
+  Object.entries(counts || {}).forEach(([k, q]) => {
+    if (num(q) <= 0) return;
+    const g = gOf(k);
+    if (!out[g]) out[g] = { counts: {}, qty: 0 };
+    out[g].counts[k] = num(q);
+    out[g].qty += num(q);
+  });
+  return out;
+}
+
 // 📋 จัดกลุ่มเป็นตารางให้คนอ่าน — รุ่น+สี 1 แถว แล้วกางไซส์เป็นช่อง
 //    ตัดช่องที่เหลือ 0 ทิ้ง (กด +1 เกินแล้วลดกลับ ไม่ควรค้างเป็นแถวเปล่า)
 export function groupRun(run, sizeOrder = []) {
